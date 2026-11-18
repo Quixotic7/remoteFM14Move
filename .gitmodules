@@ -1,0 +1,7 @@
+[submodule "third_party/abletonmoveremote"]
+	path = third_party/abletonmoveremote
+	url = https://github.com/Quixotic7/abletonmoveremote.git
+	branch = in-process
+[submodule "third_party/rfm1cs-abletonmove"]
+	path = third_party/rfm1cs-abletonmove
+	url = https://github.com/Quixotic7/rfm1cs-abletonmove.git
