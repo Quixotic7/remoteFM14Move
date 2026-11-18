@@ -91,6 +91,8 @@ static int g_nfw;
 static rfm1cs_session_t *S;
 static int g_sock = -1;
 static uint32_t g_attempt, g_open_pending;
+static uint32_t g_session_at;   /* engine_cfg_t.splash_ms: when the session starts */
+static int g_session_on;
 static uint8_t *g_tx;
 static size_t g_tx_n;
 #define TX_CAP (1024 * 1024)
@@ -970,6 +972,10 @@ static void *engine_main(void *arg)
     while (g_run) {
         const uint32_t now = now_ms();
         int k = 0;
+        if (!g_session_on && (int32_t)(now - g_session_at) >= 0) {
+            rfm1cs_session_start(S, now);
+            g_session_on = 1;
+        }
         if (g_open_pending) {   /* (EV_OPEN came from inside a session call) */
             g_open_pending = 0;
             if (g_sock >= 0)
@@ -1135,7 +1141,11 @@ int engine_start(const engine_cfg_t *cfg)
                 }
     }
     active_changed();
-    rfm1cs_session_start(S, now_ms());   /* -> EV_OPEN: the socketpair, adopted by Move Remote's core */
+    g_session_at = now_ms() + C.splash_ms;
+    if (!C.splash_ms) {
+        rfm1cs_session_start(S, now_ms());   /* -> EV_OPEN: the socketpair, adopted by Move Remote's core */
+        g_session_on = 1;
+    }
     g_run = 1;
     if (pthread_create(&g_thr, NULL, engine_main, NULL) != 0)
         return -1;

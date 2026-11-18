@@ -22,6 +22,8 @@ typedef struct {
     const char *default_fw;       /* the firmware for slot 1 when nothing was loaded before (an id), or NULL: the
                                    * first listed */
     int lead_blocks;              /* the ring's fill the engine keeps (blocks of 128), 4..8 */
+    uint32_t splash_ms;           /* the session (the Move's controls and screen) starts this long after the engine: the
+                                   * status screen with the page's address shows meanwhile */
     int cpu_mask;                 /* the engine thread's cores (bits; 0 any) */
     /* tests (the simulator): every output block from the audio thread / the engine, the first firmware's own blocks
      * and its input log (tools/fwrun --replay) */

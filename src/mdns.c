@@ -87,12 +87,31 @@ static size_t put_a(uint8_t *out, size_t cap, size_t at, const char *name, const
     return at + 4;
 }
 
+/* RFC 6762 6.1: "this name has an A record and nothing else", so an AAAA query is answered at once (a resolver
+ * would otherwise wait for an IPv6 address that never comes) */
+static size_t put_nsec(uint8_t *out, size_t cap, size_t at, const char *name)
+{
+    size_t rd;
+    if (!(at = put_name(out, cap, at, name)) || at + 10 > cap)
+        return 0;
+    out[at++] = 0, out[at++] = 47;                              /* type NSEC */
+    out[at++] = 0x80, out[at++] = 1;                            /* class IN, cache-flush */
+    out[at++] = 0, out[at++] = 0, out[at++] = 0, out[at++] = TTL;
+    rd = at;
+    at += 2;
+    if (!(at = put_name(out, cap, at, name)) || at + 3 > cap)   /* the next name: ours */
+        return 0;
+    out[at++] = 0, out[at++] = 1, out[at++] = 0x40;             /* window 0, one byte: type 1 (A) only */
+    out[rd] = (uint8_t)((at - rd - 2) >> 8), out[rd + 1] = (uint8_t)(at - rd - 2);
+    return at;
+}
+
 size_t mdns_answer(const uint8_t *q, size_t n, const char *name, const uint8_t addr[4], int from_port, uint8_t *out,
                    size_t cap, int *unicast)
 {
     size_t at = 12;
     unsigned qd, i;
-    int hit = 0, qu = 0;
+    int hit = 0, aaaa = 0, qu = 0;
     const int legacy = from_port != 5353;
     if (n < 12 || (q[2] & 0x80) || (q[2] & 0x78))   /* a response, or not a standard query */
         return 0;
@@ -105,12 +124,15 @@ size_t mdns_answer(const uint8_t *q, size_t n, const char *name, const uint8_t a
         type = (unsigned)q[at] << 8 | q[at + 1];
         cls = (unsigned)q[at + 2] << 8 | q[at + 3];
         at += 4;
-        if (!strcasecmp(qn, name) && (type == 1 || type == 255) && (cls & 0x7FFF) == 1) {
-            hit = 1;
+        if (!strcasecmp(qn, name) && (type == 1 || type == 255 || type == 28) && (cls & 0x7FFF) == 1) {
+            if (type == 28)
+                aaaa = 1;
+            else
+                hit = 1;
             qu |= (cls & 0x8000) != 0;
         }
     }
-    if (!hit || cap < 12)
+    if ((!hit && !aaaa) || cap < 12)
         return 0;
     *unicast = legacy || qu;
     memset(out, 0, 12);
@@ -123,7 +145,12 @@ size_t mdns_answer(const uint8_t *q, size_t n, const char *name, const uint8_t a
         out[5] = 1;
         if (!(at = put_name(out, cap, at, name)) || at + 4 > cap)
             return 0;
-        out[at++] = 0, out[at++] = 1, out[at++] = 0, out[at++] = 1;
+        out[at++] = 0, out[at++] = (uint8_t)(hit ? 1 : 28), out[at++] = 0, out[at++] = 1;
+    }
+    if (!hit) {   /* AAAA only: the NSEC as the answer, the A record as additional */
+        out[11] = 1;
+        if (!(at = put_nsec(out, cap, at, name)))
+            return 0;
     }
     return put_a(out, cap, at, name, addr, !legacy);
 }

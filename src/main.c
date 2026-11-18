@@ -37,12 +37,13 @@ int main(int argc, char **argv)
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL;
     char *pargv[4];
     int pargc = 0, i, port = 7730, lead = 5, cap_s = 0, rc;
+    static char banner_title[32], banner_name[64];
 #ifdef RFM14_PLAT_SIM
-    int mdns = 0;
+    int mdns = 0, splash = 0;
     const char *tmp = getenv("TMPDIR");
     snprintf(root, sizeof root, "%s/remotefm1-sim", tmp && *tmp ? tmp : "/tmp");
 #else
-    int mdns = 1;
+    int mdns = 1, splash = 3000;   /* the address on the Move's screen before the controls take it */
     snprintf(root, sizeof root, "/data/UserData/RemoteFM1");
 #endif
     for (i = 1; i < argc; i++) {
@@ -56,6 +57,8 @@ int main(int argc, char **argv)
             fw = argv[++i];
         else if (!strcmp(argv[i], "--firmwares") && i + 1 < argc)
             firmwares = argv[++i];
+        else if (!strcmp(argv[i], "--splash") && i + 1 < argc)
+            splash = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-mdns"))
             mdns = 0;
         else if (!strcmp(argv[i], "--mdns"))
@@ -70,7 +73,7 @@ int main(int argc, char **argv)
             printf("remotefm1-host %s (Move Remote %s)\n", VERSION, MR_VERSION);
             return 0;
         } else {
-            fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--lead N] [--fw ID] "
+            fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -91,6 +94,7 @@ int main(int argc, char **argv)
         c.bundled = bundled[0] ? bundled : NULL;
         c.default_fw = fw;
         c.lead_blocks = lead;
+        c.splash_ms = (uint32_t)(splash < 0 ? 0 : splash);
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */
 #endif
@@ -115,6 +119,9 @@ int main(int argc, char **argv)
         mdns_start("remotefm1.local");
     /* Move Remote's platform: no listener of its own, our audio; it runs until the exit gesture, a power off or a
      * signal */
+    snprintf(banner_title, sizeof banner_title, "REMOTEFM1 %s", VERSION);
+    snprintf(banner_name, sizeof banner_name, "remotefm1.local:%d", port);
+    mr_set_banner(banner_title, banner_name, port);
     mr_set_port(-1);
     mr_set_audio_source(engine_audio, NULL);
     pargv[pargc++] = argv[0];

@@ -94,6 +94,15 @@ static void mdns(void)
     CHECK(n == 0, "move.local: not ours, no answer");
     n = mdns_answer(out, 5, "remotefm1.local", addr, 5353, out, sizeof out, &uni);
     CHECK(n == 0, "a short packet: nothing");
+    {   /* an AAAA query for our name: NSEC (A only) as the answer at once, the address as additional */
+        uint8_t q6[sizeof q];
+        memcpy(q6, q, sizeof q);
+        q6[sizeof q - 3] = 28;
+        n = mdns_answer(q6, sizeof q6, "remotefm1.local", addr, 5353, out, sizeof out, &uni);
+        CHECK(n > 0 && out[7] == 1 && out[11] == 1 && out[12 + 17 + 1] == 47 && out[12 + 17 + 9] == 17 + 3 &&
+                  out[12 + 17 + 10 + 17 + 2] == 0x40 && !memcmp(out + n - 4, addr, 4),
+              "an AAAA query: NSEC saying A only, the A record additional (%zu bytes)", n);
+    }
     n = mdns_announce("remotefm1.local", addr, out, sizeof out);
     CHECK(n == 43 && out[2] == 0x84, "the announcement");
 }
