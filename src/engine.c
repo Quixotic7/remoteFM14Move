@@ -121,6 +121,11 @@ static uint32_t g_view_lcd_ms;
 static struct { int op, a, b; } g_pin[256];
 static int g_npin;
 static char g_status[1024];
+static char *g_fw_json;                      /* engine_firmwares: made at start */
+static struct { int slot; char id[RFM_MOVE_FW_ID_MAX]; } g_wload[8];   /* the page's loads (engine_load) */
+static int g_nwload;
+static char g_fail_id[RFM_MOVE_FW_ID_MAX];   /* the last firmware that failed to load, and how many failed so far */
+static uint32_t g_fail_seq;
 
 static uint32_t now_ms(void)
 {
@@ -141,6 +146,77 @@ static uint8_t cats_of(const char *id, uint8_t *cat)
     return 0;
 }
 
+static int has_file(const char *json_path, const char *suffix)
+{
+    char p[ST_PATH + 32];
+    const size_t n = strlen(json_path);
+    FILE *f;
+    if (n < 5)
+        return 0;
+    snprintf(p, sizeof p, "%.*s%s", (int)(n - 5), json_path, suffix);
+    if (!(f = fopen(p, "rb")))
+        return 0;
+    fclose(f);
+    return 1;
+}
+
+/* the page's firmware list (engine_firmwares): each installed firmware's manifest fields, its file's stem (base: the
+ * page asks for its skin and licences by it, web.c /api/fw/), its categories (rfm1cs's), whether it has a skin */
+static void fw_json(void)
+{
+    static const char *CATS[] = { "Synth", "Groovebox", "Chords", "Drums", "Other" };
+    size_t cap = 1024 + (size_t)g_nfw * 8192, n = 0;   /* (a firmware: at most ~6 KB below) */
+    char *o = malloc(cap);
+    int i, k;
+    if (!o)
+        return;
+    n += (size_t)snprintf(o + n, cap - n, "{\"firmwares\":[");
+    for (i = 0; i < g_nfw; i++) {
+        const st_fw_t *f = &g_fws[i];
+        size_t jn;
+        char *json = (char *)st_read(f->json, &jn), esc[4][600], file[256] = "", built[200] = "";
+        const char *man = json ? mj_find(json, "manifest") : NULL, *au = man ? mj_find(man, "authors") : NULL;
+        const char *slash = strrchr(f->json, '/');
+        const size_t span = au && *au == '[' ? mj_span(au) : 0;
+        uint8_t cat;
+        const uint8_t cats = cats_of(f->id, &cat);
+        int first = 1;
+        if (json)
+            mj_string(json, "file", file, sizeof file);
+        if (man)
+            mj_string(man, "built_by", built, sizeof built);
+        mj_escape(f->name, esc[0], sizeof esc[0]);
+        mj_escape(f->license, esc[1], sizeof esc[1]);
+        mj_escape(f->source_url, esc[2], sizeof esc[2]);
+        mj_escape(built, esc[3], sizeof esc[3]);
+        n += (size_t)snprintf(o + n, cap - n,
+                              "%s{\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"license\":\"%s\",\"source_url\":\"%s\","
+                              "\"sha256\":\"%s\",\"file\":\"%s\",\"base\":\"%.*s\",\"built_by\":\"%s\",\"authors\":%.*s,"
+                              "\"skin\":[%s%s%s],\"licenses\":%s,\"categories\":[",
+                              i ? "," : "", f->id, esc[0], f->version, esc[1], esc[2], f->sha256, file,
+                              slash ? (int)strlen(slash + 1) - 5 : 0, slash ? slash + 1 : "", esc[3],
+                              span && span < 2048 ? (int)span : 2, span && span < 2048 ? au : "[]",
+                              has_file(f->json, ".rfm1skin") ? "\"rfm1skin\"" : "",
+                              has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bg") ? ",\"rfm1skin.bg\"" : "",
+                              has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bgl") ? ",\"rfm1skin.bgl\"" : "",
+                              has_file(f->json, ".licenses.txt") ? "true" : "false");
+        for (k = 0; k < 5; k++)
+            if (cats >> k & 1) {
+                n += (size_t)snprintf(o + n, cap - n, "%s\"%s\"", first ? "" : ",", CATS[k]);
+                first = 0;
+            }
+        n += (size_t)snprintf(o + n, cap - n, "]}");
+        free(json);
+        if (n >= cap - 16)
+            break;
+    }
+    snprintf(o + n, cap - n, "]}");
+    pthread_mutex_lock(&g_vmu);
+    free(g_fw_json);
+    g_fw_json = o;
+    pthread_mutex_unlock(&g_vmu);
+}
+
 static void catalog_load(void)
 {
     int i;
@@ -158,6 +234,7 @@ static void catalog_load(void)
         e->cats = cats_of(g_fws[i].id, &e->cat);
     }
     fprintf(stderr, "engine: %d firmware(s) installed\n", g_nfw);
+    fw_json();
 }
 
 static int catalog_find(const char *id)
@@ -555,6 +632,14 @@ static void states_scan(int s)
     st_post(j);
 }
 
+/* a firmware that could not load: the page hears it (view_info's "failed") */
+static void load_failed(const char *id)
+{
+    snprintf(g_fail_id, sizeof g_fail_id, "%s", id);
+    g_fail_seq++;
+    view_info();
+}
+
 static void do_deferred(void)
 {
     int k;
@@ -567,6 +652,7 @@ static void do_deferred(void)
             const int i = catalog_find(id);
             if (i < 0) {
                 rfm_move_fw_progress(&S->core, id, RFM_MOVE_FW_FAILED);
+                load_failed(id);
                 break;
             }
             if (SL[s].on && !strcmp(SL[s].fw.id, id)) {   /* there already */
@@ -645,11 +731,15 @@ static void do_results(void)
             if (!j->obj) {
                 fprintf(stderr, "engine: %s: %s\n", j->id, j->err);
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
+                load_failed(j->id);
                 break;
             }
             if (slot_boot(s, j->obj, j->data, j->len) != 0) {
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
                 slots_tell();
+                load_failed(j->id);
+                if (s == g_active)
+                    active_changed();
                 break;
             }
             slots_tell();
@@ -698,9 +788,10 @@ static void do_results(void)
 static void view_info(void)
 {
     fw_t *fw = SL[g_active].on ? &SL[g_active].fw : NULL;
-    char tmp[2048];
+    char tmp[sizeof g_view.info];
     int n = 0, s, k;
-    n += snprintf(tmp + n, sizeof tmp - (size_t)n, "{\"active\":%d,\"slots\":[", g_active);
+    n += snprintf(tmp + n, sizeof tmp - (size_t)n, "{\"active\":%d,\"fail_seq\":%u,\"failed\":\"%s\",\"slots\":[",
+                  g_active, g_fail_seq, g_fail_id);
     for (s = 0; s < NSLOT; s++) {
         if (SL[s].on) {
             const int i = SL[s].idx;
@@ -728,6 +819,22 @@ static void view_info(void)
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%s%d", k ? "," : "",
                           fw->has_keymap ? fw->keymap[k / 11][k % 11] : -1);
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+        {   /* the live labels (FM1CORE_LBL_* order; null: not given), and their epoch (0: none) */
+            const uint32_t e = fw_labels_epoch(fw);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"lseq\":%u", e);
+            if (e) {
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"labels\":[");
+                for (k = 0; k < FW_LBL_N && n < (int)sizeof tmp - 64; k++) {
+                    const char *l = fw_label(fw, k);
+                    if (l) {
+                        mj_escape(l, esc, sizeof esc);
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%s\"%s\"", k ? "," : "", esc);
+                    } else
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", k ? "," : "");
+                }
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+            }
+        }
     }
     snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
     pthread_mutex_lock(&g_vmu);
@@ -767,6 +874,34 @@ int engine_status(char *out, int cap)
     n = snprintf(out, (size_t)cap, "%s", g_status);
     pthread_mutex_unlock(&g_vmu);
     return n;
+}
+
+char *engine_firmwares(void)
+{
+    char *r;
+    pthread_mutex_lock(&g_vmu);
+    r = g_fw_json ? strdup(g_fw_json) : NULL;
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
+int engine_load(int slot, const char *id)
+{
+    int r = -1, i;
+    if (slot < 0 || slot >= NSLOT || !id || strlen(id) >= RFM_MOVE_FW_ID_MAX)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < g_nfw; i++)   /* (g_fws is written only before the engine's thread starts) */
+        if (!strcmp(g_fws[i].id, id))
+            break;
+    if (i < g_nfw && g_nwload < (int)(sizeof g_wload / sizeof g_wload[0])) {
+        g_wload[g_nwload].slot = slot;
+        snprintf(g_wload[g_nwload].id, sizeof g_wload[g_nwload].id, "%s", id);
+        g_nwload++;
+        r = 0;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return r;
 }
 
 /* the active firmware's screen and LEDs: to the session (the Move) and to the page */
@@ -820,6 +955,7 @@ static void publish(uint32_t now)
             for (r = 0; r < 8; r++)
                 rfm_move_set_label(&S->core, ENC[r], fw_label(fw, r));
             rfm1cs_session_redraw(S, now);
+            view_info();   /* (the page's labels) */
         }
     }
 }
@@ -1004,6 +1140,17 @@ static void *engine_main(void *arg)
             n = g_npin;
             memcpy(pin, g_pin, sizeof pin[0] * (size_t)n);
             g_npin = 0;
+            pthread_mutex_unlock(&g_vmu);
+            /* the page's firmware picks: rfm1cs's FW_LOAD, the same path (do_deferred) */
+            pthread_mutex_lock(&g_vmu);
+            for (i = 0; i < g_nwload && g_ndefer < (int)(sizeof g_defer / sizeof g_defer[0]); i++) {
+                defer_t *d = &g_defer[g_ndefer++];
+                memset(d, 0, sizeof *d);
+                d->a.kind = RFM_MOVE_ACT_FW_LOAD;
+                d->a.slot = (uint8_t)g_wload[i].slot;
+                snprintf(d->id, sizeof d->id, "%s", g_wload[i].id);
+            }
+            g_nwload = 0;
             pthread_mutex_unlock(&g_vmu);
             for (i = 0; i < n; i++) {
                 if (pin[i].op == FWI_MASTER) {

@@ -11,6 +11,7 @@
  *     --lead        blocks rendered ahead, 4..8 (default 5)
  *     --fw          the firmware slot 1 gets when nothing was loaded before (default felucca)
  *     --firmwares   the bundled firmwares to install from (default: firmwares/ beside this program)
+ *     --site        the page's files (scripts/build_site.sh; default: site/ beside this program)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
  *                   and its input log (inputs.log), written at exit */
@@ -33,8 +34,8 @@ int mr_plat_main(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
-    static char root[PATH_MAX], bundled[PATH_MAX], cap[4][PATH_MAX];
-    const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL;
+    static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX];
+    const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     char *pargv[4];
     int pargc = 0, i, port = 7730, lead = 5, cap_s = 0, rc;
     static char banner_title[32], banner_name[64];
@@ -57,6 +58,8 @@ int main(int argc, char **argv)
             fw = argv[++i];
         else if (!strcmp(argv[i], "--firmwares") && i + 1 < argc)
             firmwares = argv[++i];
+        else if (!strcmp(argv[i], "--site") && i + 1 < argc)
+            site_arg = argv[++i];
         else if (!strcmp(argv[i], "--splash") && i + 1 < argc)
             splash = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-mdns"))
@@ -74,7 +77,7 @@ int main(int argc, char **argv)
             return 0;
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
-                            "[--firmwares DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
+                            "[--firmwares DIR] [--site DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
     }
@@ -87,6 +90,15 @@ int main(int argc, char **argv)
             snprintf(slash, sizeof bundled - (size_t)(slash - bundled), "/firmwares");
     } else
         bundled[0] = 0;
+    /* the page's files: the module's site/ beside this program */
+    if (site_arg)
+        snprintf(site, sizeof site, "%s", site_arg);
+    else if (realpath(argv[0], site)) {
+        char *slash = strrchr(site, '/');
+        if (slash)
+            snprintf(slash, sizeof site - (size_t)(slash - site), "/site");
+    } else
+        site[0] = 0;
     {
         engine_cfg_t c;
         memset(&c, 0, sizeof c);
@@ -113,7 +125,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    if (web_start(port) != 0)
+    if (web_start(port, site) != 0)
         fprintf(stderr, "web: cannot listen on port %d: no page\n", port);
     if (mdns)
         mdns_start("remotefm1.local");

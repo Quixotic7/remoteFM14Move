@@ -5,6 +5,7 @@
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1"
+#   make site         build/site: the page (RemoteFM1's web/site for the Move, scripts/build_site.sh; part of make)
 #   make sim-run      the host on the simulator in the image, its page on http://localhost:7730/
 #
 # The input firmwares are never in git: FIRMWARES names the .rfm1 files (default: RFM1Manager's builds beside this
@@ -16,9 +17,13 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs clean
-all: image inputs
+.PHONY: all test package sim-run image inputs site clean
+all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
+
+# the page: RemoteFM1's web/site built for the Move (scripts/build_site.sh: git, patch and rsync, on the Mac)
+site:
+	scripts/build_site.sh
 
 image:
 	docker build -q -t $(IMAGE) docker >/dev/null
@@ -63,7 +68,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/web.c src/mdns.c src/minijson.c
-HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h build/gen/rfm_page.h
+HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
 .PHONY: in-all in-host in-fw in-tools in-ref in-package
 in-all: in-tools in-fw in-ref in-host
@@ -103,9 +108,6 @@ build/gen/web_page.h: $(MR)/web/index.html
 build/gen/bridge_page.h: $(MR)/web/bridge.html
 	mkdir -p build/gen
 	cd $(MR)/web && xxd -i bridge.html | sed 's/bridge_html/mr_bridge_page/g' > $(abspath $@)
-build/gen/rfm_page.h: web/index.html
-	mkdir -p build/gen
-	cd web && xxd -i index.html | sed 's/index_html/rfm_web_page/g' > $(abspath $@)
 
 HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -DMR_PLAT_MAIN=mr_plat_main
 HOST_LIBS = -rdynamic -ldl -lm -lpthread

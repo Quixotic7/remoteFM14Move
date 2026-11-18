@@ -5,4 +5,4 @@
 # (docker exec): "note 84 100", "note 84 0", "cc 85 127" .. Ctrl-C stops it.
 cd "$(dirname "$0")/.."
 mkdir -p /tmp/rfm14sim
-exec build/sim/remotefm1-host --root /tmp/rfm14sim/root --sim-dir /tmp/rfm14sim --firmwares build/fw "$@"
+exec build/sim/remotefm1-host --root /tmp/rfm14sim/root --sim-dir /tmp/rfm14sim --firmwares build/fw --site build/site "$@"

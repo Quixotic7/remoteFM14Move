@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
 # Every test (make test runs this after make): Move Remote's own on its branch (on the Mac: its simulator, mrctl,
-# the page), then the rest in the build image (tests/in_image.sh).
+# the page), then the rest in the build image (tests/in_image.sh), then the Move's page in headless Chromium
+# (tests/page_e2e.mjs: the host in the image, the browser on the Mac; docs/move-page.png).
 set -u
 cd "$(dirname "$0")/.."
 fail=0
@@ -10,6 +11,8 @@ make -C third_party/abletonmoveremote test >build/moveremote-test.log 2>&1 && ta
     || { cat build/moveremote-test.log; fail=1; }
 echo "==== in the image"
 docker run --rm -v "$(pwd)":/w -w /w "${IMAGE:-rfm14move-build}" tests/in_image.sh || fail=1
+echo "==== the page in headless Chromium (on the Mac; the host in the image)"
+node tests/page_e2e.mjs || fail=1
 echo
 [ $fail = 0 ] && echo "ALL TESTS PASSED" || echo "TESTS FAILED"
 exit $fail

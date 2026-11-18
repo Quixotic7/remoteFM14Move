@@ -1,0 +1,423 @@
+RemoteFM14Move's changes to RemoteFM1's web/site (third_party/RemoteFM1, pinned), for the page the Ableton Move serves.
+SPDX-License-Identifier: GPL-3.0-only (RemoteFM1's site, changed). Applied by scripts/build_site.sh (patch -p1 in the
+copy of web/site), with web/move/js/host.js and web/move/js/movehost.js added beside it. Everything is behind one flag,
+js/host.js ON_MOVE (index.html's <meta name="fm1-host" content="web|move">: the build sets "move"), so with "web" the
+site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The page").
+  index.html     the flag; no http -> https redirect on the Move; <html data-host> for the CSS
+  css/site.css   the header's install / app / FM-1 / recorder / editor buttons hidden on the Move
+  js/main.js     on the Move: the catalog is the Move's firmwares, the engine movehost.js (no AudioWorklet), no saves,
+                 files, MIDI, Use my FM-1, OMX-27, Move link, recorder, editor, folder, audio input; the page follows the
+                 firmware the Move switches to by itself
+  js/sheet.js    on the Move: the firmware page lists the Move's firmwares; no saves, FM-1, playing, recording sections
+
+--- a/index.html
++++ b/index.html
+@@ -3,7 +3,9 @@
+ <html lang="en">
+ <head>
+ <meta charset="utf-8">
+-<script>/* AudioWorklet and Web MIDI need a secure page: http -> https (not on a local server) */ if (location.protocol === "http:" && !/^(localhost|127\.|\[::1\]|.*\.localhost$)/.test(location.hostname)) location.replace("https:" + location.href.slice(5));</script>
++<meta name="fm1-host" content="web">
++<script>/* the host (js/host.js): "web", or "move" (an Ableton Move serves the page; its engine is the Move: plain http is fine)
++   AudioWorklet and Web MIDI need a secure page: http -> https (not on a local server) */ document.documentElement.dataset.host = document.querySelector('meta[name="fm1-host"]').content; if (document.documentElement.dataset.host === "web" && location.protocol === "http:" && !/^(localhost|127\.|\[::1\]|.*\.localhost$)/.test(location.hostname)) location.replace("https:" + location.href.slice(5));</script>
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+ <title>FM-1 Player</title>
+ <meta name="description" content="Play FM-1 firmwares in the browser: the M-VAVE FM-1 drawn on screen, played with the computer keyboard, mouse, touch or a MIDI keyboard. Install RemoteFM1 to use your own FM-1 as the panel.">
+--- a/js/main.js
++++ b/js/main.js
+@@ -6,6 +6,8 @@
+ //   &engine=native|emu  pick the engine (where both can)
+ //   &view=screen      the screen view
+ //   &embed=1          only the device: no header, no settings
++// On an Ableton Move (js/host.js ON_MOVE: RemoteFM14Move serves the page) the engine is the firmware running on the
++// Move (js/movehost.js), the catalog the firmwares installed there; no audio, MIDI, USB, saves or files in the browser.
+ import { Controls, DeviceView, ScreenView, Lcd, SRC, PANEL_LABELS, KM, panelLabels } from "./panel.js";
+ import { DEFAULT_THEME, CUSTOM_NAME, presetNamed, derived, css, resolve, accentOf, onAccent } from "./theme.js";
+ import { Keyboard, attachPointer, MidiInput } from "./input.js";
+@@ -29,6 +31,8 @@
+ import { Folder } from "./folder.js";
+ import { FolderUI } from "./folder-ui.js";
+ import { AinUI } from "./ain-ui.js";
++import { ON_MOVE } from "./host.js";
++import { MoveHostPlayer, moveCatalog } from "./movehost.js";
+ 
+ const $ = (id) => document.getElementById(id);
+ const params = new URLSearchParams(location.search);
+@@ -167,7 +171,7 @@
+ const engineFor = (e, want) => chooseEngine(e, want, prefs);
+ 
+ async function refreshSaves() {
+-  state.saves = state.entry ? await saves.list(state.entry.id) : [];
++  state.saves = state.entry && !ON_MOVE ? await saves.list(state.entry.id) : [];
+   if (sheet) sheet.render();
+ }
+ 
+@@ -175,7 +179,7 @@
+   const e = typeof id === "string" ? findEntry(id) : id;
+   if (!e) { toast(`No firmware "${id}" in the catalog.`, "bad"); return; }
+   // the running firmware's flash first (some cores write it only when asked: W1)
+-  if (state.running && state.entry && state.engine !== "mock") { try { await currentFlash(); } catch (_) { /* (gone already) */ } }
++  if (!ON_MOVE && state.running && state.entry && state.engine !== "mock") { try { await currentFlash(); } catch (_) { /* (gone already) */ } }
+   if (e.emuNote && !e.native) toast(`${e.name} is known not to run in the emulator: ${e.emuNote}.`, "bad");
+   if (state.fwSkin && state.fwSkin.id !== skinIdOf(e)) { state.fwSkin = null; applyTheme(); }
+   state.entry = e;
+@@ -186,7 +190,7 @@
+   hideOffer();
+   if (!e.local || e.rfm1) { prefs.last = localRfm1(e) ? RFM1_LAST + e.rfm1.sha256 : e.id; savePrefs(); }
+   updateTitle();
+-  if (!EMBED && (!e.local || e.rfm1)) {
++  if (!EMBED && !ON_MOVE && (!e.local || e.rfm1)) {
+     const u = new URL(location.href);
+     if (localRfm1(e)) { u.searchParams.delete("fw"); u.searchParams.delete("engine"); }   // (no deep link: a reload reopens it from prefs.last)
+     else {
+@@ -216,6 +220,10 @@
+   setStatus(`Loading ${e.name}...`);
+   if (sheet) sheet.render();
+   editorChanged();
++  if (ON_MOVE) {   // the Move loads it (movehost.js: the same as its own FW_LOAD); its flash stays on the Move
++    try { await player.load(e, eng, null, {}); } catch (err) { if (seq === bootSeq) { toast(err.message || String(err), "bad"); setStatus(""); } }
++    return;
++  }
+   try {
+     // an emulated firmware's package from where the Hub points now (a gone one: the Hub once more, then the snapshot's)
+     if (eng === "emu" && !e.localBytes && e.emu && e.emu.pkg && emuHook && emuHook.fetchPackage) {
+@@ -321,12 +329,24 @@
+   toast(`${why} Playing a test engine instead.`, "bad");
+   setStatus("");
+   try { await player.load({ ...e, name: e.name }, "mock", null); } catch (err) { toast(String(err.message || err), "bad"); }
++  if (sheet) sheet.render();
++}
++
++// the Move switched firmware itself (its projects view, another track): the page follows it, nothing is loaded
++function followMove(id) {
++  const e = id ? findEntry(id) : null;
++  if ((state.entry ? state.entry.id : null) === (e ? e.id : null)) return;
++  if (state.fwSkin && (!e || state.fwSkin.id !== skinIdOf(e))) { state.fwSkin = null; applyTheme(); }
++  state.entry = e; state.wantEngine = state.engine = e ? "move" : null; state.info = null; state.labels = null;
++  controls.releaseLatches();
++  if (e) { prefs.last = e.id; savePrefs(); }
++  updateTitle();
+   if (sheet) sheet.render();
+ }
+ 
+ function updateTitle() {
+-  const e = state.entry;
+-  document.title = e ? `${nameOf(e, state.wantEngine)} · FM-1 Player` : "FM-1 Player";
++  const e = state.entry, host = ON_MOVE ? "RemoteFM1 on Move" : "FM-1 Player";
++  document.title = e ? `${nameOf(e, state.wantEngine)} · ${host}` : host;
+   $("fw-name").textContent = e ? nameOf(e, state.wantEngine) : "";
+   $("fw-ver").textContent = e ? versionOf(e, state.wantEngine) : "";
+   updateSource();
+@@ -334,7 +354,7 @@
+ }
+ // the header's link to the running firmware's own source, at the version that runs (live.js sourceOf); a file from the
+ // visitor's computer (M-VAVE's stock firmware, any .fwsc) has none: the link shows so, disabled
+-const sourceNow = () => sourceOf(state.entry, state.wantEngine, catalog && catalog.credits);   // (the engine picked: a test engine stands in for it)
++const sourceNow = () => sourceOf(state.entry, ON_MOVE ? "rfm1" : state.wantEngine, catalog && catalog.credits);   // (the Move runs the .rfm1's own code)   // (the engine picked: a test engine stands in for it)
+ function updateSource() {
+   const a = $("fw-src"), e = state.entry, s = e ? sourceNow() : null;
+   a.hidden = !e;
+@@ -358,13 +378,14 @@
+ function metaLine() {
+   const e = state.entry;
+   if (!e) return "";
+-  const eng = state.engine === "mock" ? "test engine (the real one is not here yet)" : state.engine === "native" ? (e.native && e.native.by === "author" ? "native, built by the author" : "native")
++  const eng = state.engine === "move" ? "on the Move" : state.engine === "mock" ? "test engine (the real one is not here yet)" : state.engine === "native" ? (e.native && e.native.by === "author" ? "native, built by the author" : "native")
+     : state.engine === "rfm1" ? (localRfm1(e) ? "native, your file" : "native (.rfm1)") : `emulated, ${state.mhz} MHz`;
+   return `${e.category} · ${e.tag} · ${e.author} · ${eng}`;
+ }
+ function engineNote() {
+   const e = state.entry;
+   if (!e) return "";
++  if (ON_MOVE) return `${e.name} runs on the Ableton Move itself: its .rfm1 (${e.rfm1 ? e.rfm1.fileName : e.id}) translated by wasm2c and compiled for the Move, played from the Move's pads and knobs and from this page. The sound comes out of the Move; this page is its panel. Its flash and states stay on the Move.`;
+   if (siteRfm1(e) && state.wantEngine === "rfm1") {
+     const r = e.rfm1;
+     return [`${e.name}'s own code, built to WebAssembly by this site from its release (${r.fileName}${r.builtBy ? `, ${r.builtBy}` : ""}), runs natively here as in RemoteFM1 for iOS. The file is this site's (SHA-256 ${r.sha256.slice(0, 12)}..., checked as it loads); its saves are the firmware's under the .rfm1 engine.`,
+@@ -432,7 +453,9 @@
+ 
+ // ------------------------------------------------------------------ audio ---
+ function makePlayer() {
+-  player = new Player(catalog, {
++  player = new (ON_MOVE ? MoveHostPlayer : Player)(catalog, {
++    moved(id) { followMove(id); },                       // (movehost.js: the Move's active firmware changed)
++    moveLink(up) { setStatus(up ? "" : "The Move is not answering: reconnecting..."); },
+     frame(px, seq) { state.pixels = px; state.frameSeq = seq; lcd.put(px); invalidate(); siteEmit("frame", px, seq); },
+     labels(m) { state.labels = m.list || null; applyButtonNames(); invalidate(); },
+     leds(levels, green) { state.levels = levels; state.playGreen = green; device.setLeds(levels, green); invalidate(); siteEmit("leds", levels, green); },
+@@ -489,6 +512,7 @@
+     beforeLoad() { if (rec) rec.beforeLoad(); },
+     audioState(s) { if (s !== "running") setTimeout(soundHeldBack, 800); },
+     error(msg) {
++      if (ON_MOVE) { toast(msg, "bad"); return; }
+       console.warn("worklet:", msg);
+       if (/^load:/.test(msg) && state.engine !== "mock") fallback(msg.replace(/^load:\s*/, "The engine could not start: ") + ".");
+       else if (/^render:/.test(msg)) toast(`The engine stopped: ${msg}`, "bad");
+@@ -496,7 +520,7 @@
+   });
+   player.setVolume(state.volume);
+   if (fm1 && fm1.status.audio) { player.tap(true); player.setMuted(true); }   // (Bluetooth audio already on)
+-  soundOut = new SoundOut({ player, media: navigator.mediaDevices, prefs, save: savePrefs, onChange: () => { if (sheet) sheet.render(); } });
++  if (!ON_MOVE) soundOut = new SoundOut({ player, media: navigator.mediaDevices, prefs, save: savePrefs, onChange: () => { if (sheet) sheet.render(); } });
+ }
+ let flashTimer = 0, pendingSave = null;
+ const lastSaved = new Map();
+@@ -862,7 +886,7 @@
+ let skinSeq = 0;
+ function takeFirmwareSkin(info) {
+   const e = state.entry, id = skinIdOf(e), seq = ++skinSeq;
+-  if (!info || !info.skin || state.engine !== "rfm1") { if (state.fwSkin) { state.fwSkin = null; applyTheme(); } return; }
++  if (!info || !info.skin || (state.engine !== "rfm1" && state.engine !== "move")) { if (state.fwSkin) { state.fwSkin = null; applyTheme(); } return; }
+   if (state.fwSkin && state.fwSkin.id === id) return;
+   firmwareSkin(info.skin, id).then((s) => {
+     if (seq !== skinSeq || state.entry !== e) return;   // (another firmware since)
+@@ -899,8 +923,11 @@
+   new ResizeObserver(layout).observe($("stage"));
+   matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener?.("change", layout);
+   try {
+-    const r = await fetch("catalog.json", { cache: "no-cache" });
+-    snapshot = catalog = await r.json();
++    if (ON_MOVE) snapshot = catalog = await moveCatalog();   // (the firmwares installed on the Move)
++    else {
++      const r = await fetch("catalog.json", { cache: "no-cache" });
++      snapshot = catalog = await r.json();
++    }
+   } catch (e) {
+     toast("The firmware list could not be loaded. Reload the page.", "bad");
+     return;
+@@ -915,6 +942,8 @@
+     if (!catalog.live) console.warn("the Hub's catalog:", catalog.liveError, "- using the deployed snapshot");
+   }
+   // the hosted managers (web/managers/build.mjs: managers/index.json); none: the Editor button shows only links
++  // (not on the Move: the editors talk to the firmware's MIDI, which the Move's page has no way to)
++  if (!ON_MOVE) {
+   const mbase = new URL(catalog.paths.managers || "managers/", document.baseURI);
+   let mindex = null;
+   try { const r = await fetch(new URL("index.json", mbase), { cache: "no-cache" }); if (r.ok) mindex = await r.json(); } catch (_) { mindex = null; }
+@@ -922,6 +951,7 @@
+     toEngine: (b) => { if (player && (state.engine === "native" || state.engine === "rfm1")) player.midi(b); },
+     toCart: (b) => { if (player && playingSelf() && state.engine === "rfm1") player.midi(b); }, setEngine: (n) => app.setEngine(n) });
+   window.FM1Editor = editor;
++  }
+   app.installerUrl = catalog.paths.installer;
+   $("install-link").href = catalog.paths.installer;
+   sheet = new Sheet(app);
+@@ -934,7 +964,7 @@
+   site = made.site; siteEmit = made.emit;
+   window.FM1Site = site;
+   window.FM1Device = device;   // (the faceplate view: the e2e tests read its anchors)
+-  import(new URL(catalog.paths.remote, document.baseURI).href).then((m) => {
++  if (!ON_MOVE) import(new URL(catalog.paths.remote, document.baseURI).href).then((m) => {
+     if (m && typeof m.RemoteFM1 === "function") {          // W4's class: the section is ours (use-fm1.js)
+       app.remoteMounted = true;
+       if (typeof m.isCandidatePortName === "function") midi.isUnitPort = m.isCandidatePortName;
+@@ -954,6 +984,7 @@
+   }).catch(() => { /* (web/remote is W4's: the stub stays) */ });
+ 
+   // USE MY OMX-27: its port is the page's while it is in REMOTE mode (not a MIDI keyboard, nothing learned from it)
++  if (!ON_MOVE) {
+   omx = new OmxLink({ controls, site, prefs, save: savePrefs, toast, mapAct,
+     onActive: () => { midi.bind(); if (sheet) sheet.render(); } });
+   midi.skipPort = (i) => omx.owns(i);
+@@ -967,11 +998,12 @@
+     onActive: () => { if (sheet) sheet.render(); } });
+   mountMove(sheet.moveSlot, move);
+   window.FM1Move = move;
+-  applyButtonNames();
+   move.auto();                                             // connects by itself where it was connected before
++  }
++  applyButtonNames();
+ 
+-  // the recorder
+-  if (!EMBED) {
++  // the recorder (not on the Move: its sound is not in the browser)
++  if (!EMBED && !ON_MOVE) {
+     rec = new RecUI({
+       getPlayer: () => player,
+       ensureRunning: async () => state.running || start(),
+@@ -985,6 +1017,7 @@
+   }
+ 
+   // a Fantasy CFW's RemoteFM1 folder: the files changed (picked, added, back to the page) -> the cart's fs_changed
++  if (!ON_MOVE) {
+   folderUi = new FolderUI({ folder, cart: fantasyNow, toast, render: () => { if (sheet) sheet.render(); } });
+   folder.on((kind) => { if (kind === "changed" && player) player.fsChanged(); folderUi.update(); if (sheet) sheet.render(); });
+   addEventListener("focus", () => { if (player && fantasyNow() && folder.state === "ready") player.fsChanged(); });
+@@ -994,6 +1027,7 @@
+   ainUi = new AinUI({ getPlayer: () => player, ensureRunning: async () => state.running || start(), cart: ainNow, toast,
+     render: () => { if (sheet) sheet.render(); } });
+   window.FM1Ain = ainUi;
++  }
+ 
+   // input
+   new Keyboard({
+@@ -1027,7 +1061,7 @@
+     e.stopImmediatePropagation(); e.preventDefault();
+   }, true);
+   // MIDI on by itself where it was on before and the browser already allows it (no prompt)
+-  if (prefs.midi && midi.supported) midi.granted().then((yes) => { if (yes && !midi.access) app.enableMidi(); });
++  if (!ON_MOVE && prefs.midi && midi.supported) midi.granted().then((yes) => { if (yes && !midi.access) app.enableMidi(); });
+   addEventListener("keydown", (e) => {
+     if (e.key !== "Escape" || !sheet.isOpen) return;
+     e.stopImmediatePropagation(); e.preventDefault();
+@@ -1035,8 +1069,8 @@
+   }, true);
+ 
+   // a file dropped anywhere on the page: an .rfm1 or a .fwsc, opened as from the browser's "Open a file..."
+-  addEventListener("dragover", (ev) => { if (ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files")) { ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; } });
+-  addEventListener("drop", (ev) => {
++  if (!ON_MOVE) addEventListener("dragover", (ev) => { if (ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files")) { ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; } });
++  if (!ON_MOVE) addEventListener("drop", (ev) => {
+     const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+     if (!f) return;
+     ev.preventDefault();
+@@ -1046,14 +1080,15 @@
+   });
+ 
+   // the visitor's .rfm1 files, kept in this browser
+-  state.library = await library.list();
+-  // the firmware: the deep link, the last one (a catalog id, or one of the visitor's .rfm1 files), or the first native one
+-  const want = params.get("fw") || prefs.last;
+-  const mine = !params.get("fw") && want && want.startsWith(RFM1_LAST) ? libEntry(want.slice(RFM1_LAST.length)) : null;
+-  const first = mine || (want && findEntry(want)) || findEntry("felucca") || catalog.firmwares[0];
+-  if (params.get("fw") && !findEntry(params.get("fw"))) toast(`No firmware "${params.get("fw")}": showing ${first.name}.`, "bad");
++  state.library = ON_MOVE ? [] : await library.list();
++  // the firmware: the deep link, the last one (a catalog id, or one of the visitor's .rfm1 files), or the first native one;
++  // on the Move, the one its active slot runs (none: none until the Move loads one)
++  const want = ON_MOVE ? catalog.active : params.get("fw") || prefs.last;
++  const mine = !ON_MOVE && !params.get("fw") && want && want.startsWith(RFM1_LAST) ? libEntry(want.slice(RFM1_LAST.length)) : null;
++  const first = ON_MOVE ? (want && findEntry(want)) || null : mine || (want && findEntry(want)) || findEntry("felucca") || catalog.firmwares[0];
++  if (!ON_MOVE && params.get("fw") && !findEntry(params.get("fw"))) toast(`No firmware "${params.get("fw")}": showing ${first.name}.`, "bad");
+   layout();
+-  await openFirmware(first, params.get("engine"));
++  if (first) await openFirmware(first, ON_MOVE ? "move" : params.get("engine"));
+   // ?open=carts (the installer's link): the settings sheet at Use my FM-1's DX7 cartridges
+   if (params.get("open") === "carts") {
+     sheet.open();
+--- a/js/sheet.js
++++ b/js/sheet.js
+@@ -13,6 +13,7 @@
+ import { MHZ_CHOICES, AUTO_START, DEVICE_RANGE, DUAL_CORE, inDeviceRange } from "./cpu.js";
+ import { SPEEDS, srcLabel } from "./midi-map.js";
+ import { MAX_DIM } from "./skin.js";
++import { ON_MOVE } from "./host.js";
+ 
+ // ---- icons: FM1VST Look::icon, 16 x 16 boxes
+ const ICON = {
+@@ -137,6 +138,8 @@
+     // a cart's live audio input (js/ain-ui.js)
+     if (a.ainSection) out.push(...a.ainSection());
+ 
++    // (on the Move: no saves in the browser, no FM-1, no browser audio: js/host.js)
++    if (!ON_MOVE) {
+     // SAVES
+     out.push(heading("Saves"));
+     out.push(...this.savesSection());
+@@ -144,6 +147,7 @@
+     // USE MY FM-1 (W4)
+     out.push(heading("Use my FM-1"));
+     out.push(this.remoteSection());
++    }
+ 
+     // USE MY OMX-27 (js/omx-link.js)
+     if (this.omxSlot.childNodes.length) { out.push(heading("Use my OMX-27")); out.push(this.omxSlot); }
+@@ -152,6 +156,7 @@
+ 
+     // PLAYING
+     out.push(heading("Playing"));
++    if (!ON_MOVE) {
+     {
+       const pct = Math.round(st.volume * 100), val = h("span", { class: "vol-val" }, `${pct}%`);
+       const range = h("input", { type: "range", class: "vol", min: "0", max: "100", step: "1", value: String(pct), "aria-label": "Page volume",
+@@ -182,15 +187,18 @@
+     out.push(row("MIDI notes play keys", null, toggle(st.notesPlayKeys, (v) => a.set("notesPlayKeys", v))));
+     out.push(row("...and reach the firmware's MIDI in", null, toggle(st.reachFirmware, (v) => a.set("reachFirmware", v))));
+     out.push(...this.midiMapRows());
++    }
+     out.push(row("Firmware's button names", "the running firmware's own names on the buttons (the printed ones small beside them)", toggle(st.fwNames, (v) => a.set("fwNames", v))));
+     out.push(row("Show computer-key hints", "the keyboard letters on the panel's keys and buttons", toggle(st.keyHints, (v) => a.set("keyHints", v))));
+     out.push(h("p", { class: "note" }, "Keys: A S D F G H J K L ; ' ] white, W E T Y U O P black, 1 2 3 4 5 and F1-F4 the left block. Buttons: F5-F10 or C V B N M , and 7 8 9 0 - =. Z X octave. Page Up/Down pick a knob, arrows turn it. ` the screen view."));
+ 
+     // RECORDING (js/rec-ui.js: the header's record button, Shift+R)
++    if (!ON_MOVE) {
+     out.push(heading("Recording"));
+     out.push(row("WAV format", "PCM, stereo, at the sound card's rate", segmented(["24-bit", "16-bit"], st.recBits === 16 ? 1 : 0, (i) => a.set("recBits", i ? 16 : 24))));
+     out.push(row("Count-in", "3 seconds before a take starts", toggle(st.recCountIn, (v) => a.set("recCountIn", v))));
+     out.push(h("p", { class: "note" }, "The record button (or Shift+R) records the firmware's sound exactly as it renders, before this page's volume; the FM-1's MASTER knob counts. Takes stay in this page until you close it (up to 30 minutes each): save the ones to keep."));
++    }
+ 
+     // LOOK
+     // the app's five presets, then My theme: its five colours (theme.js derives the rest so it stays legible)
+@@ -241,7 +249,8 @@
+ 
+     // ENGINE
+     out.push(heading("Engine"));
+-    if (e) {
++    if (e && ON_MOVE) out.push(row("Runs on", "the Ableton Move itself: the sound comes out of the Move, this page is its panel", h("span", { class: "muted small" }, "Ableton Move")));
++    else if (e) {
+       const both = e.engines.length > 1;
+       const shown = st.engine === "mock" ? st.wantEngine : st.engine;
+       if (localRfm1(e)) {
+@@ -288,7 +297,9 @@
+         h("span", { class: "fw-meta" }, e ? `${e.author}${e.license ? " · " + e.license : ""}` : "")),
+       h("span", { class: "chev", html: icon("right") })));
+     if (e) out.push(this.sourceLines(true));
+-    out.push(h("div", { class: "links" }, h("a", { href: a.installerUrl }, "Install RemoteFM1 on your FM-1"), " · ",
++    if (ON_MOVE) out.push(h("div", { class: "links" }, link("https://github.com/Quixotic7/remoteFM14Move", "RemoteFM1 on Move on GitHub"), " · ",
++      link("https://github.com/Quixotic7/RemoteFM1", "RemoteFM1 (this page) on GitHub")));
++    else out.push(h("div", { class: "links" }, h("a", { href: a.installerUrl }, "Install RemoteFM1 on your FM-1"), " · ",
+       h("a", { href: "native/" }, "Firmware authors: publish a native build"), " · ",
+       link("https://github.com/Quixotic7/RemoteFM1", "RemoteFM1 (this site) on GitHub")));
+     return out;
+@@ -409,7 +420,30 @@
+   }
+ 
+   // ============================================================ firmware ===
++  // the firmwares installed on the Move (js/movehost.js moveCatalog): a pick loads it into the Move's active slot
++  moveFirmwarePage() {
++    const a = this.app, cat = a.catalog, cats = cat.categories;
++    const grid = h("div", { class: "cards" });
++    const fill = () => {
++      const list = browse(cat.firmwares, { cat: cats[this.cat], q: this.search });
++      grid.replaceChildren(...list.map((f) => h("button", { class: "card" + (a.isCurrent(f) ? " current" : ""), title: `${f.name} ${f.version}\n${f.what || ""}`,
++        "data-id": f.id, onclick: () => { a.openFirmware(f.id); this.close(); } },
++        h("span", { class: "card-top" }, h("b", {}, f.name), h("span", { class: "card-ver" }, f.version)),
++        h("span", { class: "card-meta" }, `${f.tag} · ${f.author}`),
++        h("span", { class: "card-badge", title: "Runs on the Move, compiled from its .rfm1" }))));
++      if (!list.length) grid.prepend(h("p", { class: "empty" }, "No firmware matches"));
++    };
++    const search = h("div", { class: "search" }, h("span", { html: icon("search") }),
++      h("input", { type: "search", placeholder: `Search ${cat.firmwares.length} firmwares`, value: this.search, oninput: (ev) => { this.search = ev.target.value; fill(); } }));
++    const chips = h("div", { class: "chips" }, cats.map((c, i) => h("button", { class: "chip" + (i === this.cat ? " on" : ""), onclick: (ev) => {
++      this.cat = i; for (const b of chips.children) b.classList.toggle("on", b === ev.currentTarget); fill();
++    } }, c)));
++    fill();
++    return [search, chips, grid, h("p", { class: "note" }, `The firmwares installed on this Move. A pick loads it into the Move's active track, as the Move's own projects view does; its flash and states stay on the Move.`)];
++  }
++
+   firmwarePage() {
++    if (ON_MOVE) return this.moveFirmwarePage();
+     const a = this.app, cat = a.catalog, st = a.state;
+     const cats = cat.categories;
+     const grid = h("div", { class: "cards" });
+@@ -537,8 +571,9 @@
+     out.push(heading("Credits and notices"));
+     out.push(h("ul", { class: "credit-list" },
+       h("li", {}, "The faceplate and the look: ", link("https://github.com/Quixotic7/RemoteFM1IOS", "RemoteFM1 for iOS"), "'s design; the panel's input after ", link(cat.credits.fm1vst.source, "FM1VST"), " (GPL-3.0) and ChoralRoot FM-1's emulator."),
+-      h("li", {}, "Firmware catalog: ", link(cat.hub, "the FM-1 Firmware Hub"), ". Every firmware belongs to its author; see each one's licence."),
+-      h("li", {}, link(cat.credits.fm1emu.source, "fm1-emu"), ` by ${cat.credits.fm1emu.author}, MIT: the emulated engine.`),
++      ON_MOVE ? h("li", {}, "The firmwares installed on this Move. Every firmware belongs to its author; see each one's licence.")
++        : h("li", {}, "Firmware catalog: ", link(cat.hub, "the FM-1 Firmware Hub"), ". Every firmware belongs to its author; see each one's licence."),
++      ON_MOVE ? null : h("li", {}, link(cat.credits.fm1emu.source, "fm1-emu"), ` by ${cat.credits.fm1emu.author}, MIT: the emulated engine.`),
+       h("li", {}, "Chakra Petch, DM Sans, Unbounded and DM Mono, SIL Open Font License 1.1 (", h("a", { href: "fonts/OFL-chakrapetch.txt" }, "Chakra Petch"), ", ",
+         h("a", { href: "fonts/OFL-dmsans.txt" }, "DM Sans"), ", ", h("a", { href: "fonts/OFL-unbounded.txt" }, "Unbounded"), ", ", h("a", { href: "fonts/OFL-dmmono.txt" }, "DM Mono"), ")."),
+       h("li", {}, "This site: ", link("https://github.com/Quixotic7/RemoteFM1", "RemoteFM1"), ", GPL-3.0-only."),
+--- a/css/site.css
++++ b/css/site.css
+@@ -631,3 +631,7 @@
+ .ain-meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: #3DDC84; transition: width .06s linear; }
+ .ain-meter i.hot { background: #FF6464; }
+ .offer.ain-ask { border-color: rgba(140, 220, 240, .7); }
++
++/* ---- the page on an Ableton Move (RemoteFM14Move, js/host.js): nothing that needs the browser's audio, MIDI or USB */
++[data-host="move"] #install-link, [data-host="move"] #vst-link, [data-host="move"] #ios-link, [data-host="move"] #android-link,
++[data-host="move"] #fm1-btn, [data-host="move"] #rec, [data-host="move"] #ed-btn, [data-host="move"] #start-fm1 { display: none !important; }

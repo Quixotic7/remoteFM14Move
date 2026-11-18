@@ -7,6 +7,8 @@
  *     --field KEY      a manifest string field (id, name, version, license, source_url, ..) on stdout
  *     --manifest       the manifest JSON on stdout
  *     --licenses OUT   the rfm1.credits text and every rfm1.license.<n> section, one after another
+ *     --skin PREFIX    a skin's sections (RFM1-FORMAT.md section 8), each as it is: rfm1.skin -> PREFIX.rfm1skin,
+ *                      rfm1.skin.background -> PREFIX.rfm1skin.bg, rfm1.skin.background.landscape -> PREFIX.rfm1skin.bgl
  *     --check          exit 1 (said on stderr) when the file is not an .rfm1 this host runs */
 #include <stdint.h>
 #include <stdio.h>
@@ -40,7 +42,7 @@ static const char *IMPORTS[] = { "fd_write", "fd_read", "fd_close", "fd_seek", "
 
 int main(int argc, char **argv)
 {
-    const char *path = NULL, *field = NULL, *lic = NULL;
+    const char *path = NULL, *field = NULL, *lic = NULL, *skin = NULL;
     int want_manifest = 0, check = 0, i, bad = 0;
     char *manifest = NULL;
     FILE *f, *lf = NULL;
@@ -50,6 +52,8 @@ int main(int argc, char **argv)
             field = argv[++i];
         else if (!strcmp(argv[i], "--licenses") && i + 1 < argc)
             lic = argv[++i];
+        else if (!strcmp(argv[i], "--skin") && i + 1 < argc)
+            skin = argv[++i];
         else if (!strcmp(argv[i], "--manifest"))
             want_manifest = 1;
         else if (!strcmp(argv[i], "--check"))
@@ -57,7 +61,7 @@ int main(int argc, char **argv)
         else if (!path && argv[i][0] != '-')
             path = argv[i];
         else {
-            fprintf(stderr, "usage: rfm1info FILE.rfm1 [--field KEY] [--manifest] [--licenses OUT] [--check]\n");
+            fprintf(stderr, "usage: rfm1info FILE.rfm1 [--field KEY] [--manifest] [--licenses OUT] [--skin PREFIX] [--check]\n");
             return 2;
         }
     }
@@ -102,6 +106,17 @@ int main(int argc, char **argv)
                 manifest = malloc(end - p + 1);
                 memcpy(manifest, g_b + p, end - p);
                 manifest[end - p] = 0;
+            } else if (skin && (!strcmp(name, "rfm1.skin") || !strcmp(name, "rfm1.skin.background") ||
+                                !strcmp(name, "rfm1.skin.background.landscape"))) {
+                char out[1024];
+                FILE *sf;
+                snprintf(out, sizeof out, "%s.rfm1skin%s", skin, !strcmp(name, "rfm1.skin") ? ""
+                         : !strcmp(name, "rfm1.skin.background") ? ".bg" : ".bgl");
+                if (!(sf = fopen(out, "wb")) || fwrite(g_b + p, 1, end - p, sf) != end - p) {
+                    fprintf(stderr, "rfm1info: cannot write %s\n", out);
+                    return 2;
+                }
+                fclose(sf);
             } else if (lf && (!strcmp(name, "rfm1.credits") || !strncmp(name, "rfm1.license.", 13))) {
                 fprintf(lf, "==== %s ====\n\n", !strcmp(name, "rfm1.credits") ? "Credits" : name + 5);
                 fwrite(g_b + p, 1, end - p, lf);

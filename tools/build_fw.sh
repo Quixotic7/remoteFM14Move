@@ -4,7 +4,8 @@
 #   tools/build_fw.sh IN.rfm1 OUTDIR [WORKDIR]
 # OUTDIR gets <id>-<version>.rfm1m (wasm2c 1.0.32's C plus fw/fwglue.c, -O2 -ffp-contract=off, a shared object),
 # <id>-<version>.json ({"rfm1m":1, "file", "sha256" of the .rfm1, "arch", "wasm2c", "manifest": the .rfm1's own}) and
-# <id>-<version>.licenses.txt (the .rfm1's credits and licence sections).
+# <id>-<version>.licenses.txt (the .rfm1's credits and licence sections), and its skin's sections when it has one
+# (RFM1-FORMAT.md section 8): <id>-<version>.rfm1skin (JSON), .rfm1skin.bg, .rfm1skin.bgl (the images).
 set -eu
 IN="$1"
 OUT="$2"
@@ -38,4 +39,6 @@ mv "$OUT/$BASE.rfm1m.tmp" "$OUT/$BASE.rfm1m"
     printf '\n}\n'
 } > "$OUT/$BASE.json"
 "$INFO" "$IN" --licenses "$OUT/$BASE.licenses.txt"
+rm -f "$OUT/$BASE.rfm1skin" "$OUT/$BASE.rfm1skin.bg" "$OUT/$BASE.rfm1skin.bgl"
+"$INFO" "$IN" --skin "$OUT/$BASE"
 echo "$OUT/$BASE.rfm1m"

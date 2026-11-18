@@ -18,10 +18,12 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "minijson.h"
 #include "mr_ws.h"
-#include "rfm_page.h"   /* build/gen: web/index.html as rfm_web_page[] */
+#include "storage.h"
 
-#define MAXC 8
+#define MAXC 24     /* (a page loads ~40 files, 6 at a time, beside its WebSocket; a second page, a phone) */
+#define FILE_MAX (2 * 1024 * 1024)
 #define IN_CAP 65536
 #define OUT_CAP (4 * 1024 * 1024)
 #define LAG (1024 * 1024)   /* more than this queued for a page: no screens until it reads */
@@ -39,6 +41,7 @@ typedef struct {
 } client_t;
 
 static int g_listen = -1;
+static char g_site[512];     /* the site's folder (web_start) */
 static client_t g_c[MAXC];
 static pthread_t g_thr;
 static volatile int g_run;
@@ -102,10 +105,10 @@ static void ws_send(client_t *c, int op, const uint8_t *hdr, size_t hn, const ui
 
 static void http_reply(client_t *c, const char *status, const char *type, const void *body, size_t n)
 {
-    char h[256];
+    char h[320];
     const int k = snprintf(h, sizeof h,
-                           "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\n"
-                           "Connection: close\r\n\r\n", status, type, n);
+                           "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-cache\r\n"
+                           "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n", status, type, n);
     put(c, h, (size_t)k);
     if (n)
         put(c, body, n);
@@ -132,15 +135,128 @@ static const char *header(const char *req, const char *name, char *val, size_t c
     return NULL;
 }
 
-static void request(client_t *c)
+/* a file's content type, by its name */
+static const char *type_of(const char *path)
+{
+    static const char *T[][2] = {
+        { ".html", "text/html; charset=utf-8" }, { ".js", "text/javascript; charset=utf-8" },
+        { ".mjs", "text/javascript; charset=utf-8" }, { ".css", "text/css; charset=utf-8" },
+        { ".json", "application/json" }, { ".woff", "font/woff" }, { ".woff2", "font/woff2" },
+        { ".png", "image/png" }, { ".jpg", "image/jpeg" }, { ".svg", "image/svg+xml" }, { ".ico", "image/x-icon" },
+        { ".txt", "text/plain; charset=utf-8" }, { ".md", "text/plain; charset=utf-8" }, { ".wasm", "application/wasm" },
+    };
+    const char *dot = strrchr(path, '.');
+    size_t i;
+    for (i = 0; dot && i < sizeof T / sizeof T[0]; i++)
+        if (!strcmp(dot, T[i][0]))
+            return T[i][1];
+    return "application/octet-stream";
+}
+
+/* a path the page may ask for: letters, digits, - _ . / only, no "..", no hidden files */
+static int safe_path(const char *p)
+{
+    const char *q;
+    if (*p != '/' || strstr(p, "..") || strstr(p, "/."))
+        return 0;
+    for (q = p; *q; q++)
+        if (!((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || (*q >= '0' && *q <= '9') || strchr("-_./", *q)))
+            return 0;
+    return 1;
+}
+
+static void send_file(client_t *c, const char *file, const char *type)
+{
+    FILE *f = fopen(file, "rb");
+    long len;
+    uint8_t *b;
+    if (!f) {
+        http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len < 0 || len > FILE_MAX || !(b = malloc((size_t)len + 1))) {
+        fclose(f);
+        http_reply(c, "500 Internal Server Error", "text/plain", "", 0);
+        return;
+    }
+    if (fread(b, 1, (size_t)len, f) != (size_t)len)
+        len = -1;
+    fclose(f);
+    if (len < 0)
+        http_reply(c, "500 Internal Server Error", "text/plain", "", 0);
+    else
+        http_reply(c, "200 OK", type ? type : type_of(file), b, (size_t)len);
+    free(b);
+}
+
+static void json_reply(client_t *c, const char *status, const char *json)
+{
+    http_reply(c, status, "application/json", json, strlen(json));
+}
+
+/* POST /api/load {"slot": 0..2, "id": "<firmware id>"}: the firmware into that slot (engine_load) */
+static void api_load(client_t *c, const char *body)
+{
+    char id[64];
+    long slot = -1;
+    if (!body || mj_string(body, "id", id, sizeof id) || mj_int(body, "slot", &slot)) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want {slot, id}\"}");
+        return;
+    }
+    if (engine_load((int)slot, id) != 0) {
+        json_reply(c, "404 Not Found", "{\"ok\":false,\"error\":\"no such firmware or slot\"}");
+        return;
+    }
+    json_reply(c, "202 Accepted", "{\"ok\":true}");
+}
+
+/* GET /api/fw/<id>-<version>.<what>: an installed firmware's licences or skin (RFM1-FORMAT.md section 8, kept beside
+ * the compiled firmware by tools/build_fw.sh) from the RemoteFM1 folder's firmwares/ */
+static void api_fw_file(client_t *c, const char *name)
+{
+    static const char *SUF[][2] = {
+        { ".licenses.txt", "text/plain; charset=utf-8" }, { ".rfm1skin", "application/json" },
+        { ".rfm1skin.bg", "application/octet-stream" }, { ".rfm1skin.bgl", "application/octet-stream" },
+    };
+    char p[ST_PATH];
+    const size_t n = strlen(name);
+    size_t i;
+    if (strchr(name, '/') || !n)
+        goto none;
+    for (i = 0; i < sizeof SUF / sizeof SUF[0]; i++) {
+        const size_t k = strlen(SUF[i][0]);
+        if (n > k && !strcmp(name + n - k, SUF[i][0])) {
+            st_path(p, sizeof p, "firmwares/%s", name);
+            send_file(c, p, SUF[i][1]);
+            return;
+        }
+    }
+none:
+    http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+}
+
+static void request(client_t *c, const char *body)
 {
     char path[256] = "", key[64];
     const char *req = (const char *)c->in;
-    if (sscanf(req, "GET %255s", path) != 1) {
+    const int post = !strncmp(req, "POST ", 5);
+    if (!post && sscanf(req, "GET %255s", path) != 1) {
         http_reply(c, "405 Method Not Allowed", "text/plain", "", 0);
         return;
     }
+    if (post && sscanf(req, "POST %255s", path) != 1)
+        path[0] = 0;
     path[strcspn(path, "?#")] = 0;
+    if (post) {
+        if (!strcmp(path, "/api/load"))
+            api_load(c, body);
+        else
+            http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+        return;
+    }
     if (!strcmp(path, "/ws") && header(req, "Sec-WebSocket-Key", key, sizeof key)) {
         char acc[32], h[256];
         int k;
@@ -154,16 +270,28 @@ static void request(client_t *c)
         c->lcd = calloc(1, ENG_LCD_BYTES);
         return;
     }
-    if (!strcmp(path, "/") || !strcmp(path, "/index.html"))
-        http_reply(c, "200 OK", "text/html; charset=utf-8", rfm_web_page, rfm_web_page_len);
-    else if (!strcmp(path, "/api/status")) {
+    if (!strcmp(path, "/api/status")) {
         char s[1024];
         const int n = engine_status(s, sizeof s);
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
     } else if (!strcmp(path, "/api/info"))
         http_reply(c, "200 OK", "application/json", g_v.info, strlen(g_v.info));
-    else
+    else if (!strcmp(path, "/api/firmwares")) {
+        char *j = engine_firmwares();
+        json_reply(c, "200 OK", j ? j : "{\"firmwares\":[]}");
+        free(j);
+    } else if (!strncmp(path, "/api/fw/", 8))
+        api_fw_file(c, path + 8);
+    else if (!strncmp(path, "/api/", 5) || !safe_path(path) || !g_site[0])
         http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+    else {   /* the site (scripts/build_site.sh: RemoteFM1's web/site for the Move) */
+        char file[sizeof g_site + 300];
+        snprintf(file, sizeof file, "%s%s%s", g_site, path, path[strlen(path) - 1] == '/' ? "index.html" : "");
+        if (!strcmp(path, "/favicon.ico") && access(file, R_OK) != 0)
+            http_reply(c, "204 No Content", "image/x-icon", "", 0);   /* (the browser asks; the site has none) */
+        else
+            send_file(c, file, NULL);
+    }
 }
 
 /* whole frames from a page: 4-byte panel messages; close; ping */
@@ -199,7 +327,8 @@ static int ws_in(client_t *c)
                 ws_send(c, 0xA, NULL, 0, d, plen > 125 ? 125 : plen);
             else if (op == 0x2)
                 for (k = 0; k + 4 <= plen; k += 4)
-                    engine_panel(d[k], d[k + 1], (int16_t)(d[k + 2] | d[k + 3] << 8));
+                    if (d[k] >= 1 && d[k] <= 5)   /* KEY LEAN BTN ENC MASTER (fwrt.h FWI_*) only */
+                        engine_panel(d[k], d[k + 1], (int16_t)(d[k + 2] | d[k + 3] << 8));
         }
         off += h + 4 + plen;
     }
@@ -227,10 +356,22 @@ static void cread(client_t *c)
                 return;
             }
         } else {
+            const char *end;
             c->in[c->in_n] = 0;
-            if (strstr((char *)c->in, "\r\n\r\n"))
-                request(c);
-            else if (c->in_n >= IN_CAP - 1) {
+            if ((end = strstr((char *)c->in, "\r\n\r\n"))) {
+                char v[32];
+                const size_t head = (size_t)(end + 4 - (const char *)c->in);
+                const long want = header((const char *)c->in, "Content-Length", v, sizeof v) ? atol(v) : 0;
+                if (want < 0 || head + (size_t)want >= IN_CAP - 1) {
+                    cfree(c);
+                    return;
+                }
+                if (c->in_n < head + (size_t)want)
+                    continue;   /* (the body is still coming) */
+                request(c, (const char *)c->in + head);
+                c->in_n = 0;   /* (one request per connection: Connection: close) */
+                return;
+            } else if (c->in_n >= IN_CAP - 1) {
                 cfree(c);
                 return;
             }
@@ -357,7 +498,7 @@ static void *web_main(void *arg)
     return NULL;
 }
 
-int web_start(int port)
+int web_start(int port, const char *site)
 {
     int fd = socket(AF_INET6, SOCK_STREAM, 0), one = 1, zero = 0, i;
     if (fd >= 0) {
@@ -395,6 +536,7 @@ int web_start(int port)
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
     fcntl(fd, F_SETFD, FD_CLOEXEC);
     g_listen = fd;
+    snprintf(g_site, sizeof g_site, "%s", site ? site : "");
     for (i = 0; i < MAXC; i++)
         g_c[i].fd = -1;
     g_run = 1;
@@ -403,7 +545,7 @@ int web_start(int port)
         g_listen = -1;
         return -1;
     }
-    fprintf(stderr, "web: http://<this Move>:%d/\n", port);
+    fprintf(stderr, "web: http://<this Move>:%d/ (the site: %s)\n", port, g_site[0] ? g_site : "none");
     return 0;
 }
 

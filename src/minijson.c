@@ -80,6 +80,12 @@ static const char *skip(const char *p)
     return p;
 }
 
+size_t mj_span(const char *v)
+{
+    const char *e = v ? skip(v) : NULL;
+    return e ? (size_t)(e - v) : 0;
+}
+
 const char *mj_find(const char *json, const char *key)
 {
     const char *p = ws(json);

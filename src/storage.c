@@ -152,7 +152,7 @@ int st_fw_install_bundled(const char *dir)
     while ((e = readdir(d))) {
         char base[256], from[ST_PATH], to[ST_PATH];
         struct stat st;
-        static const char *SUF[] = { ".rfm1m", ".json", ".licenses.txt" };
+        static const char *SUF[] = { ".rfm1m", ".json", ".licenses.txt", ".rfm1skin", ".rfm1skin.bg", ".rfm1skin.bgl" };
         size_t k;
         if (!ends_with(e->d_name, ".json") || strlen(e->d_name) >= sizeof base)
             continue;

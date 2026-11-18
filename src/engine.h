@@ -44,7 +44,8 @@ typedef struct {
     uint32_t lcd_seq;             /* moves with the screen */
     uint8_t lcd[ENG_LCD_BYTES];   /* the active slot's screen, RGB565 big-endian */
     uint8_t leds[44], play_green;
-    char info[2048];              /* JSON: the slots, the active one, its panel's names and wiring */
+    char info[4096];              /* JSON: the slots, the active one, its panel's names and wiring, its live labels,
+                                   * the last firmware the page asked for that failed to load */
     uint32_t info_seq;
 } engine_view_t;
 /* copies the view when its seq is not *seq (then *seq = the new one): 1 copied, 0 unchanged */
@@ -53,5 +54,11 @@ int engine_view(engine_view_t *v, uint32_t *seq);
 void engine_panel(int op, int a, int b);
 /* a JSON status line (the slots, CPU, late blocks, the ring) into out */
 int engine_status(char *out, int cap);
+/* the installed firmwares, {"firmwares":[...]} (each: id, name, version, license, source_url, sha256, file, base, authors,
+ * built_by, categories, skin: the skin's files ([] none; web.c /api/fw/), licenses), made at start: a malloc'd copy (the caller frees it), or NULL */
+char *engine_firmwares(void);
+/* the page's firmware pick: firmware id into slot 0..2, done on the engine's thread as rfm1cs's FW_LOAD (the storage
+ * worker opens it, the slot boots it, the Move is told). 0 queued; -1 an unknown id or slot, or the queue is full */
+int engine_load(int slot, const char *id);
 
 #endif

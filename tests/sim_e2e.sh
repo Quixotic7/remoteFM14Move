@@ -22,7 +22,7 @@ wait_for() {   # wait_for SECONDS 'test'
     while [ $_n -gt 0 ]; do eval "$1" && return 0; sleep 0.1; _n=$((_n - 1)); done; return 1
 }
 start() {
-    build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" --firmwares build/fw --fw felucca "$@" \
+    build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" --firmwares build/fw --site build/site --fw felucca "$@" \
         >>"$T/host.log" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null'
@@ -60,8 +60,30 @@ wait_for 3 '[ "$(field screens)" -gt "$sc0" ]' && ok "the screen follows the fir
 press "cc 85"
 
 # ---- the page
-curl -s "http://127.0.0.1:$PORT/" | grep -q "<title>RemoteFM1 on Move</title>" && ok "GET / : the page" || bad "GET /"
-curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/nothing" | grep -q 404 && ok "GET /nothing: 404" || bad "404"
+U="http://127.0.0.1:$PORT"
+code() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "$@"; }
+curl -s "$U/" | grep -q '<meta name="fm1-host" content="move">' && curl -s "$U/" | grep -q 'src="js/main.js"' \
+    && ok "GET / : RemoteFM1's site, built for the Move (the host flag)" || bad "GET /: $(curl -s "$U/" | head -c 200)"
+# every file the site refers to: index.html's href/src, the CSS's url(), each module's static imports
+refs=$( { sed -n 's/.*\(href\|src\)="\([^":#]*\)".*/\2/p' build/site/index.html | grep -v '^\.\./'
+          sed -n 's/.*url("\.\.\/\([^"]*\)").*/\1/p' build/site/css/site.css
+          grep -ho 'from "\./[^"]*"' build/site/js/*.js | sed 's/from "\.\/\(.*\)"/js\/\1/'; } | sort -u)
+n=0; miss=""
+for r in $refs; do n=$((n + 1)); c=$(code "$U/$r"); case "$c" in 200*) ;; *) miss="$miss $r($c)";; esac; done
+[ -z "$miss" ] && [ $n -gt 30 ] && ok "every file the site refers to loads ($n: its scripts, styles, fonts)" || bad "missing:$miss"
+[ "$(code "$U/js/main.js")" = "200 text/javascript; charset=utf-8" ] && [ "$(code "$U/css/site.css")" = "200 text/css; charset=utf-8" ] \
+    && [ "$(code "$U/fonts/DMSans-VF-latin.woff")" = "200 font/woff" ] && [ "$(code "$U/index.html")" = "200 text/html; charset=utf-8" ] \
+    && ok "content types: text/javascript, text/css, font/woff, text/html" || bad "content types: $(code "$U/js/main.js") / $(code "$U/fonts/DMSans-VF-latin.woff")"
+[ "$(code "$U/nothing" | cut -c1-3)" = 404 ] && [ "$(code --path-as-is "$U/../etc/passwd" | cut -c1-3)" = 404 ] \
+    && [ "$(code --path-as-is "$U/js/../../build/fw/felucca-1.8.2.json" | cut -c1-3)" = 404 ] \
+    && [ "$(code "$U/api/fw/felucca-1.8.2.rfm1m" | cut -c1-3)" = 404 ] && ok "404: unknown paths, .. paths, a firmware's object" || bad "404s"
+fws=$(curl -s "$U/api/firmwares")
+echo "$fws" | grep -q '"id":"choralroot"' && echo "$fws" | grep -q '"id":"felucca"' \
+    && echo "$fws" | grep -q '"skin":\["rfm1skin","rfm1skin.bg","rfm1skin.bgl"\]' \
+    && ok "/api/firmwares: the installed firmwares (ChoralRoot with its skin's three files)" || bad "/api/firmwares: $fws"
+curl -s "$U/api/fw/choralroot-0.41.rfm1skin" | grep -q '"skin":1' && [ "$(code "$U/api/fw/choralroot-0.41.rfm1skin.bg" | cut -c1-3)" = 200 ] \
+    && [ "$(code "$U/api/fw/felucca-1.8.2.licenses.txt" | cut -c1-3)" = 200 ] \
+    && ok "/api/fw/: a firmware's skin (rfm1.skin JSON, its image) and licences" || bad "/api/fw/"
 sleep 2.5
 q=$(field peak)
 out=$(build/tools/wsprobe $PORT 2500 --key 9)
@@ -106,6 +128,12 @@ wait_for 3 '[ "$(field peak)" -gt 1000 ]' && ok "ChoralRoot plays from the pads 
     || bad "ChoralRoot: no sound (peak $(field peak), mode $(field mode))"
 cmd "note 84 0" "note 88 0" "note 91 0"
 echo "  info  CPU, ChoralRoot playing, Felucca idle: $(status | sed 's/.*"slots":\[\([^]]*\)\].*/\1/')"
+# ---- the page's firmware picker: POST /api/load (as rfm1cs's FW_LOAD), ChoralRoot into slot 3
+post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "$1" "$U/api/load"; }
+[ "$(post '{"slot":2,"id":"nothing"}')" = 404 ] && [ "$(post 'not json')" = 400 ] && [ "$(post '{"slot":7,"id":"felucca"}')" = 404 ] \
+    && ok "POST /api/load refuses an unknown firmware, a bad body, a bad slot" || bad "POST /api/load's refusals"
+[ "$(post '{"slot":2,"id":"choralroot"}')" = 202 ] && wait_for 10 '[ "$(slot 2 id)" = choralroot ]' \
+    && ok "POST /api/load: ChoralRoot into slot 3 (the page's picker), the engine's thread loads it" || bad "the page's load: slot 3 is '$(slot 2 id)'"
 late=$(field late)
 stop
 [ "$RC" = 0 ] && ok "quit: the host left cleanly" || bad "quit: exit $RC"
