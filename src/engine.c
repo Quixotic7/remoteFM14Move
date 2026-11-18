@@ -74,6 +74,7 @@ typedef struct {
     uint64_t ns_mark;          /* the CPU window's start */
     uint32_t cpu_permille;     /* of real time, over the last window */
     uint32_t serial;           /* which instance (the raw capture follows the first) */
+    int reboot;                /* a power-on asked after the firmware halted */
 } slot_t;
 
 static slot_t SL[NSLOT];
@@ -105,6 +106,7 @@ static int g_save_all;                       /* the Move is going: every flash n
 
 static mixer_t g_mix;
 static uint32_t g_blocks;                    /* blocks rendered */
+static int g_peak_acc, g_peak;               /* the mix's peak: this second's so far, the last second's */
 static uint32_t g_last_screen_ms, g_lcd_seen;
 static uint8_t g_leds_seen[FW_NLEVELS + 1];
 static int g_leds_ok;
@@ -416,9 +418,9 @@ static void slot_save(int s, int sync)
     fw_t *fw = &SL[s].fw;
     const uint8_t *img;
     char p[ST_PATH];
-    if (!SL[s].on || fw->dead)
+    if (!SL[s].on || (fw->dead && !fw->halted))
         return;
-    if (sync)
+    if (sync && !fw->dead)
         fw_in_now(fw, FWI_SYNC, 0, 0, 0);
     if (!(img = fw_flash(fw)))
         return;
@@ -506,6 +508,7 @@ static int slot_boot(int s, fw_obj_t *obj, const uint8_t *flash, uint32_t n)
         return -1;
     }
     sl->on = 1;
+    sl->reboot = 0;
     sl->serial = ++g_serial;
     sl->idx = catalog_find(sl->fw.id);
     sl->level = (uint8_t)rfm_move_fw_level(&S->core, s);
@@ -857,6 +860,11 @@ static void render_block(uint32_t now)
         }
     }
     mix_out(&g_mix, out, FW_BLOCK);
+    for (s = 0; s < FW_BLOCK * 2; s++) {
+        const int v = out[s] < 0 ? -out[s] : out[s];
+        if (v > g_peak_acc)
+            g_peak_acc = v;
+    }
     mr_ring_push(&g_ring, out, FW_BLOCK);
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
         memcpy(g_cap_mix + 2u * g_cap_mix_n, out, sizeof out);
@@ -874,6 +882,21 @@ static void housekeeping(uint32_t now)
         for (s = 0; s < NSLOT; s++) {
             slot_t *sl = &SL[s];
             uint32_t d;
+            if (sl->on && sl->fw.dead && sl->fw.halted && !sl->reboot) {
+                /* the firmware rebooted (or exited): power it on again, from its flash as last saved */
+                const int i = catalog_find(sl->fw.id);
+                fprintf(stderr, "engine: slot %d halted (0x%x): powering it on again\n", s + 1, sl->fw.halted);
+                sl->reboot = 1;
+                slot_save(s, 0);   /* (the worker writes it before it reads it back: one queue, in order) */
+                if (i >= 0) {
+                    st_job_t *j = st_job_new(J_FW_OPEN);
+                    j->slot = s;
+                    snprintf(j->id, sizeof j->id, "%s", sl->fw.id);
+                    snprintf(j->path, sizeof j->path, "%s", g_fws[i].so);
+                    st_path(j->aux_path, sizeof j->aux_path, "states/%s/flash.bin", sl->fw.id);
+                    st_post(j);
+                }
+            }
             if (!sl->on || sl->fw.dead)
                 continue;
             d = fw_flash_dirty(&sl->fw);
@@ -883,9 +906,7 @@ static void housekeeping(uint32_t now)
                 sl->dirty_ms = now;
             } else if (sl->dirty && now - sl->dirty_ms >= AUTOSAVE_MS)
                 slot_save(s, 0);
-            if (sl->fw.dead && sl->fw.halted) {   /* the firmware rebooted itself: power it on again */
-                fprintf(stderr, "engine: slot %d halted (0x%x): booting it again\n", s + 1, sl->fw.halted);
-            }
+
         }
     }
     if (now - last_stat >= 1000u) {   /* the status: CPU per slot over the last second */
@@ -894,10 +915,13 @@ static void housekeeping(uint32_t now)
         int n;
         const uint32_t dt = last_stat ? now - last_stat : 1000u;
         last_stat = now;
+        g_peak = g_peak_acc;
+        g_peak_acc = 0;
         n = snprintf(tmp, sizeof tmp, "{\"blocks\":%u,\"late\":%u,\"rt_blocks\":%u,\"ring\":%u,\"limited\":%u,"
-                     "\"session\":%d,\"active\":%d,\"master\":%d,\"slots\":[",
-                     g_blocks, g_late, g_rt_blocks, mr_ring_count(&g_ring), g_mix.limited, S->st.state, g_active,
-                     g_master);
+                     "\"peak\":%d,\"session\":%d,\"mode\":%d,\"inputs\":%u,\"led_writes\":%u,\"screens\":%u,"
+                     "\"active\":%d,\"master\":%d,\"slots\":[",
+                     g_blocks, g_late, g_rt_blocks, mr_ring_count(&g_ring), g_mix.limited, g_peak, S->st.state,
+                     S->st.mode, S->st.inputs, S->st.led_writes, S->st.screens, g_active, g_master);
         for (s = 0; s < NSLOT; s++) {
             slot_t *sl = &SL[s];
             if (sl->on) {
@@ -905,12 +929,17 @@ static void housekeeping(uint32_t now)
                 sl->ns_mark = sl->fw.ns_total;
                 sl->cpu_permille = (uint32_t)(ns / 1000u / (dt ? dt : 1));   /* us per ms = permille */
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n,
-                              "%s{\"id\":\"%s\",\"cpu\":%.1f,\"worst_us\":%u,\"level\":%u,\"dead\":%d}", s ? "," : "",
-                              sl->fw.id, sl->cpu_permille / 10.0, sl->fw.worst_us, sl->level, sl->fw.dead);
+                              "%s{\"id\":\"%s\",\"cpu\":%.1f,\"worst_us\":%u,\"level\":%u,\"boot\":%u,"
+                              "\"states\":%u,\"dead\":%d}", s ? "," : "", sl->fw.id, sl->cpu_permille / 10.0,
+                              sl->fw.worst_us, sl->level, sl->serial, S->core.fw.st_used[s], sl->fw.dead);
             } else
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }
-        snprintf(tmp + n, sizeof tmp - (size_t)n, "]}");
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+        for (s = 0; s < NSLOT; s++)   /* (flat, for scripts) */
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u", s,
+                          SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s]);
+        snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
         pthread_mutex_lock(&g_vmu);
         memcpy(g_status, tmp, sizeof tmp);
         pthread_mutex_unlock(&g_vmu);

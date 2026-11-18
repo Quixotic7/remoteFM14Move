@@ -35,6 +35,9 @@ test: all
 
 package: all
 	$(DOCKER_RUN) make in-package
+	mkdir -p dist
+	COPYFILE_DISABLE=1 tar -C build/pkg -czf dist/remotefm1-module.tar.gz remotefm1
+	ls -l dist/remotefm1-module.tar.gz
 
 sim-run: all
 	docker run --rm -it -p 7730:7730 -v "$(abspath .)":/w -w /w $(IMAGE) tests/sim_run.sh
@@ -64,7 +67,7 @@ HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h bui
 
 .PHONY: in-all in-host in-fw in-tools in-ref in-package
 in-all: in-tools in-fw in-ref in-host
-in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit
+in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe
 in-fw: $(FW_OUT)
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
@@ -120,6 +123,10 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/engine_dsp.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -Isrc -o $@ tests/unit.c src/minijson.c src/mdns.c -lm -lpthread
+
+build/tools/wsprobe: tests/wsprobe.c
+	mkdir -p build/tools
+	$(CC) $(CFLAGS) $(WARN) -o $@ $<
 
 in-package: in-all
 	scripts/package.sh

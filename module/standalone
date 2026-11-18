@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: MPL-2.0
+# Installed as <module dir>/standalone: what Schwung's Tools menu runs (through its launch-standalone.sh, which has
+# stopped Move by now and starts it again when this exits). Move Remote's launcher, for remotefm1-host.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+# One launch per log, replaced rather than reopened: a run as root would leave it root-owned, and a failed redirect
+# would end this script before the host ever started.
+LOG=/data/UserData/schwung/remotefm1-host.log
+rm -f "$LOG" 2>/dev/null
+if ! : 2>/dev/null >"$LOG"; then LOG=/dev/null; fi
+exec >"$LOG" 2>&1
+echo "launch: uid=$(id -u) dir=$DIR"
+
+# The real-time helper: staged as bin/heal.new whenever bin/heal is missing, not root 04755, or not the one this
+# install ships; schwung-heal (setuid) installs it. bin/ itself must stay ableton's.
+HEAL=/data/UserData/schwung/bin/schwung-heal
+mkdir -p "$DIR/bin"
+[ "$(id -u)" = 0 ] && chown ableton:users "$DIR/bin"
+if [ -f "$DIR/remotefm1-heal" ]; then
+    if [ ! -u "$DIR/bin/heal" ] || [ "$(stat -c %u "$DIR/bin/heal" 2>/dev/null)" != 0 ] \
+            || ! cmp -s "$DIR/remotefm1-heal" "$DIR/bin/heal"; then
+        if ! cp "$DIR/remotefm1-heal" "$DIR/bin/heal.new"; then
+            echo "launch: cannot stage bin/heal.new; the audio will not be real-time"
+        elif [ -u "$HEAL" ]; then "$HEAL"
+        else echo "launch: $HEAL is not setuid; the audio will not be real-time"; fi
+    fi
+fi
+
+# The RemoteFM1 folder: firmwares, their states, the Move's projects and settings (the bundled firmwares are copied
+# into it on the first run)
+exec "$DIR/remotefm1-host" --root /data/UserData/RemoteFM1

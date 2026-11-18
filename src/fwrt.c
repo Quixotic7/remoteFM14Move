@@ -561,10 +561,10 @@ int32_t fw_master(const fw_t *fw) { return (int32_t)rd32(fw, P(PL_MASTER)); }
 const uint8_t *fw_flash(fw_t *fw)
 {
     volatile uint32_t p = 0;
-    if (!fw->booted || fw->dead || !fw->flash_size)
-        return NULL;
+    if (!fw->booted || (fw->dead && !fw->halted) || !fw->flash_size)
+        return NULL;   /* (a halted firmware's flash is still read: what it saved before it rebooted) */
     CALL(fw, "rfm1_flash", p = fw->obj->vt->flash(fw->inst));
-    return !fw->dead && p && in_mem(fw, p, fw->flash_size) ? fw->mem + p : NULL;
+    return p && in_mem(fw, p, fw->flash_size) ? fw->mem + p : NULL;
 }
 
 uint32_t fw_flash_dirty(fw_t *fw)
