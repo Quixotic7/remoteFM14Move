@@ -158,8 +158,23 @@ int st_fw_install_bundled(const char *dir)
             continue;
         snprintf(base, sizeof base, "%.*s", (int)(strlen(e->d_name) - 5), e->d_name);
         snprintf(to, sizeof to, "%s/firmwares/%s.json", g_root, base);
-        if (stat(to, &st) == 0)
-            continue;   /* there already (the user's, or an earlier install) */
+        if (stat(to, &st) == 0) {
+            /* there already (the user's, or an earlier install): the same <id>-<version>, so only what an older
+             * install did not have (its licence texts, a skin) is added, and the manifest that names them */
+            int added = 0;
+            for (k = 2; k < sizeof SUF / sizeof SUF[0]; k++) {
+                snprintf(from, sizeof from, "%s/%s%s", dir, base, SUF[k]);
+                snprintf(to, sizeof to, "%s/firmwares/%s%s", g_root, base, SUF[k]);
+                if (stat(from, &st) == 0 && stat(to, &st) != 0 && st_copy(from, to) == 0)
+                    added++;
+            }
+            if (added) {
+                snprintf(from, sizeof from, "%s/%s.json", dir, base);
+                snprintf(to, sizeof to, "%s/firmwares/%s.json", g_root, base);
+                st_copy(from, to);
+            }
+            continue;
+        }
         for (k = 0; k < sizeof SUF / sizeof SUF[0]; k++) {
             snprintf(from, sizeof from, "%s/%s%s", dir, base, SUF[k]);
             snprintf(to, sizeof to, "%s/firmwares/%s%s", g_root, base, SUF[k]);
