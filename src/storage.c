@@ -2,6 +2,7 @@
 /* The root folder and the storage thread: see storage.h. */
 #define _GNU_SOURCE
 #include "storage.h"
+#include "fx.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -360,11 +361,16 @@ static int io_remove(void *ctx, int slot)
     proj_path(p, sizeof p, slot);
     return unlink(p) == 0 || errno == ENOENT ? 0 : -1;
 }
+void st_fx_state_path(char *out, size_t cap, int slot) { st_path(out, cap, "move/projects/move-project-%02d.fx.json", slot + 1); }
 static void io_loaded(void *ctx, int slot, const uint8_t *b, uint32_t n)
 {
     st_job_t *r = st_job_new(R_PROJECT_LOADED);
+    char p[ST_PATH];
+    size_t k;
     (void)ctx;
     r->index = slot;
+    st_fx_state_path(p, sizeof p, slot);   /* (its FX modules' state, beside it) */
+    r->text = (char *)st_read(p, &k);
     if (b && n && (r->data = malloc(n))) {
         memcpy(r->data, b, n);
         r->len = n;
@@ -543,6 +549,13 @@ static void run_job(st_job_t *j)
     }
     case J_FW_FREE:
         fw_inst_free(j->ptr);
+        st_job_free(j);
+        return;
+    case J_FX_OPEN:
+        j->ptr = fx_open(j->obj, j->err, sizeof j->err);
+        break;
+    case J_FX_FREE:
+        fx_close(j->ptr);
         st_job_free(j);
         return;
     case J_LOG_ROTATE:

@@ -20,6 +20,7 @@
 #include "catalog.h"
 #include "engine_dsp.h"
 #include "fwrt.h"
+#include "fx.h"
 #include "minijson.h"
 #include "mr_core.h"
 #include "rfm1cs/session.h"
@@ -82,6 +83,11 @@ typedef struct {
     uint32_t cpu_permille;     /* of real time, over the last window */
     uint32_t serial;           /* which instance (the raw capture follows the first) */
     int reboot;                /* a power-on asked after the firmware halted */
+    uint8_t pan;               /* 0..127, 64 centre (MIX) */
+    uint8_t send[3];           /* to audio FX 1..3, 0..127 (MIX) */
+    uint32_t notes;            /* note-ons it was given (the status: tests) */
+    int peak;                  /* this meter window's, after level and pan */
+    uint32_t mini_writes, mini_ms;   /* the page's mini screen: the LCD writes it was made from, when */
 } slot_t;
 
 static slot_t SL[NSLOT];
@@ -102,6 +108,33 @@ static char g_index_err[300];
 static int g_log_cap, g_rotating;
 static uint32_t g_test_boot_ms;              /* tests: a slow firmware start, as on the Move (RFM14_TEST_BOOT_MS) */
 static int g_no_preroll;                     /* tests: the start without the ring filled first (RFM14_NO_PREROLL) */
+
+/* ---- Schwung FX (fx.h): 3 MIDI FX in series on the sequencer's MIDI, 3 audio FX on send / return buses */
+typedef struct {
+    fx_inst_t *run;            /* the instance running (the engine's), NULL none */
+    int want;                  /* the module asked for (FX_LOAD), -1 none */
+    uint32_t gen;              /* .. its open's generation (a later FX_LOAD drops an earlier open) */
+    int opening;               /* an open is under way */
+    uint8_t val[RFM_MOVE_FX_PARAMS];   /* FX_PARAM's values (applied to an instance as it comes in) */
+    uint16_t filt;             /* MIDI FX: the tracks it acts on (ROUTE) */
+    int last_track;            /* MIDI FX: the track of the last message it took (its generated notes' track) */
+    uint64_t ns_mark;
+    uint32_t cpu_permille, over;
+    int peak;                  /* audio FX: its return's peak, this meter window */
+    char err[120];             /* why the last load was refused ("" none) */
+    char pend_name[RFM_MOVE_FX_NAME];   /* a project's saved module state, for when that module is loaded here */
+    char *pend_state;
+} fxs_t;
+static fx_lib_t *g_fxlib;
+static fxs_t FX[FX_KINDS][RFM_MOVE_FX_SLOTS];
+static bus_t g_bus[RFM_MOVE_FX_SLOTS];
+static int g_fx_budget;
+static double g_beat;
+static uint32_t g_mix_ver, g_mix_made = ~0u;
+static char *g_fx_json;
+static int g_peak_win;
+static struct { uint8_t track, b[3]; } g_tmidi[32];
+static int g_ntmidi;
 
 static rfm1cs_session_t *S;
 static int g_sock = -1;
@@ -135,11 +168,12 @@ static engine_view_t g_view;
 static uint32_t g_view_lcd_ms;
 static struct { int op, a, b; } g_pin[256];
 static int g_npin;
-static char g_status[3072];
+static char g_status[8192];
 static char *g_fw_json;                      /* engine_firmwares: made whenever the installed ones change */
 static char (*g_web_ids)[RFM_MOVE_FW_ID_MAX];   /* the installed ids (engine_load's check) */
 static int g_web_n;
-static struct { int slot; char id[RFM_MOVE_FW_ID_MAX]; } g_wload[8];   /* the page's loads (engine_load) */
+static struct { int slot, activate; char id[RFM_MOVE_FW_ID_MAX]; } g_wload[8];   /* the page's loads (engine_load) */
+static int g_activate = -1;                  /* a page's load that makes its slot the active one once it runs */
 static int g_nwload;
 static char g_fail_id[RFM_MOVE_FW_ID_MAX];   /* the last firmware that failed to load, and how many failed so far */
 static uint32_t g_fail_seq;
@@ -356,19 +390,69 @@ static void sock_close(void)
 }
 
 /* ------------------------------------------------------------------ the session's events --- */
+static void slot_midi(int s, const uint8_t *b, int n, uint32_t frame)
+{
+    fw_midi(&SL[s].fw, b, n, SL[s].fw.frames_done + frame);
+    if (n == 3 && (b[0] & 0xF0) == 0x90 && b[2])
+        SL[s].notes++;
+}
+
+/* a sequencer message (track 1..16) after MIDI FX slot `from`: through the rest of the chain (each slot acts on the
+ * tracks in its filter and passes the others through), then to every sounding firmware whose filter has the track */
+static void chain_midi(int from, int track, const uint8_t *b, int n, uint32_t frame)
+{
+    int k, s;
+    if (track < 1 || track > 16)
+        return;
+    for (k = from; k < RFM_MOVE_FX_SLOTS; k++) {
+        fxs_t *x = &FX[RFM_MOVE_FX_MIDI][k];
+        if (x->run && (x->filt >> (track - 1) & 1)) {
+            uint8_t out[FX_MAX_OUT][3];
+            int lens[FX_MAX_OUT], i;
+            const int m = fx_midi(x->run, b, n, out, lens, FX_MAX_OUT);
+            x->last_track = track;
+            for (i = 0; i < m; i++)
+                if (lens[i] > 0 && lens[i] <= 3)
+                    chain_midi(k + 1, track, out[i], lens[i], frame);
+            return;
+        }
+    }
+    for (s = 0; s < NSLOT; s++)
+        if (SL[s].on && (rfm_move_fw_sounding(&S->core) >> s & 1) && (SL[s].filt >> (track - 1) & 1))
+            slot_midi(s, b, n, frame);
+}
+
 static void route_midi(const rfm_move_act_t *a)
 {
-    int s;
     if (!a->n)
         return;
     if (a->track == 0) {   /* the pads played live, Control mode: the shown firmware */
         if (SL[g_active].on)
-            fw_midi(&SL[g_active].fw, a->bytes, a->n, SL[g_active].fw.frames_done + a->frame);
+            slot_midi(g_active, a->bytes, a->n, a->frame);
         return;
     }
-    for (s = 0; s < NSLOT; s++)   /* the sequencer's: every sounding firmware whose filter has the track */
-        if (SL[s].on && (rfm_move_fw_sounding(&S->core) >> s & 1) && (SL[s].filt >> (a->track - 1) & 1))
-            fw_midi(&SL[s].fw, a->bytes, a->n, SL[s].fw.frames_done + a->frame);
+    chain_midi(0, a->track, a->bytes, a->n, a->frame);   /* the sequencer's: the MIDI FX, then the filters */
+}
+
+/* each MIDI FX's tick (once a block): its generated notes take its track (its filter's one track, else the track it
+ * heard last) and go on down the chain */
+static void midi_fx_tick(void)
+{
+    int k;
+    for (k = 0; k < RFM_MOVE_FX_SLOTS; k++) {
+        fxs_t *x = &FX[RFM_MOVE_FX_MIDI][k];
+        uint8_t out[FX_MAX_OUT][3];
+        int lens[FX_MAX_OUT], i, m, t;
+        if (!x->run)
+            continue;
+        m = fx_tick(x->run, FW_BLOCK, out, lens, FX_MAX_OUT);
+        for (t = 0; t < 16 && x->filt != (1u << t); t++)
+            ;
+        t = t < 16 ? t + 1 : x->last_track ? x->last_track : 1;
+        for (i = 0; i < m; i++)
+            if (lens[i] > 0 && lens[i] <= 3)
+                chain_midi(k + 1, t, out[i], lens[i], 0);
+    }
 }
 
 static void job_write(const char *path, const uint8_t *b, uint32_t n)
@@ -380,6 +464,170 @@ static void job_write(const char *path, const uint8_t *b, uint32_t n)
         j->len = n;
     }
     st_post(j);
+}
+
+/* ------------------------------------------------------------------ Schwung FX (the engine's side) --- */
+static void notes_off_all(void)   /* a MIDI FX changed: what it held let go (CC 123 on every channel) */
+{
+    int s, c;
+    for (s = 0; s < NSLOT; s++)
+        for (c = 0; SL[s].on && c < 16; c++) {
+            const uint8_t m[3] = { (uint8_t)(0xB0 | c), 123, 0 };
+            fw_midi(&SL[s].fw, m, 3, SL[s].fw.frames_done);
+        }
+}
+static void fx_drop(int kind, int s)
+{
+    fxs_t *x = &FX[kind][s];
+    if (!x->run)
+        return;
+    {
+        st_job_t *j = st_job_new(J_FX_FREE);
+        j->ptr = x->run;
+        st_post(j);
+    }
+    x->run = NULL;
+    if (kind == RFM_MOVE_FX_MIDI)
+        notes_off_all();
+}
+static void fx_apply(int kind, int s)   /* the core's values into the instance */
+{
+    fxs_t *x = &FX[kind][s];
+    const fx_mod_t *m = fx_inst_mod(x->run);
+    int k;
+    for (k = 0; m && k < m->np && k < RFM_MOVE_FX_PARAMS; k++)
+        fx_set(x->run, k, x->val[k]);
+}
+static void fx_pend_clear(fxs_t *x)
+{
+    free(x->pend_state);
+    x->pend_state = NULL;
+    x->pend_name[0] = 0;
+}
+static void fx_pend_apply(fxs_t *x)   /* a project's saved state for the module now running here */
+{
+    const fx_mod_t *m = fx_inst_mod(x->run);
+    if (m && x->pend_state && !strcmp(m->name, x->pend_name))
+        fx_state_set(x->run, x->pend_state);
+    fx_pend_clear(x);
+}
+/* FX_LOAD (the core's, or the page's through it): open it on the storage thread; it comes in on the engine's */
+static void fx_want(int kind, int s, int mod)
+{
+    fxs_t *x = &FX[kind][s];
+    const fx_mod_t *m = fx_mod(g_fxlib, kind, mod);
+    const rfm_move_fxslot_t *c = kind == RFM_MOVE_FX_MIDI ? &S->core.seq.fx.mfx[s] : &S->core.seq.fx.afx[s];
+    memcpy(x->val, c->val, sizeof x->val);   /* (a fresh load: the core's defaults; a project's: its values follow) */
+    g_mix_ver++;
+    if (x->pend_name[0] && (!m || strcmp(m->name, x->pend_name)))
+        fx_pend_clear(x);
+    if (!m) {
+        x->want = -1, x->gen++, x->opening = 0;
+        fx_drop(kind, s);
+        return;
+    }
+    if (x->run && fx_inst_mod(x->run) == m && !x->opening) {   /* there already */
+        x->want = mod;
+        fx_pend_apply(x);
+        fx_apply(kind, s);
+        return;
+    }
+    x->want = mod, x->gen++, x->opening = 1, x->err[0] = 0;
+    {
+        st_job_t *j = st_job_new(J_FX_OPEN);
+        j->obj = (void *)m;
+        j->slot = s, j->index = kind, j->value = (int)x->gen;
+        snprintf(j->id, sizeof j->id, "%.31s", m->id);
+        st_post(j);
+    }
+}
+static void fx_refuse(int kind, int s, const char *why)
+{
+    fxs_t *x = &FX[kind][s];
+    snprintf(x->err, sizeof x->err, "%s", why);
+    fprintf(stderr, "engine: %s FX %d: %s\n", kind ? "audio" : "MIDI", s + 1, why);
+    x->want = -1, x->gen++, x->opening = 0;
+    fx_drop(kind, s);
+    fx_pend_clear(x);
+    rfm_move_fx_refused(&S->core, kind, s);   /* (the core empties the slot, "Too busy") */
+    rfm1cs_session_redraw(S, now_ms());
+    g_mix_ver++;
+}
+static void fx_opened(st_job_t *j)
+{
+    const int kind = j->index, s = j->slot;
+    fxs_t *x;
+    if (kind < 0 || kind >= FX_KINDS || s < 0 || s >= RFM_MOVE_FX_SLOTS) {
+        fx_close(j->ptr);
+        return;
+    }
+    x = &FX[kind][s];
+    if ((uint32_t)j->value != x->gen || x->want < 0) {   /* (asked again since, or emptied) */
+        if (j->ptr) {
+            st_job_t *f = st_job_new(J_FX_FREE);
+            f->ptr = j->ptr;
+            st_post(f);
+        }
+        return;
+    }
+    x->opening = 0;
+    if (!j->ptr) {
+        fx_refuse(kind, s, j->err[0] ? j->err : "could not load");
+        return;
+    }
+    fx_drop(kind, s);
+    x->run = j->ptr;
+    x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0;
+    fx_pend_apply(x);
+    fx_apply(kind, s);
+    fprintf(stderr, "engine: %s FX %d: %s\n", kind ? "audio" : "MIDI", s + 1, fx_inst_mod(x->run)->name);
+    g_mix_ver++;
+}
+
+/* a project's FX modules' own state (get_param "state"), beside the project: move-project-NN.fx.json */
+static void fx_state_save(int slot)
+{
+    size_t cap = 1 << 18, n = 0;
+    char *o = malloc(cap), *st = malloc(65536), *esc = malloc(2 * 65536 + 8), p[ST_PATH];
+    int kind, s, first = 1;
+    if (!o || !st || !esc) {
+        free(o), free(st), free(esc);
+        return;
+    }
+    n += (size_t)snprintf(o + n, cap - n, "{");
+    for (kind = 0; kind < FX_KINDS; kind++)
+        for (s = 0; s < RFM_MOVE_FX_SLOTS; s++) {
+            fxs_t *x = &FX[kind][s];
+            if (!x->run || fx_state_get(x->run, st, 65536) < 0)
+                continue;
+            mj_escape(st, esc, 2 * 65536 + 8);
+            if (n + strlen(esc) + 128 >= cap)
+                continue;
+            n += (size_t)snprintf(o + n, cap - n, "%s\"%c%d\":{\"name\":\"%s\",\"state\":\"%s\"}", first ? "" : ",",
+                                  kind ? 'a' : 'm', s, fx_inst_mod(x->run)->name, esc);
+            first = 0;
+        }
+    n += (size_t)snprintf(o + n, cap - n, "}\n");
+    st_fx_state_path(p, sizeof p, slot);
+    job_write(p, (const uint8_t *)o, (uint32_t)n);
+    free(o), free(st), free(esc);
+}
+static void fx_state_take(const char *text)   /* a project's, as it loads: kept until its modules are there */
+{
+    int kind, s;
+    for (kind = 0; kind < FX_KINDS; kind++)
+        for (s = 0; s < RFM_MOVE_FX_SLOTS; s++) {
+            fxs_t *x = &FX[kind][s];
+            char key[4];
+            const char *v;
+            fx_pend_clear(x);
+            snprintf(key, sizeof key, "%c%d", kind ? 'a' : 'm', s);
+            if (!text || !(v = mj_find(text, key)) || *v != '{')
+                continue;
+            if (!(x->pend_state = malloc(65536)) || mj_string(v, "state", x->pend_state, 65536) ||
+                mj_string(v, "name", x->pend_name, sizeof x->pend_name))
+                fx_pend_clear(x);
+        }
 }
 
 static void on_action(const rfm1cs_event_t *ev)
@@ -439,6 +687,13 @@ static void on_action(const rfm1cs_event_t *ev)
             memcpy(j->data, ev->data, ev->len);
             j->len = ev->len;
         }
+        if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE)    /* (its FX modules' own state beside it) */
+            fx_state_save(a->index);
+        if (a->kind == RFM_MOVE_ACT_PROJECT_DELETE || a->kind == RFM_MOVE_ACT_PROJECT_CUT) {
+            char p[ST_PATH];
+            st_fx_state_path(p, sizeof p, a->index);
+            job_write(p, (const uint8_t *)"{}\n", 3);
+        }
         if (a->kind == RFM_MOVE_ACT_PROJECT_LOAD) {   /* (the project to open next time) */
             char p[ST_PATH], t[8];
             st_path(p, sizeof p, "move/open-project");
@@ -452,15 +707,42 @@ static void on_action(const rfm1cs_event_t *ev)
         int s;
         for (s = 0; s < NSLOT; s++)
             SL[s].filt = a->filt[s];
+        for (s = 0; s < RFM_MOVE_FX_SLOTS; s++) {
+            fxs_t *x = &FX[RFM_MOVE_FX_MIDI][s];
+            if (x->filt != a->filt[3 + s] && x->run)
+                notes_off_all();
+            x->filt = a->filt[3 + s];
+        }
+        g_mix_ver++;
         break;
     }
     case RFM_MOVE_ACT_MIX:
-        if (a->slot < NSLOT)
+        if (a->slot < NSLOT) {
+            int k;
             SL[a->slot].level = a->mix[0] > 127 ? 127 : a->mix[0];
+            SL[a->slot].pan = a->mix[1] > 127 ? 127 : a->mix[1];
+            for (k = 0; k < 3; k++)
+                SL[a->slot].send[k] = a->mix[2 + k] > 127 ? 127 : a->mix[2 + k];
+        }
+        g_mix_ver++;
         break;
     case RFM_MOVE_ACT_FW_LEVEL:
         if (a->slot < NSLOT)
             SL[a->slot].level = (uint8_t)(a->value < 0 ? 0 : a->value > 127 ? 127 : a->value);
+        g_mix_ver++;
+        break;
+    case RFM_MOVE_ACT_FX_LOAD:
+        if (a->fx < FX_KINDS && a->slot < RFM_MOVE_FX_SLOTS)
+            fx_want(a->fx, a->slot, a->value);
+        break;
+    case RFM_MOVE_ACT_FX_PARAM:
+        if (a->fx < FX_KINDS && a->slot < RFM_MOVE_FX_SLOTS && a->param < RFM_MOVE_FX_PARAMS) {
+            fxs_t *x = &FX[a->fx][a->slot];
+            x->val[a->param] = (uint8_t)(a->value < 0 ? 0 : a->value > 127 ? 127 : a->value);
+            if (x->run)
+                fx_set(x->run, a->param, x->val[a->param]);
+            g_mix_ver++;
+        }
         break;
     case RFM_MOVE_ACT_FW_LOAD:
     case RFM_MOVE_ACT_FW_UNLOAD:
@@ -476,7 +758,7 @@ static void on_action(const rfm1cs_event_t *ev)
             snprintf(d->id, sizeof d->id, "%.*s", a->data ? (int)a->len : 0, a->data ? (const char *)a->data : "");
         }
         break;
-    default:   /* CLICK, AUDIO_REC (no metronome or Sample loop yet), FX_* (no FX modules in phase 1) */
+    default:   /* CLICK, AUDIO_REC (no metronome or Sample loop yet) */
         break;
     }
 }
@@ -527,6 +809,7 @@ static void slots_tell(void)
     for (s = 0; s < NSLOT; s++)
         ids[s] = SL[s].on ? SL[s].fw.id : "";
     rfm_move_fw_slots(&S->core, ids);
+    g_mix_ver++;
 }
 
 static void view_info(void);
@@ -613,6 +896,7 @@ static void active_changed(void)
         fw->lbl_epoch = 0;
     g_lcd_seen = 0;
     g_leds_ok = 0;
+    g_mix_ver++;
     if (!fw) {   /* nothing to show: a dark panel */
         static const uint8_t dark[FW_NLEVELS];
         memset(g_lcd_host, 0, sizeof g_lcd_host);
@@ -726,6 +1010,7 @@ static void load_failed(const char *id)
     view_info();
 }
 
+static void page_edit(int op, int a, int b);
 static void do_deferred(void)
 {
     int k;
@@ -744,6 +1029,10 @@ static void do_deferred(void)
             if (SL[s].on && !strcmp(SL[s].fw.id, id) && !strcmp(SL[s].so, g_fws[i].so)) {   /* there already */
                 rfm_move_fw_progress(&S->core, id, 100);
                 slots_tell();
+                if (g_activate == s) {
+                    g_activate = -1;
+                    page_edit(ENG_OP_ACTIVE, s, 0);
+                }
                 break;
             }
             rfm_move_fw_progress(&S->core, id, 10);
@@ -869,6 +1158,10 @@ static void do_results(void)
             slots_tell();
             rfm_move_fw_progress(&S->core, j->id, 100);
             states_scan(s);
+            if (g_activate == s) {   /* (the page's chip: load into slot n, then play it) */
+                g_activate = -1;
+                page_edit(ENG_OP_ACTIVE, s, 0);
+            }
             if (s == g_active)
                 active_changed();
             view_info();
@@ -930,7 +1223,11 @@ static void do_results(void)
         case R_CATALOG:
             cat_take(j->ptr);
             break;
+        case J_FX_OPEN:
+            fx_opened(j);
+            break;
         case R_PROJECT_LOADED:
+            fx_state_take(j->text);   /* (before the core's fx_sync loads its modules) */
             if (rfm1cs_session_project_answer(S, now_ms(), j->index, j->data, j->len) < 0)
                 rfm1cs_session_project_answer(S, now_ms(), j->index, NULL, 0);
             break;
@@ -1006,6 +1303,304 @@ static void view_info(void)
     pthread_mutex_unlock(&g_vmu);
 }
 
+/* ---- Mix & FX: the slots, the FX setup and the mix as the core has them (its state is the truth: the Move's screens
+ * show the same), with what the host adds (CPU, a load under way, a refusal) */
+static const uint8_t PAL[16][3] = {   /* rfm1cs's 16 pad colours (fw.c PAL) */
+    { 255, 36, 36 },  { 255, 120, 0 },  { 255, 200, 0 },  { 190, 255, 40 }, { 40, 255, 70 },  { 0, 255, 170 },
+    { 20, 220, 255 }, { 40, 120, 255 }, { 90, 60, 255 },  { 170, 60, 255 }, { 255, 50, 210 }, { 255, 110, 150 },
+    { 255, 160, 100 }, { 160, 110, 60 }, { 150, 150, 160 }, { 255, 255, 255 },
+};
+static const uint8_t CATCOL[5] = { 6, 1, 9, 0, 5 };   /* (fw.c: a category's default colour) */
+static int slot_color(int s)   /* the library's pad colour of slot s's firmware, as the Move's pads show it */
+{
+    const rfm_move_fw_state_t *f = &S->core.fw;
+    const int fw = f->slot_fw[s];
+    int r;
+    for (r = 0; r < f->nrec; r++)
+        if (!strcmp(f->rec[r].id, f->slot_id[s]) && f->rec[r].color)
+            return f->rec[r].color - 1;
+    return fw >= 0 && fw < f->n && f->list[fw].cat < 5 ? CATCOL[f->list[fw].cat] : 14;
+}
+static void mix_json(void)
+{
+    static char tmp[sizeof g_view.mix];
+    const rfm_move_fxset_t *x = &S->core.seq.fx;
+    char esc[2][160];
+    int n = 0, s, k, kind;
+#define PUT(...) do { if (n < (int)sizeof tmp) n += snprintf(tmp + n, sizeof tmp - (size_t)n, __VA_ARGS__); } while (0)
+    PUT("{\"type\":\"mix\",\"ver\":%u,\"active\":%d,\"page\":%d,\"fxopen\":%d,\"sounding\":%d,\"slots\":[", g_mix_ver,
+        g_active, S->core.s.fx_page, S->core.fw.fx && S->core.seq.projects, rfm_move_fw_sounding(&S->core));
+    for (s = 0; s < NSLOT; s++) {
+        const slot_t *sl = &SL[s];
+        const uint8_t *c = PAL[slot_color(s)];
+        PUT("%s{\"on\":%d", s ? "," : "", sl->on);
+        if (sl->on) {
+            mj_escape(sl->fw.name, esc[0], sizeof esc[0]);
+            PUT(",\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"cpu\":%.1f,\"notes\":%u", sl->fw.id, esc[0],
+                sl->fw.version, sl->cpu_permille / 10.0, sl->notes);
+        }
+        PUT(",\"color\":\"#%02x%02x%02x\",\"level\":%d,\"pan\":%d,\"sends\":[%d,%d,%d],\"filt\":%u}", c[0], c[1], c[2],
+            S->core.fw.level[s], x->pan[s], x->send[s][0], x->send[s][1], x->send[s][2], x->ffilt[s]);
+    }
+    PUT("]");
+    for (kind = 0; kind < FX_KINDS; kind++) {
+        PUT(",\"%s\":[", kind ? "afx" : "mfx");
+        for (s = 0; s < RFM_MOVE_FX_SLOTS; s++) {
+            const rfm_move_fxslot_t *c = kind ? &x->afx[s] : &x->mfx[s];
+            const fxs_t *h = &FX[kind][s];
+            mj_escape(c->name, esc[0], sizeof esc[0]);
+            mj_escape(h->err, esc[1], sizeof esc[1]);
+            PUT("%s{\"mod\":%d,\"name\":\"%s\",\"vals\":[", s ? "," : "", c->mod, esc[0]);
+            for (k = 0; k < RFM_MOVE_FX_PARAMS; k++)
+                PUT("%s%d", k ? "," : "", c->val[k]);
+            PUT("],\"filt\":%u,\"run\":%d,\"busy\":%d,\"cpu\":%.1f,\"err\":\"%s\"}", kind ? 0xFFFFu : c->filt,
+                h->run != NULL, h->opening, h->cpu_permille / 10.0, esc[1]);
+        }
+        PUT("]");
+    }
+    PUT("}");
+#undef PUT
+    pthread_mutex_lock(&g_vmu);
+    memcpy(g_view.mix, tmp, sizeof tmp);
+    g_view.mix_seq++;
+    g_view.seq++;
+    pthread_mutex_unlock(&g_vmu);
+}
+
+/* the meters (10 a second) and the slots' mini screens (4 a second, when they changed) for the page */
+static uint8_t meter(int peak) { const double v = sqrt((double)(peak > 32767 ? 32767 : peak) / 32767.0) * 255.0; return (uint8_t)(v + 0.5); }
+static void view_live(uint32_t now)
+{
+    static uint32_t last_meter;
+    int s;
+    if (now - last_meter >= 100u) {
+        uint8_t m[7];
+        last_meter = now;
+        for (s = 0; s < 3; s++) {
+            m[s] = meter(SL[s].on ? SL[s].peak : 0), SL[s].peak = 0;
+            m[3 + s] = meter(FX[RFM_MOVE_FX_AUDIO][s].peak), FX[RFM_MOVE_FX_AUDIO][s].peak = 0;
+        }
+        m[6] = meter(g_peak_win), g_peak_win = 0;
+        pthread_mutex_lock(&g_vmu);
+        if (memcmp(m, g_view.meters, sizeof m)) {
+            memcpy(g_view.meters, m, sizeof m);
+            g_view.meters_seq++;
+            g_view.seq++;
+        }
+        pthread_mutex_unlock(&g_vmu);
+    }
+    for (s = 0; s < NSLOT; s++) {
+        slot_t *sl = &SL[s];
+        uint32_t w;
+        static uint8_t mini[ENG_MINI * ENG_MINI * 2];
+        const uint8_t *be;
+        int x, y;
+        if (!sl->on || sl->fw.dead || now - sl->mini_ms < 250u)
+            continue;
+        w = fw_lcd_writes(&sl->fw);
+        if (w == sl->mini_writes && sl->mini_writes)
+            continue;
+        sl->mini_writes = w ? w : 1, sl->mini_ms = now;
+        be = fw_lcd(&sl->fw);
+        for (y = 0; y < ENG_MINI; y++)   /* a 5 x 5 box average */
+            for (x = 0; x < ENG_MINI; x++) {
+                int r = 0, g = 0, b = 0, i, j;
+                uint16_t v;
+                for (j = 0; j < 5; j++)
+                    for (i = 0; i < 5; i++) {
+                        const int o = 2 * ((y * 5 + j) * 240 + x * 5 + i);
+                        const uint16_t p = (uint16_t)(be[o] << 8 | be[o + 1]);
+                        r += p >> 11, g += p >> 5 & 63, b += p & 31;
+                    }
+                v = (uint16_t)((r / 25) << 11 | (g / 25) << 5 | (b / 25));
+                mini[2 * (y * ENG_MINI + x)] = (uint8_t)(v >> 8), mini[2 * (y * ENG_MINI + x) + 1] = (uint8_t)v;
+            }
+        pthread_mutex_lock(&g_vmu);
+        memcpy(g_view.mini[s], mini, sizeof mini);
+        g_view.mini_seq[s]++;
+        g_view.seq++;
+        pthread_mutex_unlock(&g_vmu);
+    }
+}
+
+/* ---- the page's edits, into the core's state (rfm1cs v0.4.0 has no call for these: its FX setup, mix and routing are
+ * public fields of rfm_move_t, written here on the core's thread as its own handlers write them), then the same
+ * action the core would give, through on_action: the host's state follows, and the project and library save as after
+ * an edit on the Move */
+static void emit(rfm_move_act_t *a)
+{
+    rfm1cs_event_t ev;
+    memset(&ev, 0, sizeof ev);
+    ev.type = RFM1CS_EV_ACTION, ev.act = a;
+    on_action(&ev);
+}
+static void core_seq_dirty(void) { S->core.seq.dirty = 1, S->core.seq.dirty_us = S->core.seq.now_us; }
+static void core_lib_dirty(void) { S->core.fw.lib_dirty = 1, S->core.fw.lib_ms = (uint32_t)(S->core.seq.now_us / 1000u); }
+static void emit_mix(int s)
+{
+    rfm_move_act_t a;
+    int k;
+    memset(&a, 0, sizeof a);
+    a.kind = RFM_MOVE_ACT_MIX, a.index = a.slot = (uint8_t)s;
+    a.mix[0] = S->core.fw.level[s], a.mix[1] = S->core.seq.fx.pan[s];
+    for (k = 0; k < 3; k++)
+        a.mix[2 + k] = S->core.seq.fx.send[s][k];
+    emit(&a);
+}
+static void emit_route(void)
+{
+    rfm_move_act_t a;
+    int k;
+    memset(&a, 0, sizeof a);
+    a.kind = RFM_MOVE_ACT_ROUTE;
+    for (k = 0; k < 3; k++)
+        a.filt[k] = S->core.seq.fx.ffilt[k], a.filt[3 + k] = S->core.seq.fx.mfx[k].filt;
+    emit(&a);
+}
+static void page_edit(int op, int a, int b)
+{
+    rfm_move_t *m = &S->core;
+    rfm_move_fxset_t *x = &m->seq.fx;
+    rfm_move_act_t act;
+    memset(&act, 0, sizeof act);
+    switch (op) {
+    case ENG_OP_ACTIVE:
+        if (a < 0 || a >= NSLOT || !SL[a].on || a == m->fw.active)
+            return;
+        m->fw.active = (uint8_t)a;
+        if (m->fw.track < 3)
+            m->fw.track = (uint8_t)a;   /* (the projects view shows the firmware track the controls play) */
+        core_lib_dirty();
+        act.kind = RFM_MOVE_ACT_FW_ACTIVE, act.index = act.slot = (uint8_t)a;
+        act.data = (const uint8_t *)SL[a].fw.id, act.len = (uint32_t)strlen(SL[a].fw.id);
+        emit(&act);
+        break;
+    case ENG_OP_UNLOAD:
+        if (a < 0 || a >= NSLOT || !SL[a].on)
+            return;
+        act.kind = RFM_MOVE_ACT_FW_UNLOAD, act.index = act.slot = (uint8_t)a;
+        emit(&act);
+        break;
+    case ENG_OP_MIX: {
+        const int s = a / 8, f = a % 8, v = b < 0 ? 0 : b > 127 ? 127 : b;
+        if (s >= NSLOT || f > 4)
+            return;
+        if (f == 0) {
+            m->fw.level[s] = (uint8_t)v;
+            core_lib_dirty();
+        } else {
+            if (f == 1)
+                x->pan[s] = (uint8_t)v;
+            else
+                x->send[s][f - 2] = (uint8_t)v;
+            core_seq_dirty();
+        }
+        emit_mix(s);
+        break;
+    }
+    case ENG_OP_ROUTE: {
+        uint16_t f = (uint16_t)b;
+        if (a < 0 || a > 5)
+            return;
+        if (a < 3)
+            x->ffilt[a] = f;
+        else
+            x->mfx[a - 3].filt = f && !(f & (f - 1)) ? f : 0xFFFF;   /* (a MIDI FX: one track, or all) */
+        core_seq_dirty();
+        emit_route();
+        break;
+    }
+    case ENG_OP_FXLOAD: {
+        const int kind = a >> 2 & 1, s = a & 3, mod = (int16_t)b;
+        rfm_move_fxslot_t *sl;
+        const rfm_move_fx_module_t *md;
+        int k;
+        if (s >= RFM_MOVE_FX_SLOTS)
+            return;
+        sl = kind ? &x->afx[s] : &x->mfx[s];
+        md = mod >= 0 && mod < m->fw.nmods[kind] ? &m->fw.mods[kind][mod] : NULL;
+        memset(sl->name, 0, sizeof sl->name), memset(sl->val, 0, sizeof sl->val);   /* (as fw.c fx_load) */
+        sl->mod = -1;
+        if (md && md->name) {
+            snprintf(sl->name, sizeof sl->name, "%s", md->name);
+            sl->mod = (int16_t)mod;
+            for (k = 0; k < md->nparams && k < RFM_MOVE_FX_PARAMS; k++)
+                sl->val[k] = md->params[k].nwords > 0 ? (uint8_t)(md->params[k].def < md->params[k].nwords ? md->params[k].def : 0)
+                                                      : (uint8_t)(md->params[k].def > 127 ? 127 : md->params[k].def);
+        }
+        core_seq_dirty();
+        act.kind = RFM_MOVE_ACT_FX_LOAD, act.fx = (uint8_t)kind, act.index = act.slot = (uint8_t)s, act.value = sl->mod;
+        if (sl->mod >= 0)
+            act.data = (const uint8_t *)sl->name, act.len = (uint32_t)strlen(sl->name);
+        emit(&act);
+        break;
+    }
+    case ENG_OP_FXPARAM: {
+        const int kind = a >> 5 & 1, s = a >> 3 & 3, k = a & 7;
+        rfm_move_fxslot_t *sl;
+        const rfm_move_fx_module_t *md;
+        int v = b;
+        if (s >= RFM_MOVE_FX_SLOTS)
+            return;
+        sl = kind ? &x->afx[s] : &x->mfx[s];
+        md = sl->mod >= 0 && sl->mod < m->fw.nmods[kind] ? &m->fw.mods[kind][sl->mod] : NULL;
+        if (!md || k >= md->nparams)
+            return;
+        v = md->params[k].nwords > 0 ? (v < 0 ? 0 : v >= md->params[k].nwords ? md->params[k].nwords - 1 : v)
+                                     : (v < 0 ? 0 : v > 127 ? 127 : v);
+        sl->val[k] = (uint8_t)v;
+        core_seq_dirty();
+        act.kind = RFM_MOVE_ACT_FX_PARAM, act.fx = (uint8_t)kind, act.index = act.slot = (uint8_t)s;
+        act.param = (uint8_t)k, act.value = (int16_t)v;
+        emit(&act);
+        break;
+    }
+    case ENG_OP_PAGE:
+        if (a < 0 || a > 3 || m->s.fx_page == a)
+            return;
+        if ((a == 0 && !m->fw.nmods[RFM_MOVE_FX_MIDI]) || (a == 2 && !m->fw.nmods[RFM_MOVE_FX_AUDIO]))
+            return;
+        m->s.fx_page = (uint8_t)a;
+        {   /* (a setting: saved as the core's SETTINGS would be) */
+            uint8_t buf[RFM_MOVE_SETTINGS_BYTES];
+            char p[ST_PATH];
+            const uint32_t n = rfm_move_save(&m->s, buf);
+            st_path(p, sizeof p, "move/settings.bin");
+            job_write(p, buf, n);
+        }
+        g_mix_ver++;
+        break;
+    default:
+        return;
+    }
+    rfm1cs_session_redraw(S, now_ms());   /* (the Move's screen: the view shows the new value) */
+}
+
+char *engine_fx_modules(void)
+{
+    char *r;
+    pthread_mutex_lock(&g_vmu);
+    r = g_fx_json ? strdup(g_fx_json) : NULL;
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
+int engine_test_midi(int track, int b0, int b1, int b2)
+{
+    int r = -1;
+    if (!C.test_api || track < 1 || track > 16)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (g_ntmidi < (int)(sizeof g_tmidi / sizeof g_tmidi[0])) {
+        g_tmidi[g_ntmidi].track = (uint8_t)track;
+        g_tmidi[g_ntmidi].b[0] = (uint8_t)b0, g_tmidi[g_ntmidi].b[1] = (uint8_t)b1, g_tmidi[g_ntmidi].b[2] = (uint8_t)b2;
+        g_ntmidi++;
+        r = 0;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
 int engine_view(engine_view_t *v, uint32_t *seq)
 {
     int r = 0;
@@ -1047,7 +1642,7 @@ char *engine_firmwares(void)
     return r;
 }
 
-int engine_load(int slot, const char *id)
+int engine_load(int slot, const char *id, int activate)
 {
     int r = -1, i;
     if (slot < 0 || slot >= NSLOT || !id || strlen(id) >= RFM_MOVE_FW_ID_MAX)
@@ -1058,6 +1653,7 @@ int engine_load(int slot, const char *id)
             break;
     if (i < g_web_n && g_nwload < (int)(sizeof g_wload / sizeof g_wload[0])) {
         g_wload[g_nwload].slot = slot;
+        g_wload[g_nwload].activate = activate;
         snprintf(g_wload[g_nwload].id, sizeof g_wload[g_nwload].id, "%s", id);
         g_nwload++;
         r = 0;
@@ -1126,11 +1722,24 @@ static void publish(uint32_t now)
 static void render_block(uint32_t now)
 {
     int16_t blk[FW_BLOCK * 2], out[FW_BLOCK * 2];
-    int s, sounding;
-    rfm1cs_session_advance(S, now, FW_BLOCK, FW_FS);   /* the sequencer: its MIDI stamped within this block */
+    int s, k, sounding, sends = 0;
+    {   /* the clock the modules ask for (host_api_v1: get_bpm, get_clock_status, get_beat_position) */
+        const float bpm = (float)rfm_move_seq_bpm10(&S->core) / 10.0f;
+        const int run = S->core.seq.playing;
+        g_beat = run ? g_beat + (double)FW_BLOCK / FW_FS * bpm / 60.0 : 0.0;
+        fx_clock(bpm, run, g_beat);
+    }
+    rfm1cs_session_advance(S, now, FW_BLOCK, FW_FS);   /* the sequencer: its MIDI stamped within this block (through
+                                                         * the MIDI FX: route_midi) */
+    midi_fx_tick();
     do_deferred();
     sounding = rfm_move_fw_sounding(&S->core);
     mix_clear(&g_mix, FW_BLOCK);
+    for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)
+        if (FX[RFM_MOVE_FX_AUDIO][k].run) {
+            bus_clear(&g_bus[k], FW_BLOCK);
+            sends |= 1 << k;
+        }
     for (s = 0; s < NSLOT; s++) {
         slot_t *sl = &SL[s];
         if (!sl->on)
@@ -1142,7 +1751,15 @@ static void render_block(uint32_t now)
             memcpy(g_cap_raw + 2u * g_cap_raw_n, blk, sizeof blk);
             g_cap_raw_n += FW_BLOCK;
         }
-        mix_add(&g_mix, blk, FW_BLOCK, sl->level);
+        mix_add_lp(&g_mix, blk, FW_BLOCK, sl->level, sl->pan);
+        for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the sends: after its level and pan */
+            if (sends >> k & 1)
+                bus_add(&g_bus[k], blk, FW_BLOCK, sl->level, sl->pan, sl->send[k]);
+        {
+            const int p = peak16(blk, FW_BLOCK * 2) * sl->level / 127;
+            if (p > sl->peak)
+                sl->peak = p;
+        }
         if (s == g_active) {   /* its MIDI out: the clock the sequencer can follow */
             uint32_t pk[16];
             const int k = fw_midi_out(&sl->fw, pk, 16);
@@ -1159,11 +1776,23 @@ static void render_block(uint32_t now)
             do_deferred();
         }
     }
+    for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
+        if (sends >> k & 1) {
+            fxs_t *x = &FX[RFM_MOVE_FX_AUDIO][k];
+            int p;
+            bus_out(&g_bus[k], blk, FW_BLOCK);
+            fx_audio(x->run, blk, FW_BLOCK);
+            mix_add_ret(&g_mix, blk, FW_BLOCK);
+            if ((p = peak16(blk, FW_BLOCK * 2)) > x->peak)
+                x->peak = p;
+        }
     mix_out(&g_mix, out, FW_BLOCK);
     for (s = 0; s < FW_BLOCK * 2; s++) {
         const int v = out[s] < 0 ? -out[s] : out[s];
         if (v > g_peak_acc)
             g_peak_acc = v;
+        if (v > g_peak_win)
+            g_peak_win = v;
     }
     mr_ring_push(&g_ring, out, FW_BLOCK);
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
@@ -1266,10 +1895,43 @@ static void housekeeping(uint32_t now)
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+        {   /* the FX: CPU per module over the last second; past the budget twice running: refused ("Too busy") */
+            int kind, k;
+            uint32_t total = 0;
+            for (kind = 0; kind < FX_KINDS; kind++)
+                for (k = 0; k < RFM_MOVE_FX_SLOTS; k++) {
+                    fxs_t *x = &FX[kind][k];
+                    const fx_mod_t *md = fx_inst_mod(x->run);
+                    if (x->run) {
+                        const uint64_t ns = fx_ns(x->run) - x->ns_mark;
+                        x->ns_mark = fx_ns(x->run);
+                        x->cpu_permille = (uint32_t)(ns / 1000u / (dt ? dt : 1));
+                        total += x->cpu_permille;
+                        if (x->cpu_permille > (uint32_t)g_fx_budget) {
+                            if (++x->over >= 2) {
+                                char why[120];
+                                snprintf(why, sizeof why, "Too busy: %s took %.1f %% of a core (the budget: %.1f %%)",
+                                         md->name, x->cpu_permille / 10.0, g_fx_budget / 10.0);
+                                fx_refuse(kind, k, why);
+                                md = NULL;
+                            }
+                        } else
+                            x->over = 0;
+                    } else
+                        x->cpu_permille = 0;
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"%cfx%d\":\"%s\",\"%cfx%d_cpu\":%.1f,\"%cfx%d_busy\":%d",
+                                  kind ? 'a' : 'm', k, md ? md->id : "", kind ? 'a' : 'm', k, x->cpu_permille / 10.0,
+                                  kind ? 'a' : 'm', k, x->opening);
+                }
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fx_cpu\":%.1f,\"fx_mods\":%d", total / 10.0,
+                          g_fxlib ? g_fxlib->n[0] + g_fxlib->n[1] : 0);
+            g_mix_ver++;   /* (the page's CPU figures, once a second) */
+        }
         for (s = 0; s < NSLOT; s++)   /* (flat, for scripts) */
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"ver%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u", s,
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"ver%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u,\"notes%d\":%u,"
+                          "\"level%d\":%d,\"pan%d\":%d", s,
                           SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].fw.version : "", s,
-                          SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s]);
+                          SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s], s, SL[s].notes, s, SL[s].level, s, SL[s].pan);
         /* the catalog and its downloads */
         mj_escape(g_dl.err, esc[0], sizeof esc[0]);
         mj_escape(g_index_err, esc[1], sizeof esc[1]);
@@ -1351,12 +2013,26 @@ static void *engine_main(void *arg)
                 memset(d, 0, sizeof *d);
                 d->a.kind = RFM_MOVE_ACT_FW_LOAD;
                 d->a.slot = (uint8_t)g_wload[i].slot;
+                g_activate = g_wload[i].activate ? g_wload[i].slot : -1;
                 snprintf(d->id, sizeof d->id, "%s", g_wload[i].id);
             }
             g_nwload = 0;
             pthread_mutex_unlock(&g_vmu);
+            {   /* tests: sequencer MIDI from outside (engine_test_midi) */
+                struct { uint8_t track, b[3]; } tm[32];
+                int nt;
+                pthread_mutex_lock(&g_vmu);
+                nt = g_ntmidi;
+                memcpy(tm, g_tmidi, sizeof tm[0] * (size_t)nt);
+                g_ntmidi = 0;
+                pthread_mutex_unlock(&g_vmu);
+                for (i = 0; i < nt; i++)
+                    chain_midi(0, tm[i].track, tm[i].b, 3, 0);
+            }
             for (i = 0; i < n; i++) {
-                if (pin[i].op == FWI_MASTER) {
+                if (pin[i].op >= ENG_OP_ACTIVE && pin[i].op <= ENG_OP_LAST)
+                    page_edit(pin[i].op, pin[i].a, pin[i].b);
+                else if (pin[i].op == FWI_MASTER) {
                     rfm_move_act_t a;
                     rfm1cs_event_t ev;
                     memset(&a, 0, sizeof a);
@@ -1376,6 +2052,17 @@ static void *engine_main(void *arg)
         publish(now);
         do_deferred();
         housekeeping(now);
+        view_live(now);
+        {   /* (the Move's FX setup opened, closed or on another page: no action says so) */
+            static int sig = -1;
+            const int g = S->core.s.fx_page | (S->core.fw.fx && S->core.seq.projects) << 4;
+            if (g != sig)
+                sig = g, g_mix_ver++;
+        }
+        if (g_mix_ver != g_mix_made) {
+            g_mix_made = g_mix_ver;
+            mix_json();
+        }
         if (g_save_all) {
             int s;
             g_save_all = 0;
@@ -1466,13 +2153,31 @@ int engine_start(const engine_cfg_t *cfg)
             free(t);
         }
     }
+    for (s = 0; s < NSLOT; s++)   /* (before the project: its FX setup's MIX and ROUTE come as it loads) */
+        SL[s].filt = 0xFFFF, SL[s].level = 127, SL[s].pan = 64;
+    {   /* the Schwung FX modules the user installed: the core's FX setup lists them (before the project names them) */
+        int kind, k;
+        g_fx_budget = C.fx_budget > 0 ? C.fx_budget : 200;
+        g_fxlib = fx_scan(C.fx_dir);
+        g_fx_json = fx_lib_json(g_fxlib);
+        for (kind = 0; kind < FX_KINDS; kind++) {
+            for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)
+                FX[kind][k].want = -1, FX[kind][k].filt = 0xFFFF;
+            rfm_move_fx_modules(&S->core, kind, g_fxlib->core[kind], g_fxlib->n[kind]);
+        }
+        st_fx_state_path(p, sizeof p, open_slot);   /* (the open project's modules' own state) */
+        {
+            size_t n;
+            uint8_t *t = st_read(p, &n);
+            fx_state_take((const char *)t);
+            free(t);
+        }
+    }
     used = st_projects_scan(open_slot, &blob, &nb);
     rfm1cs_session_projects_init(S, now_ms(), used, open_slot, blob, nb);
     free(blob);
     if (st_worker_start(used) != 0)
         return -1;
-    for (s = 0; s < NSLOT; s++)
-        SL[s].filt = 0xFFFF, SL[s].level = 127;
     g_active = rfm_move_fw_active(&S->core);
     /* the firmwares the library had on its slots; none: the default on slot 1 */
     {

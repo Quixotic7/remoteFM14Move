@@ -15,6 +15,11 @@
  *     --catalog-index   the catalog's snapshot (default: catalog/index.json beside this program)
  *     --catalog-url     the catalog's base URL when the root's catalog-url file names none (default: catalog.h's)
  *     --log-cap     stderr's file is moved to <log>.1 past this many bytes (default 1 MB; -1 never)
+ *     --fx-dir      the Schwung modules hosted as MIDI FX and audio FX (midi_fx/, audio_fx/; default
+ *                   /data/UserData/schwung/modules on the Move, none on the simulator)
+ *     --fx-budget   an FX module's CPU budget, permille of a core (default 200); past it the module is refused
+ *     --test-api    (tests) POST /api/test/midi: sequencer MIDI from outside
+ *     --fx-probe KIND DIR SO   (internal) load one FX module in this child process and exit 0 (fx.c's crash probe)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
  *                   and its input log (inputs.log), written at exit */
@@ -27,6 +32,7 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "fx.h"
 #include "mdns.h"
 #include "mr_core.h"
 #include "web.h"
@@ -39,11 +45,14 @@ int main(int argc, char **argv)
 {
     static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX], index[PATH_MAX];
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
-    const char *index_arg = NULL, *url = NULL;
+    const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
+    int fx_budget = 0, test_api = 0;
     long log_cap = 0;
     char *pargv[4];
     int pargc = 0, i, port = 7730, lead = 5, cap_s = 0, rc;
     static char banner_title[32], banner_name[64];
+    if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c: a module loaded here first, in a child) */
+        return fx_probe_main(atoi(argv[2]), argv[3], argv[4]);
 #ifdef RFM14_PLAT_SIM
     int mdns = 0, splash = 0;
     const char *tmp = getenv("TMPDIR");
@@ -51,6 +60,7 @@ int main(int argc, char **argv)
 #else
     int mdns = 1, splash = 3000;   /* the address on the Move's screen before the controls take it */
     snprintf(root, sizeof root, "/data/UserData/RemoteFM1");
+    fx_dir = "/data/UserData/schwung/modules";
 #endif
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--root") && i + 1 < argc)
@@ -73,6 +83,12 @@ int main(int argc, char **argv)
             log_cap = atol(argv[++i]);
         else if (!strcmp(argv[i], "--splash") && i + 1 < argc)
             splash = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fx-dir") && i + 1 < argc)
+            fx_dir = argv[++i];
+        else if (!strcmp(argv[i], "--fx-budget") && i + 1 < argc)
+            fx_budget = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--test-api"))
+            test_api = 1;
         else if (!strcmp(argv[i], "--no-mdns"))
             mdns = 0;
         else if (!strcmp(argv[i], "--mdns"))
@@ -89,6 +105,7 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
+                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] "
                             "[--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -131,6 +148,9 @@ int main(int argc, char **argv)
         c.bundled_index = index[0] ? index : NULL;
         c.catalog_url = url;
         c.log_cap = log_cap;
+        c.fx_dir = fx_dir;
+        c.fx_budget = fx_budget;
+        c.test_api = test_api;
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */
 #endif

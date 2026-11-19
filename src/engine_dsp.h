@@ -33,6 +33,80 @@ static inline void mix_add(mixer_t *m, const int16_t *in, int frames, int level)
     }
 }
 
+/* a slot's level and pan (0..127, 64 centre: a balance, so the centre is exactly mix_add's unity) as two gains */
+static inline void pan_gains(int level, int pan, float *gl, float *gr)
+{
+    const float g = level >= 127 ? 1.0f : level <= 0 ? 0.0f : (float)level / 127.0f;
+    *gl = *gr = g;
+    if (pan < 64)
+        *gr = g * (float)(pan < 0 ? 0 : pan) / 64.0f;
+    else if (pan > 64)
+        *gl = g * (float)(127 - (pan > 127 ? 127 : pan)) / 63.0f;
+}
+
+/* level and pan; at pan 64 exactly mix_add (bit for bit) */
+static inline void mix_add_lp(mixer_t *m, const int16_t *in, int frames, int level, int pan)
+{
+    float gl, gr;
+    int i;
+    if (pan == 64) {
+        mix_add(m, in, frames, level);
+        return;
+    }
+    pan_gains(level, pan, &gl, &gr);
+    for (i = 0; i < frames; i++) {
+        m->acc[2 * i] += (float)in[2 * i] * gl;
+        m->acc[2 * i + 1] += (float)in[2 * i + 1] * gr;
+    }
+}
+
+/* an audio FX's send bus: the sum of each slot's sound after its level and pan, times its send (0..127) */
+typedef struct {
+    float acc[2 * 128];
+} bus_t;
+static inline void bus_clear(bus_t *b, int frames) { memset(b->acc, 0, sizeof(float) * 2u * (unsigned)frames); }
+static inline void bus_add(bus_t *b, const int16_t *in, int frames, int level, int pan, int send)
+{
+    float gl, gr;
+    const float s = (float)(send > 127 ? 127 : send) / 127.0f;
+    int i;
+    if (send <= 0)
+        return;
+    pan_gains(level, pan, &gl, &gr);
+    gl *= s, gr *= s;
+    for (i = 0; i < frames; i++) {
+        b->acc[2 * i] += (float)in[2 * i] * gl;
+        b->acc[2 * i + 1] += (float)in[2 * i + 1] * gr;
+    }
+}
+/* the bus as the FX takes it: int16 stereo (clipped) */
+static inline void bus_out(const bus_t *b, int16_t *out, int frames)
+{
+    int i;
+    for (i = 0; i < 2 * frames; i++) {
+        const long v = lrintf(b->acc[i]);
+        out[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+    }
+}
+/* an FX's return into the mix, at unity (a return of zeros leaves the mix bit for bit as it was) */
+static inline void mix_add_ret(mixer_t *m, const int16_t *in, int frames)
+{
+    int i;
+    for (i = 0; i < 2 * frames; i++)
+        if (in[i])
+            m->acc[i] += (float)in[i];
+}
+static inline int peak16(const int16_t *in, int n)
+{
+    int i, p = 0;
+    for (i = 0; i < n; i++) {
+        const int v = in[i] < 0 ? -in[i] : in[i];
+        if (v > p)
+            p = v;
+    }
+    return p;
+}
+
 static inline void mix_out(mixer_t *m, int16_t *out, int frames)
 {
     const float T = LIM_THRESH * 32768.0f;

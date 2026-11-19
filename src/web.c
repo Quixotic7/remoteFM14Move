@@ -33,7 +33,7 @@ typedef struct {
     uint8_t *in, *out;
     size_t in_n, out_n, out_off;
     int closing;
-    uint32_t lcd_seq, info_seq;
+    uint32_t lcd_seq, info_seq, mix_seq, meters_seq, mini_seq[3];
     uint8_t leds[45];
     int leds_ok, full;
     uint8_t *lcd;            /* what this page has (for the changed rows) */
@@ -197,19 +197,46 @@ static void json_reply(client_t *c, const char *status, const char *json)
     http_reply(c, status, "application/json", json, strlen(json));
 }
 
-/* POST /api/load {"slot": 0..2, "id": "<firmware id>"}: the firmware into that slot (engine_load) */
+/* POST /api/load {"slot": 0..2, "id": "<firmware id>", "activate": 0|1}: the firmware into that slot (engine_load) */
 static void api_load(client_t *c, const char *body)
 {
     char id[64];
-    long slot = -1;
+    long slot = -1, act = 0;
     if (!body || mj_string(body, "id", id, sizeof id) || mj_int(body, "slot", &slot)) {
         json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want {slot, id}\"}");
         return;
     }
-    if (engine_load((int)slot, id) != 0) {
+    mj_int(body, "activate", &act);
+    if (engine_load((int)slot, id, act != 0) != 0) {
         json_reply(c, "404 Not Found", "{\"ok\":false,\"error\":\"no such firmware or slot\"}");
         return;
     }
+    json_reply(c, "202 Accepted", "{\"ok\":true}");
+}
+
+/* POST /api/edit {"op": 16..22, "a": n, "b": n}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as the
+ * WebSocket's ops; POST /api/test/midi {"track": 1..16, "b0", "b1", "b2"}: tests only (--test-api) */
+static void api_edit(client_t *c, const char *body, int test)
+{
+    long op = 0, a = 0, b = 0, t = 0, b0 = 0, b1 = 0, b2 = 0;
+    if (!body || (test ? mj_int(body, "track", &t) || mj_int(body, "b0", &b0) || mj_int(body, "b1", &b1) ||
+                         mj_int(body, "b2", &b2)
+                       : mj_int(body, "op", &op) || mj_int(body, "a", &a) || mj_int(body, "b", &b))) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false}");
+        return;
+    }
+    if (test) {
+        if (engine_test_midi((int)t, (int)b0, (int)b1, (int)b2) != 0)
+            json_reply(c, "403 Forbidden", "{\"ok\":false}");
+        else
+            json_reply(c, "202 Accepted", "{\"ok\":true}");
+        return;
+    }
+    if (op < ENG_OP_ACTIVE || op > ENG_OP_LAST) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"no such op\"}");
+        return;
+    }
+    engine_panel((int)op, (int)a, (int)b);
     json_reply(c, "202 Accepted", "{\"ok\":true}");
 }
 
@@ -253,6 +280,10 @@ static void request(client_t *c, const char *body)
     if (post) {
         if (!strcmp(path, "/api/load"))
             api_load(c, body);
+        else if (!strcmp(path, "/api/edit"))
+            api_edit(c, body, 0);
+        else if (!strcmp(path, "/api/test/midi"))
+            api_edit(c, body, 1);
         else
             http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
         return;
@@ -271,12 +302,18 @@ static void request(client_t *c, const char *body)
         return;
     }
     if (!strcmp(path, "/api/status")) {
-        char s[4096];
+        char s[8192];
         const int n = engine_status(s, sizeof s);
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
     } else if (!strcmp(path, "/api/info"))
         http_reply(c, "200 OK", "application/json", g_v.info, strlen(g_v.info));
-    else if (!strcmp(path, "/api/firmwares")) {
+    else if (!strcmp(path, "/api/mix"))
+        http_reply(c, "200 OK", "application/json", g_v.mix, strlen(g_v.mix));
+    else if (!strcmp(path, "/api/fx")) {
+        char *j = engine_fx_modules();
+        json_reply(c, "200 OK", j ? j : "{\"midi\":[],\"audio\":[]}");
+        free(j);
+    } else if (!strcmp(path, "/api/firmwares")) {
         char *j = engine_firmwares();
         json_reply(c, "200 OK", j ? j : "{\"firmwares\":[]}");
         free(j);
@@ -327,7 +364,8 @@ static int ws_in(client_t *c)
                 ws_send(c, 0xA, NULL, 0, d, plen > 125 ? 125 : plen);
             else if (op == 0x2)
                 for (k = 0; k + 4 <= plen; k += 4)
-                    if (d[k] >= 1 && d[k] <= 5)   /* KEY LEAN BTN ENC MASTER (fwrt.h FWI_*) only */
+                    if ((d[k] >= 1 && d[k] <= 5) || (d[k] >= ENG_OP_ACTIVE && d[k] <= ENG_OP_LAST))
+                        /* KEY LEAN BTN ENC MASTER (fwrt.h FWI_*) and the Mix & FX ops (engine.h ENG_OP_*) only */
                         engine_panel(d[k], d[k + 1], (int16_t)(d[k + 2] | d[k + 3] << 8));
         }
         off += h + 4 + plen;
@@ -412,6 +450,26 @@ static void push(client_t *c)
         m[0] = 2;
         memcpy(m + 1, c->leds, 45);
         ws_send(c, 0x2, NULL, 0, m, sizeof m);
+    }
+    if (c->mix_seq != g_v.mix_seq && g_v.mix[0]) {
+        c->mix_seq = g_v.mix_seq;
+        ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.mix, strlen(g_v.mix));
+    }
+    if (c->meters_seq != g_v.meters_seq) {
+        uint8_t m[8];
+        c->meters_seq = g_v.meters_seq;
+        m[0] = 3;
+        memcpy(m + 1, g_v.meters, 7);
+        ws_send(c, 0x2, NULL, 0, m, sizeof m);
+    }
+    {   /* the slots' mini screens (engine.c view_live: 48 x 48, at most 4 a second each) */
+        int s;
+        for (s = 0; s < 3; s++)
+            if (c->mini_seq[s] != g_v.mini_seq[s] && c->out_n - c->out_off < LAG) {
+                const uint8_t hdr[3] = { 4, (uint8_t)s, ENG_MINI };
+                c->mini_seq[s] = g_v.mini_seq[s];
+                ws_send(c, 0x2, hdr, 3, g_v.mini[s], sizeof g_v.mini[s]);
+            }
     }
     if (c->lcd_seq != g_v.lcd_seq && c->out_n - c->out_off < LAG) {
         int y0 = 0, y1 = 239;

@@ -6,7 +6,8 @@
  *   states/<id>/ flash.bin (the firmware's flash as it was left), state-NN.bin (the 32 state slots), each with a
  *                .json beside it (id, version, sha256, saved)
  *   move/        settings.bin (rfm1cs's settings image), library.rmvl (its library blob), open-project (the slot),
- *                projects/move-project-NN.rfmmove (rfm1cs's project files, RMVP)
+ *                projects/move-project-NN.rfmmove (rfm1cs's project files, RMVP), and beside each
+ *                move-project-NN.fx.json: its FX modules' own state (get_param "state"; R_PROJECT_LOADED's text)
  *
  * Writes go through a temporary file and a rename, so a power cut leaves the old file or the new one. */
 #ifndef RFM14_STORAGE_H
@@ -63,6 +64,10 @@ enum {
                            * value: 1..99) as it goes, then back as R_DL_DONE: ok (err), ptr: the new cat_t */
     J_NET_SCAN,           /* text: the keep list -> back as R_CATALOG, ptr: the new cat_t */
     R_INDEX, R_DL_PROGRESS, R_DL_DONE, R_CATALOG,
+    /* (the storage thread's again) Schwung FX (fx.h) */
+    J_FX_OPEN,            /* obj: the module (fx_mod_t), slot, index (kind), value (a generation): back with ptr (the
+                           * fx_inst_t made, NULL with err) */
+    J_FX_FREE,            /* ptr: an fx_inst_t closed (no result) */
 };
 typedef struct st_job {
     int kind, slot, index, value, act;
@@ -90,6 +95,8 @@ st_job_t *st_job_new(int kind);
 void st_job_free(st_job_t *j);
 /* the projects at start (the main thread, before the worker): the used slots; the open slot's blob into *blob */
 uint32_t st_projects_scan(int open_slot, uint8_t **blob, uint32_t *n);
+/* a project's FX state file (move/projects/move-project-NN.fx.json), slot 0..31 */
+void st_fx_state_path(char *out, size_t cap, int slot);
 /* the states a firmware has stored (bit k: state-k), any thread */
 uint32_t st_states_used(const char *id);
 

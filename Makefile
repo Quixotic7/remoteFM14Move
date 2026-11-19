@@ -81,11 +81,12 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
+            src/fx.c
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
-.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package
-in-all: in-tools in-fw in-testfw in-ref in-host
+.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods
+in-all: in-tools in-fw in-testfw in-ref in-host in-fxmods
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT)
@@ -126,7 +127,8 @@ build/gen/bridge_page.h: $(MR)/web/bridge.html
 	mkdir -p build/gen
 	cd $(MR)/web && xxd -i bridge.html | sed 's/bridge_html/mr_bridge_page/g' > $(abspath $@)
 
-HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -DMR_PLAT_MAIN=mr_plat_main
+SW := third_party/schwung-api
+HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) -DMR_PLAT_MAIN=mr_plat_main
 HOST_LIBS = -rdynamic -ldl -lm -lpthread
 
 build/%/remotefm1-host: $(HOST_SRC) $(HOST_HDR) $(CS_SRC) $(MR_SRC) $(MR)/device/plat_sim.c $(MR)/device/plat_move.c \
@@ -139,9 +141,25 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 	mkdir -p build/move
 	$(CC) -O2 $(WARN) -static -DHEAL_HOST='"remotefm1-host"' $< -o $@
 
-build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h
+build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) -Isrc -o $@ tests/unit.c src/minijson.c src/mdns.c src/sha256.c -lm -lpthread
+	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT -rdynamic -o $@ tests/unit.c src/minijson.c src/mdns.c \
+	    src/sha256.c src/fx.c -lm -lpthread -ldl
+
+# the test FX modules (the simulator's "installed Schwung modules"): Schwung's own arp, chord and freeverb (MIT, their
+# sources at the commit third_party/schwung-api names) and two of ours (crashfx: a crash in create; hogfx: CPU)
+FXM := build/fxmods
+FXM_SO := $(FXM)/midi_fx/arp/dsp.so $(FXM)/midi_fx/chord/dsp.so $(FXM)/audio_fx/freeverb/freeverb.so \
+          $(FXM)/audio_fx/crashfx/crashfx.so $(FXM)/audio_fx/hogfx/hogfx.so
+in-fxmods: $(FXM_SO)
+$(FXM)/midi_fx/%/dsp.so: tests/fxmods/midi_fx/%/dsp/*.c tests/fxmods/midi_fx/%/module.json
+	mkdir -p $(dir $@)
+	cp tests/fxmods/midi_fx/$*/module.json $(dir $@)
+	$(CC) -O2 -shared -fPIC -w -I$(SW) -o $@ tests/fxmods/midi_fx/$*/dsp/*.c -lm
+$(FXM)/audio_fx/%.so: tests/fxmods/audio_fx/%.c
+	mkdir -p $(dir $@)
+	cp $(dir $<)module.json $(dir $@)
+	$(CC) -O2 -shared -fPIC -w -I$(SW) -o $@ $< -lm
 
 build/tools/wsprobe: tests/wsprobe.c
 	mkdir -p build/tools

@@ -1,0 +1,3 @@
+{ "id": "hogfx", "name": "CPU Hog", "version": "0.0.1", "dsp": "hogfx.so",
+  "capabilities": { "component_type": "audio_fx", "chain_params": [
+    { "key": "spin_us", "name": "Spin", "type": "int", "min": 0, "max": 2000, "default": 1500 } ] } }

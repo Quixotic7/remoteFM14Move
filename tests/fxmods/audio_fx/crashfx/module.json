@@ -1,0 +1,2 @@
+{ "id": "crashfx", "name": "Crash Test", "version": "0.0.1", "dsp": "crashfx.so",
+  "capabilities": { "component_type": "audio_fx", "chain_params": [] } }
