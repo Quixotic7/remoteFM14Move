@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 SHA=$(sha256sum "$IN" | cut -d' ' -f1)
 D="$OUTROOT/$SHA"
 BSTAMP=$(cat tools/build_fw.sh fw/fwglue.c src/rfm1m.h | sha256sum | cut -c1-16)
-STAMP=$(cat tools/catalog_fw.sh tools/fwrun.c src/fwrt.c src/fwrt.h | sha256sum | cut -c1-16)-$BSTAMP
+STAMP=$(cat tools/catalog_fw.sh tools/fwrun.c src/fwrt.c src/fwrt.h src/fsvc.c src/fsvc.h | sha256sum | cut -c1-16)-$BSTAMP
 if [ -f "$D/result.json" ] && [ "$(cat "$D/stamp" 2>/dev/null)" = "$STAMP" ]; then
     exit 0
 fi
@@ -54,18 +54,34 @@ G=$(objdump -T "$SO" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
 if [ -n "$G" ] && [ "$(printf '%s\nGLIBC_2.35\n' "$G" | sort -V | tail -1)" != GLIBC_2.35 ]; then
     result false "needs $G (the Move has 2.35)" "" "" "$G"
 fi
-run=$(timeout 300 build/tools/fwrun "$SO" --pcm "$D/fwrun.pcm" 2>"$D/fwrun.err"); rc=$?
-ref=$(timeout 600 build/ref/rfm1_run --wav "$D/wasm3.wav" "$IN" 2>/dev/null | head -1)
+# a Fantasy CFW ("fs1" in its manifest's needs: FM1VST docs/VIRTUAL-CARTS.md) runs with a RemoteFM1 folder: a fresh
+# one for each run (audio/ with build/testaudio's WAVs when there: a scratch copy, never in git; code/<id>/, data/<id>/),
+# served as rfm1_run --folder serves it; what it wrote there must be the same too
+FA=""; FB=""; FOLDER=""
+if build/tools/rfm1info "$IN" --manifest | tr -d ' \n\t' | grep -q '"needs":\[[^]]*"fs1"'; then
+    ID=$(build/tools/rfm1info "$IN" --field id)
+    mkfolder() { f=$(mktemp -d); mkdir -p "$f/audio" "$f/code/$ID" "$f/data/$ID"
+                 for w in build/testaudio/*.wav; do [ -f "$w" ] && cp "$w" "$f/audio/"; done; echo "$f"; }
+    FA=$(mkfolder); FB=$(mkfolder)
+    FOLDER="a Fantasy CFW, run with a RemoteFM1 folder of $(ls "$FA/audio" | wc -l | tr -d ' ') WAVs"
+fi
+run=$(timeout 300 build/tools/fwrun "$SO" --pcm "$D/fwrun.pcm" ${FA:+--folder "$FA"} 2>"$D/fwrun.err"); rc=$?
+ref=$(timeout 600 build/ref/rfm1_run --wav "$D/wasm3.wav" ${FB:+--folder "$FB"} "$IN" 2>/dev/null | head -1)
 a=$(tail -c +45 "$D/wasm3.wav" 2>/dev/null | md5sum | cut -d' ' -f1)
 b=$(md5sum < "$D/fwrun.pcm" | cut -d' ' -f1)
 same=0; [ -s "$D/fwrun.pcm" ] && [ "$a" = "$b" ] && same=1
+if [ -n "$FA" ]; then
+    [ $same = 1 ] && ! diff -r "$FA" "$FB" >/dev/null && same=2
+    run=$(printf '%s' "$run" | tr '\n' ' ' | sed 's/  */ /g')
+fi
 rm -f "$D/fwrun.pcm" "$D/wasm3.wav"
 if [ $rc != 0 ]; then
     result false "does not boot or run: $(tr '\n' ' ' < "$D/fwrun.err" | cut -c1-200) (exit $rc)" "$run" "$ref" "$G"
 fi
 case "$run" in *" 0 LCD writes"*) result false "boots, but never writes its screen" "$run" "$ref" "$G";; esac
+[ $same = 2 ] && result false "what it wrote in its folder differs from wasm3's" "$run" "$ref" "$G"
 [ $same = 1 ] || result false "its PCM differs from wasm3's" "$run" "$ref" "$G"
 # a firmware silent on the default chord (one that plays only from its own sequencer, or needs another input) passes
 # when wasm3 is just as silent: the same PCM, the screen written; the report says so
-case "$run" in *"rms 0.0000"*) result true "silent on the default chord, as in wasm3" "$run" "$ref" "$G";; esac
-result true "" "$run" "$ref" "$G"
+case "$run" in *"rms 0.0000"*) result true "silent on the default chord, as in wasm3${FOLDER:+; $FOLDER}" "$run" "$ref" "$G";; esac
+result true "$FOLDER" "$run" "$ref" "$G"

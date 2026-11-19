@@ -4,6 +4,12 @@
  *   fwrun FW.rfm1m [--pcm OUT.raw] [--frame-ms 15]
  *       FM1VST rfm1_run's default run, call for call: a fresh flash, init, 4 s idle, keys 9 13 16 (D4 F#4 A4) at
  *       velocity 100 for 5 s, 200 ms more. OUT gets every block (s16 stereo interleaved), as rfm1_run --wav's data.
+ *   fwrun FW.rfm1m ... [--folder DIR] [--press LABEL@MS[+D]].. [--ui]
+ *       --folder: a Fantasy CFW's RemoteFM1 folder (rfm1_host_1, src/fsvc.c), as FM1VST rfm1_run's --folder: audio/,
+ *       code/<id>/, data/<id>/ under DIR, each request answered one device ms after it was made (so the run is the
+ *       same as rfm1_run --folder's, byte for byte). Without it the file API answers FS_ENOFOLDER.
+ *       --press: the firmware's button LABEL (its own name: PLAY, HOME ..) held from device ms MS for D ms (60).
+ *       --ui: the firmware's ui_info at the end. The line then says what the file API did.
  *   fwrun FW.rfm1m --replay LOG --frames N [--flash-in IMG] --pcm OUT.raw
  *       the host's input log (remotefm1-host --log-inputs) replayed: N frames rendered with every logged input put
  *       in before the same device ms. The host's own capture of that instance must be the same bytes.
@@ -12,8 +18,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
 #include <time.h>
 
+#include "../src/fsvc.h"
 #include "../src/fwrt.h"
 #include "wasm-rt.h"
 
@@ -44,7 +53,9 @@ static uint8_t *read_all(const char *p, size_t *n)
 
 int main(int argc, char **argv)
 {
-    const char *path = NULL, *pcm_path = NULL, *replay = NULL, *flash_in = NULL;
+    const char *path = NULL, *pcm_path = NULL, *replay = NULL, *flash_in = NULL, *folder = NULL;
+    struct { char label[16]; uint32_t at, dur; int b; } press[16];
+    int npress = 0, want_ui = 0;
     static fw_t fw;
     fw_obj_t *obj;
     char err[256];
@@ -62,16 +73,38 @@ int main(int argc, char **argv)
             want_frames = strtoull(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--flash-in") && i + 1 < argc)
             flash_in = argv[++i];
+        else if (!strcmp(argv[i], "--folder") && i + 1 < argc)
+            folder = argv[++i];
+        else if (!strcmp(argv[i], "--ui"))
+            want_ui = 1;
+        else if (!strcmp(argv[i], "--press") && i + 1 < argc && npress < 16) {
+            const char *a = argv[++i], *at = strchr(a, '@'), *plus;
+            if (!at || at == a || at - a >= 16)
+                return 2;
+            snprintf(press[npress].label, sizeof press[npress].label, "%.*s", (int)(at - a), a);
+            press[npress].at = (uint32_t)strtoul(at + 1, NULL, 10);
+            press[npress].dur = (plus = strchr(at, '+')) ? (uint32_t)strtoul(plus + 1, NULL, 10) : 60u;
+            npress++;
+        }
         else if (!path && argv[i][0] != '-')
             path = argv[i];
         else {
-            fprintf(stderr, "usage: fwrun FW.rfm1m [--pcm OUT] [--replay LOG --frames N [--flash-in IMG]]\n");
+            fprintf(stderr, "usage: fwrun FW.rfm1m [--pcm OUT] [--replay LOG --frames N [--flash-in IMG]] [--folder DIR]"
+                            " [--press LABEL@MS[+D]].. [--ui]\n");
             return 2;
         }
     }
     if (!path)
         return 2;
     wasm_rt_init();
+    if (folder) {
+        struct stat dst;
+        if (stat(folder, &dst) != 0 || !S_ISDIR(dst.st_mode)) {
+            fprintf(stderr, "fwrun: --folder %s: not a folder\n", folder);
+            return 2;
+        }
+        fsvc_set_root(folder);   /* (no dispatcher: each request done one device ms late, in the pump) */
+    }
     t0 = now_s();
     if (!(obj = fw_obj_open(path, err, sizeof err))) {
         fprintf(stderr, "fwrun: %s\n", err);
@@ -99,6 +132,22 @@ int main(int argc, char **argv)
         free(img);
     }
     t_boot = now_s() - t0;
+    for (i = 0; i < npress; i++) {   /* a label -> its matrix button (fw_panel_ids: label order -> matrix) */
+        uint8_t btn_id[FW_NBTN], enc_id[FW_NENC];
+        int8_t enc_dir[FW_NENC];
+        int k;
+        fw_panel_ids(&fw, btn_id, enc_id, enc_dir);
+        press[i].b = -1;
+        for (k = 0; k < FW_NBTN; k++)
+            if (!strcasecmp(fw.btn_name[k], press[i].label))
+                press[i].b = btn_id[k];
+        if (press[i].b < 0) {
+            fprintf(stderr, "fwrun: --press %s: the firmware has no such button\n", press[i].label);
+            return 2;
+        }
+        fw_in(&fw, FWI_BTN, press[i].b, 1, 0, (uint64_t)press[i].at * FW_FS / 1000u);
+        fw_in(&fw, FWI_BTN, press[i].b, 0, 0, (uint64_t)(press[i].at + press[i].dur) * FW_FS / 1000u);
+    }
     if (pcm_path && !(pcm = fopen(pcm_path, "wb"))) {
         fprintf(stderr, "fwrun: cannot write %s\n", pcm_path);
         return 2;
@@ -169,6 +218,18 @@ int main(int argc, char **argv)
            fw.id, fw.version, chord_frames ? sqrt(sumsq / (double)(chord_frames * 2)) : 0.0, peak,
            fw_lcd_writes(&fw) - lcd0, (double)frames / FW_FS / wall, fw.worst_us, t_load * 1000, t_boot * 1000,
            fw.dead ? " (DEAD)" : "");
+    if (fw.wasi && fw.wasi->fs) {
+        fsvc_stats_t st;
+        fsvc_stats(fw.wasi->fs, &st);
+        printf("  files: %u requests, %u answered, %u refused, %u busy, %u in flight; %llu bytes read, %llu written\n",
+               st.made, st.served, st.refused, st.busy, st.inflight, (unsigned long long)st.bytes_in,
+               (unsigned long long)st.bytes_out);
+    }
+    if (want_ui) {
+        char ui[1024];
+        fw_ui_info(&fw, ui, sizeof ui);
+        printf("  ui: %s\n", ui);
+    }
     if (fw.dead)
         fprintf(stderr, "fwrun: %s\n", fw.err);
     fw_destroy(&fw);
