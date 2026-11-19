@@ -113,7 +113,11 @@ make test
 
 - `build/tools/unit`: the manifest reader, the mixer and its limiter, the mDNS answers; SHA-512 and Ed25519 (RFC 8032's
   vectors, a changed bit refused, S + L refused); the test catalog's index.json.sig (good; a changed index, a short
-  one, no .sig, a damaged one refused; not the release key's);
+  one, no .sig, a damaged one refused; not the release key's); a Fantasy CFW's file API (src/fsvc.c): the path rules
+  (.., ., //, a trailing /, \\, NUL, bad UTF-8, outside the three areas), the manifest's folders, symlinks out, every
+  op, LIST's order, paging and never-split entries, the limits (1 MiB, 32 in flight, a buffer past the memory),
+  cancel, answers only in the pump (inline one ms late; from another thread only at the next pump), an instance freed
+  while its request runs;
 - `tests/bitident.sh`: each compiled firmware against FM1VST's `rfm1_run` (wasm3, `origin/rfm1-manager`): the same
   run's PCM, the same bytes;
 - the glibc each Move binary needs (the Move has 2.35);
@@ -144,8 +148,51 @@ make test
 - `tests/page_e2e.mjs` (on the Mac: the host in the image, headless Chromium): the page at `http://remotefm1.local:PORT/`
   (not a secure context, as on a real Move): no 404, no exception or console error, nothing asked of the browser
   (AudioContext, Web MIDI, WebUSB, microphone), the panel and the live screen, a click on a drawn key sounds in the
-  simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed. Its
-  screenshot: `docs/move-page.png`.
+  simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed; a WAV added
+  through the settings sheet's Audio files reaches the Move's audio/ and its trash button deletes it. Its
+  screenshot: `docs/move-page.png`;
+- `tests/fantasy_e2e.sh` (needs `make testcat-v`: Elasticat and Ripple from the site's catalog, signed with the test
+  key): the page's `/api/files/audio` (an upload with spaces and brackets in its name; refused: not a WAV, .txt,
+  ../, a hidden name, a slash, over 256 MB; a delete), the Move's catalog downloads both, Elasticat in slot 1 reads
+  the uploaded WAV through rfm1_host_1, writes its own data/elasticat/ (nothing else), plays the WAV from the page's
+  key, Ripple in slot 2 reads its code/ripple/, no late block, both back after a restart (Elasticat from what it
+  wrote), and a Move with 300 MB available refuses Elasticat (280 MB) and still loads Ripple.
+
+## Fantasy CFWs (Elasticat, Ripple)
+
+A Fantasy CFW (FM1VST docs/VIRTUAL-CARTS.md) is a host-only `.rfm1` (`"virtual": true`) that may use up to 512 MiB of
+memory and reads the RemoteFM1 folder through the import module `rfm1_host_1` (`"needs": ["fs1"]`). The Move runs
+them like the others (wasm2c, the catalog, the slots), with:
+
+- **The folder:** the RemoteFM1 folder's `audio/` (every cart reads it: the samples), `code/<id>/` (the cart's own
+  scripts, read: Ripple's `droplets/*.lua`), `data/<id>/` (its own files, read and write: Elasticat's projects and
+  settings). Only what its manifest's `folders` lists; `..`, `.`, empty segments, `\`, NUL, bad UTF-8 and symlinks out
+  of the area refused. A cart's `code/<id>/` and `data/<id>/` are made when it loads; nothing is installed into
+  `code/` (no host does: carts ship their built-in scripts inside the .rfm1, the user adds their own).
+- **The file API** (src/fsvc.c; FM1VST core-glue/common/rfm1_host.h, its tools/rfm1_run `--folder` mirrored): STAT,
+  LIST, READ, WRITE, DELETE, MKDIR; at most 32 requests in flight, 1 MiB each. The imports run inside a call into the
+  module and only check and note a request. Before each `rfm1_tick` (between two calls) the engine's thread hands the
+  new requests to the storage module's **file thread** (`rfm1-files`: never the engine or the audio thread, never behind
+  a firmware load) and copies the finished ones into the module's memory (at most 1 MiB a device ms); so a request is
+  never answered during a call, and its buffer is written only between calls. A cart freed while its requests run is
+  kept until they return. `fs_changed` moves when the page adds or removes a sample.
+- **Memory:** wasm2c (explicit bounds checks) callocs the whole declared memory, which the host's mlockall makes real,
+  locked RAM at once: Elasticat 280 MB, Ripple 16 MB. Before an instance is made the host compares `memory_pages`
+  (build_fw.sh writes it in the `.json`) with MemAvailable less 160 MB and refuses with "<id> needs N MB of memory, M MB
+  free" instead of being killed. Three Elasticats (840 MB) fit the Move's ~1.7 GB.
+- **The catalog:** rfm1info accepts `rfm1_host_1`'s four imports only with `virtual` and `fs1`; build_fw.sh passes
+  wasm2c's import instances (WASI's, rfm1_host_1's, or none: Elasticat imports no WASI at all) to its instantiate;
+  catalog_fw.sh runs a virtual cart with a fresh RemoteFM1 folder for each engine (build/testaudio's WAVs when there:
+  a scratch copy of a few samples, never in git), and its PCM and what it wrote must be wasm3's (rfm1_run
+  `--folder`), byte for byte; index.json marks it `virtual` with `needs`, `wants`, `folders` and `memory_mib`.
+  `/api/firmwares` marks it `virtual` for the page.
+- **Getting samples on:** the settings sheet's **Audio files** (js/movefiles.js): the list, Add WAV files, a delete;
+  `GET /api/files/audio`, `POST /api/files/audio/<name>` (the file as the body: WAV only, a plain name ending .wav,
+  256 MB at most, 64 MB left free; streamed into a temporary file, renamed when whole), `DELETE /api/files/audio/<name>`.
+  The full file browser is later (phase 2).
+- **Checked offline:** `tools/fwrun FW.rfm1m --folder DIR [--press PLAY@1000] [--ui]`: the same run as rfm1_run's
+  `--folder` (each request one device ms late), with what the file API did and the cart's ui_info.
+- **Not given yet:** `ain1` (audio input: Elasticat's INPUT machine and REC are silent; its `wants`, so it runs).
 
 ## Schwung FX (phase 2b)
 
@@ -214,6 +261,8 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `tools/sign_index.py` | index.json -> index.json.sig (make catalog, make testcat; tools/bundle.py checks it) |
 | `tools/build_move_catalog.py`, `tools/catalog_fw.sh`, `tools/bundle.py`, `module/bundle.txt` | the Move catalog; the module's starter set |
 | `src/fx.c` | Schwung FX: the installed modules, their parameters, loading (with the crash probe), the calls |
+| `src/fsvc.c` | a Fantasy CFW's file API (rfm1_host_1): the sandbox, the requests, the pump between calls; served on the storage module's file thread |
+| `web/move/js/movefiles.js` | the settings sheet's Audio files (the Move's audio/: list, add, delete) |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
 | `src/mdns.c` | `remotefm1.local` |
@@ -234,6 +283,8 @@ states/<id>/ flash.bin (the flash as it was left), state-NN.bin (the 32 state sl
 move/        settings.bin, library.rmvl, open-project, projects/move-project-NN.rfmmove
 catalog/     index.json, index.json.sig (the catalog's index and its signature, as last downloaded)
 catalog-url  (optional) the catalog's base URL, first line
+audio/       a Fantasy CFW's samples, every cart reads them (the page's Audio files puts WAVs here)
+code/<id>/   a Fantasy CFW's own scripts and assets (read); data/<id>/ its own files (read and write)
 ```
 
 ## The page

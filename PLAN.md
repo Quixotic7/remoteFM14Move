@@ -206,6 +206,14 @@ From Schwung's docs:
   (move-project-NN.fx.json) since rfm1cs's project blob has room only for names and values. Not yet tried on a Move
   with the user's real modules.
 
+## Fantasy CFWs (owner, 2026-11-18: "build in the framework to support fantasy firmwares")
+- **Built (simulator only):** README.md, "Fantasy CFWs". Elasticat 0.6.96 and Ripple 0.6.1 build, pass the catalog's
+  check (the same PCM and the same files written as wasm3 with a RemoteFM1 folder) and run in the slots with the
+  folder's audio/, code/<id>/ and data/<id>/ (src/fsvc.c, the storage module's file thread). The page gets a minimal
+  Audio files list (upload, delete); the file browser stays in phase 2.
+- **Open:** audio input (`ain1`) for Elasticat's INPUT and REC; a Fantasy CFW badge on the Move's own browser
+  (rfm1cs has no field for it); the real Move: the memory (280 MB locked per Elasticat), CPU, SD-card reads.
+
 ## Design source
 The session "RemoteFM1 Move Design" (local_05fd5546) designs firmware access and management: the on-Move menus and
 the web manager. Its note (move-fw-browser-design.md, here) overrides this plan's proposals for shortcuts, layouts,
