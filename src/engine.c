@@ -1470,6 +1470,16 @@ static void view_info(void)
         {   /* the live labels (FM1CORE_LBL_* order; null: not given), and their epoch (0: none) */
             const uint32_t e = fw_labels_epoch(fw);
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"lseq\":%u", e);
+            if (C.test_api && e && n < (int)sizeof tmp - 49 * 40) {   /* (tests: the labels as rfm1cs holds them) */
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"move_labels\":[");
+                for (k = 0; k < RFM_MOVE_LBL_N; k++) {
+                    mj_escape(S->core.lbl_has[k] ? S->core.lbl[k] : "", esc, sizeof esc);
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%s%s%s%s", k ? "," : "",
+                                  S->core.lbl_has[k] ? "\"" : "", S->core.lbl_has[k] ? esc : "null",
+                                  S->core.lbl_has[k] ? "\"" : "");
+                }
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+            }
             if (e) {
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"labels\":[");
                 for (k = 0; k < FW_LBL_N && n < (int)sizeof tmp - 64; k++) {
@@ -1978,11 +1988,17 @@ static void publish(uint32_t now)
     {   /* live labels: all 49 (knobs, buttons, keys: DYNAMIC-LABELS order) to rfm1cs (0.5.6), which shows them */
         const uint32_t e = fw_labels_epoch(fw);
         if (e && e != fw->lbl_epoch) {
+            static char txt[RFM_MOVE_LBL_N][16];   /* (fw_label's text is one buffer, rewritten by each call: a copy
+                                                    * each, else every label is the last one read: "SEL/KEYS") */
             const char *lbl[RFM_MOVE_LBL_N];
             int r;
             fw->lbl_epoch = e;
-            for (r = 0; r < RFM_MOVE_LBL_N; r++)
-                lbl[r] = fw_label(fw, r);
+            for (r = 0; r < RFM_MOVE_LBL_N; r++) {
+                const char *l = fw_label(fw, r);
+                lbl[r] = l ? txt[r] : NULL;
+                if (l)
+                    snprintf(txt[r], sizeof txt[r], "%s", l);
+            }
             rfm_move_set_labels(&S->core, lbl);
             rfm1cs_session_redraw(S, now);
             view_info();   /* (the page's labels) */
