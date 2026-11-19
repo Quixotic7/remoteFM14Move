@@ -1293,7 +1293,7 @@ static void *web_main(void *arg)
         struct pollfd pf[MAXC + 1];
         client_t *pc[MAXC + 1];
         int np = 0, i;
-        const uint64_t ms = now_ms();
+        uint64_t ms;
         pf[np].fd = g_listen, pf[np].events = POLLIN, pc[np++] = NULL;
         for (i = 0; i < MAXC; i++)
             if (g_c[i].fd >= 0) {
@@ -1302,6 +1302,7 @@ static void *web_main(void *arg)
                 pc[np++] = &g_c[i];
             }
         poll(pf, (nfds_t)np, 20);
+        ms = now_ms();
         if (pf[0].revents & POLLIN)
             for (;;) {
                 const int fd = accept(g_listen, NULL, NULL);
@@ -1332,6 +1333,7 @@ static void *web_main(void *arg)
             if (pc[i]->fd == pf[i].fd && (pf[i].revents & (POLLIN | POLLHUP | POLLERR)))
                 cread(pc[i]);
         engine_view(&g_v, &g_vseq);
+        ms = now_ms();   /* (cread and cwrite stamp born with now_ms(): ages from a time taken before them underflowed) */
         for (i = 0; i < MAXC; i++) {
             client_t *c = &g_c[i];
             if (c->fd < 0)
@@ -1340,9 +1342,9 @@ static void *web_main(void *arg)
                 push(c);
             else if (c->dl_fd > 0 || c->zip) {   /* a download under way: more while the page takes it */
                 stream_fill(c);
-                if (ms - c->born > 30000u)
+                if (ms > c->born && ms - c->born > 30000u)
                     c->closing = 2;   /* (a reader gone quiet for 30 s) */
-            } else if (!c->ws && ms - c->born > 10000u && c->out_n <= c->out_off)
+            } else if (!c->ws && ms > c->born && ms - c->born > 10000u && c->out_n <= c->out_off)
                 c->closing = 2;   /* (a request that never came whole) */
             if (c->out_n > c->out_off)
                 cwrite(c);

@@ -57,6 +57,9 @@ mkwav "$T/kick.wav" 22050
 c=$(put "$T/kick.wav" 'path=audio/My%20Kits&name=kick%20(1).wav')
 [ "$c" = 201 ] && cmp -s "$T/kick.wav" "$ROOT/audio/My Kits/kick (1).wav" && [ -z "$(ls -A "$ROOT/audio/My Kits" | grep -v '^kick (1).wav$')" ] \
     && ok "put a WAV into audio/My Kits/ (a space and brackets): 201, the same bytes, no temporary file left" || bad "put: $c $(cat "$T/out")"
+mkwav "$T/slow.wav" 30000   # (120 KB at 200 KB/s: the body comes over many reads, as it does over Wi-Fi)
+c=$(code POST 'put?path=audio&name=slow.wav' --data-binary "@$T/slow.wav" --limit-rate 200k)
+[ "$c" = 201 ] && cmp -s "$T/slow.wav" "$ROOT/audio/slow.wav" && ok "put a WAV that arrives slowly: 201, the same bytes" || bad "a slow put: $c $(cat "$T/out")"
 printf 'hello\n' > "$T/notes.txt"
 [ "$(put "$T/notes.txt" 'path=audio&name=notes.txt')" = 415 ] && [ ! -f "$ROOT/audio/notes.txt" ] && ok "audio/ takes WAV and AIFF only: a text file 415 ($(err))" || bad "audio/ text: $(cat "$T/out")"
 mkdir -p "$ROOT/data/myapp"
