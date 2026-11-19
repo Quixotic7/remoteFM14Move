@@ -149,6 +149,7 @@ typedef struct {
     uint8_t send[3];           /* to audio FX 1..3, 0..127 (MIX) */
     uint32_t notes;            /* note-ons it was given (the status: tests) */
     int peak;                  /* this meter window's, after level and pan */
+    int pk_acc, pk_last;       /* this second's peak so far, the last second's (the status: tests) */
     uint32_t mini_writes, mini_ms;   /* the page's mini screen: the LCD writes it was made from, when */
 } slot_t;
 
@@ -180,7 +181,8 @@ typedef struct {
     uint8_t val[RFM_MOVE_FX_PARAMS];   /* FX_PARAM's values (applied to an instance as it comes in) */
     uint16_t filt;             /* MIDI FX: the tracks it acts on (ROUTE) */
     int last_track;            /* MIDI FX: the track of the last message it took (its generated notes' track) */
-    int last_live;             /* MIDI FX: that message came from the pads played live (its notes go to the active slot) */
+    int last_live;             /* MIDI FX: where the last message it took was going: -1 the sequencer's (the filters),
+                                * else the slot the pads played live (its own notes go there too) */
     uint64_t ns_mark;
     uint32_t cpu_permille, over;
     int peak;                  /* audio FX: its return's peak, this meter window */
@@ -466,8 +468,9 @@ static void slot_midi(int s, const uint8_t *b, int n, uint32_t frame)
 /* a sequencer message (track 1..16) after MIDI FX slot `from`: through the rest of the chain (each slot acts on the
  * tracks in its filter and passes the others through), then to every sounding firmware whose filter has the track */
 /* MIDI down the MIDI FX chain from slot `from`: each MIDI FX acts on the tracks in its filter and passes the rest on.
- * What comes out goes to the firmwares: the sequencer's (live 0) to every sounding slot whose track filter has the
- * track; the pads played live (live 1) to the active slot only, as without MIDI FX */
+ * What comes out goes to the firmwares: the sequencer's (live -1) to every sounding slot whose track filter has the
+ * track; the pads played live (live: the slot, the active one, or a latched note's own: rfm1cs 0.5.4 dest) to that
+ * slot only, as without MIDI FX */
 static void chain_midi(int from, int track, int live, const uint8_t *b, int n, uint32_t frame)
 {
     int k, s;
@@ -486,9 +489,9 @@ static void chain_midi(int from, int track, int live, const uint8_t *b, int n, u
             return;
         }
     }
-    if (live) {
-        if (SL[g_active].on)
-            slot_midi(g_active, b, n, frame);
+    if (live >= 0) {
+        if (live < NSLOT && SL[live].on)
+            slot_midi(live, b, n, frame);
         return;
     }
     for (s = 0; s < NSLOT; s++)
@@ -502,14 +505,16 @@ static void route_midi(const rfm_move_act_t *a)
         return;
     if (a->track == 0) {   /* the pads played live (MIDI, Control, the sequencer's live notes): through the MIDI FX as
                             * the track of their channel (the sequencer's tracks play on their own channels), then to
-                            * the active slot; system messages straight there */
+                            * the active slot, or (rfm1cs 0.5.4) dest's: a latched note's off goes to the slot it was
+                            * played on, whichever is active now; system messages straight there */
+        const int to = a->dest >= 1 && a->dest <= NSLOT ? a->dest - 1 : g_active;
         if (a->bytes[0] >= 0x80 && a->bytes[0] < 0xF0 && a->n <= 3)
-            chain_midi(0, (a->bytes[0] & 0x0F) + 1, 1, a->bytes, a->n, a->frame);
-        else if (SL[g_active].on)
-            slot_midi(g_active, a->bytes, a->n, a->frame);
+            chain_midi(0, (a->bytes[0] & 0x0F) + 1, to, a->bytes, a->n, a->frame);
+        else if (SL[to].on)
+            slot_midi(to, a->bytes, a->n, a->frame);
         return;
     }
-    chain_midi(0, a->track, 0, a->bytes, a->n, a->frame);   /* the sequencer's: the MIDI FX, then the filters */
+    chain_midi(0, a->track, -1, a->bytes, a->n, a->frame);   /* the sequencer's: the MIDI FX, then the filters */
 }
 
 /* each MIDI FX's tick (once a block): its generated notes take its track (its filter's one track, else the track it
@@ -673,7 +678,7 @@ static void fx_opened(st_job_t *j)
     x->opening = 0;
     fx_drop(kind, s);
     x->run = j->ptr;
-    x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0, x->last_live = 0;
+    x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0, x->last_live = -1;
     fx_pend_apply(x);
     fx_apply(kind, s);
     fprintf(stderr, "engine: %s FX %d: %s\n", kind ? "audio" : "MIDI", s + 1, fx_inst_mod(x->run)->name);
@@ -1987,6 +1992,8 @@ static void render_block(uint32_t now)
             const int p = peak16(blk, FW_BLOCK * 2) * sl->level / 127;
             if (p > sl->peak)
                 sl->peak = p;
+            if (p > sl->pk_acc)
+                sl->pk_acc = p;
         }
         if (s == g_active) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page (editors) */
             uint32_t pk[64];
@@ -2119,10 +2126,12 @@ static void housekeeping(uint32_t now)
                 const uint64_t ns = sl->fw.ns_total - sl->ns_mark;
                 sl->ns_mark = sl->fw.ns_total;
                 sl->cpu_permille = (uint32_t)(ns / 1000u / (dt ? dt : 1));   /* us per ms = permille */
+                sl->pk_last = sl->pk_acc, sl->pk_acc = 0;
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n,
                               "%s{\"id\":\"%s\",\"cpu\":%.1f,\"worst_us\":%u,\"level\":%u,\"boot\":%u,"
-                              "\"states\":%u,\"dead\":%d", s ? "," : "", sl->fw.id, sl->cpu_permille / 10.0,
-                              sl->fw.worst_us, sl->level, sl->serial, S->core.fw.st_used[s], sl->fw.dead);
+                              "\"states\":%u,\"dead\":%d,\"peak\":%d,\"notes\":%u", s ? "," : "", sl->fw.id,
+                              sl->cpu_permille / 10.0, sl->fw.worst_us, sl->level, sl->serial, S->core.fw.st_used[s],
+                              sl->fw.dead, sl->pk_last, sl->notes);
                 if (sl->fw.wasi && sl->fw.wasi->fs) {   /* a Fantasy CFW's file API (fsvc.h) */
                     fsvc_stats_t fst;
                     fsvc_stats(sl->fw.wasi->fs, &fst);
@@ -2302,8 +2311,15 @@ static void *engine_main(void *arg)
         /* the FM-1 on USB-A (fm1link.c): its panel and MIDI in, the active slot's screen and LEDs out */
         fm1link_tick(now, g_active, SL[g_active].on ? &SL[g_active].fw : NULL);
         if (fm1link_changed()) {
+            static int was_linked;
+            const int linked = fm1link_linked();
             view_info();
             g_mix_ver++;
+            if (linked != was_linked) {   /* (rfm1cs 0.5.4: the Move's own screen says so, as the page does) */
+                was_linked = linked;
+                rfm_move_popup(&S->core, linked ? "FM-1 linked" : "FM-1 lost");
+                rfm1cs_session_redraw(S, now);
+            }
         }
         rfm1cs_session_tick(S, now);
         do_deferred();

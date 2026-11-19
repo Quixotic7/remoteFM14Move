@@ -146,6 +146,7 @@ static int parse_entry(const char *o, cat_ent_t *e)
     mj_string(o, "description", e->desc, sizeof e->desc);
     mj_string(o, "license", e->license, sizeof e->license);
     mj_string(o, "source_url", e->source_url, sizeof e->source_url);
+    e->virt = (v = mj_find(o, "virtual")) && !strncmp(v, "true", 4);
     if ((it = mj_find(o, "categories")) && *it == '[')
         while ((v = mj_elem(&it))) {
             int k;
@@ -468,6 +469,13 @@ cat_t *cat_build(const char *keep)
             snprintf(e->desc, sizeof e->desc, "%s %s. %s. Source: %s", f->name, f->version, f->license,
                      f->source_url);
             e->cat = 255;
+            {   /* (not in the index: its manifest says whether it is a Fantasy CFW) */
+                size_t jn = 0;
+                char *j = (char *)st_read(f->json, &jn);
+                const char *m = j ? mj_find(j, "manifest") : NULL, *v = m ? mj_find(m, "virtual") : NULL;
+                e->virt = v && !strncmp(v, "true", 4);
+                free(j);
+            }
         }
         e = &c->e[k];
         snprintf(e->installed, sizeof e->installed, "%s", f->version);
@@ -491,6 +499,7 @@ cat_t *cat_build(const char *keep)
         l->thumb = e->has_thumb ? e->thumb : NULL;
         l->cats = e->cats;
         l->cat = e->cat;
+        l->virt = e->virt;   /* (rfm1cs 0.5.4: the badge, step 16's filter) */
     }
     return c;
 }

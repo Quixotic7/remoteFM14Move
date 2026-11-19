@@ -215,8 +215,7 @@ From Schwung's docs:
   of 1152 frames at lead 5 (README.md, "Fantasy CFWs"); the firmware Editor on the page (SysEx both ways over /ws)
   and the file browser with the exports (README.md, "The page").
 - **Open:** the real Move: the input's latency measured (a loopback: line out to line in), the line in / mic
-  choice (Move Remote gives what the SPI mailbox holds); a Fantasy CFW badge on the Move's own browser
-  (rfm1cs has no field for it); the real Move: the memory (280 MB locked per Elasticat), CPU, SD-card reads.
+  choice (Move Remote gives what the SPI mailbox holds); the real Move: the memory (280 MB locked per Elasticat), CPU, SD-card reads.
 
 ## Design source
 The session "RemoteFM1 Move Design" (local_05fd5546) designs firmware access and management: the on-Move menus and

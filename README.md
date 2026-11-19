@@ -5,7 +5,7 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
 
 - **The firmwares** run as native code: each `.rfm1` is translated by wasm2c and compiled for the Move
   (`<id>-<version>.rfm1m`), with the same sound as the `.rfm1` in wasm3, bit for bit (tested).
-- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.3, in-process: FM-1
+- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.4, in-process: FM-1
   mode on the pads and knobs, MIDI, Control and the sequencer, and the projects view (Shift + step 1, or Track 1 held +
   step 1) with three firmware slots, their levels and their states.
 - **The hardware** is [Move Remote](https://github.com/Quixotic7/abletonmoveremote)'s device code, in-process: the SPI
@@ -189,6 +189,8 @@ make test
   and its name), the path rules, links out not followed, listed or zipped, firmwares/ and the root read-only, a
   running firmware's flash and the open project refused with the reason, 256 MB and the 64 MB floor
   (`RFM14_TEST_DISK_FREE_MB`, the test build only), no temporary file left.
+- `tests/latch_e2e.sh` (rfm1cs 0.5.4, latch per slot): MIDI mode, latch on, a chord on slot 1 (Felucca); slot 2
+  (ChoralRoot) made active: slot 1 keeps sounding, slot 2 plays its own note; latch off: both silent.
 
 ## An FM-1 on the Move's USB-A
 
@@ -211,8 +213,9 @@ as "Use my FM-1" does on remotefm1.com (src/fm1link.c, on the engine's thread; l
   knob, a page change in ~1-3 s, a busy screen ~3-4 times a second. The unit itself only sends small messages.
 - **Status:** `fm1` in /api/status, /api/info and /api/mix (linked, state, name, fw, fps: frames acknowledged a
   second, bps: bytes a second out, lost, sessions, ack times, USB-A counters); the page shows "FM-1 linked" in its
-  header (desktop) and says when it links or is lost. rfm1cs-abletonmove has no popup a host can raise, so the Move's
-  own screen says nothing.
+  header (desktop) and says when it links or is lost; so does the Move's own screen (rfm1cs 0.5.4's host popup).
+- **On the Move's screen** (rfm1cs 0.5.4 `rfm_move_popup`, on the engine's thread with a redraw): "FM-1 linked" /
+  "FM-1 lost", big, for a second, over any screen.
 - `--no-fm1` leaves USB-A to Move Remote as before.
 
 ## Fantasy CFWs (Elasticat, Ripple)
@@ -242,7 +245,8 @@ them like the others (wasm2c, the catalog, the slots), with:
   catalog_fw.sh runs a virtual cart with a fresh RemoteFM1 folder for each engine (build/testaudio's WAVs when there:
   a scratch copy of a few samples, never in git), and its PCM and what it wrote must be wasm3's (rfm1_run
   `--folder`), byte for byte; index.json marks it `virtual` with `needs`, `wants`, `folders` and `memory_mib`.
-  `/api/firmwares` marks it `virtual` for the page.
+  `/api/firmwares` marks it `virtual` for the page, and the core's list (`rfm_move_fw_t.virt`, rfm1cs 0.5.4) for the
+  Move's own browser: its diamond badge and step 16's filter.
 - **Getting samples on:** the settings sheet's **Files** section, **Add samples** (WAV or AIFF into audio/), or the
   page's file browser (below, "Files"). The older `GET /api/files/audio`, `POST` / `DELETE /api/files/audio/<name>`
   stay (WAV only, a plain name ending .wav).
@@ -299,7 +303,9 @@ sequencer's tempo and transport) and NULL everything else, with a tail of NULLs 
 - **MIDI FX:** the sequencer's MIDI (rfm1cs tags it with its track 1-16) runs through MIDI FX 1, 2, 3 in series; each
   acts on the tracks in its filter (one track or All) and passes the others on; `tick` once a block, its notes taking
   the slot's track (its one track, else the last it heard). Then each firmware's 16-track filter. Live pads and the page
-  play the active slot directly. On the engine thread, beside `rfm_move_seq_advance`.
+  play the active slot directly (through the MIDI FX of their channel's track); a latched note (rfm1cs 0.5.4: latch
+  per slot) stays on the slot it was played on when another one becomes active, and its note off goes there
+  (`rfm_move_act_t.dest`); the host's switch lets go of what the panel holds (keys, buttons) and nothing else. On the engine thread, beside `rfm_move_seq_advance`.
 - **Audio FX:** each firmware's block, after its level and pan (a balance; 64 is the old mix bit for bit), goes to the
   mix and, times its send, to the 3 buses; each bus is processed in place by its module (int16 stereo, 128 frames) and
   added back; then the limiter as before. A bus whose sends are all 0 adds nothing: the output is bit for bit the one
@@ -364,7 +370,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table) |
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
 | `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks: the audio source, the input sink, USB-A) |
-| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.3` |
+| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.4` |
 | `third_party/RemoteFM1` | RemoteFM1 at 32d03d6, branch `slow-link` (its `web/site`: the page; libremotefm1 for the FM-1 on USB-A) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
 

@@ -37,6 +37,7 @@ typedef struct {
     uint8_t thumb[RFM_MOVE_FW_THUMB_BYTES];
     int has_thumb;
     uint8_t cats, cat;
+    uint8_t virt;                    /* a Fantasy CFW (the index's / its manifest's "virtual": rfm_move_fw_t.virt) */
     int indexed;                     /* listed by the index (downloadable) */
     char *files;                     /* the index's files to install, "name sha256 size\n" each, the manifest last */
     uint64_t bytes;                  /* .. their sizes added */
