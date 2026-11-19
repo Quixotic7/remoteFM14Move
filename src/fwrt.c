@@ -13,6 +13,8 @@
 
 #include "wasm-rt.h"
 #include "wasm-rt-impl.h"
+#include "fsvc.h"
+#include "minijson.h"
 
 /* ------------------------------------------------------------------ the layout (RFM1-FORMAT.md section 5) --- */
 /* fm1panel_t (fm1core.h, ABI 5/6) and fm1core_t as wasm32 lays them out: what rfm1_layout must say */
@@ -162,7 +164,104 @@ void Z_wasi_snapshot_preview1Z_proc_exit(struct Z_wasi_snapshot_preview1_instanc
     wasm_rt_trap(WASM_RT_TRAP_UNREACHABLE);   /* unwinds to the call's guard: the instance halts (0x100 | code) */
 }
 
+/* ------------------------------------------------------------------ rfm1_host_1 (fsvc.h) --- */
+/* a Fantasy CFW's file API: checked and noted during the call; answered between calls (fsvc_pump in run_ms) */
+static struct fsvc *fsof(struct Z_rfm1_host_1_instance_t *h, fw_t **fw)
+{
+    *fw = h ? h->w.fw : NULL;
+    return *fw ? h->w.fs : NULL;
+}
+uint32_t Z_rfm1_host_1Z_fs_request(struct Z_rfm1_host_1_instance_t *h, uint32_t op, uint32_t path, uint32_t path_len,
+                                   uint64_t off, uint32_t buf, uint32_t len)
+{
+    fw_t *fw;
+    struct fsvc *s = fsof(h, &fw);
+    if (!s)
+        return (uint32_t)FSV_ENOFOLDER;
+    return (uint32_t)fsvc_request(s, fw->mem, fw->mem_size, (int32_t)op, path, (int32_t)path_len, (int64_t)off, buf,
+                                  (int32_t)len);
+}
+uint32_t Z_rfm1_host_1Z_fs_poll(struct Z_rfm1_host_1_instance_t *h, uint32_t id)
+{
+    fw_t *fw;
+    struct fsvc *s = fsof(h, &fw);
+    return (uint32_t)(s ? fsvc_poll(s, (int32_t)id) : FSV_ENOFOLDER);
+}
+void Z_rfm1_host_1Z_fs_cancel(struct Z_rfm1_host_1_instance_t *h, uint32_t id)
+{
+    fw_t *fw;
+    struct fsvc *s = fsof(h, &fw);
+    if (s)
+        fsvc_cancel(s, (int32_t)id);
+}
+uint32_t Z_rfm1_host_1Z_fs_changed(struct Z_rfm1_host_1_instance_t *h)
+{
+    fw_t *fw;
+    struct fsvc *s = fsof(h, &fw);
+    return (uint32_t)(s ? fsvc_changed(s) : 0);
+}
+
 /* ------------------------------------------------------------------ the object --- */
+/* the manifest beside the object (<base>.json): what a Fantasy CFW needs; 0, or -1 with err (a need this host lacks) */
+static int obj_manifest(fw_obj_t *o, char *err, size_t cap)
+{
+    char p[sizeof o->path + 8];
+    const size_t n = strlen(o->path);
+    FILE *f;
+    long len;
+    char *j;
+    const char *m, *it, *v;
+    if (n < 6 || strcmp(o->path + n - 6, ".rfm1m"))
+        return 0;
+    snprintf(p, sizeof p, "%.*s.json", (int)(n - 6), o->path);
+    if (!(f = fopen(p, "rb")))
+        return 0;   /* (no manifest beside it: an object run alone, as before) */
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0 || len > (1 << 20) || !(j = calloc(1, (size_t)len + 1)) || fread(j, 1, (size_t)len, f) != (size_t)len) {
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+    m = mj_find(j, "manifest");
+    m = m ? m : j;
+    {
+        long pages = 0, mib = 0;
+        if (!mj_int(j, "memory_pages", &pages) && pages > 0)
+            o->mem_bytes = (uint64_t)pages * 65536u;
+        else if (!mj_int(m, "memory_mib", &mib) && mib > 0)
+            o->mem_bytes = (uint64_t)mib << 20;
+    }
+    v = mj_find(m, "virtual");
+    o->virt = v && !strncmp(v, "true", 4);
+    if ((it = mj_find(m, "needs")) && *it == '[') {
+        const char *e;
+        while ((e = mj_elem(&it))) {
+            char need[32];
+            if (*e != '"' || mj_span(e) < 2 || mj_span(e) - 2 >= sizeof need) {
+                snprintf(err, cap, "%s: needs something this host does not know: a newer RemoteFM1", o->path);
+                free(j);
+                return -1;
+            }
+            memcpy(need, e + 1, mj_span(e) - 2);
+            need[mj_span(e) - 2] = 0;
+            if (!strcmp(need, "fs1"))
+                o->fs1 = 1;
+            else {
+                snprintf(err, cap, "needs \"%s\", which this host does not give yet: a newer RemoteFM1", need);
+                free(j);
+                return -1;
+            }
+        }
+    }
+    if (o->fs1)
+        fsvc_access(m, o->access);
+    free(j);
+    return 0;
+}
+
+
 fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
 {
     fw_obj_t *o = calloc(1, sizeof *o);
@@ -185,6 +284,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         return NULL;
     }
     snprintf(o->path, sizeof o->path, "%s", path);
+    if (obj_manifest(o, err, cap) != 0) {
+        dlclose(o->so);
+        free(o);
+        return NULL;
+    }
     o->vt->init_module();
     o->refs = 1;
     return o;
@@ -223,15 +327,49 @@ static void trapped(fw_t *fw, wasm_rt_trap_t code, const char *what)
     } while (0)
 
 /* ------------------------------------------------------------------ an instance --- */
+static __thread char g_why[160];
+const char *fw_inst_why(void) { return g_why[0] ? g_why : "no memory for an instance"; }
+
+long fw_mem_free_mb(void)
+{
+    const char *t = getenv("RFM14_MEM_AVAIL_MB");
+    long kb = -1;
+    FILE *f;
+    char line[128];
+    if (t && *t)
+        return atol(t) - FW_MEM_RESERVE_MB;
+    if (!(f = fopen("/proc/meminfo", "r")))
+        return -1;
+    while (fgets(line, sizeof line, f))
+        if (sscanf(line, "MemAvailable: %ld kB", &kb) == 1)
+            break;
+    fclose(f);
+    return kb < 0 ? -1 : kb / 1024 - FW_MEM_RESERVE_MB;
+}
+
 fw_inst_t *fw_instantiate(fw_obj_t *obj)
 {
-    fw_inst_t *p = calloc(1, sizeof *p);
+    fw_inst_t *p;
+    g_why[0] = 0;
+    if (obj->mem_bytes > (64u << 20)) {   /* (a big one: wasm2c's calloc of all of it, locked: refused, not killed) */
+        const long free_mb = fw_mem_free_mb(), need = (long)((obj->mem_bytes + (1u << 20) - 1) >> 20);
+        if (free_mb >= 0 && need > free_mb) {
+            snprintf(g_why, sizeof g_why, "%s needs %ld MB of memory, %ld MB free", obj->vt->id, need,
+                     free_mb > 0 ? free_mb : 0);
+            return NULL;
+        }
+    }
+    p = calloc(1, sizeof *p);
     if (!p || !(p->wasi = calloc(1, sizeof *p->wasi))) {
         free(p);
         return NULL;
     }
     p->obj = obj;
     fw_obj_ref(obj);
+    if (obj->fs1 && !(p->wasi->fs = fsvc_new(obj->vt->id, obj->access))) {
+        fw_inst_free(p);
+        return NULL;
+    }
     if (!(p->inst = obj->vt->create(p->wasi))) {   /* (wasm2c's instantiate: allocations and copies, no wasm code) */
         fw_inst_free(p);
         return NULL;
@@ -246,6 +384,8 @@ void fw_inst_free(fw_inst_t *p)
     if (p->inst)
         p->obj->vt->destroy(p->inst);
     fw_obj_close(p->obj);
+    if (p->wasi)
+        fsvc_release(p->wasi->fs);
     free(p->wasi);
     free(p);
 }
@@ -391,6 +531,7 @@ fw_inst_t *fw_release(fw_t *fw)
             fw->obj = NULL;
         } else {
             fw->obj->vt->destroy(fw->inst);
+            fsvc_release(fw->wasi->fs);
             free(fw->wasi);
         }
     }
@@ -591,6 +732,8 @@ static void run_ms(fw_t *fw)
             fw->q[k++] = fw->q[i];
     }
     fw->qn = k;
+    if (fw->wasi->fs)   /* (between two calls: the file requests answered so far, into the module's memory) */
+        fsvc_pump(fw->wasi->fs, fw->mem, fw->mem_size, ms);
     CALL(fw, "rfm1_tick", vt->tick(fw->inst, ms));
     if (ms == 0 || ms - fw->last_frame >= FW_FRAME_MS) {
         fw->last_frame = ms;

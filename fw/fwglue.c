@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* The glue of a compiled firmware object (src/rfm1m.h): built with the wasm2c output of one .rfm1,
- *   cc -DMOD=<module name> -DRFM1M_ID='"<id>"' -DRFM1M_SHA='"<sha256>"' -I<w2c dir> fwglue.c <mod>.c -shared
- * Every call is a thin wrapper over the module's export of the same name; the instance is an opaque pointer. */
+ *   cc -DMOD=<module name> -DRFM1M_ID='"<id>"' -DRFM1M_SHA='"<sha256>"' [-DRFM1M_INST_ARGS=',HOSTI,WASII']
+ *      -I<w2c dir> fwglue.c <mod>.c -shared
+ * Every call is a thin wrapper over the module's export of the same name; the instance is an opaque pointer.
+ * RFM1M_INST_ARGS: the import modules' instances wasm2c's instantiate takes after the module's own, in its order
+ * (tools/build_fw.sh reads them from the header): WASII the WASI imports', HOSTI a Fantasy CFW's rfm1_host_1 (the
+ * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only. */
 #include <stdlib.h>
 
 #include "wasm-rt.h"
@@ -29,11 +33,19 @@ extern void X(_initialize)(INST *) __attribute__((weak));
 extern u32 X(rfm1_labels_epoch)(INST *) __attribute__((weak));
 extern u32 X(rfm1_label)(INST *, u32) __attribute__((weak));
 
+#ifndef RFM1M_INST_ARGS
+#define RFM1M_INST_ARGS , WASII
+#endif
+struct Z_rfm1_host_1_instance_t;
+#define WASII wasi
+#define HOSTI ((struct Z_rfm1_host_1_instance_t *)(void *)wasi)
+
 static void *create(struct Z_wasi_snapshot_preview1_instance_t *wasi)
 {
     INST *i = calloc(1, sizeof *i);
+    (void)wasi;
     if (i)
-        CAT(CAT(Z_, MOD), _instantiate)(i, wasi);
+        CAT(CAT(Z_, MOD), _instantiate)(i RFM1M_INST_ARGS);
     return i;
 }
 static void destroy(void *i)
