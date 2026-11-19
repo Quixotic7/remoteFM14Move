@@ -615,7 +615,8 @@ static void cread(client_t *c)
         }
         if (r < 0)
             return;
-        if (c->up_fd > 0) {   /* an upload's body: straight to its file */
+        if (c->up_fd > 0) {   /* an upload's body: straight to its file (the 10 s limit counts from its last bytes) */
+            c->born = now_ms();
             upload_feed(c, c->in, (size_t)r);
             if (c->up_fd <= 0)
                 return;

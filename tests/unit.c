@@ -430,6 +430,12 @@ static void catsig(void)
 
 
 /* ------------------------------------------------------------------ a Fantasy CFW's file API (fsvc.c) --- */
+/* (CHECK evaluates its condition twice: these conditions make requests, so once here) */
+#define CK(c, ...)                                                                                                  \
+    do {                                                                                                            \
+        const int c_ = (c);                                                                                         \
+        CHECK(c_, __VA_ARGS__);                                                                                     \
+    } while (0)
 static uint8_t g_mem[2u << 20];   /* a module's memory: paths at 0x100, buffers at 0x10000 */
 #define PATHAT 0x100u
 #define BUFAT 0x10000u
@@ -517,22 +523,22 @@ static void fsapi(void)
         for (i = 0; i < (int)(sizeof bad / sizeof bad[0]); i++)
             nbad += fsvc_map(root, "fscart", (const uint8_t *)bad[i], (uint32_t)strlen(bad[i]), out, sizeof out, &area,
                              &top) == FSV_EACCES;
-        CHECK(nbad == (int)(sizeof bad / sizeof bad[0]), "13 escapes and malformed paths refused (.., ., //, a trailing /, "
+        CK(nbad == (int)(sizeof bad / sizeof bad[0]), "13 escapes and malformed paths refused (.., ., //, a trailing /, "
               "outside the three, relative, \\, case): %d", nbad);
-        CHECK(fsvc_map(root, "fscart", (const uint8_t *)"/audio/k\0x", 10, out, sizeof out, &area, &top) == FSV_EACCES &&
+        CK(fsvc_map(root, "fscart", (const uint8_t *)"/audio/k\0x", 10, out, sizeof out, &area, &top) == FSV_EACCES &&
               fsvc_map(root, "fscart", (const uint8_t *)"/audio/\xc0\xaf", 9, out, sizeof out, &area, &top) == FSV_EACCES,
               "a NUL inside, an overlong UTF-8 '/': refused");
-        CHECK(!fsvc_map(root, "fscart", (const uint8_t *)"/code/droplets/a.lua", 20, out, sizeof out, &area, &top) &&
+        CK(!fsvc_map(root, "fscart", (const uint8_t *)"/code/droplets/a.lua", 20, out, sizeof out, &area, &top) &&
               area == FSV_CODE && !top && strstr(out, "/code/fscart/droplets/a.lua"), "/code/droplets/a.lua -> code/fscart/droplets/a.lua");
-        CHECK(!fsvc_map(root, "fscart", (const uint8_t *)"/data", 5, out, sizeof out, &area, &top) && area == FSV_DATA && top,
+        CK(!fsvc_map(root, "fscart", (const uint8_t *)"/data", 5, out, sizeof out, &area, &top) && area == FSV_DATA && top,
               "/data: the cart's data/fscart itself");
-        CHECK(!fsvc_map(root, "x", (const uint8_t *)"/audio/kit/\xc3\xa9.wav", 15, out, sizeof out, &area, &top) && area == FSV_AUDIO,
+        CK(!fsvc_map(root, "x", (const uint8_t *)"/audio/kit/\xc3\xa9.wav", 15, out, sizeof out, &area, &top) && area == FSV_AUDIO,
               "UTF-8 names (/audio/kit/\\u00e9.wav)");
     }
 
     fsvc_set_root(NULL);
     s = fsvc_new("fscart", ripple);
-    CHECK(req(s, FSV_READ, "/code/droplets/a.lua", 0, BUFAT, 16) == FSV_ENOFOLDER, "no folder: FS_ENOFOLDER");
+    CK(req(s, FSV_READ, "/code/droplets/a.lua", 0, BUFAT, 16) == FSV_ENOFOLDER, "no folder: FS_ENOFOLDER");
     fsvc_release(s);
 
     fsvc_set_root(root);
@@ -541,24 +547,24 @@ static void fsapi(void)
     snprintf(p, sizeof p, "%s/data/fscart", root);
     {
         struct stat st;
-        CHECK(stat(p, &st) == 0 && S_ISDIR(st.st_mode), "the cart's data/fscart made as it is made");
+        CK(stat(p, &st) == 0 && S_ISDIR(st.st_mode), "the cart's data/fscart made as it is made");
     }
     memset(g_mem + BUFAT, 0, 64);
     r = run(s, FSV_READ, "/code/droplets/a.lua", 0, 100);
-    CHECK(r == 10 && !memcmp(g_mem + BUFAT, "print('a')", 10), "READ /code/droplets/a.lua: its own code/fscart/ (%d)", r);
+    CK(r == 10 && !memcmp(g_mem + BUFAT, "print('a')", 10), "READ /code/droplets/a.lua: its own code/fscart/ (%d)", r);
     r = run(s, FSV_READ, "/code/droplets/a.lua", 6, 100);
-    CHECK(r == 4 && !memcmp(g_mem + BUFAT, "'a')", 4), "READ at an offset (%d)", r);
-    CHECK(run(s, FSV_READ, "/code/droplets/a.lua", 10, 100) == 0, "READ at the end: 0");
-    CHECK(run(s, FSV_READ, "/code/nothing.lua", 0, 16) == FSV_ENOENT, "READ a missing file: FS_ENOENT");
-    CHECK(run(s, FSV_READ, "/code/droplets", 0, 16) == FSV_EIO, "READ a folder: FS_EIO");
-    CHECK(run(s, FSV_READ, "/code/escape", 0, 16) == FSV_EACCES, "a symlink out of the folder (code/fscart/escape): FS_EACCES");
-    CHECK(req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, 16) == FSV_EACCES, "Ripple's folders (code r, data rw): /audio refused");
-    CHECK(req(s, FSV_WRITE, "/code/x.lua", -1, BUFAT, 4) == FSV_EACCES && req(s, FSV_MKDIR, "/data", 0, 0, 0) == FSV_EACCES &&
+    CK(r == 4 && !memcmp(g_mem + BUFAT, "'a')", 4), "READ at an offset (%d)", r);
+    CK(run(s, FSV_READ, "/code/droplets/a.lua", 10, 100) == 0, "READ at the end: 0");
+    CK(run(s, FSV_READ, "/code/nothing.lua", 0, 16) == FSV_ENOENT, "READ a missing file: FS_ENOENT");
+    CK(run(s, FSV_READ, "/code/droplets", 0, 16) == FSV_EIO, "READ a folder: FS_EIO");
+    CK(run(s, FSV_READ, "/code/escape", 0, 16) == FSV_EACCES, "a symlink out of the folder (code/fscart/escape): FS_EACCES");
+    CK(req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, 16) == FSV_EACCES, "Ripple's folders (code r, data rw): /audio refused");
+    CK(req(s, FSV_WRITE, "/code/x.lua", -1, BUFAT, 4) == FSV_EACCES && req(s, FSV_MKDIR, "/data", 0, 0, 0) == FSV_EACCES &&
           req(s, FSV_DELETE, "/data", 0, 0, 0) == FSV_EACCES, "writes: not in /code, not /data itself");
     memcpy(g_mem + BUFAT, "hello world", 11);
-    CHECK(run(s, FSV_WRITE, "/data/out.txt", -1, 11) == 11, "WRITE /data/out.txt (truncate): 11");
+    CK(run(s, FSV_WRITE, "/data/out.txt", -1, 11) == 11, "WRITE /data/out.txt (truncate): 11");
     memcpy(g_mem + BUFAT, "W", 1);
-    CHECK(run(s, FSV_WRITE, "/data/out.txt", 6, 1) == 1, "WRITE at an offset");
+    CK(run(s, FSV_WRITE, "/data/out.txt", 6, 1) == 1, "WRITE at an offset");
     snprintf(p, sizeof p, "%s/data/fscart/out.txt", root);
     {
         FILE *f = fopen(p, "rb");
@@ -568,25 +574,25 @@ static void fsapi(void)
                 b[0] = 0;
             fclose(f);
         }
-        CHECK(!strcmp(b, "hello World"), "data/fscart/out.txt: \"%s\"", b);
+        CK(!strcmp(b, "hello World"), "data/fscart/out.txt: \"%s\"", b);
     }
-    CHECK(run(s, FSV_MKDIR, "/data/sub", 0, 0) == 0 && run(s, FSV_MKDIR, "/data/sub", 0, 0) == 0, "MKDIR (there already: fine)");
-    CHECK(run(s, FSV_WRITE, "/data/sub/x", -1, 1) == 1 && run(s, FSV_DELETE, "/data/sub", 0, 0) == FSV_EIO,
+    CK(run(s, FSV_MKDIR, "/data/sub", 0, 0) == 0 && run(s, FSV_MKDIR, "/data/sub", 0, 0) == 0, "MKDIR (there already: fine)");
+    CK(run(s, FSV_WRITE, "/data/sub/x", -1, 1) == 1 && run(s, FSV_DELETE, "/data/sub", 0, 0) == FSV_EIO,
           "DELETE a folder not empty: FS_EIO");
-    CHECK(run(s, FSV_DELETE, "/data/sub/x", 0, 0) == 0 && run(s, FSV_DELETE, "/data/sub", 0, 0) == 0 &&
+    CK(run(s, FSV_DELETE, "/data/sub/x", 0, 0) == 0 && run(s, FSV_DELETE, "/data/sub", 0, 0) == 0 &&
           run(s, FSV_DELETE, "/data/sub", 0, 0) == FSV_ENOENT, "DELETE a file, then the empty folder; again: FS_ENOENT");
     r = run(s, FSV_STAT, "/data/out.txt", 0, 16);
     {
         uint64_t sz = 0;
         uint32_t dir = 9;
         memcpy(&sz, g_mem + BUFAT, 8), memcpy(&dir, g_mem + BUFAT + 12, 4);
-        CHECK(r == 16 && sz == 11 && dir == 0, "STAT: 16, size 11, not a folder");
+        CK(r == 16 && sz == 11 && dir == 0, "STAT: 16, size 11, not a folder");
     }
     fsvc_release(s);
 
     /* Elasticat's folders: audio r, data rw */
     s = fsvc_new("elasticat", elastic);
-    CHECK(req(s, FSV_READ, "/code/x", 0, BUFAT, 4) == FSV_EACCES, "Elasticat's folders (audio r, data rw): /code refused");
+    CK(req(s, FSV_READ, "/code/x", 0, BUFAT, 4) == FSV_EACCES, "Elasticat's folders (audio r, data rw): /code refused");
     r = run(s, FSV_LIST, "/audio", 0, 256);
     {
         char got[256] = "";
@@ -596,41 +602,41 @@ static void fsapi(void)
             snprintf(got + strlen(got), sizeof got - strlen(got), "%s%.*s%s", i ? " " : "", nl, (char *)g_mem + BUFAT + at + 2, d ? "/" : "");
             at += 2u + nl;
         }
-        CHECK(r == 4 && !strcmp(got, "b.wav kick.wav kit/ out/"), "LIST /audio: sorted, no hidden files, folders marked (%s)", got);
+        CK(r == 4 && !strcmp(got, "b.wav kick.wav kit/ out/"), "LIST /audio: sorted, no hidden files, folders marked (%s)", got);
     }
     r = run(s, FSV_LIST, "/audio", 2, 256);
-    CHECK(r == 2 && g_mem[BUFAT + 1] == 3 && !memcmp(g_mem + BUFAT + 2, "kit", 3), "LIST from entry 2 on (%d)", r);
-    CHECK(run(s, FSV_LIST, "/audio", 4, 256) == 0, "LIST past the last: 0 (the end)");
-    CHECK(run(s, FSV_LIST, "/audio", 0, 9) == 1 && run(s, FSV_LIST, "/audio", 1, 4) == FSV_EIO,
+    CK(r == 2 && g_mem[BUFAT + 1] == 3 && !memcmp(g_mem + BUFAT + 2, "kit", 3), "LIST from entry 2 on (%d)", r);
+    CK(run(s, FSV_LIST, "/audio", 4, 256) == 0, "LIST past the last: 0 (the end)");
+    CK(run(s, FSV_LIST, "/audio", 0, 9) == 1 && run(s, FSV_LIST, "/audio", 1, 4) == FSV_EIO,
           "LIST: an entry never split; a buffer too small for the next one: FS_EIO, not the end");
-    CHECK(run(s, FSV_READ, "/audio/out/outside.txt", 0, 16) == FSV_EACCES, "a symlinked folder out (audio/out): FS_EACCES");
+    CK(run(s, FSV_READ, "/audio/out/outside.txt", 0, 16) == FSV_EACCES, "a symlinked folder out (audio/out): FS_EACCES");
 
     /* the limits */
-    CHECK(req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, FSV_MAXLEN + 1) == FSV_EIO, "more than 1 MiB a request: FS_EIO");
-    CHECK(req(s, FSV_READ, "/audio/kick.wav", 0, (uint32_t)sizeof g_mem - 8, 16) == FSV_EIO, "a buffer past the memory: FS_EIO");
-    CHECK(req(s, FSV_STAT, "/audio/kick.wav", 0, BUFAT, 8) == FSV_EIO, "STAT with less than 16 bytes: FS_EIO");
-    CHECK(req(s, 9, "/audio/kick.wav", 0, BUFAT, 8) == FSV_EIO && req(s, FSV_READ, "/audio/kick.wav", -5, BUFAT, 8) == FSV_EIO,
+    CK(req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, FSV_MAXLEN + 1) == FSV_EIO, "more than 1 MiB a request: FS_EIO");
+    CK(req(s, FSV_READ, "/audio/kick.wav", 0, (uint32_t)sizeof g_mem - 8, 16) == FSV_EIO, "a buffer past the memory: FS_EIO");
+    CK(req(s, FSV_STAT, "/audio/kick.wav", 0, BUFAT, 8) == FSV_EIO, "STAT with less than 16 bytes: FS_EIO");
+    CK(req(s, 9, "/audio/kick.wav", 0, BUFAT, 8) == FSV_EIO && req(s, FSV_READ, "/audio/kick.wav", -5, BUFAT, 8) == FSV_EIO,
           "an unknown op, a negative offset: FS_EIO");
     for (i = 0; i < 32; i++)
         ids[i] = req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT + 64u * (uint32_t)i, 16);
     id = req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, 16);
-    CHECK(ids[0] > 0 && ids[31] > 0 && id == FSV_EBUSY, "32 in flight; the 33rd: FS_EBUSY");
-    CHECK(fsvc_poll(s, ids[0]) == FSV_PENDING, "made in this call: pending (answered between calls only)");
+    CK(ids[0] > 0 && ids[31] > 0 && id == FSV_EBUSY, "32 in flight; the 33rd: FS_EBUSY");
+    CK(fsvc_poll(s, ids[0]) == FSV_PENDING, "made in this call: pending (answered between calls only)");
     fsvc_pump(s, g_mem, sizeof g_mem, g_ms);   /* (the same ms: not due yet) */
-    CHECK(fsvc_poll(s, ids[0]) == FSV_PENDING, "inline: not before the next device ms");
+    CK(fsvc_poll(s, ids[0]) == FSV_PENDING, "inline: not before the next device ms");
     memset(g_mem + BUFAT, 0, 64);
     fsvc_cancel(s, ids[1]);
     fsvc_pump(s, g_mem, sizeof g_mem, ++g_ms);
-    CHECK(fsvc_poll(s, ids[0]) == 16 && !memcmp(g_mem + BUFAT, "RIFF....WAVEkick", 16), "one ms later: answered, its bytes in");
-    CHECK(fsvc_poll(s, ids[0]) == FSV_EIO, "a result is given once: the id is free");
-    CHECK(fsvc_poll(s, ids[1]) == FSV_ECANCELED && g_mem[BUFAT + 64] == 0, "cancelled: FS_ECANCELED, its buffer not written");
+    CK(fsvc_poll(s, ids[0]) == 16 && !memcmp(g_mem + BUFAT, "RIFF....WAVEkick", 16), "one ms later: answered, its bytes in");
+    CK(fsvc_poll(s, ids[0]) == FSV_EIO, "a result is given once: the id is free");
+    CK(fsvc_poll(s, ids[1]) == FSV_ECANCELED && g_mem[BUFAT + 64] == 0, "cancelled: FS_ECANCELED, its buffer not written");
     for (i = 2; i < 32; i++)
         fsvc_poll(s, ids[i]);
-    CHECK(req(s, FSV_STAT, "/audio/kick.wav", 0, BUFAT, 16) > 0, "polled: room again");
+    CK(req(s, FSV_STAT, "/audio/kick.wav", 0, BUFAT, 16) > 0, "polled: room again");
     {
         const int32_t c0 = fsvc_changed(s);
         fsvc_bump_changed();
-        CHECK(fsvc_changed(s) == c0 + 1, "fs_changed moves when the folder changes (the page's uploads)");
+        CK(fsvc_changed(s) == c0 + 1, "fs_changed moves when the folder changes (the page's uploads)");
     }
     fsvc_release(s);
 
@@ -640,26 +646,26 @@ static void fsapi(void)
     memset(g_mem + BUFAT, 0, 64);
     id = req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, 16);
     fsvc_pump(s, g_mem, sizeof g_mem, ++g_ms);   /* (sent) */
-    CHECK(g_nio == 1, "the request went to the I/O thread at the pump");
+    CK(g_nio == 1, "the request went to the I/O thread at the pump");
     {
         pthread_t t;
         pthread_create(&t, NULL, serve_all, NULL);
         pthread_join(t, NULL);
     }
-    CHECK(fsvc_poll(s, id) == FSV_PENDING && g_mem[BUFAT] == 0, "done on the I/O thread: still pending, nothing written, "
+    CK(fsvc_poll(s, id) == FSV_PENDING && g_mem[BUFAT] == 0, "done on the I/O thread: still pending, nothing written, "
           "until the next pump");
     fsvc_pump(s, g_mem, sizeof g_mem, ++g_ms);
-    CHECK(fsvc_poll(s, id) == 16 && !memcmp(g_mem + BUFAT, "RIFF", 4), "the pump: answered, its bytes in the memory");
+    CK(fsvc_poll(s, id) == 16 && !memcmp(g_mem + BUFAT, "RIFF", 4), "the pump: answered, its bytes in the memory");
     id = req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, 16);
     fsvc_pump(s, g_mem, sizeof g_mem, ++g_ms);
     fsvc_release(s);   /* (the instance freed while its request runs: kept until it returns) */
     serve_all(NULL);
-    CHECK(1, "an instance released while the I/O thread holds its request: freed after (no crash)");
+    CK(1, "an instance released while the I/O thread holds its request: freed after (no crash)");
     fsvc_set_dispatch(NULL);
     {
         uint8_t acc[3];
         fsvc_access("{\"manifest\":{\"id\":\"x\",\"folders\":{\"audio\":\"r\",\"data\":\"rw\"}}}", acc);
-        CHECK(acc[0] == FSV_R && acc[1] == 0 && acc[2] == (FSV_R | FSV_W), "the manifest's folders -> access");
+        CK(acc[0] == FSV_R && acc[1] == 0 && acc[2] == (FSV_R | FSV_W), "the manifest's folders -> access");
     }
 }
 

@@ -125,7 +125,7 @@ void fw_obj_close(fw_obj_t *o);
 fw_inst_t *fw_instantiate(fw_obj_t *obj);   /* NULL: no memory (fw_inst_why: why, on this thread) */
 const char *fw_inst_why(void);
 /* the memory an instance may still take (MB): MemAvailable less a reserve for the system; -1 unknown.
- * RFM14_MEM_AVAIL_MB (tests) stands in for MemAvailable */
+ * RFM14_MEM_AVAIL_MB stands in for MemAvailable in the test build (the simulator's host) */
 long fw_mem_free_mb(void);
 #define FW_MEM_RESERVE_MB 160
 void fw_inst_free(fw_inst_t *pre);           /* (NULL: nothing) */

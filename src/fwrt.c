@@ -332,12 +332,16 @@ const char *fw_inst_why(void) { return g_why[0] ? g_why : "no memory for an inst
 
 long fw_mem_free_mb(void)
 {
-    const char *t = getenv("RFM14_MEM_AVAIL_MB");
     long kb = -1;
     FILE *f;
     char line[128];
-    if (t && *t)
-        return atol(t) - FW_MEM_RESERVE_MB;
+#ifdef RFM14_TEST_BUILD
+    {   /* (the tests: a Move with less memory) */
+        const char *t = getenv("RFM14_MEM_AVAIL_MB");
+        if (t && *t)
+            return atol(t) - FW_MEM_RESERVE_MB;
+    }
+#endif
     if (!(f = fopen("/proc/meminfo", "r")))
         return -1;
     while (fgets(line, sizeof line, f))
