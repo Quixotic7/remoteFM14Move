@@ -1025,6 +1025,13 @@ static void active_changed(void)
     rfm_move_set_keymap(&S->core, fw && fw->has_keymap ? (const int8_t(*)[11])fw->keymap : NULL);
     for (k = 0; k <= RFM_MOVE_E_MASTER; k++)
         rfm_move_set_label(&S->core, k, NULL);
+    rfm_move_set_labels(&S->core, NULL);   /* (0.5.6) the new firmware's labels come with its next epoch */
+    {
+        const char *nm[RFM_MOVE_NBTN];
+        for (k = 0; k < RFM_MOVE_NBTN; k++)
+            nm[k] = fw && k < FW_NBTN && fw->btn_name[k][0] ? fw->btn_name[k] : NULL;
+        rfm_move_set_button_names(&S->core, nm);
+    }
     if (fw)
         fw->lbl_epoch = 0;
     g_lcd_seen = 0;
@@ -1929,16 +1936,15 @@ static void publish(uint32_t now)
         g_view.seq++;
         pthread_mutex_unlock(&g_vmu);
     }
-    {   /* live labels: the knobs' names on the Move's screen */
+    {   /* live labels: all 49 (knobs, buttons, keys: DYNAMIC-LABELS order) to rfm1cs (0.5.6), which shows them */
         const uint32_t e = fw_labels_epoch(fw);
         if (e && e != fw->lbl_epoch) {
-            /* FM1CORE_LBL_KNOB0 + role (SELECT ALGO PRESETS K1..K4 MASTER) -> rfm1cs's encoders */
-            static const int ENC[8] = { RFM_MOVE_E_SELECT, RFM_MOVE_E_ALGO, RFM_MOVE_E_PRESETS, RFM_MOVE_E_K1,
-                                        RFM_MOVE_E_K2, RFM_MOVE_E_K3, RFM_MOVE_E_K4, RFM_MOVE_E_MASTER };
+            const char *lbl[RFM_MOVE_LBL_N];
             int r;
             fw->lbl_epoch = e;
-            for (r = 0; r < 8; r++)
-                rfm_move_set_label(&S->core, ENC[r], fw_label(fw, r));
+            for (r = 0; r < RFM_MOVE_LBL_N; r++)
+                lbl[r] = fw_label(fw, r);
+            rfm_move_set_labels(&S->core, lbl);
             rfm1cs_session_redraw(S, now);
             view_info();   /* (the page's labels) */
         }
