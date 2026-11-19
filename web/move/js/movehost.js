@@ -18,12 +18,16 @@
 //   events: frame(pixels, seq), leds(levels, playGreen), info(info), labels({ seq, list }) as the worklet's;
 //           moved(id) the Move's active slot runs another firmware (its own projects view, another track; null: none);
 //           moveLink(up) the WebSocket went away / came back; error(text) a pick the Move could not start
+//   Mix & FX (js/moveslots.js, js/movemix.js): p.listen({ mix(m), meters(u8[7]), mini(slot, px565[48*48]) }) adds a
+//           listener (it gets the last ones at once); p.mix / p.meters / p.minis the last ones; p.edit(op, a, b) one
+//           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 22 PAGE) over /ws (POST /api/edit while /ws is
+//           down)
 // Everything else Player has (MIDI, flash, the recorder's taps, the output device, live input) is a no-op: the
 // firmware's flash and states stay on the Move, and its sound comes out of the Move.
 import { CATEGORIES, HUB, rfm1Source, shortAuthor } from "./live.js";
 
 const OP = { KEY: 1, LEAN: 2, BTN: 3, ENC: 4, MASTER: 5 };   // remoteFM14Move src/fwrt.h FWI_*
-const NKEY = 27, NBTN = 14, NENC = 7, W = 240;
+const NKEY = 27, NBTN = 14, NENC = 7, W = 240, MINI = 48;
 const LOAD_MS = 20000;                                        // a pick that hasn't started by then: said so
 
 // the credits the sheet's About page names (catalog.json's, as RemoteFM1's site has them)
@@ -90,10 +94,30 @@ export class MoveHostPlayer {
     this.extras = new Map();                     // firmware base -> Promise<{ credits, skin }>
     this.infoP = Promise.resolve();
     this.ready = new Promise((r) => { this.readyNow = r; });
+    this.subs = [];                              // Mix & FX listeners (listen)
+    this.mix = null; this.meters = new Uint8Array(7); this.minis = [null, null, null];
     // (Player's surface that main.js touches; nothing of it applies here)
     this.ctx = null; this.node = null; this.current = null; this.volume = 1; this.muted = false; this.tapOn = false;
   }
-  emit(name, ...a) { if (this.ev[name]) this.ev[name](...a); }
+  emit(name, ...a) {
+    if (this.ev[name]) this.ev[name](...a);
+    for (const l of this.subs) if (l[name]) { try { l[name](...a); } catch (e) { console.warn("movehost:", name, e); } }
+  }
+  // a Mix & FX listener: { mix(m), meters(levels), mini(slot, px) }; what came already, at once
+  listen(l) {
+    this.subs.push(l);
+    if (this.mix && l.mix) l.mix(this.mix);
+    this.minis.forEach((px, s) => { if (px && l.mini) l.mini(s, px); });
+    return () => { this.subs = this.subs.filter((x) => x !== l); };
+  }
+  // one of the host's Mix & FX ops (engine.h ENG_OP_*; b 16 bits: -1, 0..127, or a 16-track mask up to 0xFFFF, which the
+  // host reads as an int16): over /ws, else POST /api/edit
+  edit(op, a, b = 0) {
+    b = (b << 16) >> 16;
+    const ws = this.ws;
+    if (ws && ws.readyState === 1) { ws.send(new Uint8Array([op, a & 255, b & 255, (b >> 8) & 255])); return; }
+    fetch("api/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, a, b }) }).catch(() => {});
+  }
   get running() { return true; }
   get audioState() { return "running"; }
   get sampleRate() { return 0; }
@@ -115,10 +139,22 @@ export class MoveHostPlayer {
       this.up = true;
     };
     ws.onmessage = (m) => {
-      if (typeof m.data === "string") { try { this.onInfo(JSON.parse(m.data)); } catch (e) { console.warn("movehost: info", e); } return; }
+      if (typeof m.data === "string") {
+        let j;
+        try { j = JSON.parse(m.data); } catch (e) { console.warn("movehost: info", e); return; }
+        if (j && j.type === "mix") { this.mix = j; this.emit("mix", j); } else this.onInfo(j);
+        return;
+      }
       const d = new Uint8Array(m.data);
       if (d[0] === 1 && d.length >= 3) this.onRows(d[1], d[2], d.subarray(3));
       else if (d[0] === 2 && d.length >= 46) this.emit("leds", d.slice(1, 45), d[45]);
+      else if (d[0] === 3 && d.length >= 8) { this.meters = d.slice(1, 8); this.emit("meters", this.meters); }
+      else if (d[0] === 4 && d.length >= 3 + MINI * MINI * 2 && d[1] < 3 && d[2] === MINI) {
+        const px = new Uint16Array(MINI * MINI), s = d.subarray(3);
+        for (let i = 0; i < px.length; i++) px[i] = s[2 * i] << 8 | s[2 * i + 1];
+        this.minis[d[1]] = px;
+        this.emit("mini", d[1], px);
+      }
     };
     ws.onclose = () => {
       this.ws = null;

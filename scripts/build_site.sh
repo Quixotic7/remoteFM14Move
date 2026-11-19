@@ -4,7 +4,7 @@
 #   1. RemoteFM1's web/site (third_party/RemoteFM1, pinned): index.html, css/, fonts/, js/ (not its catalog, its
 #      firmware files, tests or tools); js/move-core.js and move-seq.js from rfm1cs-abletonmove at the commit RemoteFM1
 #      pins for them (as RemoteFM1's Pages build copies them), from our own rfm1cs-abletonmove submodule's history
-#   2. web/move/site.patch over it (everything behind js/host.js ON_MOVE), web/move/js/* beside it
+#   2. web/move/site.patch over it (everything behind js/host.js ON_MOVE), web/move/js/* and web/move/css/* beside it
 #   3. the host flag: <meta name="fm1-host" content="move">
 #   4. LICENSE.txt (GPL-3.0, RemoteFM1's) and SOURCE.txt (where this exact source is)
 # On the Mac (git, patch, rsync): make runs it before the image's build.
@@ -25,6 +25,7 @@ for f in move-core.js move-seq.js; do
 done
 patch -p1 -d "$OUT" --forward --quiet < web/move/site.patch
 cp web/move/js/*.js "$OUT/js/"
+cp web/move/css/*.css "$OUT/css/"
 sed -i.bak 's|<meta name="fm1-host" content="web">|<meta name="fm1-host" content="move">|' "$OUT/index.html"
 rm -f "$OUT/index.html.bak"
 grep -q '<meta name="fm1-host" content="move">' "$OUT/index.html" || { echo "build_site: no host flag in index.html" >&2; exit 1; }

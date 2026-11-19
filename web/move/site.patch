@@ -1,13 +1,15 @@
 RemoteFM14Move's changes to RemoteFM1's web/site (third_party/RemoteFM1, pinned), for the page the Ableton Move serves.
 SPDX-License-Identifier: GPL-3.0-only (RemoteFM1's site, changed). Applied by scripts/build_site.sh (patch -p1 in the
-copy of web/site), with web/move/js/host.js and web/move/js/movehost.js added beside it. Everything is behind one flag,
+copy of web/site), with web/move/js/*.js (host.js, movehost.js, moveui.js, moveslots.js, movemix.js) and
+web/move/css/move.css added beside it. Everything is behind one flag,
 js/host.js ON_MOVE (index.html's <meta name="fm1-host" content="web|move">: the build sets "move"), so with "web" the
 site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The page").
   index.html     the flag; no http -> https redirect on the Move; <html data-host> for the CSS
   css/site.css   the header's install / app / FM-1 / recorder / editor buttons hidden on the Move
   js/main.js     on the Move: the catalog is the Move's firmwares, the engine movehost.js (no AudioWorklet), no saves,
                  files, MIDI, Use my FM-1, OMX-27, Move link, recorder, editor, folder, audio input; the page follows the
-                 firmware the Move switches to by itself
+                 firmware the Move switches to by itself; the Move's slots and Mix & FX (js/moveslots.js mountMoveUi:
+                 the header's slot chips in place of the firmware picker, the phone's slot button, the Mix & FX view)
   js/sheet.js    on the Move: the firmware page lists the Move's firmwares; no saves, FM-1, playing, recording sections
 
 --- a/index.html
@@ -34,16 +36,17 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  import { Controls, DeviceView, ScreenView, Lcd, SRC, PANEL_LABELS, KM, panelLabels } from "./panel.js";
  import { DEFAULT_THEME, CUSTOM_NAME, presetNamed, derived, css, resolve, accentOf, onAccent } from "./theme.js";
  import { Keyboard, attachPointer, MidiInput } from "./input.js";
-@@ -29,6 +31,8 @@
+@@ -29,6 +31,9 @@
  import { Folder } from "./folder.js";
  import { FolderUI } from "./folder-ui.js";
  import { AinUI } from "./ain-ui.js";
 +import { ON_MOVE } from "./host.js";
 +import { MoveHostPlayer, moveCatalog } from "./movehost.js";
++import { mountMoveUi } from "./moveslots.js";
  
  const $ = (id) => document.getElementById(id);
  const params = new URLSearchParams(location.search);
-@@ -167,7 +171,7 @@
+@@ -167,7 +172,7 @@
  const engineFor = (e, want) => chooseEngine(e, want, prefs);
  
  async function refreshSaves() {
@@ -52,7 +55,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (sheet) sheet.render();
  }
  
-@@ -175,7 +179,7 @@
+@@ -175,7 +180,7 @@
    const e = typeof id === "string" ? findEntry(id) : id;
    if (!e) { toast(`No firmware "${id}" in the catalog.`, "bad"); return; }
    // the running firmware's flash first (some cores write it only when asked: W1)
@@ -61,7 +64,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (e.emuNote && !e.native) toast(`${e.name} is known not to run in the emulator: ${e.emuNote}.`, "bad");
    if (state.fwSkin && state.fwSkin.id !== skinIdOf(e)) { state.fwSkin = null; applyTheme(); }
    state.entry = e;
-@@ -186,7 +190,7 @@
+@@ -186,7 +191,7 @@
    hideOffer();
    if (!e.local || e.rfm1) { prefs.last = localRfm1(e) ? RFM1_LAST + e.rfm1.sha256 : e.id; savePrefs(); }
    updateTitle();
@@ -70,7 +73,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      const u = new URL(location.href);
      if (localRfm1(e)) { u.searchParams.delete("fw"); u.searchParams.delete("engine"); }   // (no deep link: a reload reopens it from prefs.last)
      else {
-@@ -216,6 +220,10 @@
+@@ -216,6 +221,10 @@
    setStatus(`Loading ${e.name}...`);
    if (sheet) sheet.render();
    editorChanged();
@@ -81,13 +84,10 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    try {
      // an emulated firmware's package from where the Hub points now (a gone one: the Hub once more, then the snapshot's)
      if (eng === "emu" && !e.localBytes && e.emu && e.emu.pkg && emuHook && emuHook.fetchPackage) {
-@@ -321,12 +329,24 @@
-   toast(`${why} Playing a test engine instead.`, "bad");
-   setStatus("");
-   try { await player.load({ ...e, name: e.name }, "mock", null); } catch (err) { toast(String(err.message || err), "bad"); }
-+  if (sheet) sheet.render();
-+}
-+
+@@ -324,9 +333,21 @@
+   if (sheet) sheet.render();
+ }
+ 
 +// the Move switched firmware itself (its projects view, another track): the page follows it, nothing is loaded
 +function followMove(id) {
 +  const e = id ? findEntry(id) : null;
@@ -97,9 +97,9 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
 +  controls.releaseLatches();
 +  if (e) { prefs.last = e.id; savePrefs(); }
 +  updateTitle();
-   if (sheet) sheet.render();
- }
- 
++  if (sheet) sheet.render();
++}
++
  function updateTitle() {
 -  const e = state.entry;
 -  document.title = e ? `${nameOf(e, state.wantEngine)} · FM-1 Player` : "FM-1 Player";
@@ -108,7 +108,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    $("fw-name").textContent = e ? nameOf(e, state.wantEngine) : "";
    $("fw-ver").textContent = e ? versionOf(e, state.wantEngine) : "";
    updateSource();
-@@ -334,7 +354,7 @@
+@@ -334,7 +355,7 @@
  }
  // the header's link to the running firmware's own source, at the version that runs (live.js sourceOf); a file from the
  // visitor's computer (M-VAVE's stock firmware, any .fwsc) has none: the link shows so, disabled
@@ -117,7 +117,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  function updateSource() {
    const a = $("fw-src"), e = state.entry, s = e ? sourceNow() : null;
    a.hidden = !e;
-@@ -358,13 +378,14 @@
+@@ -358,13 +379,14 @@
  function metaLine() {
    const e = state.entry;
    if (!e) return "";
@@ -133,7 +133,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (siteRfm1(e) && state.wantEngine === "rfm1") {
      const r = e.rfm1;
      return [`${e.name}'s own code, built to WebAssembly by this site from its release (${r.fileName}${r.builtBy ? `, ${r.builtBy}` : ""}), runs natively here as in RemoteFM1 for iOS. The file is this site's (SHA-256 ${r.sha256.slice(0, 12)}..., checked as it loads); its saves are the firmware's under the .rfm1 engine.`,
-@@ -432,7 +453,9 @@
+@@ -432,7 +454,9 @@
  
  // ------------------------------------------------------------------ audio ---
  function makePlayer() {
@@ -144,7 +144,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      frame(px, seq) { state.pixels = px; state.frameSeq = seq; lcd.put(px); invalidate(); siteEmit("frame", px, seq); },
      labels(m) { state.labels = m.list || null; applyButtonNames(); invalidate(); },
      leds(levels, green) { state.levels = levels; state.playGreen = green; device.setLeds(levels, green); invalidate(); siteEmit("leds", levels, green); },
-@@ -489,6 +512,7 @@
+@@ -489,6 +513,7 @@
      beforeLoad() { if (rec) rec.beforeLoad(); },
      audioState(s) { if (s !== "running") setTimeout(soundHeldBack, 800); },
      error(msg) {
@@ -152,7 +152,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
        console.warn("worklet:", msg);
        if (/^load:/.test(msg) && state.engine !== "mock") fallback(msg.replace(/^load:\s*/, "The engine could not start: ") + ".");
        else if (/^render:/.test(msg)) toast(`The engine stopped: ${msg}`, "bad");
-@@ -496,7 +520,7 @@
+@@ -496,7 +521,7 @@
    });
    player.setVolume(state.volume);
    if (fm1 && fm1.status.audio) { player.tap(true); player.setMuted(true); }   // (Bluetooth audio already on)
@@ -161,7 +161,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  }
  let flashTimer = 0, pendingSave = null;
  const lastSaved = new Map();
-@@ -862,7 +886,7 @@
+@@ -862,7 +887,7 @@
  let skinSeq = 0;
  function takeFirmwareSkin(info) {
    const e = state.entry, id = skinIdOf(e), seq = ++skinSeq;
@@ -170,7 +170,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (state.fwSkin && state.fwSkin.id === id) return;
    firmwareSkin(info.skin, id).then((s) => {
      if (seq !== skinSeq || state.entry !== e) return;   // (another firmware since)
-@@ -899,8 +923,11 @@
+@@ -899,8 +924,11 @@
    new ResizeObserver(layout).observe($("stage"));
    matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener?.("change", layout);
    try {
@@ -184,7 +184,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    } catch (e) {
      toast("The firmware list could not be loaded. Reload the page.", "bad");
      return;
-@@ -915,6 +942,8 @@
+@@ -915,6 +943,8 @@
      if (!catalog.live) console.warn("the Hub's catalog:", catalog.liveError, "- using the deployed snapshot");
    }
    // the hosted managers (web/managers/build.mjs: managers/index.json); none: the Editor button shows only links
@@ -193,7 +193,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    const mbase = new URL(catalog.paths.managers || "managers/", document.baseURI);
    let mindex = null;
    try { const r = await fetch(new URL("index.json", mbase), { cache: "no-cache" }); if (r.ok) mindex = await r.json(); } catch (_) { mindex = null; }
-@@ -922,6 +951,7 @@
+@@ -922,6 +952,7 @@
      toEngine: (b) => { if (player && (state.engine === "native" || state.engine === "rfm1")) player.midi(b); },
      toCart: (b) => { if (player && playingSelf() && state.engine === "rfm1") player.midi(b); }, setEngine: (n) => app.setEngine(n) });
    window.FM1Editor = editor;
@@ -201,7 +201,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    app.installerUrl = catalog.paths.installer;
    $("install-link").href = catalog.paths.installer;
    sheet = new Sheet(app);
-@@ -934,7 +964,7 @@
+@@ -934,7 +965,7 @@
    site = made.site; siteEmit = made.emit;
    window.FM1Site = site;
    window.FM1Device = device;   // (the faceplate view: the e2e tests read its anchors)
@@ -210,7 +210,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      if (m && typeof m.RemoteFM1 === "function") {          // W4's class: the section is ours (use-fm1.js)
        app.remoteMounted = true;
        if (typeof m.isCandidatePortName === "function") midi.isUnitPort = m.isCandidatePortName;
-@@ -954,6 +984,7 @@
+@@ -954,6 +985,7 @@
    }).catch(() => { /* (web/remote is W4's: the stub stays) */ });
  
    // USE MY OMX-27: its port is the page's while it is in REMOTE mode (not a MIDI keyboard, nothing learned from it)
@@ -218,7 +218,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    omx = new OmxLink({ controls, site, prefs, save: savePrefs, toast, mapAct,
      onActive: () => { midi.bind(); if (sheet) sheet.render(); } });
    midi.skipPort = (i) => omx.owns(i);
-@@ -967,11 +998,12 @@
+@@ -967,11 +999,12 @@
      onActive: () => { if (sheet) sheet.render(); } });
    mountMove(sheet.moveSlot, move);
    window.FM1Move = move;
@@ -234,7 +234,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      rec = new RecUI({
        getPlayer: () => player,
        ensureRunning: async () => state.running || start(),
-@@ -985,6 +1017,7 @@
+@@ -985,6 +1018,7 @@
    }
  
    // a Fantasy CFW's RemoteFM1 folder: the files changed (picked, added, back to the page) -> the cart's fs_changed
@@ -242,7 +242,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    folderUi = new FolderUI({ folder, cart: fantasyNow, toast, render: () => { if (sheet) sheet.render(); } });
    folder.on((kind) => { if (kind === "changed" && player) player.fsChanged(); folderUi.update(); if (sheet) sheet.render(); });
    addEventListener("focus", () => { if (player && fantasyNow() && folder.state === "ready") player.fsChanged(); });
-@@ -994,6 +1027,7 @@
+@@ -994,6 +1028,7 @@
    ainUi = new AinUI({ getPlayer: () => player, ensureRunning: async () => state.running || start(), cart: ainNow, toast,
      render: () => { if (sheet) sheet.render(); } });
    window.FM1Ain = ainUi;
@@ -250,7 +250,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  
    // input
    new Keyboard({
-@@ -1027,7 +1061,7 @@
+@@ -1027,7 +1062,7 @@
      e.stopImmediatePropagation(); e.preventDefault();
    }, true);
    // MIDI on by itself where it was on before and the browser already allows it (no prompt)
@@ -259,7 +259,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    addEventListener("keydown", (e) => {
      if (e.key !== "Escape" || !sheet.isOpen) return;
      e.stopImmediatePropagation(); e.preventDefault();
-@@ -1035,8 +1069,8 @@
+@@ -1035,8 +1070,8 @@
    }, true);
  
    // a file dropped anywhere on the page: an .rfm1 or a .fwsc, opened as from the browser's "Open a file..."
@@ -270,7 +270,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
      if (!f) return;
      ev.preventDefault();
-@@ -1046,14 +1080,15 @@
+@@ -1046,14 +1081,17 @@
    });
  
    // the visitor's .rfm1 files, kept in this browser
@@ -287,6 +287,8 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
 +  const mine = !ON_MOVE && !params.get("fw") && want && want.startsWith(RFM1_LAST) ? libEntry(want.slice(RFM1_LAST.length)) : null;
 +  const first = ON_MOVE ? (want && findEntry(want)) || null : mine || (want && findEntry(want)) || findEntry("felucca") || catalog.firmwares[0];
 +  if (!ON_MOVE && params.get("fw") && !findEntry(params.get("fw"))) toast(`No firmware "${params.get("fw")}": showing ${first.name}.`, "bad");
++  // the Move's three slots (the header's chips, the phone's slot button) and its Mix & FX view (js/moveslots.js)
++  if (ON_MOVE) { if (!player) makePlayer(); mountMoveUi({ player, controls, sheet, catalog, toast }); }
    layout();
 -  await openFirmware(first, params.get("engine"));
 +  if (first) await openFirmware(first, ON_MOVE ? "move" : params.get("engine"));
