@@ -213,7 +213,12 @@ export function mountMoveUi(o) {
   if (!document.querySelector('link[href="css/move.css"]')) document.head.append(h("link", { rel: "stylesheet", href: "css/move.css" }));
   const ui = new SlotsUi(o);
   window.FM1MoveUi = ui;
-  mountMoveFiles(o);   // (the settings sheet's audio folder: js/movefiles.js)
+  // the RemoteFM1 folder on the Move: the settings sheet's Files section and the file browser (js/movefiles.js,
+  // js/movefs.js), from the header's Files button too
+  ui.files = mountMoveFiles(o).view;
+  ui.filesBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn", id: "mv-filesbtn", title: "Files on the Move", onclick: () => ui.files.toggle() },
+    svg('<path d="M2 3.5h4.5l1.3 1.5H14v8H2z"/>', 15), h("span", {}, "Files"));
+  ui.mixBtn.before(ui.filesBtn);
   return ui;
 }
 export { NSLOT };

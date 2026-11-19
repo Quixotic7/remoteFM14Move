@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+#define _GNU_SOURCE
 /* Unit tests: the manifest reader (and the catalog index's arrays), SHA-256, the output stage (mix and limiter), the
- * mDNS answers, the FX stage (pan, the send buses, Schwung's freeverb and arp through fx.c: build/fxmods). */
+ * mDNS answers, the FX stage (pan, the send buses, Schwung's freeverb and arp through fx.c: build/fxmods), the page's
+ * file browser (files.c: the path rules, what may change, the zip's records and CRC). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +18,7 @@
 #include "catsig.h"
 #include "ed25519.h"
 #include "fsvc.h"
+#include "files.h"
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -742,6 +745,117 @@ static void fsapi(void)
     }
 }
 
+/* the page's file browser (files.h): the path rules, what may change, %-unescaping, the zip */
+static void filesapi(void)
+{
+    static const char *const GOOD[] = { "", "audio", "audio/Amen loop (1).wav", "data/elasticat/rec/rec-0001.wav",
+                                        "audio/caf\xc3\xa9 \xe2\x99\xab.wav", "states/choralroot/state-00.bin" };
+    static const char *const BAD[] = { "/audio", "audio/", "audio//x", "audio/../x", "..", "audio/./x", "./audio",
+                                       "audio/.hidden", "audio/a\\b", "audio/a\x01" "b", "audio/\xc3", "audio/\xc0\xaf",
+                                       "audio/\xed\xa0\x80", "audio/\xf4\x90\x80\x80" };
+    static const char *const NEWBAD[] = { "audio/a:b", "audio/a*b", "audio/a?b", "audio/a\"b", "audio/a<b", "audio/a|b",
+                                          "audio/ x", "audio/x ", "audio/x." };
+    const char *why = NULL;
+    char longp[1100], seg[300], out[64], w[300];
+    size_t i;
+    int ok = 1;
+    files_use_t u;
+    for (i = 0; i < sizeof GOOD / sizeof GOOD[0]; i++)
+        ok &= files_rel_ok(GOOD[i], 0, &why) == 0;
+    CHECK(ok, "files: good paths (the root, spaces, brackets, UTF-8 names)");
+    ok = 1;
+    for (i = 0; i < sizeof BAD / sizeof BAD[0]; i++)
+        if (files_rel_ok(BAD[i], 0, &why) == 0)
+            ok = 0, printf("    (taken: %s)\n", BAD[i]);
+    CHECK(ok, "files: refused: absolute, trailing /, //, .., ., hidden, \\, control characters, bad UTF-8 (cut, overlong, surrogate, past U+10FFFF)");
+    ok = 1;
+    for (i = 0; i < sizeof NEWBAD / sizeof NEWBAD[0]; i++)
+        ok &= files_rel_ok(NEWBAD[i], 0, &why) == 0 && files_rel_ok(NEWBAD[i], 1, &why) != 0;
+    CHECK(ok && files_rel_ok("audio/a:b/c", 1, &why) == 0 && files_rel_ok("", 1, &why) != 0,
+          "files: a new name: no : * ? \" < > |, no leading or trailing space, no trailing . (only the new segment)");
+    memset(seg, 'a', 256), seg[256] = 0;
+    snprintf(longp, sizeof longp, "audio/%s", seg);
+    ok = files_rel_ok(longp, 0, &why) != 0;
+    seg[255] = 0;
+    snprintf(longp, sizeof longp, "audio/%s", seg);
+    ok &= files_rel_ok(longp, 0, &why) == 0;
+    memset(longp, 'a', 1030), longp[1030] = 0;
+    for (i = 100; i < 1030; i += 100)
+        longp[i] = '/';
+    CHECK(ok && files_rel_ok(longp, 0, &why) != 0, "files: a name over 255 bytes, a path over 1024: refused");
+    CHECK(files_unescape("a%20b+c%2Fd%C3%A9", 17, out, sizeof out) == 0 && !strcmp(out, "a b c/d\xc3\xa9") &&
+          files_unescape("a%00b", 5, out, sizeof out) != 0 && files_unescape("a%2", 3, out, sizeof out) != 0 &&
+          files_unescape("a%zz", 4, out, sizeof out) != 0, "files: %%-unescaping (UTF-8 kept; %%00, a cut or bad escape refused)");
+    /* what may change */
+    memset(&u, 0, sizeof u);
+    u.open_project = 2;
+    snprintf(u.ids[0], 32, "elasticat");
+    snprintf(u.ids[2], 32, "choralroot");
+#define NO(rel, op) (files_refuse(rel, op, &u, w, sizeof w) != NULL)
+    CHECK(!NO("audio/x.wav", FILES_PUT) && !NO("audio/x.wav", FILES_REPLACE) && !NO("audio/sub", FILES_MKDIR) &&
+          !NO("audio/x.wav", FILES_DELETE) && !NO("audio/x.wav", FILES_RENAME) && !NO("code/ripple/d.lua", FILES_DELETE) &&
+          !NO("states/felucca/state-00.bin", FILES_DELETE) && !NO("move/projects/move-project-01.rfmmove", FILES_DELETE) &&
+          !NO("data/ripple", FILES_DELETE), "files: audio/, code/, data/, states/, move/projects/ take changes");
+    CHECK(NO("firmwares/felucca-1.8.2.rfm1m", FILES_DELETE) && NO("firmwares/x.rfm1m", FILES_PUT) && NO("firmwares/a", FILES_MKDIR) &&
+          NO("catalog/index.json", FILES_REPLACE) && NO("catalog-url", FILES_REPLACE) && NO("newdir", FILES_MKDIR) &&
+          NO("", FILES_DELETE) && strstr((files_refuse("firmwares/x.rfm1m", FILES_PUT, &u, w, sizeof w), w), "signed catalog"),
+          "files: firmwares/ and catalog/ read-only (a firmware: only the signed catalog installs one), the root too");
+    CHECK(NO("audio", FILES_DELETE) && NO("states", FILES_RENAME) && NO("move/projects", FILES_DELETE) && NO("move/settings.bin", FILES_REPLACE) &&
+          NO("move/library.rmvl", FILES_DELETE) && NO("move/open-project", FILES_DELETE) && NO("move", FILES_DELETE),
+          "files: the five folders stay; move/'s settings, library and open-project are the core's");
+    CHECK(NO("move/projects/move-project-03.rfmmove", FILES_DELETE) && NO("move/projects/move-project-03.fx.json", FILES_RENAME) &&
+          NO("move/projects/move-project-03.rfmmove", FILES_REPLACE) && !NO("move/projects/move-project-04.rfmmove", FILES_DELETE),
+          "files: the open project's files (project 3) stay");
+    CHECK(NO("states/elasticat/state-00.bin", FILES_DELETE) && NO("states/elasticat/new.bin", FILES_PUT) && NO("states/choralroot", FILES_RENAME) &&
+          strstr((files_refuse("states/elasticat/x", FILES_PUT, &u, w, sizeof w), w), "slot 1") &&
+          NO("data/elasticat/settings.bin", FILES_DELETE) && NO("data/elasticat", FILES_RENAME) && NO("data/elasticat/x", FILES_REPLACE) &&
+          !NO("data/elasticat/new.bin", FILES_PUT) && !NO("data/elasticat/new", FILES_MKDIR) && NO("code/choralroot/x", FILES_DELETE),
+          "files: a running firmware's states/<id>/ stay; its data/<id>/, code/<id>/ take new files, no delete, rename or replace");
+    CHECK(!NO("data/elasticatx/a", FILES_DELETE) && !NO("states/elasticat2", FILES_DELETE),
+          "files: a name that only starts like a running id is not it");
+#undef NO
+    /* the zip: CRC-32's check value; a folder's archive read in odd pieces is the same as in one */
+    CHECK(files_crc32(0, (const uint8_t *)"123456789", 9) == 0xCBF43926u, "files: CRC-32 (123456789 -> cbf43926)");
+    {
+        char root[] = "/tmp/rfm14-files-XXXXXX", p[256];
+        uint64_t len = 0, len2 = 0;
+        files_zip_t *z;
+        uint8_t *a = NULL, *b = NULL;
+        long n, ta = 0, tb = 0;
+        FILE *f;
+        if (mkdtemp(root)) {
+            snprintf(p, sizeof p, "%s/states", root), mkdir(p, 0755);
+            snprintf(p, sizeof p, "%s/states/x", root), mkdir(p, 0755);
+            snprintf(p, sizeof p, "%s/states/empty", root), mkdir(p, 0755);
+            snprintf(p, sizeof p, "%s/states/x/state-00.bin", root);
+            if ((f = fopen(p, "wb"))) { for (i = 0; i < 70000; i++) fputc((int)(i * 7 & 255), f); fclose(f); }
+            snprintf(p, sizeof p, "%s/states/.hidden", root);
+            if ((f = fopen(p, "wb"))) { fputs("no", f); fclose(f); }
+            snprintf(p, sizeof p, "%s/states/link", root);
+            if (symlink("/etc", p) != 0) {}
+            z = files_zip_plan(root, "states", &len, &why);
+            a = malloc(len + 16), b = malloc(len + 16);
+            while (z && a && (n = files_zip_read(z, a + ta, 65536)) > 0)
+                ta += n;
+            files_zip_free(z);
+            z = files_zip_plan(root, "states", &len2, &why);
+            while (z && b && (n = files_zip_read(z, b + tb, 7)) > 0)
+                tb += n;
+            files_zip_free(z);
+            CHECK(a && b && len == len2 && (uint64_t)ta == len && ta == tb && !memcmp(a, b, (size_t)ta) &&
+                  !memcmp(a, "PK\x03\x04", 4) && !memcmp(a + ta - 22, "PK\x05\x06", 4) && a[ta - 22 + 8] == 4 &&
+                  !memmem(a, (size_t)ta, ".hidden", 7) && !memmem(a, (size_t)ta, "states/link", 11) &&
+                  memmem(a, (size_t)ta, "states/x/state-00.bin", 21) && memmem(a, (size_t)ta, "states/empty/", 13),
+                  "files: a zip of states/ (%ld bytes, the length planned first): 4 entries (the folder, x/, empty/, the file; no "
+                  "hidden file, no link), the same read in 64 KB or 7-byte pieces", ta);
+            free(a), free(b);
+            ok = files_rmtree(root) == 0;   /* (once: CHECK reads its condition twice) */
+            CHECK(ok && access("/etc/hostname", F_OK) == 0 && access(root, F_OK) != 0,
+                  "files: files_rmtree removes a folder (a link in it unlinked, not followed)");
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c's crash probe runs this program) */
@@ -756,6 +870,7 @@ int main(int argc, char **argv)
     ed25519();
     catsig();
     fsapi();
+    filesapi();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }

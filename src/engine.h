@@ -83,6 +83,8 @@ int engine_midi(const uint8_t *msg, int n);
  * only), from *pos on (bytes ever written; a reader that fell more than 64 KB behind skips ahead): bytes copied */
 int engine_midi_out(uint8_t *buf, int cap, uint32_t *pos);
 uint32_t engine_midi_out_pos(void);   /* (where a new page starts reading) */
+/* the firmware ids in the slots now ("" none; any thread): the page's file browser leaves their files alone */
+void engine_running_ids(char ids[3][32]);
 /* a JSON status line (the slots, CPU, late blocks, the ring) into out */
 int engine_status(char *out, int cap);
 /* the installed firmwares, {"firmwares":[...]} (each: id, name, version, license, source_url, sha256, file, base, authors,

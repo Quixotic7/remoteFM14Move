@@ -19,14 +19,16 @@
 //     the page; the tab follows the Move's FX page and sets it;
 //   - the Editor (Felucca's, from fixtures for remotefm1.com and its author's site): a SysEx request from the editor in
 //     its sandbox reaches the firmware on the Move, the reply reaches the editor (live page, then the hosted copy);
-//   - the settings sheet's audio folder (js/movefiles.js): a WAV added through its file picker reaches the Move's
-//     audio/ (POST /api/files/audio), its trash button deletes it;
+//   - Files (js/movefiles.js, js/movefs.js): the sheet's Add samples puts a WAV into the Move's audio/; the header's
+//     Files button's browser: the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder
+//     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet;
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
-//     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png.
+//     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png,
+//     move-page-editor.png (the Editor), move-page-files.png (the file browser).
 //   node tests/page_e2e.mjs [--shot=docs/move-page.png] [--port=N]          (after make; needs Docker and Chromium)
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -405,8 +407,9 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await esc();
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "Esc again"), "...and the next Esc goes back to the faceplate");
 
-  // ---- the settings sheet's audio folder (js/movefiles.js): a WAV added from the page lands in the Move's audio/, a
-  // delete removes it (the samples a Fantasy CFW such as Elasticat reads)
+  // ---- Files (js/movefiles.js, js/movefs.js: the RemoteFM1 folder on the Move): the settings sheet's Files section
+  // (Add samples one click away, the exports), the file browser from the header (breadcrumbs, sizes and dates, a new
+  // folder, files dropped on it, rename, delete, read-only folders), the exports as real downloads
   {
     const wav = join(tmp, "page kick.wav"), frames = 4410, d = frames * 4, b = Buffer.alloc(44 + d);
     b.write("RIFF", 0); b.writeUInt32LE(36 + d, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20);
@@ -414,21 +417,72 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     b.write("data", 36); b.writeUInt32LE(d, 40);
     for (let i = 0; i < frames * 2; i++) b.writeInt16LE(Math.round(8000 * Math.sin(i / 20)), 44 + 2 * i);
     writeFileSync(wav, b);
+    const fsList = async (p) => api(`fs/list?path=${encodeURIComponent(p)}`).catch(() => null);
+    const onMove = async (p, name) => { const j = await fsList(p); return j && j.entries.find((f) => f.name === name); };
     await js(`FM1MoveUi.o.sheet.open()`);
-    ok(await until(`[...document.querySelectorAll(".sheet h3.heading")].some((e) => e.textContent === "Audio files") && document.querySelector(".mv-files li")`, 5000, "the audio list"),
-      "the settings sheet has the Move's audio folder (\"Audio files\", its list)");
+    ok(await until(`[...document.querySelectorAll(".sheet h3.heading")].some((e) => e.textContent === "Files") && document.querySelector(".sheet .mv-add-samples") && document.querySelector(".sheet .mv-exp-proj") && document.querySelector(".sheet .mv-exp-states")`, 5000, "the sheet's Files"),
+      "the settings sheet's Files section: Add samples, Browse files, Export all projects, Export states (in place of Audio files)");
     const inp = await cdp("Runtime.evaluate", { expression: `document.querySelector(".mv-files input[type=file]")` });
     await cdp("DOM.setFileInputFiles", { files: [wav], objectId: inp.result.result.objectId });
-    const onMove = async () => { const j = await api("files/audio").catch(() => null); return j && j.files.find((f) => f.name === "page kick.wav"); };
-    ok(await untilApi(async () => { const f = await onMove(); return f && f.size === b.length; }, 10000) &&
-      await until(`[...document.querySelectorAll(".mv-files li .nm")].some((e) => e.textContent === "page kick.wav")`, 5000, "listed"),
-      `"Add WAV files": page kick.wav (${b.length} bytes) uploaded into the Move's audio/ and listed`);
-    await js(`window.confirm = () => true`);
-    await js(`document.querySelector('.mv-files li button[aria-label="Delete page kick.wav"]').click()`);   // (a toast may lie over it)
-    ok(await untilApi(async () => !(await onMove()), 5000) &&
-      await until(`![...document.querySelectorAll(".mv-files li .nm")].some((e) => e.textContent === "page kick.wav")`, 5000, "gone"),
-      "its trash button deletes it from the Move");
+    ok(await untilApi(async () => { const f = await onMove("audio", "page kick.wav"); return f && f.size === b.length; }, 10000),
+      `Add samples: page kick.wav (${b.length} bytes) uploaded into the Move's audio/ in one click`);
     await js(`FM1MoveUi.o.sheet.close()`);
+    // the header's Files button: the browser at the folder's root
+    await click("#mv-filesbtn");
+    ok(await until(`!document.getElementById("mv-fs").hidden && document.querySelectorAll("#mv-fs .mv-fs-row").length >= 6`, 5000, "the Files view"),
+      "the header's Files button opens the file browser: the RemoteFM1 folder's root");
+    const root = await js(`({ names: [...document.querySelectorAll("#mv-fs .mv-fs-row")].map((r) => r.dataset.name), ro: !document.querySelector("#mv-fs .mv-fs-ro").hidden,
+      up: document.querySelector("#mv-fs .mv-fs-up").disabled })`);
+    ok(["audio", "code", "data", "firmwares", "move", "states"].every((n) => root.names.includes(n)) && root.ro && root.up,
+      `its root: ${root.names.join(", ")}; read-only there (the note, no upload)`);
+    await click('#mv-fs .mv-fs-row[data-name="audio"] .nm');
+    ok(await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"]') && document.querySelector("#mv-fs .mv-fs-crumbs").textContent.includes("audio")`, 5000, "audio/"),
+      "a folder opens: audio/ in the breadcrumbs, the sample listed");
+    const row = await js(`(() => { const r = document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"]'); return { sz: r.querySelector(".sz").textContent, dt: r.querySelector(".dt").textContent }; })()`);
+    ok(/KB$/.test(row.sz) && /\d/.test(row.dt), `its size and date (${row.sz}, ${row.dt})`);
+    // a new folder (its name asked), a file dropped into it, renamed, deleted; the folder deleted with what is in it
+    await js(`window.prompt = () => "Kits"; window.confirm = () => true`);
+    await click("#mv-fs .mv-fs-new");
+    ok(await untilApi(async () => { const f = await onMove("audio", "Kits"); return f && f.dir; }, 5000), "New folder: audio/Kits on the Move");
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="Kits"]')`, 5000, "Kits listed");
+    await click('#mv-fs .mv-fs-row[data-name="Kits"] .nm');
+    await until(`document.querySelector("#mv-fs .mv-fs-crumbs").textContent.includes("Kits")`, 5000, "into Kits");
+    await js(`(() => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(${JSON.stringify([...b.subarray(0, 2000)])})], "snare one.wav", { type: "audio/wav" }));
+      const el = document.getElementById("mv-fs"); el.dispatchEvent(new DragEvent("dragenter", { dataTransfer: dt, bubbles: true }));
+      el.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true })); })()`);
+    ok(await untilApi(async () => { const f = await onMove("audio/Kits", "snare one.wav"); return f && f.size === 2000; }, 8000) &&
+      await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="snare one.wav"]')`, 5000, "the dropped file"),
+      "a file dropped on the browser lands in the folder shown (audio/Kits/snare one.wav)");
+    await shot(join(DOCS, "move-page-files.png"));
+    await js(`window.prompt = () => "snare 2.wav"`);
+    await js(`document.querySelector('#mv-fs .mv-fs-row[data-name="snare one.wav"] button[aria-label^="Rename"]').click()`);
+    ok(await untilApi(async () => !!(await onMove("audio/Kits", "snare 2.wav")) && !(await onMove("audio/Kits", "snare one.wav")), 5000), "Rename: snare one.wav -> snare 2.wav on the Move");
+    await js(`document.querySelectorAll('#mv-fs .mv-fs-crumbs button')[1].click()`);   // (audio/)
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="Kits"]')`, 5000, "back in audio/");
+    await js(`document.querySelector('#mv-fs .mv-fs-row[data-name="Kits"] button[aria-label^="Delete"]').click()`);
+    ok(await untilApi(async () => !(await onMove("audio", "Kits")), 5000) && await until(`!document.querySelector('#mv-fs .mv-fs-row[data-name="Kits"]')`, 5000, "Kits gone"),
+      "Delete a folder with a file in it: asked twice, then deleted with what is in it");
+    await js(`document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"] button[aria-label^="Delete"]').click()`);
+    ok(await untilApi(async () => !(await onMove("audio", "page kick.wav")), 5000), "Delete a file: page kick.wav gone from the Move");
+    // read-only: firmwares/ (its note, no upload, no rename or delete)
+    await until(`!document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"]')`, 5000, "the list again");
+    await js(`document.querySelector('#mv-fs .mv-fs-crumbs button').click()`);   // (the breadcrumbs' first: the root)
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="firmwares"]')`, 5000, "the root");
+    await click('#mv-fs .mv-fs-row[data-name="firmwares"] .nm');
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="felucca-1.8.2.rfm1m"]')`, 5000, "firmwares/");
+    const fwv = await js(`({ note: document.querySelector("#mv-fs .mv-fs-ro").textContent, up: document.querySelector("#mv-fs .mv-fs-up").disabled,
+      del: document.querySelector('#mv-fs .mv-fs-row[data-name="felucca-1.8.2.rfm1m"] button[aria-label^="Delete"]').disabled })`);
+    ok(fwv.up && fwv.del && /signed catalog/.test(fwv.note), `firmwares/ read-only on the page: "${fwv.note.slice(0, 80)}..."`);
+    // the exports: real downloads (Export states, Export all projects)
+    const dl = join(tmp, "dl");
+    await cdp("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl, eventsEnabled: true });
+    await click("#mv-fs .mv-fs-exp-states");
+    await click("#mv-fs .mv-fs-exp-proj");
+    const got = await untilApi(async () => { try { const f = readdirSync(dl); return f.includes("states.zip") && f.includes("projects.zip"); } catch { return false; } }, 10000);
+    const zhead = got ? readFileSync(join(dl, "states.zip")).subarray(0, 4).toString("latin1") : "";
+    ok(got && zhead === "PK\x03\x04", `Export states and Export all projects: states.zip and projects.zip downloaded (${got ? readdirSync(dl).join(", ") : "none"})`);
+    await key("Escape", { keyName: "Escape", vk: 27 });
+    ok(await until(`document.getElementById("mv-fs").hidden`, 3000, "Esc"), "Esc closes the file browser");
   }
 
   // ---- the phone (390 x 844): the slot button, its menu, the Mix & FX sheet
@@ -474,6 +528,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await click('.mv-tab[data-tab="1"]');
   await until(`document.querySelector('.mv-ph-strip[data-slot="1"] [data-ctl="level-1"]')`, 5000, "the phone's Mixer");
   { const b = await box('.mv-ph-strip[data-slot="1"] [data-ctl="level-1"]'); await drag(b.x + b.w * 0.5, b.y + b.h / 2, b.x + b.w * 0.25, b.y + b.h / 2); }
+  await untilApi(async () => { const v = (await mixNow()).slots[1].level; return v > 20 && v < 45; }, 2000);   // (the drag's last edits land)
   const lv1 = (await mixNow()).slots[1].level;
   ok(lv1 > 20 && lv1 < 45, `the phone's Level bar dragged: ChoralRoot's level in the core ${lv1}`);
   await edit(18, 1 * 8, 100);

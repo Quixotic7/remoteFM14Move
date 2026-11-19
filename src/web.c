@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "files.h"
 #include "fsvc.h"
 #include "minijson.h"
 #include "mr_ws.h"
@@ -57,6 +58,12 @@ typedef struct {
     uint8_t mx_st, mx_d[2], mx_nd;
     int mx_sysex;
     uint32_t mo_pos;
+    /* the file browser (/api/fs): an upload's kind (0 audio/'s, 1 /api/fs/put: no WAV check unless into audio/;
+     * up_replace: may take an existing name's place); a download streamed from a file or a zip */
+    int up_fs, up_magic, up_replace;
+    int dl_fd;               /* (-1 / 0 none) */
+    uint64_t dl_left;
+    files_zip_t *zip;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -82,6 +89,9 @@ static void cfree(client_t *c)
         close(c->up_fd);
         unlink(c->up_tmp);
     }
+    if (c->dl_fd > 0)
+        close(c->dl_fd);
+    files_zip_free(c->zip);
     if (c->fd >= 0)
         close(c->fd);
     free(c->in), free(c->out), free(c->lcd), free(c->mx);
@@ -330,6 +340,13 @@ static int url_name(const char *in, char *out, size_t cap)
 static uint64_t disk_free(void)
 {
     struct statvfs v;
+#ifdef RFM14_TEST_BUILD
+    {   /* (tests: the free space a full disk would have) */
+        const char *e = getenv("RFM14_TEST_DISK_FREE_MB");
+        if (e && *e)
+            return (uint64_t)atoll(e) << 20;
+    }
+#endif
     return statvfs(st_root(), &v) == 0 ? (uint64_t)v.f_bavail * v.f_frsize : 0;
 }
 static int by_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
@@ -419,14 +436,23 @@ static void api_audio_delete(client_t *c, const char *urlname)
     json_reply(c, "200 OK", "{\"ok\":true}");
 }
 
-/* the headers of POST /api/files/audio/<name> seen: 1 an upload starts (or was refused: replied), 0 not one */
+static int fs_put_start(client_t *c, const char *query, long want);
+/* the headers of POST /api/files/audio/<name> or /api/fs/put?.. seen: 1 an upload starts (or was refused: replied),
+ * 0 not one */
 static int upload_start(client_t *c, const char *req, long want)
 {
-    char path[256], name[128];
-    if (sscanf(req, "POST %255s", path) != 1 || strncmp(path, "/api/files/audio/", 17))
+    char path[4096], name[128];
+    if (sscanf(req, "POST %4095s", path) != 1)
+        return 0;
+    if (!strncmp(path, "/api/fs/put?", 12)) {
+        c->closing = 0;
+        return fs_put_start(c, path + 12, want);
+    }
+    if (strncmp(path, "/api/files/audio/", 17))
         return 0;
     path[strcspn(path, "?#")] = 0;
     c->closing = 0;
+    c->up_fs = 0, c->up_magic = 1, c->up_replace = 1;
     if (url_name(path + 17, name, sizeof name) != 0) {
         json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"a WAV file's name: letters, digits, space _ - . , ( ) +, ending .wav\"}");
         return 1;
@@ -478,9 +504,16 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
         return;
     close(c->up_fd);
     c->up_fd = -1;
-    if (memcmp(c->up_head, "RIFF", 4) || memcmp(c->up_head + 8, "WAVE", 4)) {
+    if (c->up_magic && (memcmp(c->up_head, "RIFF", 4) || memcmp(c->up_head + 8, "WAVE", 4)) &&
+        (!c->up_fs || memcmp(c->up_head, "FORM", 4) || (memcmp(c->up_head + 8, "AIFF", 4) && memcmp(c->up_head + 8, "AIFC", 4)))) {
         unlink(c->up_tmp);
-        json_reply(c, "415 Unsupported Media Type", "{\"ok\":false,\"error\":\"not a WAV file (RIFF/WAVE)\"}");
+        json_reply(c, "415 Unsupported Media Type", c->up_fs ? "{\"ok\":false,\"error\":\"audio/ takes WAV and AIFF files only\"}"
+                                                             : "{\"ok\":false,\"error\":\"not a WAV file (RIFF/WAVE)\"}");
+        return;
+    }
+    if (!c->up_replace && access(c->up_dst, F_OK) == 0) {   /* (made meanwhile) */
+        unlink(c->up_tmp);
+        json_reply(c, "409 Conflict", "{\"ok\":false,\"error\":\"a file of that name is there already\"}");
         return;
     }
     if (rename(c->up_tmp, c->up_dst) != 0) {
@@ -493,12 +526,412 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
     json_reply(c, "201 Created", "{\"ok\":true}");
 }
 
+/* ------------------------------------------------------------------ the file browser (/api/fs) --- */
+/* the RemoteFM1 folder, files.h's rules:
+ *   GET  /api/fs/list?path=P                 a folder: {"path", "writable", "why", "entries": [{"name", "size",
+ *                                            "mtime", "dir"}], "free", "max", "busy": the slots' ids, "open_project"}
+ *   GET  /api/fs/get?path=P                  a file (streamed; attachment)
+ *   GET  /api/fs/zip?path=P                  a folder as a .zip (store only, streamed, its length known first)
+ *   POST /api/fs/put?path=DIR&name=N[&replace=1]   the body into DIR/N (FS_UP_MAX at most, FS_RESERVE left free;
+ *                                            a temporary file, renamed when whole; audio/: WAV or AIFF only)
+ *   POST /api/fs/mkdir?path=P                a new folder
+ *   POST /api/fs/rename?path=P&to=Q          P moved to Q (a free name; both where the page may change things)
+ *   POST /api/fs/delete?path=P[&recursive=1&confirm=NAME]   a file or an empty folder; a folder with what is in it
+ *                                            only with recursive=1 and confirm= its own name
+ * Refusals: 400 (the path), 403 (files.h: read-only, or in use: why), 404, 409 (there already, not empty), 413, 507. */
+#define FS_UP_MAX (256ull * 1024 * 1024)
+#define FS_RESERVE (64ull * 1024 * 1024)
+
+/* a query parameter, %XX decoded: 0, -1 missing or bad */
+static int qparam(const char *q, const char *key, char *out, size_t cap)
+{
+    const size_t kl = strlen(key);
+    while (q && *q) {
+        const char *amp = strchr(q, '&'), *end = amp ? amp : q + strlen(q);
+        if (!strncmp(q, key, kl) && q[kl] == '=')
+            return files_unescape(q + kl + 1, (size_t)(end - q - (long)kl - 1), out, cap);
+        q = amp ? amp + 1 : NULL;
+    }
+    return -1;
+}
+
+static void fs_err(client_t *c, const char *status, const char *why)
+{
+    char esc[700], b[800];
+    mj_escape(why, esc, sizeof esc);
+    snprintf(b, sizeof b, "{\"ok\":false,\"error\":\"%s\"}", esc);
+    json_reply(c, status, b);
+}
+
+static void fs_use(files_use_t *u)
+{
+    char p[ST_PATH];
+    size_t n;
+    uint8_t *t;
+    engine_running_ids(u->ids);
+    u->open_project = 0;   /* (no move/open-project yet: the core opened project 1) */
+    st_path(p, sizeof p, "move/open-project");
+    if ((t = st_read(p, &n))) {
+        u->open_project = atoi((char *)t);
+        if (u->open_project < 0 || u->open_project > 31)
+            u->open_project = -1;
+        free(t);
+    }
+}
+
+/* the path parameter checked (the rules, no links on the way): 0, or replied */
+static int fs_path(client_t *c, const char *q, const char *key, char *rel, size_t cap, int is_new, char *abs_, size_t acap)
+{
+    const char *why = NULL;
+    if (qparam(q, key, rel, cap) != 0) {
+        fs_err(c, "400 Bad Request", "no path, or a bad %-escape in it");
+        return -1;
+    }
+    if (files_rel_ok(rel, is_new, &why) != 0) {
+        char m[300];
+        snprintf(m, sizeof m, "%s: %s", key, why);
+        fs_err(c, "400 Bad Request", m);
+        return -1;
+    }
+    if (files_no_links(st_root(), rel) != 0) {
+        fs_err(c, "403 Forbidden", "a symbolic link on the way: not followed");
+        return -1;
+    }
+    snprintf(abs_, acap, "%s%s%s", st_root(), *rel ? "/" : "", rel);
+    return 0;
+}
+
+static int fs_refused(client_t *c, const char *rel, int op)
+{
+    files_use_t u;
+    char why[400];
+    fs_use(&u);
+    if (files_refuse(rel, op, &u, why, sizeof why)) {
+        fs_err(c, "403 Forbidden", why);
+        return 1;
+    }
+    return 0;
+}
+
+static void fs_changed(const char *rel)   /* (the carts' fs_changed moves: audio/, code/, data/) */
+{
+    if (!strncmp(rel, "audio", 5) || !strncmp(rel, "code", 4) || !strncmp(rel, "data", 4))
+        fsvc_bump_changed();
+}
+
+static void api_fs_list(client_t *c, const char *q)
+{
+    char rel[FILES_PATH_MAX + 1], abs_[ST_PATH + FILES_PATH_MAX], *j, tail[400], ids[3][96];
+    files_use_t u;
+    int s;
+    if (fs_path(c, q, "path", rel, sizeof rel, 0, abs_, sizeof abs_) != 0)
+        return;
+    if (!(j = files_list_json(st_root(), rel))) {
+        fs_err(c, errno == ENOTDIR ? "400 Bad Request" : "404 Not Found", errno == ENOTDIR ? "not a folder" : "no such folder");
+        return;
+    }
+    fs_use(&u);
+    for (s = 0; s < 3; s++)
+        mj_escape(u.ids[s], ids[s], sizeof ids[s]);
+    snprintf(tail, sizeof tail, ",\"free\":%llu,\"max\":%llu,\"busy\":[\"%s\",\"%s\",\"%s\"],\"open_project\":%d}",
+             (unsigned long long)disk_free(), FS_UP_MAX, ids[0], ids[1], ids[2], u.open_project);
+    {
+        const size_t a = strlen(j), b = strlen(tail);
+        char *all = malloc(a + b + 1);
+        if (!all) {
+            free(j);
+            http_reply(c, "500 Internal Server Error", "text/plain", "", 0);
+            return;
+        }
+        memcpy(all, j, a), memcpy(all + a, tail, b + 1);
+        json_reply(c, "200 OK", all);
+        free(all);
+    }
+    free(j);
+}
+
+/* a streamed reply's head: its length known; name the file's (Content-Disposition: attachment, UTF-8) */
+static void stream_head(client_t *c, const char *type, uint64_t len, const char *name)
+{
+    char h[1600], enc[900];
+    size_t i, k = 0;
+    for (i = 0; name[i] && k + 4 < sizeof enc; i++) {
+        const unsigned char x = (unsigned char)name[i];
+        if ((x >= 'a' && x <= 'z') || (x >= 'A' && x <= 'Z') || (x >= '0' && x <= '9') || strchr("-_.", x))
+            enc[k++] = (char)x;
+        else
+            k += (size_t)snprintf(enc + k, sizeof enc - k, "%%%02X", x);
+    }
+    enc[k] = 0;
+    k = (size_t)snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %llu\r\n"
+                         "Content-Disposition: attachment; filename*=UTF-8''%s\r\nCache-Control: no-cache\r\n"
+                         "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n", type, (unsigned long long)len, enc);
+    put(c, h, k);
+}
+
+static void api_fs_get(client_t *c, const char *q)
+{
+    char rel[FILES_PATH_MAX + 1], abs_[ST_PATH + FILES_PATH_MAX];
+    struct stat st;
+    int fd;
+    if (fs_path(c, q, "path", rel, sizeof rel, 0, abs_, sizeof abs_) != 0)
+        return;
+    if (!*rel || (fd = open(abs_, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)) < 0) {
+        fs_err(c, "404 Not Found", "no such file");
+        return;
+    }
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        close(fd);
+        fs_err(c, "400 Bad Request", "not a file (a folder: /api/fs/zip)");
+        return;
+    }
+    stream_head(c, "application/octet-stream", (uint64_t)st.st_size, strrchr(rel, '/') ? strrchr(rel, '/') + 1 : rel);
+    c->dl_fd = fd;
+    c->dl_left = (uint64_t)st.st_size;
+    c->closing = c->dl_left ? 0 : 1;
+}
+
+static void api_fs_zip(client_t *c, const char *q)
+{
+    char rel[FILES_PATH_MAX + 1], abs_[ST_PATH + FILES_PATH_MAX], name[FILES_SEG_MAX + 8];
+    const char *why = NULL, *last;
+    uint64_t len = 0;
+    if (fs_path(c, q, "path", rel, sizeof rel, 0, abs_, sizeof abs_) != 0)
+        return;
+    if (!(c->zip = files_zip_plan(st_root(), rel, &len, &why))) {
+        fs_err(c, why && !strcmp(why, "no such folder") ? "404 Not Found" : "413 Payload Too Large", why ? why : "no zip");
+        return;
+    }
+    last = strrchr(rel, '/');
+    snprintf(name, sizeof name, "%s.zip", *rel ? (last ? last + 1 : rel) : "RemoteFM1");
+    stream_head(c, "application/zip", len, name);
+    c->closing = 0;
+    fprintf(stderr, "web: %s/ as a zip (%llu bytes)\n", *rel ? rel : ".", (unsigned long long)len);
+}
+
+/* a streamed download's next piece, while the page's buffer has room: 1 more to come, 0 done */
+static int stream_fill(client_t *c)
+{
+    const size_t room = OUT_CAP / 2;
+    if (c->out_n - c->out_off >= room)
+        return 1;
+    if (c->out_off) {   /* (the buffer from its start again) */
+        memmove(c->out, c->out + c->out_off, c->out_n - c->out_off);
+        c->out_n -= c->out_off;
+        c->out_off = 0;
+    }
+    while (c->out_n < room) {
+        const size_t cap = OUT_CAP - c->out_n;
+        long got;
+        if (c->dl_fd > 0) {
+            const size_t want = c->dl_left < cap ? (size_t)c->dl_left : cap;
+            ssize_t r = read(c->dl_fd, c->out + c->out_n, want);
+            if (r <= 0) {   /* (shorter than it was: the connection ends early, the browser sees it cut) */
+                close(c->dl_fd);
+                c->dl_fd = -1;
+                c->closing = 2;
+                return 0;
+            }
+            c->out_n += (size_t)r, c->dl_left -= (uint64_t)r;
+            if (!c->dl_left) {
+                close(c->dl_fd);
+                c->dl_fd = -1;
+                c->closing = 1;
+                return 0;
+            }
+        } else if (c->zip) {
+            got = files_zip_read(c->zip, c->out + c->out_n, cap);
+            if (got < 0) {
+                files_zip_free(c->zip);
+                c->zip = NULL;
+                c->closing = 2;
+                return 0;
+            }
+            c->out_n += (size_t)got;
+            if (!got) {
+                files_zip_free(c->zip);
+                c->zip = NULL;
+                c->closing = 1;
+                return 0;
+            }
+        } else
+            return 0;
+    }
+    return 1;
+}
+
+static int fs_put_start(client_t *c, const char *q, long want)
+{
+    char dir[FILES_PATH_MAX + 1], name[FILES_SEG_MAX + 1], rel[FILES_PATH_MAX + 1], abs_[ST_PATH + FILES_PATH_MAX], v[8];
+    const char *why = NULL;
+    struct stat st;
+    const size_t ql = strcspn(q, " #");
+    char qq[4096];
+    snprintf(qq, sizeof qq, "%.*s", (int)ql, q);
+    if (fs_path(c, qq, "path", dir, sizeof dir, 0, abs_, sizeof abs_) != 0)
+        return 1;
+    if (qparam(qq, "name", name, sizeof name) != 0 || strchr(name, '/') ||
+        snprintf(rel, sizeof rel, "%s%s%s", dir, *dir ? "/" : "", name) >= (int)sizeof rel || files_rel_ok(rel, 1, &why) != 0) {
+        fs_err(c, "400 Bad Request", why ? why : "a file name (name=), no / in it");
+        return 1;
+    }
+    c->up_replace = qparam(qq, "replace", v, sizeof v) == 0 && v[0] == '1';
+    if (lstat(abs_, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        fs_err(c, "404 Not Found", "no such folder");
+        return 1;
+    }
+    snprintf(abs_, sizeof abs_, "%s/%s", st_root(), rel);
+    if (lstat(abs_, &st) == 0) {
+        if (!c->up_replace || !S_ISREG(st.st_mode)) {
+            fs_err(c, "409 Conflict", S_ISREG(st.st_mode) ? "a file of that name is there already (replace=1 takes its place)"
+                                                           : "a folder or a link of that name is there");
+            return 1;
+        }
+        if (fs_refused(c, rel, FILES_REPLACE))
+            return 1;
+    } else if (fs_refused(c, rel, FILES_PUT))
+        return 1;
+    if (want < 0 || (want == 0 && !strstr((const char *)c->in, "Content-Length"))) {
+        fs_err(c, "411 Length Required", "the file, with its Content-Length");
+        return 1;
+    }
+    if ((uint64_t)want > FS_UP_MAX) {
+        fs_err(c, "413 Payload Too Large", "at most 256 MB a file");
+        return 1;
+    }
+    if ((uint64_t)want + FS_RESERVE > disk_free()) {
+        fs_err(c, "507 Insufficient Storage", "not enough room on the Move (64 MB stay free)");
+        return 1;
+    }
+    c->up_fs = 1;
+    c->up_magic = !strncmp(rel, "audio/", 6);
+    snprintf(c->up_dst, sizeof c->up_dst, "%s", abs_);
+    snprintf(c->up_tmp, sizeof c->up_tmp, "%s/%s%s.upload-%d.part", st_root(), dir, *dir ? "/" : "", (int)(c - g_c));
+    if (strlen(abs_) >= sizeof c->up_dst - 1 || strlen(c->up_tmp) >= sizeof c->up_tmp - 1) {
+        fs_err(c, "400 Bad Request", "the path is too long here");
+        return 1;
+    }
+    if (!want) {   /* (an empty file: made now) */
+        const int fd = open(c->up_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        if (fd < 0 || close(fd) != 0 || (c->up_magic && (unlink(c->up_tmp), 1))) {
+            fs_err(c, c->up_magic ? "415 Unsupported Media Type" : "500 Internal Server Error",
+                   c->up_magic ? "audio/ takes WAV and AIFF files only" : "cannot write there");
+            return 1;
+        }
+        if (rename(c->up_tmp, c->up_dst) != 0) {
+            unlink(c->up_tmp);
+            fs_err(c, "500 Internal Server Error", "cannot keep it");
+            return 1;
+        }
+        fs_changed(rel);
+        json_reply(c, "201 Created", "{\"ok\":true}");
+        return 1;
+    }
+    c->up_fd = open(c->up_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (c->up_fd <= 0) {
+        c->up_fd = -1;
+        fs_err(c, "500 Internal Server Error", "cannot write there");
+        return 1;
+    }
+    memset(c->up_head, 0, sizeof c->up_head);
+    c->up_left = c->up_total = (uint64_t)want;
+    return 1;
+}
+
+static void api_fs_post(client_t *c, const char *what, const char *q)
+{
+    char rel[FILES_PATH_MAX + 1], abs_[ST_PATH + FILES_PATH_MAX];
+    struct stat st;
+    if (!strcmp(what, "mkdir")) {
+        if (fs_path(c, q, "path", rel, sizeof rel, 1, abs_, sizeof abs_) != 0 || fs_refused(c, rel, FILES_MKDIR))
+            return;
+        if (mkdir(abs_, 0755) != 0) {
+            fs_err(c, errno == EEXIST ? "409 Conflict" : errno == ENOENT ? "404 Not Found" : "500 Internal Server Error",
+                   errno == EEXIST ? "something of that name is there already" : errno == ENOENT ? "no such folder to make it in"
+                                   : "cannot make it");
+            return;
+        }
+        fs_changed(rel);
+        fprintf(stderr, "web: %s/ made\n", rel);
+        json_reply(c, "201 Created", "{\"ok\":true}");
+    } else if (!strcmp(what, "rename")) {
+        char to[FILES_PATH_MAX + 1], absto[ST_PATH + FILES_PATH_MAX];
+        const size_t n = strlen(rel);
+        if (fs_path(c, q, "path", rel, sizeof rel, 0, abs_, sizeof abs_) != 0 ||
+            fs_path(c, q, "to", to, sizeof to, 1, absto, sizeof absto) != 0 || fs_refused(c, rel, FILES_RENAME))
+            return;
+        if (lstat(abs_, &st) != 0) {
+            fs_err(c, "404 Not Found", "no such file or folder");
+            return;
+        }
+        if (fs_refused(c, to, S_ISDIR(st.st_mode) ? FILES_MKDIR : FILES_PUT))
+            return;
+        (void)n;
+        if (!strncmp(to, rel, strlen(rel)) && to[strlen(rel)] == '/') {
+            fs_err(c, "400 Bad Request", "a folder cannot go inside itself");
+            return;
+        }
+        if (lstat(absto, &st) == 0) {
+            fs_err(c, "409 Conflict", "something of that name is there already");
+            return;
+        }
+        if (rename(abs_, absto) != 0) {
+            fs_err(c, errno == ENOENT ? "404 Not Found" : "500 Internal Server Error",
+                   errno == ENOENT ? "no such folder to move it into" : "cannot rename it");
+            return;
+        }
+        fs_changed(rel), fs_changed(to);
+        fprintf(stderr, "web: %s -> %s\n", rel, to);
+        json_reply(c, "200 OK", "{\"ok\":true}");
+    } else if (!strcmp(what, "delete")) {
+        char v[8], conf[FILES_SEG_MAX + 1];
+        const char *last;
+        int rec;
+        if (fs_path(c, q, "path", rel, sizeof rel, 0, abs_, sizeof abs_) != 0 || fs_refused(c, rel, FILES_DELETE))
+            return;
+        if (lstat(abs_, &st) != 0) {
+            fs_err(c, "404 Not Found", "no such file or folder");
+            return;
+        }
+        rec = qparam(q, "recursive", v, sizeof v) == 0 && v[0] == '1';
+        last = strrchr(rel, '/');
+        last = last ? last + 1 : rel;
+        if (S_ISDIR(st.st_mode) && rmdir(abs_) != 0) {
+            if (errno != ENOTEMPTY && errno != EEXIST) {
+                fs_err(c, "500 Internal Server Error", "cannot delete it");
+                return;
+            }
+            if (!rec || qparam(q, "confirm", conf, sizeof conf) != 0 || strcmp(conf, last)) {
+                fs_err(c, "409 Conflict", "the folder is not empty: recursive=1 and confirm= its name delete it with everything in it");
+                return;
+            }
+            if (files_rmtree(abs_) != 0) {
+                fs_err(c, "500 Internal Server Error", "not all of it could be deleted");
+                return;
+            }
+        } else if (!S_ISDIR(st.st_mode) && unlink(abs_) != 0) {
+            fs_err(c, "500 Internal Server Error", "cannot delete it");
+            return;
+        }
+        fs_changed(rel);
+        fprintf(stderr, "web: %s deleted%s\n", rel, rec ? " (with what was in it)" : "");
+        json_reply(c, "200 OK", "{\"ok\":true}");
+    } else
+        http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+}
+
 static void request(client_t *c, const char *body)
 {
-    char path[256] = "", key[64];
+    char path[4096] = "", key[64], query[4096] = "";
     const char *req = (const char *)c->in;
     const int post = !strncmp(req, "POST ", 5);
-    if (sscanf(req, "DELETE %255s", path) == 1) {
+    {   /* (the query: the file browser's parameters) */
+        char first[4096] = "";
+        const char *qm;
+        if (sscanf(req, "%*s %4095s", first) == 1 && (qm = strchr(first, '?')))
+            snprintf(query, sizeof query, "%.*s", (int)strcspn(qm + 1, "#"), qm + 1);
+    }
+    if (sscanf(req, "DELETE %4095s", path) == 1) {
         path[strcspn(path, "?#")] = 0;
         if (!strncmp(path, "/api/files/audio/", 17))
             api_audio_delete(c, path + 17);
@@ -506,11 +939,11 @@ static void request(client_t *c, const char *body)
             http_reply(c, "405 Method Not Allowed", "text/plain", "", 0);
         return;
     }
-    if (!post && sscanf(req, "GET %255s", path) != 1) {
+    if (!post && sscanf(req, "GET %4095s", path) != 1) {
         http_reply(c, "405 Method Not Allowed", "text/plain", "", 0);
         return;
     }
-    if (post && sscanf(req, "POST %255s", path) != 1)
+    if (post && sscanf(req, "POST %4095s", path) != 1)
         path[0] = 0;
     path[strcspn(path, "?#")] = 0;
     if (post) {
@@ -520,6 +953,8 @@ static void request(client_t *c, const char *body)
             api_edit(c, body, 0);
         else if (!strcmp(path, "/api/test/midi"))
             api_edit(c, body, 1);
+        else if (!strncmp(path, "/api/fs/", 8))
+            api_fs_post(c, path + 8, query);
 #ifdef RFM14_PLAT_SIM
         else if (!strcmp(path, "/api/test/fm1")) {   /* the simulator's fake FM-1 (fm1sim.c, --fake-fm1) */
             char op[16];
@@ -582,6 +1017,12 @@ static void request(client_t *c, const char *body)
         api_fw_file(c, path + 8);
     else if (!strcmp(path, "/api/files/audio") || !strcmp(path, "/api/files/audio/"))
         api_audio_list(c);
+    else if (!strcmp(path, "/api/fs/list"))
+        api_fs_list(c, query);
+    else if (!strcmp(path, "/api/fs/get"))
+        api_fs_get(c, query);
+    else if (!strcmp(path, "/api/fs/zip"))
+        api_fs_zip(c, query);
     else if (!strncmp(path, "/api/", 5) || !safe_path(path) || !g_site[0])
         http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
     else {   /* the site (scripts/build_site.sh: RemoteFM1's web/site for the Move) */
@@ -773,6 +1214,8 @@ static void cwrite(client_t *c)
             return;
         }
         c->out_off += (size_t)w;
+        if (w > 0 && !c->ws)
+            c->born = now_ms();   /* (a reply under way: its time counts from its last bytes out) */
     }
     c->out_off = c->out_n = 0;
 }
@@ -895,7 +1338,11 @@ static void *web_main(void *arg)
                 continue;
             if (c->ws && !c->closing)
                 push(c);
-            else if (!c->ws && ms - c->born > 10000u)
+            else if (c->dl_fd > 0 || c->zip) {   /* a download under way: more while the page takes it */
+                stream_fill(c);
+                if (ms - c->born > 30000u)
+                    c->closing = 2;   /* (a reader gone quiet for 30 s) */
+            } else if (!c->ws && ms - c->born > 10000u && c->out_n <= c->out_off)
                 c->closing = 2;   /* (a request that never came whole) */
             if (c->out_n > c->out_off)
                 cwrite(c);

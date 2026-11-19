@@ -78,10 +78,12 @@
 .mv-mixbtn.lit { background: var(--bezel); color: var(--text); box-shadow: inset 0 2px 0 #2c2823, 0 3px 0 #000; }
 .mv-slotbtn { display: none; }
 #top #status { min-width: 0; }
-@media (max-width: 1240px) { .mv-hints { display: none; } }
-@media (max-width: 1160px) { .mv-chip { width: 170px; } }
-@media (max-width: 1080px) { .mv-chip { width: 150px; } .mv-vr { display: none; } .mv-kbd-cap { display: none; } }
-@media (max-width: 860px) { .mv-chip { width: 128px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
+/* (the header holds the chips, Source, Editor, Files, Mix & FX, Site source and the settings: narrower, they shrink) */
+@media (max-width: 1440px) { .mv-hints { display: none; } }
+@media (max-width: 1360px) { .mv-chip { width: 170px; } }
+@media (max-width: 1280px) { .mv-chip { width: 150px; } .mv-vr { display: none; } .mv-kbd-cap { display: none; } }
+@media (max-width: 1180px) { .mv-filesbtn > span:not(.mv-ic) { display: none; } .mv-filesbtn { padding: 0 10px; } }
+@media (max-width: 1080px) { .mv-chip { width: 128px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
 
 /* ---- phone: the slot button (the iOS app's top-left pill) and its menu */
 @media (max-width: 640px) {

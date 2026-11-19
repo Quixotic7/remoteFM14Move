@@ -959,6 +959,7 @@ static void raw_flush(void)   /* the test capture of the first instance: its blo
     g_raw_fw = NULL;
 }
 
+static void run_ids_sync(void);
 static void slot_unload(int s, int save)
 {
     fw_inst_t *pre;
@@ -979,6 +980,7 @@ static void slot_unload(int s, int save)
     if ((i = catalog_find(SL[s].fw.id)) >= 0 && strcmp(g_fws[i].so, SL[s].so))
         g_sweep = 1;   /* (it ran an older version than the one installed: its files can go now) */
     SL[s].so[0] = 0;
+    run_ids_sync();
 }
 
 static void active_changed(void)
@@ -1057,6 +1059,7 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n)
         fw_in_now(&sl->fw, FWI_MASTER, 0, g_master, 0);
     fprintf(stderr, "engine: slot %d: %s %s (%s flash)\n", s + 1, sl->fw.name, sl->fw.version,
             flash && n ? "its saved" : "a fresh");
+    run_ids_sync();
     return 0;
 }
 
@@ -1348,11 +1351,31 @@ static void do_results(void)
 }
 
 /* ------------------------------------------------------------------ the web's view --- */
+static char g_run_ids[NSLOT][32];             /* the ids in the slots, for the page's file browser (g_vmu) */
+static void run_ids_sync(void)
+{
+    int s;
+    pthread_mutex_lock(&g_vmu);
+    for (s = 0; s < NSLOT; s++)
+        snprintf(g_run_ids[s], sizeof g_run_ids[s], "%s", SL[s].on ? SL[s].fw.id : "");
+    pthread_mutex_unlock(&g_vmu);
+}
+
+void engine_running_ids(char ids[3][32])
+{
+    int s;
+    pthread_mutex_lock(&g_vmu);
+    for (s = 0; s < 3; s++)
+        snprintf(ids[s], 32, "%s", s < NSLOT ? g_run_ids[s] : "");
+    pthread_mutex_unlock(&g_vmu);
+}
+
 static void view_info(void)
 {
     fw_t *fw = SL[g_active].on ? &SL[g_active].fw : NULL;
     char tmp[sizeof g_view.info];
     int n = 0, s, k;
+    run_ids_sync();
     n += snprintf(tmp + n, sizeof tmp - (size_t)n, "{\"active\":%d,\"fail_seq\":%u,\"failed\":\"%s\",\"slots\":[",
                   g_active, g_fail_seq, g_fail_id);
     for (s = 0; s < NSLOT; s++) {
