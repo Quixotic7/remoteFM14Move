@@ -96,6 +96,33 @@ export function upload(dir, file, name, onProgress, replace = false) {
   });
 }
 
+// what a drop holds, as entries, when it has a folder: taken in the drop event itself (its items are gone after it); null: plain files
+export function dropEntries(dt) {
+  const items = [...((dt && dt.items) || [])].filter((i) => i.kind === "file");
+  const ents = items.map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null));
+  return ents.length && ents.every(Boolean) && ents.some((e) => e.isDirectory) ? ents : null;   /* (files alone: as they are) */
+}
+// the entries walked: [{ dir: "a/b" } (a folder to make) | { file, sub: "a/b" } (a file and its folder under the drop)],
+// hidden names left out
+export async function walkEntries(ents) {
+  const out = [];
+  const walk = async (e, base) => {
+    if (!e || String(e.name).startsWith(".")) return;
+    if (e.isFile) { out.push({ file: await new Promise((ok, no) => e.file(ok, no)), sub: base }); return; }
+    if (!e.isDirectory) return;
+    const sub = join(base, safeName(e.name) || "folder");
+    out.push({ dir: sub });
+    const rd = e.createReader();
+    for (;;) {   // (readEntries gives a batch at a time, until an empty one)
+      const batch = await new Promise((ok, no) => rd.readEntries(ok, no));
+      if (!batch.length) break;
+      for (const c of batch) await walk(c, sub);
+    }
+  };
+  for (const e of ents) await walk(e, "");
+  return out;
+}
+
 export class FilesView {
   constructor({ toast }) {
     // (the page's toast is under this panel: what is said also shows in the panel's foot)
@@ -127,7 +154,14 @@ export class FilesView {
     this.el.addEventListener("dragenter", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); depth++; this.el.classList.add("drop"); } });
     this.el.addEventListener("dragover", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
     this.el.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; this.el.classList.remove("drop"); } });
-    this.el.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; this.el.classList.remove("drop"); if (e.dataTransfer) this.put([...e.dataTransfer.files]); });
+    this.el.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; this.el.classList.remove("drop");
+      if (!e.dataTransfer) return;
+      const ents = dropEntries(e.dataTransfer), files = [...e.dataTransfer.files];
+      if (!ents) { this.put(files); return; }
+      const dir = this.path;
+      this.busy = "Reading the folder…"; this.render();
+      walkEntries(ents).then((items) => this.putItems(items, dir), (err) => { this.busy = ""; this.toast(`The drop: ${err && err.message || err}`, "bad"); this.render(); });
+    });
     this.el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } });
   }
 
@@ -233,18 +267,41 @@ export class FilesView {
     if (!r.ok) this.toast(`${e.name}: ${r.why}`, "bad");
     await this.go(this.path);
   }
-  async put(files, dir = this.path) {
-    for (const f of files) {
-      const name = safeName(f.name);
-      if (!name) { this.toast(`${f.name}: that name won't do.`, "bad"); continue; }
-      this.busy = `Sending ${name}…`; this.render();
-      let r = await upload(dir, f, name, (x) => { this.prog.style.width = `${(100 * x).toFixed(1)}%`; });
-      if (r !== true && r.status === 409 && confirm(`${name} is there already. Replace it?`))
-        r = await upload(dir, f, name, (x) => { this.prog.style.width = `${(100 * x).toFixed(1)}%`; }, true);
+  put(files, dir = this.path) { return this.putItems(files.map((file) => ({ file, sub: "" })), dir); }
+  // files (each into dir/its sub) and folders (made first, a folder there already is fine); one file: told about it,
+  // more: a summary and the first failure
+  async putItems(items, dir = this.path) {
+    const files = items.filter((i) => i.file), bad = [];
+    let sent = 0, n = 0, replaceAll = null;
+    for (const it of items) {
+      if (it.file) continue;
+      this.busy = `Making ${it.dir}…`; this.render();
+      const r = await this.call("mkdir", `path=${enc(join(dir, it.dir))}`);
+      if (!r.ok && r.status !== 409) bad.push(`${it.dir}: ${r.why}`);
+    }
+    for (const { file: f, sub } of files) {
+      const name = safeName(f.name), to = sub ? join(dir, sub) : dir, shown = sub ? join(sub, name || f.name) : name || f.name;
+      n++;
+      if (!name) { bad.push(`${f.name}: that name won't do`); continue; }
+      this.busy = files.length > 1 ? `Sending ${shown} (${n} of ${files.length})…` : `Sending ${name}…`; this.render();
+      const prog = (x) => { this.prog.style.width = `${(100 * x).toFixed(1)}%`; };
+      let r = await upload(to, f, name, prog);
+      if (r !== true && r.status === 409) {
+        if (replaceAll === null) {
+          const yes = confirm(files.length > 1 ? `${shown} is there already. Replace it, and any others there already?` : `${name} is there already. Replace it?`);
+          if (files.length > 1) replaceAll = yes;
+          if (yes) r = await upload(to, f, name, prog, true);
+        } else if (replaceAll) r = await upload(to, f, name, prog, true);
+      }
       this.prog.style.width = "0";
-      if (r === true) this.toast(`${name} is on the Move.`); else this.toast(`${name}: ${r.why}`, "bad");
+      if (r === true) sent++; else bad.push(`${shown}: ${r.why}`);
     }
     this.busy = "";
+    if (!files.length && !bad.length) this.toast(items.length ? "The folder is on the Move (nothing in it)." : "Nothing to send.");
+    else if (files.length === 1 && !bad.length) this.toast(`${safeName(files[0].file.name)} is on the Move.`);
+    else if (files.length <= 1 && bad.length) this.toast(bad[0], "bad");
+    else if (!bad.length) this.toast(`${sent} files are on the Move.`);
+    else this.toast(`${sent} of ${files.length} files sent; ${bad.length} not: ${bad[0]}`, "bad");
     await this.go(this.path);
   }
 }

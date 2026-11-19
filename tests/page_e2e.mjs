@@ -418,7 +418,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     for (let i = 0; i < frames * 2; i++) b.writeInt16LE(Math.round(8000 * Math.sin(i / 20)), 44 + 2 * i);
     writeFileSync(wav, b);
     const fsList = async (p) => api(`fs/list?path=${encodeURIComponent(p)}`).catch(() => null);
-    const onMove = async (p, name) => { const j = await fsList(p); return j && j.entries.find((f) => f.name === name); };
+    const onMove = async (p, name) => { const j = await fsList(p); return j && j.entries && j.entries.find((f) => f.name === name); };
     await js(`FM1MoveUi.o.sheet.open()`);
     ok(await until(`[...document.querySelectorAll(".sheet h3.heading")].some((e) => e.textContent === "Files") && document.querySelector(".sheet .mv-add-samples") && document.querySelector(".sheet .mv-exp-proj") && document.querySelector(".sheet .mv-exp-states")`, 5000, "the sheet's Files"),
       "the settings sheet's Files section: Add samples, Browse files, Export all projects, Export states (in place of Audio files)");
@@ -453,6 +453,18 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     ok(await untilApi(async () => { const f = await onMove("audio/Kits", "snare one.wav"); return f && f.size === 2000; }, 8000) &&
       await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="snare one.wav"]')`, 5000, "the dropped file"),
       "a file dropped on the browser lands in the folder shown (audio/Kits/snare one.wav)");
+    // a folder dropped (its entries, as the browser gives them: a folder in it, a hidden file left out) lands as folders
+    await js(`(() => { const bytes = new Uint8Array(${JSON.stringify([...b.subarray(0, 1500)])});
+      const file = (name) => ({ name, isFile: true, isDirectory: false, file: (ok) => ok(new File([bytes], name, { type: "audio/wav" })) });
+      const dir = (name, kids) => ({ name, isFile: false, isDirectory: true, createReader: () => { let done = false; return { readEntries: (ok) => { ok(done ? [] : kids); done = true; } }; } });
+      const tree = dir("Pack", [file("hat.wav"), file(".DS_Store"), dir("Toms", [file("tom 1.wav"), file("tom 2.wav")])]);
+      const ev = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "dataTransfer", { value: { types: ["Files"], files: [], items: [{ kind: "file", webkitGetAsEntry: () => tree }] } });
+      document.getElementById("mv-fs").dispatchEvent(ev); })()`);
+    ok(await untilApi(async () => { const t = await onMove("audio/Kits/Pack/Toms", "tom 2.wav"); return t && t.size === 1500; }, 10000) &&
+      (await onMove("audio/Kits/Pack", "hat.wav"))?.size === 1500 && (await onMove("audio/Kits/Pack/Toms", "tom 1.wav"))?.size === 1500 &&
+      !(await onMove("audio/Kits/Pack", ".DS_Store")) && await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="Pack"]')`, 5000, "Pack listed"),
+      "a folder dropped on the browser: audio/Kits/Pack/hat.wav and Pack/Toms/tom 1.wav, tom 2.wav on the Move, .DS_Store left out");
     await shot(join(DOCS, "move-page-files.png"));
     await js(`window.prompt = () => "snare 2.wav"`);
     await js(`document.querySelector('#mv-fs .mv-fs-row[data-name="snare one.wav"] button[aria-label^="Rename"]').click()`);
