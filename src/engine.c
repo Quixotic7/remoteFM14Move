@@ -516,7 +516,8 @@ static void fx_apply(int kind, int s)   /* the core's values into the instance *
     const fx_mod_t *m = fx_inst_mod(x->run);
     int k;
     for (k = 0; m && k < m->np && k < RFM_MOVE_FX_PARAMS; k++)
-        fx_set(x->run, k, x->val[k]);
+        if (x->val[k] != RFM_MOVE_FX_UNSET)   /* (an older project's value not kept: the module's own default) */
+            fx_set(x->run, k, x->val[k]);
 }
 static void fx_pend_clear(fxs_t *x)
 {
@@ -775,8 +776,8 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_FX_PARAM:
         if (a->fx < FX_KINDS && a->slot < RFM_MOVE_FX_SLOTS && a->param < RFM_MOVE_FX_PARAMS) {
             fxs_t *x = &FX[a->fx][a->slot];
-            x->val[a->param] = (uint8_t)(a->value < 0 ? 0 : a->value > 127 ? 127 : a->value);
-            if (x->run)
+            x->val[a->param] = (uint8_t)(a->value == RFM_MOVE_FX_UNSET ? RFM_MOVE_FX_UNSET : a->value < 0 ? 0 : a->value > 127 ? 127 : a->value);
+            if (x->run && x->val[a->param] != RFM_MOVE_FX_UNSET)
                 fx_set(x->run, a->param, x->val[a->param]);
             g_mix_ver++;
         }
@@ -1373,8 +1374,10 @@ static void mix_json(void)
     char esc[2][160];
     int n = 0, s, k, kind;
 #define PUT(...) do { if (n < (int)sizeof tmp) n += snprintf(tmp + n, sizeof tmp - (size_t)n, __VA_ARGS__); } while (0)
-    PUT("{\"type\":\"mix\",\"ver\":%u,\"active\":%d,\"page\":%d,\"fxopen\":%d,\"sounding\":%d,\"slots\":[", g_mix_ver,
-        g_active, S->core.s.fx_page, S->core.fw.fx && S->core.seq.projects, rfm_move_fw_sounding(&S->core));
+    PUT("{\"type\":\"mix\",\"ver\":%u,\"active\":%d,\"page\":%d,\"focus\":%d,\"fxpages\":%d,\"mixpar\":%d,\"fxopen\":%d,"
+        "\"sounding\":%d,\"slots\":[", g_mix_ver, g_active, S->core.s.fx_page, S->core.fw.fx_focus, S->core.fw.fx_pages,
+        S->core.fw.mix_par,
+        S->core.fw.fx && S->core.seq.projects, rfm_move_fw_sounding(&S->core));
     for (s = 0; s < NSLOT; s++) {
         const slot_t *sl = &SL[s];
         const uint8_t *c = PAL[slot_color(s)];
@@ -1395,8 +1398,10 @@ static void mix_json(void)
             const fxs_t *h = &FX[kind][s];
             mj_escape(c->name, esc[0], sizeof esc[0]);
             mj_escape(h->err, esc[1], sizeof esc[1]);
-            PUT("%s{\"mod\":%d,\"name\":\"%s\",\"vals\":[", s ? "," : "", c->mod, esc[0]);
-            for (k = 0; k < RFM_MOVE_FX_PARAMS; k++)
+            const fx_mod_t *md = fx_mod(g_fxlib, kind, c->mod);
+            const int np = md ? (md->np < RFM_MOVE_FX_PARAMS ? md->np : RFM_MOVE_FX_PARAMS) : 0;
+            PUT("%s{\"mod\":%d,\"name\":\"%s\",\"pg\":%d,\"vals\":[", s ? "," : "", c->mod, esc[0], S->core.fw.fx_pg[kind][s]);
+            for (k = 0; k < np; k++)   /* (the module's planned parameters only; 255: not set) */
                 PUT("%s%d", k ? "," : "", c->val[k]);
             PUT("],\"filt\":%u,\"run\":%d,\"busy\":%d,\"cpu\":%.1f,\"err\":\"%s\"}", kind ? 0xFFFFu : c->filt,
                 h->run != NULL, h->opening, h->cpu_permille / 10.0, esc[1]);
@@ -1479,7 +1484,7 @@ static void emit(rfm_move_act_t *a)
     ev.type = RFM1CS_EV_ACTION, ev.act = a;
     on_action(&ev);
 }
-/* the page's edits (/ws ops 16..22, /api/edit), on the engine thread outside any core callback: rfm1cs 0.4.1's host
+/* the page's edits (/ws ops 16..24, /api/edit), on the engine thread outside any core callback: rfm1cs 0.4.1's host
  * setters apply each as the Move's own edit does (the same action through the session to on_action, the same dirty
  * marks: the project's autosave, the library); FW_UNLOAD has no setter: our own handler takes it as from Delete */
 static void page_edit(int op, int a, int b)
@@ -1531,16 +1536,35 @@ static void page_edit(int op, int a, int b)
             return;
         rfm_move_fx_set_module(m, a >> 2 & 1, a & 3, (int16_t)b);
         break;
-    case ENG_OP_FXPARAM:
+    case ENG_OP_FXPARAM:   /* (the 0.4 form: parameters 0..7) */
         if ((a >> 3 & 3) >= RFM_MOVE_FX_SLOTS)
             return;
         rfm_move_fx_set_param(m, a >> 5 & 1, a >> 3 & 3, a & 7, b);
         break;
-    case ENG_OP_PAGE:
-        if (rfm_move_fx_set_page(m, a) < 0)
+    case ENG_OP_FXPAR:   /* (0.5.0) a parameter 0..127 by index */
+        if ((b >> 7 & 3) >= RFM_MOVE_FX_SLOTS || a < 0 || a >= RFM_MOVE_FX_PARAMS)
             return;
+        rfm_move_fx_set_param(m, b >> 9 & 1, b >> 7 & 3, a, b & 127);
+        break;
+    case ENG_OP_FXPG: {   /* (0.5.0) the page a slot's knobs are on (the Move shows it when its pages are open) */
+        const int kind = a >> 2 & 1, s = a & 3;
+        const rfm_move_fxslot_t *c = kind ? &m->seq.fx.afx[s] : &m->seq.fx.mfx[s];
+        const fx_mod_t *md;
+        if (s >= RFM_MOVE_FX_SLOTS || !(md = fx_mod(g_fxlib, kind, c->mod)) || b < 0 || b >= (md->npg ? md->npg : 1))
+            return;
+        m->fw.fx_pg[kind][s] = (uint8_t)b;
         g_mix_ver++;
         break;
+    }
+    case ENG_OP_PAGE: {   /* a: FX setup's column / the Mixer (0..3), | (row + 1) << 2 the slot selected in it */
+        const int pg = a & 3, row = (a >> 2 & 3) - 1;
+        if (rfm_move_fx_set_page(m, pg) < 0)
+            return;
+        if (row >= 0 && row < RFM_MOVE_FX_SLOTS && pg < RFM_MOVE_FX_PAGE_MIX && row != m->fw.fx_focus)
+            m->fw.fx_focus = (uint8_t)row, m->fw.fx_pages = 0;   /* (as a tap on that slot's pad) */
+        g_mix_ver++;
+        break;
+    }
     default:
         return;
     }
@@ -2038,7 +2062,11 @@ static void *engine_main(void *arg)
         view_live(now);
         {   /* (the Move's FX setup opened, closed or on another page: no action says so) */
             static int sig = -1;
-            const int g = S->core.s.fx_page | (S->core.fw.fx && S->core.seq.projects) << 4;
+            const rfm_move_fw_state_t *f = &S->core.fw;
+            int g = S->core.s.fx_page | (f->fx && S->core.seq.projects) << 4 | f->fx_focus << 5 | !!f->fx_pages << 7, k;
+            g = g * 31 + f->mix_par;   /* (the Mixer's choice) */
+            for (k = 0; k < 2 * RFM_MOVE_FX_SLOTS; k++)   /* (and the slots' pages) */
+                g = g * 31 + f->fx_pg[k / RFM_MOVE_FX_SLOTS][k % RFM_MOVE_FX_SLOTS];
             if (g != sig)
                 sig = g, g_mix_ver++;
         }

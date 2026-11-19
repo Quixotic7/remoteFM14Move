@@ -182,13 +182,13 @@ From Schwung's docs:
   - 3 audio FX slots as **send / return** (design v8): each firmware has a level, a pan and a send (0-127) to
     each FX. The host sums each send bus, runs the FX on it in place, and adds the returns. FX should be 100 %
     wet; Schwung has no standard key for that.
-  - Core actions: FX_LOAD, FX_PARAM (chain_params index; the host keeps the key), MIX, ROUTE. Sequencer MIDI is
+  - Core actions: FX_LOAD, FX_PARAM (rfm1cs 0.5.0: the planned parameter's index 0..127; the host keeps the key), MIX, ROUTE. Sequencer MIDI is
     tagged with its track 1-16.
 - Hosted by dlopen in our process, both modes.
   - The modules are the user's installed Schwung modules:
     - MIDI FX: /data/UserData/schwung/modules/midi_fx/<id>/dsp.so
     - audio FX: /data/UserData/schwung/modules/audio_fx/<id>/<id>.so
-  - We list them from their module.json (chain_params). Schwung's MIT built-ins (arp, chord, freeverb) may be bundled.
+  - We list them from their module.json (ui_hierarchy pages, else chain_params; README "Schwung FX"). Schwung's MIT built-ins (arp, chord, freeverb) may be bundled.
 - The audio FX API (`move_audio_fx_init_v2`): int16 stereo, 128 frames at 44100, processed in place.
 - The MIDI FX API (`move_midi_fx_init`): process_midi in, plus tick per block, 3-byte messages, no timestamps.
 - Our host_api_v1_t answers sample_rate, frames, log, get_bpm, clock status and beat position from our sequencer.

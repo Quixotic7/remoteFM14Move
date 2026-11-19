@@ -1,24 +1,32 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Mix & FX view on RemoteFM1's page served by an Ableton Move (RemoteFM14Move; only when js/host.js ON_MOVE): the
-// Move's FX setup pages, in the Move's order, over the faceplate (the header and its slot chips stay):
-//   T1 MIDI FX   the three MIDI FX slots in series: the selected one's module, its parameters and the track it acts on
-//   T2 Routing   sequencer (16 tracks) -> MIDI FX 1 -> 2 -> 3 -> the three firmwares, each with its 16-track filter
-//   T3 Audio FX  the three send buses: the selected one's module, its parameters (wet / dry hints), the sends into it
-//   T4 Mixer     a strip per firmware (tracks, 3 sends, pan, level, meter), the 3 FX returns, the master
-// The tab follows the Move's FX page (mix.page) and sets it (the PAGE op). Every edit is one of the host's ops
-// (moveui.js OP: the same core path as the Move's own knobs); what shows is the core's state as /ws reports it.
+// Move's FX setup (rfm1cs-abletonmove 0.5.0: one layer, then the Mixer) over the faceplate (the header and its slot
+// chips stay):
+//   T1-3 FX setup  the chain as the Move's pads show it: column 1 the MIDI FX slots (in series), column 3 the firmwares
+//                  (each with its 16-track filter), column 5 the audio FX slots (send buses). The selected slot below:
+//                  an FX slot's module and its own parameter pages (Schwung's ui_hierarchy, as the host planned them:
+//                  8 knob cells a page, gaps as dashes, the pages as tabs), the track a MIDI FX acts on or the sends
+//                  into an audio FX; a firmware's filter and its knobs (level, pan, sends 1..3)
+//   T4 Mixer       a strip per firmware (tracks, 3 sends, pan, level, meter), the 3 FX returns, the master
+// The selection follows the Move's (mix.page: the column, mix.focus: the slot; mix.afx[n].pg: a slot's page) and sets
+// it (the PAGE op with the row, the FXPG op). Every edit is one of the host's ops (moveui.js OP: the same core path as
+// the Move's own knobs; parameters by index, FXPAR); what shows is the core's state as /ws reports it.
 // Desktop: a panel that slides over the faceplate, dials and faders. Phone: a full-screen dark sheet, bar sliders.
-import { NSLOT, OP, PAGES, FX_COLOR, MFX_COLOR, h, svg, IC, pct, panText, tracksText, mfxText, paramText, wetHint, shortName,
-  openPop, closePop, popItem, dial, fader, bar, segs, choice, meter } from "./moveui.js";
+import { NSLOT, OP, COLS, MIXP, UNSET, FX_COLOR, MFX_COLOR, h, svg, IC, panText, tracksText, mfxText, paramText, wetHint,
+  shortName, modPages, openPop, closePop, popItem, dial, fader, bar, segs, choice, meter } from "./moveui.js";
 
 const RUN = "#3BD47A", BUSY = "#F5A524", ERR = "#FF5F57";
+const TABS = [["FX setup", "T1-3"], ["Mixer", "T4"]];
 
 export class MixView {
   constructor({ store, minis, ui, phone }) {
     this.store = store; this.minis = minis; this.ui = ui; this.phoneMq = phone;
     this.isOpen = false;
-    this.tab = 3; this.lastPage = null;
-    this.sel = [0, 0];                       // the selected MIDI FX and audio FX slot
+    this.tab = 1;                            // 0 FX setup, 1 the Mixer
+    this.col = 2; this.row = 0;              // the slot selected in FX setup: column (0 MIDI FX, 1 firmwares, 2 audio FX), row
+    this.lastMove = null;                    // the Move's selection last followed
+    this.pg = [[0, 0, 0], [0, 0, 0]];        // each FX slot's page shown, and the Move's last
+    this.lastPg = [[-1, -1, -1], [-1, -1, -1]];
     this.ups = []; this.meterUps = []; this.key = "";
     this.el = h("section", { class: "mv-view", id: "mv-view", "aria-label": "Mix and FX", "aria-hidden": "true", inert: true });
     document.body.append(this.el);
@@ -42,19 +50,43 @@ export class MixView {
     this.ui.mixBtn.setAttribute("aria-pressed", this.isOpen ? "true" : "false");
     if (this.isOpen) this.el.focus({ preventScroll: true });
   }
+  // the Move's FX setup on the same column and slot (PAGE: a | (row + 1) << 2), or its Mixer
+  sendSel() { this.store.edit(OP.PAGE, this.tab ? 3 : this.col | (this.row + 1) << 2, 0); }
   setTab(i) {
     if (i === this.tab) return;
     this.tab = i; closePop();
-    this.store.edit(OP.PAGE, i, 0);
+    this.sendSel();
+    this.render();
+  }
+  select(col, row) {
+    const same = !this.tab && col === this.col && row === this.row;
+    this.tab = 0; this.col = col; this.row = row; closePop();
+    if (!same) this.sendSel();
+    this.render();
+  }
+  setPg(kind, j, i) {
+    this.pg[kind][j] = i;
+    this.store.edit(OP.FXPG, kind * 4 + j, i);
     this.render();
   }
 
   // a rebuild when what is laid out changed; else the values only
   render() {
     const st = this.store, m = st.mix;
-    if (m && m.page !== this.lastPage) { this.lastPage = m.page; if (m.page >= 0 && m.page < 4) this.tab = m.page; }
+    if (m) {
+      const sig = `${m.page}/${m.focus}`;
+      if (sig !== this.lastMove) {
+        this.lastMove = sig;
+        if (m.page === 3) this.tab = 1;
+        else if (m.page >= 0 && m.page < 3) { this.tab = 0; this.col = m.page; this.row = Math.min(2, m.focus | 0); }
+      }
+      for (let k = 0; k < 2; k++) for (let j = 0; j < 3; j++) {
+        const p = st.fx(k, j).pg | 0;
+        if (p !== this.lastPg[k][j]) { this.lastPg[k][j] = p; this.pg[k][j] = p; }
+      }
+    }
     if (!this.isOpen) return;
-    const key = JSON.stringify([this.tab, this.ph, this.sel, st.active, st.slots.map((s) => [s.on, s.id]), st.pending.map((p) => p && p.id),
+    const key = JSON.stringify([this.tab, this.col, this.row, this.pg, this.ph, st.active, st.slots.map((s) => [s.on, s.id]), st.pending.map((p) => p && p.id),
       m && [m.mfx.map((x) => x.mod), m.afx.map((x) => x.mod)], st.lib.midi.length, st.lib.audio.length]);
     if (key !== this.key) { this.key = key; this.build(); }
     for (const f of this.ups) f();
@@ -62,24 +94,29 @@ export class MixView {
   }
   build() {
     this.ups = []; this.meterUps = [];
-    const scroll = this.body ? this.body.scrollTop : 0;
-    const tabs = h("div", { class: "mv-tabs", role: "tablist" }, PAGES.map((t, i) => h("button", { class: `mv-tab ${i === this.tab ? "on" : ""}`, role: "tab",
-      "aria-selected": i === this.tab ? "true" : "false", "data-tab": i, onclick: () => this.setTab(i) }, t, this.ph ? null : h("span", { class: "mv-t" }, `T${i + 1}`))));
+    const scroll = this.body && this.builtTab === this.tab ? this.body.scrollTop : 0;   // (a new tab: from its top)
+    this.builtTab = this.tab;
+    const tabs = h("div", { class: "mv-tabs", role: "tablist" }, TABS.map(([t, n], i) => h("button", { class: `mv-tab ${i === this.tab ? "on" : ""}`, role: "tab",
+      "aria-selected": i === this.tab ? "true" : "false", "data-tab": i, onclick: () => this.setTab(i) }, t, this.ph ? null : h("span", { class: "mv-t" }, n))));
     const live = h("span", { class: "mv-live" });
-    this.up(() => { const m = this.store.mix; live.textContent = m && m.fxopen ? `The Move shows ${PAGES[m.page] || "FX setup"}` : ""; live.hidden = !(m && m.fxopen); });
+    this.up(() => {
+      const m = this.store.mix;
+      live.hidden = !(m && m.fxopen);
+      if (!m || !m.fxopen) return;
+      live.textContent = m.page === 3 ? `The Move's Mixer: knobs 1-3 set ${MIXP[m.mixpar | 0] || "Level"}`
+        : `The Move shows ${COLS[m.page] || "FX setup"} ${(m.focus | 0) + 1}${m.fxpages ? " · its pages" : ""}`;
+    });
     const head = this.ph
       ? [h("div", { class: "mv-ph-top" }, h("b", { class: "mv-title" }, "Mix & FX"), live,
           h("button", { class: "mv-iconbtn mv-close", "aria-label": "Close Mix & FX", onclick: () => this.close() }, svg(IC.close, 16))), tabs]
-      : [h("div", { class: "mv-bar-top" }, tabs, h("span", { class: "mv-mut mv-small" }, "The Move's four FX setup pages; either side follows the other."), live,
+      : [h("div", { class: "mv-bar-top" }, tabs, h("span", { class: "mv-mut mv-small" }, "The Move's FX setup and Mixer; either side follows the other."), live,
           h("span", { class: "mv-spacer" }), h("button", { class: "mv-pill mv-back", onclick: () => this.close() }, "Back to the faceplate", h("span", { class: "mv-val mv-mut" }, "Esc")))];
-    this.body = h("div", { class: `mv-body mv-tab-${this.tab}` }, [this.midiPage, this.routing, this.audioPage, this.mixer][this.tab].call(this));
+    this.body = h("div", { class: `mv-body mv-tab-${this.tab}` }, this.tab ? this.mixer() : this.chain());
     this.el.classList.toggle("phone", this.ph);
     this.el.replaceChildren(h("div", { class: "mv-head" }, head), this.body);
     this.el.tabIndex = -1;
     this.body.scrollTop = scroll;
   }
-  midiPage() { return this.fxPage(0); }
-  audioPage() { return this.fxPage(1); }
 
   // ---- bits
   mini(i, cls = "") { return h("span", { class: `mv-mini-w ${cls}` }, this.minis.canvas(i)); }
@@ -101,7 +138,7 @@ export class MixView {
     return this.ph ? bar(this, { ...o, cls: "big", caption: "Level" }) : fader(this, o);
   }
   tracksPill(i) {
-    const p = h("button", { class: "mv-pill mv-pill-s", title: "Its track filter (Routing)", onclick: () => this.setTab(1) });
+    const p = h("button", { class: "mv-pill mv-pill-s", title: "Its track filter (FX setup)", onclick: () => this.select(1, i) });
     this.up(() => { p.textContent = tracksText(this.store.slot(i).filt); });
     return p;
   }
@@ -164,7 +201,7 @@ export class MixView {
     return l.length ? `From ${l.join(", ")}` : "No sends yet";
   }
 
-  // ---- T4 Mixer
+  // ---- T4 Mixer (the owner's on the Move: each firmware's level, pan and sends)
   mixer() {
     const st = this.store, out = [];
     if (this.ph) {
@@ -179,7 +216,7 @@ export class MixView {
       out.push(h("div", { class: "mv-h mv-pad" }, "FX returns"));
       out.push(h("div", { class: "mv-grid3" }, [0, 1, 2].map((k) => {
         const n = this.text(() => st.modName(1, k) || "+ Load", "mv-ret-n", "b");
-        const c = h("button", { class: "mv-card mv-ph-ret", style: { "--c": FX_COLOR[k] }, onclick: () => { this.sel[1] = k; this.setTab(2); } }, h("span", { class: "mv-h" }, `FX ${k + 1}`), n, meter(this, 3 + k, "h"));
+        const c = h("button", { class: "mv-card mv-ph-ret", style: { "--c": FX_COLOR[k] }, onclick: () => this.select(2, k) }, h("span", { class: "mv-h" }, `FX ${k + 1}`), n, meter(this, 3 + k, "h"));
         this.up(() => { c.classList.toggle("mv-empty", st.fx(1, k).mod < 0); });
         return c;
       })));
@@ -214,7 +251,7 @@ export class MixView {
         return `${m && m.builtin ? "Built-in" : "Installed module"}. ${from.length ? `Sends from ${from.join(" and ")}.` : "No sends yet."}`;
       }, "mv-mut mv-small");
       this.up(() => sub.classList.toggle("mv-errt", !!st.fx(1, k).err));
-      const act = h("button", { class: "mv-pill mv-center", onclick: () => { this.sel[1] = k; this.setTab(2); } });
+      const act = h("button", { class: "mv-pill mv-center", onclick: () => this.select(2, k) });
       const c = h("div", { class: "mv-card mv-ret", style: { "--c": FX_COLOR[k] }, "data-fx": k }, h("div", { class: "mv-h" }, `FX ${k + 1} return`), n, sub, h("span", { class: "mv-spacer" }), meter(this, 3 + k), act);
       this.up(() => { const e = st.fx(1, k).mod < 0; c.classList.toggle("mv-empty", e); act.textContent = e ? "Load module" : "Edit"; });
       out.push(c);
@@ -224,94 +261,105 @@ export class MixView {
     return h("div", { class: "mv-mixer" }, out);
   }
 
-  // ---- T2 Routing
-  routing() {
-    const st = this.store, ph = this.ph;
-    const tile = (t) => {
-      const dots = h("span", { class: "mv-tdots" });
-      this.up(() => dots.replaceChildren(...[0, 1, 2].filter((i) => st.slot(i).on && st.slot(i).filt >> t & 1).map((i) => h("i", { style: { background: st.colorOf(i) } }))));
-      return h("div", { class: "mv-trk" }, h("b", {}, t + 1), dots);
-    };
-    const seq = h("div", { class: "mv-card mv-seq dim" }, h("div", { class: "mv-h" }, "Sequencer · 16 tracks"),
-      h("div", { class: `mv-trks ${ph ? "c8" : ""}` }, Array.from({ length: 16 }, (_, t) => tile(t))),
-      ph ? null : h("span", { class: "mv-spacer" }),
-      h("div", { class: "mv-mut mv-small" }, "Every track goes through the MIDI FX in turn, then to each firmware whose track filter lets it in. The dots: who gets it."),
-      h("div", { class: "mv-note-b" }, h("b", {}, "Live pads and the faceplate"), h("br"), h("span", { class: "mv-mut" }, "go straight to the playing slot.")));
-    const sel = this.sel[0];
-    const chain = [h("div", { class: "mv-h mv-pad" }, "MIDI FX · in series")];
-    for (let j = 0; j < 3; j++) {
-      const name = this.text(() => st.modName(0, j) || "Empty", "mv-name mv-grow mv-ell", "b");
-      const pill = this.text(() => (st.fx(0, j).mod < 0 ? "passes" : mfxText(st.fx(0, j).filt)), "mv-pill mv-pill-s");
-      const sub = this.text(() => { const x = st.fx(0, j); return x.err ? x.err : x.mod < 0 ? "Passes everything through" : mfxText(x.filt) === "All" ? "Acts on every track" : `Acts on ${tracksText(x.filt).toLowerCase()}; the others pass through`; }, "mv-mut mv-small");
-      const c = h("button", { class: `mv-card mv-mfx ${j === sel ? "sel" : ""}`, style: { "--c": MFX_COLOR }, "data-mfx": j, onclick: () => { this.sel[0] = j; this.render(); } },
-        h("span", { class: "mv-row" }, this.fxDot(0, j), h("span", { class: "mv-h" }, j + 1), name, pill), sub);
-      this.up(() => c.classList.toggle("mv-empty", st.fx(0, j).mod < 0));
-      chain.push(c);
-      if (j < 2) chain.push(h("div", { class: "mv-arrow-s" }, svg(IC.down, 14)));
-    }
-    chain.push(h("div", { class: "mv-card mv-picker dim" }, h("div", { class: "mv-row" }, this.text(() => `${st.modName(0, sel) || `MIDI FX ${sel + 1}`} · acts on`, "mv-h mv-grow"), this.allBtn(sel)),
-      this.mfxCells(sel, 8), h("div", { class: "mv-mut mv-small" }, "One track or All: tap the lit one again for All. The others pass through.")));
-    const fws = [h("div", { class: "mv-h mv-pad" }, "Firmware track filters")];
-    for (let i = 0; i < NSLOT; i++) {
-      const s = st.slot(i);
-      if (!s.on) { fws.push(h("div", { class: "mv-card mv-empty mv-fwempty" }, this.mini(i, "s28 none"), h("span", { class: "mv-mut" }, `Slot ${i + 1} is empty`))); continue; }
-      fws.push(h("div", { class: "mv-card mv-fw", style: { "--c": st.colorOf(i) }, "data-slot": i },
-        h("div", { class: "mv-row" }, this.mini(i, "s28"), h("b", { class: "mv-name mv-grow mv-ell" }, s.name), this.text(() => tracksText(st.slot(i).filt), "mv-val mv-mut"),
-          ph ? null : h("button", { class: "mv-pill mv-pill-s", onclick: () => this.setTab(3) }, "to Mixer")),
-        this.fwCells(i, ph ? 8 : 16)));
-    }
-    fws.push(h("div", { class: "mv-mut mv-small mv-pad" }, "Why: a firmware that listens on channel 1 only gets just track 6, with track 6 set to channel 1."));
-    if (ph) return h("div", { class: "mv-col" }, seq, ...chain, ...fws);
-    const arrow = () => h("div", { class: "mv-arrow" }, svg(IC.arrow, 24));
-    return h("div", { class: "mv-routing" }, seq, arrow(), h("div", { class: "mv-col" }, chain), arrow(), h("div", { class: "mv-col" }, fws));
+  // ---- T1-3 FX setup: the chain (the Move's pad columns 1, 3, 5), the selected slot under it
+  chain() {
+    const ph = this.ph;
+    const column = (c) => h("div", { class: "mv-col mv-chaincol", "data-col": c },
+      h("div", { class: "mv-h mv-pad" }, ph ? COLS[c] : `${COLS[c]}${c === 0 ? " · in series" : c === 2 ? " · sends" : ""}`),
+      [0, 1, 2].map((r) => (c === 1 ? this.fwCard(r) : this.fxCard(c ? 1 : 0, r))));
+    const arrow = () => h("div", { class: "mv-arrow" }, svg(IC.arrow, 20));
+    const chain = h("div", { class: "mv-chain" }, column(0), arrow(), column(1), arrow(), column(2));
+    return h("div", { class: "mv-fxsetup" }, chain, this.col === 1 ? this.fwDetail(this.row) : this.fxDetail(this.col ? 1 : 0, this.row));
   }
-
-  // ---- T1 MIDI FX, T3 Audio FX: the three slots, the selected one's module and parameters
-  fxPage(kind) {
-    const st = this.store, ph = this.ph, j = this.sel[kind], x = st.fx(kind, j), m = st.module(kind, j), col = kind ? FX_COLOR[j] : MFX_COLOR;
-    const slotCard = (k) => {
-      const c = h("button", { class: `mv-card mv-fxslot ${k === j ? "sel" : ""}`, style: { "--c": kind ? FX_COLOR[k] : MFX_COLOR }, "data-fxslot": k, onclick: () => { this.sel[kind] = k; this.render(); } },
-        h("span", { class: "mv-row" }, this.fxDot(kind, k), h("span", { class: "mv-h" }, `${kind ? "FX" : ""} ${k + 1}`), this.text(() => st.modName(kind, k) || (ph ? "+ Load" : "Empty"), "mv-name mv-grow mv-ell", "b")),
-        this.text(() => { const y = st.fx(kind, k); return y.err ? "refused" : y.mod < 0 ? (kind ? "Pick a module" : "passes") : kind ? (ph ? "" : this.sendsFrom(k)) : mfxText(y.filt); }, "mv-mut mv-small mv-ell"));
-      this.up(() => c.classList.toggle("mv-empty", st.fx(kind, k).mod < 0));
-      return c;
-    };
-    const slots = [0, 1, 2].map(slotCard);
-    // the selected slot
+  fxCard(kind, k) {
+    const st = this.store, col = kind ? 2 : 0, on = !this.tab && this.col === col && this.row === k;
+    const c = h("button", { class: `mv-card mv-fxslot ${on ? "sel" : ""}`, style: { "--c": kind ? FX_COLOR[k] : MFX_COLOR }, "data-kind": kind, "data-fxslot": k,
+      onclick: () => this.select(col, k) },
+      h("span", { class: "mv-row" }, this.fxDot(kind, k), h("span", { class: "mv-h" }, `${kind ? "FX" : ""} ${k + 1}`),
+        this.text(() => st.modName(kind, k) || (this.ph ? "+" : "Empty"), "mv-name mv-grow mv-ell", "b")),
+      this.ph ? null : this.text(() => { const y = st.fx(kind, k); return y.err ? "refused" : y.mod < 0 ? (kind ? "Pick a module" : "passes") : kind ? this.sendsFrom(k) : mfxText(y.filt); }, "mv-mut mv-small mv-ell"));
+    this.up(() => c.classList.toggle("mv-empty", st.fx(kind, k).mod < 0));
+    return c;
+  }
+  fwCard(i) {
+    const st = this.store, s = st.slot(i), on = !this.tab && this.col === 1 && this.row === i;
+    const c = h("button", { class: `mv-card mv-chfw ${on ? "sel" : ""} ${s.on ? "" : "mv-empty"}`, style: { "--c": st.colorOf(i) }, "data-slot": i, onclick: () => this.select(1, i) },
+      h("span", { class: "mv-row" }, this.mini(i, `s28 ${s.on ? "" : "none"}`), h("b", { class: "mv-name mv-grow mv-ell" }, s.on ? s.name : st.pending[i] ? `${st.pending[i].name}...` : `Slot ${i + 1}`)),
+      this.ph ? null : this.text(() => (st.slot(i).on ? `${tracksText(st.slot(i).filt)}${i === st.active ? " · playing" : ""}` : "Empty"), "mv-mut mv-small mv-ell"));
+    return c;
+  }
+  // a firmware selected: its 16-track filter and its knobs on the Move (1 level, 2 pan, 3..5 sends)
+  fwDetail(i) {
+    const st = this.store, s = st.slot(i), ph = this.ph;
+    if (!s.on) {
+      const b = h("button", { class: "mv-pill", "aria-haspopup": "menu", onclick: () => this.ui.loadMenu(b, i) }, svg(IC.plus, 13), "Load a firmware");
+      return h("div", { class: "mv-fxdetail" }, h("div", { class: "mv-card mv-fxedit mv-empty" }, h("div", { class: "mv-fx-none" }, h("b", {}, `Slot ${i + 1} is empty`), b)));
+    }
+    const lvl = { key: `level-${i}`, label: `${s.name} level`, get: () => st.slot(i).level | 0, set: (v) => st.edit(OP.MIX, i * 8, v), def: 100, color: () => st.colorOf(i) };
+    const editor = h("div", { class: "mv-card mv-fxedit mv-fwedit", style: { "--c": st.colorOf(i) }, "data-slot": i },
+      h("div", { class: "mv-row" }, this.mini(i, "s40"), h("div", { class: "mv-grow mv-min0" }, h("div", { class: "mv-h mv-c" }, `Firmware ${i + 1}${i === st.active ? " · playing" : ""}`),
+        h("div", { class: "mv-name mv-ell" }, s.name))),
+      h("div", { class: "mv-row" }, h("span", { class: "mv-h mv-grow" }, "Tracks it plays"), this.text(() => tracksText(st.slot(i).filt), "mv-val mv-mut")),
+      this.fwCells(i, ph ? 8 : 16),
+      h("div", { class: "mv-h" }, "Its knobs"),
+      h("div", { class: `mv-knobs ${ph ? "ph" : ""}` },
+        ph ? bar(this, { ...lvl, caption: "Level" }) : h("div", { class: "mv-param tile" }, dial(this, { ...lvl, cls: "big", caption: "Level" })),
+        ph ? this.panCtl(i) : h("div", { class: "mv-param tile" }, this.panCtl(i)),
+        [0, 1, 2].map((k) => (ph ? this.sendCtl(i, k) : h("div", { class: "mv-param tile" }, this.sendCtl(i, k))))),
+      ph ? null : h("span", { class: "mv-spacer" }),
+      ph ? null : h("div", { class: "mv-mut mv-small" }, "On the Move: FX setup, its pad in column 3; the steps are its tracks, knobs 1 to 5 its level, pan and sends."));
+    const side = h("div", { class: "mv-col" }, h("div", { class: "mv-h mv-pad" }, "Mixer"),
+      h("div", { class: "mv-card dim mv-col" }, h("span", { class: "mv-mut mv-small" }, "Every firmware's level, pan and sends side by side, with the FX returns and the meters."),
+        h("button", { class: "mv-pill mv-center", onclick: () => this.setTab(1) }, "Open the Mixer")));
+    return h("div", { class: "mv-fxdetail" }, editor, side);
+  }
+  // one knob cell of a page: its parameter (index idx) or a gap
+  cell(kind, j, m, idx, n) {
+    const st = this.store, ph = this.ph, p = idx >= 0 && m.params ? m.params[idx] : null, col = kind ? FX_COLOR[j] : MFX_COLOR;
+    if (!p) return h("div", { class: "mv-param tile gap", "data-knob": n, "aria-hidden": "true" }, h("b", { class: "mv-gap" }, "–"), ph ? null : h("span", { class: "mv-mut mv-tiny" }, `knob ${n + 1}`));
+    const label = ph ? p.short || p.name || p.key : p.name || p.key;
+    const o = { key: `p-${kind}-${j}-${idx}`, label: p.name || p.key,
+      get: () => { const v = (st.fx(kind, j).vals || [])[idx]; return v == null || v === UNSET ? p.def | 0 : v; },
+      set: (v) => st.edit(OP.FXPAR, idx, kind << 9 | j << 7 | v) };
+    const hint = kind ? wetHint(p) : "";
+    if (p.type === "enum") {
+      const opts = p.options && p.options.length ? p.options : Array.from({ length: p.max - p.min + 1 }, (_, i) => String(p.min + i));
+      const ctl = opts.length <= 3 ? segs(this, { ...o, options: opts }) : choice(this, { ...o, options: opts });
+      return h("div", { class: "mv-param tile enum", "data-knob": n, title: p.name }, h("b", { class: "mv-pname mv-ell" }, label), ctl);
+    }
+    const fmt = (v) => paramText(p, v), def = p.def != null ? p.def : null;
+    return h("div", { class: `mv-param tile ${hint ? "hinted" : ""}`, "data-knob": n, title: p.name },
+      ph ? bar(this, { ...o, cls: "small", caption: label, fmt, color: () => col, def }) : dial(this, { ...o, cls: "big", fmt, color: () => col, caption: label, def }),
+      hint ? h("span", { class: "mv-hint" }, hint) : null);
+  }
+  // an FX slot selected: its module, its pages (8 knob cells each), and the track it acts on / the sends into it
+  fxDetail(kind, j) {
+    const st = this.store, ph = this.ph, x = st.fx(kind, j), m = st.module(kind, j), col = kind ? FX_COLOR[j] : MFX_COLOR;
     const pick = h("button", { class: "mv-pill mv-modpick", "aria-haspopup": "menu", onclick: () => this.modMenu(pick, kind, j) },
       this.fxDot(kind, j), h("b", {}, m ? m.name : "Pick a module"), m ? h("span", { class: "mv-val mv-mut" }, m.builtin ? "built-in" : "installed") : null, svg(IC.chev));
     const empty = h("button", { class: `mv-pill ${ph ? "mv-iconpill" : ""}`, disabled: x.mod < 0, "aria-label": `Empty ${kind ? "FX" : "MIDI FX"} ${j + 1}`, onclick: () => st.edit(OP.FXLOAD, kind * 4 + j, -1) },
       ph ? svg(IC.trash, 15) : "Empty the slot");
-    const params = [];
-    if (m) (m.params || []).slice(0, 8).forEach((p, n) => {
-      const o = { key: `p-${kind}-${j}-${n}`, label: p.name || p.key, get: () => (st.fx(kind, j).vals || [])[n] | 0, set: (v) => st.edit(OP.FXPARAM, kind << 5 | j << 3 | n, v) };
-      const hint = kind ? wetHint(p) : "";
-      if (p.type === "enum") {
-        const opts = p.options && p.options.length ? p.options : Array.from({ length: p.max - p.min + 1 }, (_, i) => String(p.min + i));
-        const ctl = opts.length <= (ph ? 4 : 5) ? segs(this, { ...o, options: opts }) : choice(this, { ...o, options: opts });
-        params.push(h("div", { class: `mv-param enum ${ph ? "" : "tile"} ${opts.length > 2 && opts.length <= 5 ? "wide" : ""}` }, ph ? h("div", { class: "mv-h" }, p.name || p.key) : null, ctl, ph ? null : h("b", { class: "mv-pname" }, p.name || p.key), ph ? null : h("span", { class: "mv-val mv-mut" }, `${opts.length} choices`)));
-      } else if (ph) {
-        params.push(h("div", { class: `mv-param ${hint ? "hinted" : ""}` }, bar(this, { ...o, caption: p.name || p.key, fmt: (v) => paramText(p, v), color: () => col, def: p.def != null ? Math.round((p.def - p.min) / ((p.max - p.min) || 1) * 127) : null }),
-          hint ? h("span", { class: "mv-hint" }, hint) : null));
-      } else {
-        params.push(h("div", { class: `mv-param tile ${hint ? "hinted" : ""}` }, dial(this, { ...o, cls: "big", fmt: (v) => paramText(p, v), color: () => col, caption: p.name || p.key }),
-          hint ? h("span", { class: "mv-hint" }, hint) : null));
-      }
-    });
-    const err = this.fxStatus(kind, j);
-    const where = kind ? `Session, then Track ${j + 1}` : "Session, then the MIDI FX page";
+    const pages = modPages(m), pi = Math.max(0, Math.min(this.pg[kind][j], pages.length - 1)), page = pages[pi];
+    let params;
+    if (m && page) {
+      const pager = pages.length > 1 ? h("div", { class: "mv-pager", role: "tablist", "aria-label": `${m.name}'s pages` },
+        pages.map((g, i) => h("button", { class: `mv-pg ${i === pi ? "on" : ""}`, role: "tab", "aria-selected": i === pi ? "true" : "false", "data-pg": i, onclick: () => this.setPg(kind, j, i) }, g.name || `${i + 1}`)),
+        h("span", { class: "mv-val mv-mut mv-pgn" }, `${pi + 1}/${pages.length}`)) : null;
+      params = [h("div", { class: "mv-row" }, h("span", { class: "mv-h mv-grow" }, pages.length > 1 ? page.name || "Parameters" : "Parameters"), pager ? null : h("span", { class: "mv-val mv-mut" }, "1/1")),
+        pager, h("div", { class: `mv-knobs ${ph ? "ph" : ""}`, "data-page": pi }, page.knobs.map((idx, n) => this.cell(kind, j, m, idx, n)))];
+    } else if (m) params = h("div", { class: "mv-h" }, "No parameters");
+    else params = h("div", { class: "mv-fx-none" }, h("b", {}, x.mod >= 0 ? x.name || "A module" : "Empty"), h("span", { class: "mv-mut" }, kind ? "A send bus with nothing on it: its sends go nowhere. Pick a module." : "This slot passes the notes through. Pick a module."));
     const editor = h("div", { class: "mv-card mv-fxedit", style: { "--c": col } },
-      h("div", { class: "mv-row" }, ph ? null : h("span", { class: "mv-h" }, `${kind ? "FX" : "MIDI FX"} ${j + 1}`), pick, h("span", { class: "mv-spacer" }), empty), err,
-      m ? [h("div", { class: "mv-h" }, m.params && m.params.length ? "Parameters" : "No parameters"), h("div", { class: `mv-params ${ph ? "" : "grid"}` }, params)]
-        : h("div", { class: "mv-fx-none" }, h("b", {}, x.mod >= 0 ? x.name || "A module" : "Empty"), h("span", { class: "mv-mut" }, kind ? "A send bus with nothing on it: its sends go nowhere. Pick a module." : "This slot passes the notes through. Pick a module.")),
+      h("div", { class: "mv-row" }, ph ? null : h("span", { class: "mv-h" }, `${kind ? "FX" : "MIDI FX"} ${j + 1}`), pick, h("span", { class: "mv-spacer" }), empty), this.fxStatus(kind, j),
+      params,
       ph ? null : h("span", { class: "mv-spacer" }),
-      ph ? null : h("div", { class: "mv-mut mv-small" }, `On the Move: ${where}; its knobs edit the same parameters, and either side follows the other.`));
-    // MIDI FX: the track it acts on; audio FX: the sends into it
-    let side;
+      ph ? null : h("div", { class: "mv-mut mv-small" }, `On the Move: FX setup, its pad in column ${kind ? 5 : 1} (held + the jog: a module); the jog's click opens these pages, the jog turns them.`));
+    const side = [];
     if (kind === 0) {
-      side = h("div", { class: "mv-card mv-picker", style: { "--c": MFX_COLOR } }, h("div", { class: "mv-row" }, h("span", { class: "mv-h mv-grow" }, "Acts on"), this.allBtn(j)), this.mfxCells(j, 8));
+      side.push(h("div", { class: "mv-card mv-picker", style: { "--c": MFX_COLOR } }, h("div", { class: "mv-row" }, h("span", { class: "mv-h mv-grow" }, "Acts on"), this.allBtn(j)), this.mfxCells(j, 8),
+        h("div", { class: "mv-mut mv-small" }, "One track or All: tap the lit one again for All. The others pass through.")));
     } else {
-      side = [h("div", { class: "mv-h mv-pad" }, `Sends into FX ${j + 1}`)];
+      side.push(h("div", { class: "mv-h mv-pad" }, `Sends into FX ${j + 1}`));
       for (let i = 0; i < NSLOT; i++) {
         if (!st.slot(i).on) continue;
         const c = h("div", { class: "mv-card mv-sendin", style: { "--c": st.colorOf(i) } }, this.sendCtl(i, j, true));
@@ -320,12 +368,7 @@ export class MixView {
       }
       if (side.length === 1) side.push(h("p", { class: "mv-mut mv-small" }, "No firmware loaded."));
     }
-    if (ph) return h("div", { class: "mv-col" }, h("div", { class: "mv-grid3" }, slots), h("div", { class: "mv-chainline" }, kind ? "each firmware → its sends → FX 1 · 2 · 3 → the mix" : "sequencer → 1 → 2 → 3 → firmwares"), editor, side);
-    return h("div", { class: "mv-fxpage" },
-      h("div", { class: "mv-col" }, h("div", { class: "mv-h mv-pad" }, kind ? "Send slots" : "MIDI FX slots, in series"), slots, h("span", { class: "mv-spacer" }),
-        h("div", { class: "mv-mut mv-small" }, kind ? "Each slot runs on a bus: every firmware sends to it, after its level and pan. Its return joins the mix."
-          : "The sequencer's notes go through 1, then 2, then 3, then to the firmwares. Each acts on one track or all.")),
-      editor,
-      h("div", { class: "mv-col" }, side, h("div", { class: "mv-h mv-pad" }, "Pick a module"), this.modList(kind, j)));
+    side.push(h("div", { class: "mv-h mv-pad" }, "Pick a module"), this.modList(kind, j));
+    return h("div", { class: "mv-fxdetail" }, editor, h("div", { class: "mv-col" }, side));
   }
 }

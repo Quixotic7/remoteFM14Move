@@ -1,0 +1,70 @@
+{
+  "id": "pagesfx",
+  "name": "Page Test",
+  "abbrev": "PT",
+  "version": "0.0.1",
+  "dsp": "pagesfx.so",
+  "capabilities": {
+    "component_type": "audio_fx",
+    "chain_params": [
+      { "key": "tone", "name": "Tone Frequency", "type": "float", "min": 20, "max": 20000, "default": 1000, "unit": "Hz" },
+      { "key": "rate", "name": "Rate", "type": "float", "min": 0.1, "max": 10, "step": 0.1, "default": 2.0, "unit": "Hz" },
+      { "key": "subB", "name": "Sub Level", "type": "float", "min": 0, "max": 1, "default": 0.25 }
+    ],
+    "ui_hierarchy": {
+      "levels": {
+        "root": {
+          "name": "Pages",
+          "params": [
+            { "key": "drive", "name": "Drive", "type": "float", "min": 0, "max": 1, "step": 0.01, "default": 0.5, "unit": "%" },
+            { "key": "tone", "default": 2000 },
+            { "key": "mode", "name": "Filter Mode", "short_name": "Mode", "type": "enum", "options": ["LP", "HP", "BP"], "default": "HP", "options_as_string": true },
+            { "key": "gain", "name": "Gain", "type": "int", "min": -24, "max": 24, "default": 0, "unit": "dB" },
+            { "key": "width", "name": "Stereo Width", "type": "float", "min": 0, "max": 2, "default": 1 },
+            { "key": "shape", "name": "Wave Shape", "type": "enum", "options": ["sine", "tri", "saw", "square"], "default": 2 },
+            { "key": "color", "name": "Color", "type": "float", "min": -1, "max": 1, "default": 0 },
+            { "key": "bits", "name": "Bits", "type": "int", "min": 1, "max": 16, "default": 16 },
+            { "key": "spare1", "name": "Spare One", "type": "int", "min": 0, "max": 127, "default": 10 },
+            { "key": "path", "name": "Sample File", "type": "filepath" },
+            { "key": "spare2", "name": "Spare Two", "type": "int", "min": 0, "max": 127, "default": 20 },
+            { "level": "adv", "label": "Advanced" },
+            { "level": "deep", "label": "Deep" }
+          ],
+          "knobs": ["drive", "tone", null, "mode", "gain", "width", "shape", "color", "bits", "rate", null, null]
+        },
+        "adv": {
+          "name": "Advanced",
+          "params": [
+            { "key": "time", "name": "Delay Time", "type": "float", "min": 0, "max": 2, "step": 0.01, "default": 0.5, "unit": "sec" },
+            { "key": "feedback", "name": "Feedback", "type": "int", "min": 0, "max": 100, "default": 30, "unit": "%" },
+            { "key": "drive" },
+            { "level": "sub", "label": "Sub" },
+            { "level": "root", "label": "Back" }
+          ],
+          "knobs": ["time", "feedback", "drive"]
+        },
+        "sub": {
+          "name": "Sub",
+          "params": [
+            { "key": "subA", "name": "Sub On", "type": "bool" },
+            { "key": "subB" }
+          ]
+        },
+        "deep": {
+          "name": "Deep",
+          "params": [
+            { "key": "d1", "name": "Deep 1", "type": "int", "min": 0, "max": 127, "default": 1 },
+            { "key": "d2", "name": "Deep 2", "type": "int", "min": 0, "max": 127, "default": 2 },
+            { "key": "d3", "name": "Deep 3", "type": "int", "min": 0, "max": 127, "default": 3 },
+            { "key": "d4", "name": "Deep 4", "type": "int", "min": 0, "max": 127, "default": 4 },
+            { "key": "d5", "name": "Deep 5", "type": "int", "min": 0, "max": 127, "default": 5 },
+            { "key": "d6", "name": "Deep 6", "type": "int", "min": 0, "max": 127, "default": 6 },
+            { "key": "d7", "name": "Deep 7", "type": "int", "min": 0, "max": 127, "default": 7 },
+            { "key": "d8", "name": "Deep 8", "type": "int", "min": 0, "max": 127, "default": 8 },
+            { "key": "d9", "name": "Deep 9", "type": "int", "min": 0, "max": 127, "default": 9 }
+          ]
+        }
+      }
+    }
+  }
+}

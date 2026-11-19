@@ -5,7 +5,7 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
 
 - **The firmwares** run as native code: each `.rfm1` is translated by wasm2c and compiled for the Move
   (`<id>-<version>.rfm1m`), with the same sound as the `.rfm1` in wasm3, bit for bit (tested).
-- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.4.0, in-process: FM-1
+- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.3, in-process: FM-1
   mode on the pads and knobs, MIDI, Control and the sequencer, and the projects view (Shift + step 1, or Track 1 held +
   step 1) with three firmware slots, their levels and their states.
 - **The hardware** is [Move Remote](https://github.com/Quixotic7/abletonmoveremote)'s device code, in-process: the SPI
@@ -151,9 +151,26 @@ make test
 
 `src/fx.c` (Schwung's own headers, third_party/schwung-api, MIT) lists the modules at `--fx-dir` (default
 `/data/UserData/schwung/modules`: `midi_fx/<id>/` with `dsp.so` and `audio_fx/<id>/` with `<id>.so`, or module.json's
-`dsp`), their parameters from module.json (`capabilities.chain_params`, else the `ui_hierarchy` root page: key, name,
-float / int / enum, min, max, default, options), and gives them to rfm1cs's FX setup (`rfm_move_fx_modules`) as 0..127
-values or word lists. Wet / dry parameters of an audio FX default to 100 % wet, 0 dry (a send's FX). The modules get a
+`dsp`), plans each module's parameters and pages from its module.json at scan time, and gives them to rfm1cs's FX
+setup (`rfm_move_fx_modules`) as 0..127 values or word lists with their pages (rfm1cs 0.5.0, "FX parameter pages"):
+
+- **Planning** (fx.c `plan`, as Schwung's own knob grid plans: its docs/MODULES.md "Shadow UI Parameter Hierarchy"):
+  `capabilities.ui_hierarchy`'s levels walked from `root`, depth first: a level's `knobs` (entry n is knob n % 8 of
+  its page n / 8, `null` a gap, trailing nulls dropped), then its params on no knob after the last knob, 8 a page
+  ("Name", "Name 2", ..); then each `{"level": ..}` link's level after the level that links it, once. A param's
+  metadata (type, min, max, step, default, unit, options, short_name) from the level's entry, else `chain_params` by
+  key; a key on several levels is one parameter, shown on each of its pages. A parameter's index (the core's, the
+  project's) is its first appearance in that walk. No hierarchy: `chain_params` in order, pages of 8. At most 128
+  parameters and 16 pages. Not planned (as in rfm1cs 0.5.0): `list_param` / `items_param` browsers, `menu`,
+  `visible_if`, child levels, `ui_chain.js`, types other than float / int / enum / mode / bool.
+- **Labels and readings**: `short_name`, else the name squeezed to about 5 characters (Schwung's per-word mnemonics,
+  then initials and the last word, a trailing number kept, then cut: `fx_abbrev`); `lo` / `hi` / `decimals` / `unit` as
+  Schwung's formatter reads them ("%" in 0..1 shows x100, `sec` as "s", decimals from `display_format`, else the step).
+- **Values**: 0..127 (an enum: the option's index) by parameter index; `fx_wire` gives the module its value: a float
+  `min + (max - min) * v / 127` snapped to its step, an int likewise rounded, an enum its option's text
+  (`options_as_string`) or index; set by key. Values a version 5 project did not keep (255) are left to the module.
+
+Wet / dry parameters of an audio FX default to 100 % wet, 0 dry (a send's FX). The modules get a
 host_api_v1_t with sample_rate, frames_per_block, log, get_bpm, get_clock_status and get_beat_position (the
 sequencer's tempo and transport) and NULL everything else, with a tail of NULLs past the struct.
 
@@ -172,7 +189,7 @@ sequencer's tempo and transport) and NULL everything else, with a tail of NULLs 
   (as any in-process plug-in would).
 - **CPU:** each module's time is measured (status `mfxN_cpu`, `afxN_cpu`, the page); one over `--fx-budget` (permille
   of a core, default 200) two seconds running is refused the same way.
-- **State:** the core's project keeps the modules by name, their first 8 values, the filters, pans and sends (levels:
+- **State:** the core's project (version 6) keeps the modules by name, their 128 values, the filters, pans and sends (levels:
   the library). Each module's own `get_param("state")` goes beside the project, `move/projects/move-project-NN.fx.json`,
   written with each project save and given back (`set_param("state")`) when that project's modules load.
 - Modules are listed at start: one installed while RemoteFM1 runs shows after a restart.
@@ -220,7 +237,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table) |
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
 | `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks) |
-| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.4.0` |
+| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.3` |
 | `third_party/RemoteFM1` | RemoteFM1 at 80f1f84 (its `web/site`: the page) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
 
@@ -266,13 +283,17 @@ When the Move switches firmware itself (its projects view, another track), the p
 shared design note): on a desktop the header's three slot chips replace the firmware picker (a live 48 x 48 mini
 screen, name, version, level bar; a tap plays that slot, the chevron or an empty chip opens "Load into slot n" /
 "Unload"); on a phone the iOS app's faceplate with a slot button top left and its menu. The Mix & FX view has the
-Move's FX setup pages (MIDI FX, Routing, Audio FX, Mixer) and follows the Move's page. Keys: ⌥1-3, ⌥M, Esc. The page's
-edits are ops on `/ws` (or `POST /api/edit`): FW_ACTIVE, FW_UNLOAD, MIX, ROUTE, FX_LOAD, FX_PARAM and the page; the
-engine writes them into rfm1cs's core state first (v0.4.0 has no call for that: its FX setup, mix and routing are
-public fields of `rfm_move_t`), then acts on the same action the core would give, so the Move's screens, the project
-and the page agree. The page shows what comes back: `{"type":"mix"}` JSON on `/ws` (also `GET /api/mix`), the modules
+Move's FX setup as rfm1cs 0.5.0 has it: one layer (the chain: MIDI FX, the firmwares with their filters, the audio FX,
+as the Move's pad columns 1, 3, 5), the selected slot under it (a module's own pages as tabs, 8 knob cells each with
+gaps; a firmware's filter, level, pan and sends), and the Mixer. It follows the Move's selection (`mix.page`,
+`mix.focus`, each FX slot's `pg`) and sets it. Keys: ⌥1-3, ⌥M, Esc. The page's edits are ops on `/ws` (or `POST
+/api/edit`, engine.h ENG_OP_*): FW_ACTIVE, FW_UNLOAD, MIX, ROUTE, FX_LOAD, FXPAR (23: a parameter 0..127, `b` kind<<9 |
+slot<<7 | value; 21 FX_PARAM, the 0.4 form, still takes 0..7), PAGE (22: the column or Mixer, `| (row + 1) << 2` the
+slot) and FXPG (24: a slot's page); rfm1cs's host setters apply them as the Move's own edits (FXPG and PAGE's row write
+`fw.fx_pg` / `fw.fx_focus`, which have no setter), so the Move's screens, the project and the page agree. The page shows what comes back: `{"type":"mix"}` JSON on `/ws` (also `GET /api/mix`), the modules
 (`GET /api/fx`), meters (binary 3) and the slots' mini screens (binary 4, at most 4 a second each, only when they
-changed). Screenshots: docs/move-page-slots.png, move-page-mixfx.png, move-page-phone.png, move-page-phone-mixfx.png. The page
+changed). Screenshots: docs/move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png, move-page-phone.png,
+move-page-phone-mixfx.png, move-page-phone-fxpages.png. The page
 needs no secure context: no AudioWorklet, Web MIDI, WebUSB, microphone, IndexedDB saves or folder access.
 
 **On the Move the page shows:** the faceplate at the site's layouts, the themes and background image, firmware

@@ -11,8 +11,12 @@
 // Nothing here runs unless js/host.js ON_MOVE.
 
 export const NSLOT = 3;
-export const OP = { ACTIVE: 16, UNLOAD: 17, MIX: 18, ROUTE: 19, FXLOAD: 20, FXPARAM: 21, PAGE: 22 };   // engine.h ENG_OP_*
-export const PAGES = ["MIDI FX", "Routing", "Audio FX", "Mixer"];                                       // the Move's order
+// engine.h ENG_OP_*: FXPAR a parameter 0..127 (b kind<<9 | slot<<7 | value), FXPG a slot's page (rfm1cs 0.5.0)
+export const OP = { ACTIVE: 16, UNLOAD: 17, MIX: 18, ROUTE: 19, FXLOAD: 20, FXPARAM: 21, PAGE: 22, FXPAR: 23, FXPG: 24 };
+// the Move's FX setup (rfm1cs 0.5.0: one layer): its columns (settings.fx_page 0..2) and the Mixer (3)
+export const COLS = ["MIDI FX", "Firmwares", "Audio FX"];
+export const MIXP = ["Level", "Pan", "Send 1", "Send 2", "Send 3"];                                     // RFM_MOVE_MIXP_*
+export const UNSET = 255;                                                                               // RFM_MOVE_FX_UNSET
 export const GREY = "#9696a0";
 // rfm1cs fw.c CATCOL over PAL: a category's pad colour on the Move (a firmware not loaded yet: its dot in the menus)
 const CAT_COLOR = { Synth: "#14dcff", Groovebox: "#ff7800", Chords: "#aa3cff", Drums: "#ff2424", Other: "#00ffaa" };
@@ -58,15 +62,28 @@ export function tracksText(mask) {
 }
 // a MIDI FX's filter: one track or all
 export const mfxText = (mask) => ((mask & 0xffff) === 0xffff || !mask ? "All" : tracksText(mask));
-// a parameter's wire value (0..127, an enum's option index) as the module means it
+// a parameter's wire value (0..127, an enum's option index) as the module means it: as the Move reads it (the host's
+// lo / hi / dec / unit: "38%", "2.40 s") when the plan has it
 export function paramText(p, v) {
   if (!p) return String(v);
   if (p.type === "enum") return (p.options && p.options[v]) != null ? String(p.options[v]).replace(/_/g, "-") : String(v);
+  if (p.lo != null && p.hi != null && p.lo !== p.hi) {
+    const y = p.lo + (p.hi - p.lo) * v / 127, u = p.unit || "";
+    return `${y.toFixed(p.dec | 0)}${u === "%" || !u ? u : ` ${u}`}`;
+  }
   const x = p.min + (p.max - p.min) * v / 127;
   if (p.type === "int") return String(Math.round(x));
   return Math.abs(p.max - p.min) <= 10 ? x.toFixed(2) : x.toFixed(1);
 }
 export const wetHint = (p) => (p && p.wet === 1 ? "100 % wet for a send" : p && p.wet === 2 ? "0 for a send" : "");
+// a module's pages (/api/fx: the host's plan), else pages of 8 in the params' order
+export function modPages(m) {
+  if (!m) return [];
+  if (m.pages && m.pages.length) return m.pages;
+  const n = (m.params || []).length, out = [];
+  for (let i = 0; i < n; i += 8) out.push({ name: out.length ? `${m.name} ${out.length + 1}` : m.name, knobs: Array.from({ length: 8 }, (_, k) => (i + k < n ? i + k : -1)) });
+  return out;
+}
 // a module's name, short (the phone's small send sliders)
 export const shortName = (m) => (!m ? "" : m.name.length <= 6 ? m.name : m.abbrev || m.name.slice(0, 4));
 

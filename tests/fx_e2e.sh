@@ -38,11 +38,17 @@ stop() { cmd quit; wait $HOST; RC=$?; }
 # the projects view on the Move (Track 1 held + step 1), and its FX setup (Session / Menu)
 view() { cmd "cc 43 127"; sleep 0.15; press "note 16"; cmd "cc 43 0"; sleep 0.3; }
 # the mix JSON without what moves by itself (CPU, counters, versions)
-mixstate() { mix | sed -E 's/"(ver|cpu|run|busy|notes|err|sounding|active|fxopen|page)":("[^"]*"|[0-9.]+),?//g'; }
+mixstate() { mix | sed -E 's/"(ver|cpu|run|busy|notes|err|sounding|active|fxopen|page|focus|fxpages|mixpar|pg)":("[^"]*"|[0-9.]+),?//g'; }
+# an audio FX slot's part of the mix JSON (0..2), its values (comma-separated), one of them (slot, index), its page
+afx() { mix | sed -E 's/.*"afx":\[//' | awk -v s="$1" 'BEGIN { RS = "\"mod\":" } NR == s + 2 { print }'; }
+afxvals() { afx "$1" | sed -E 's/.*"vals":\[([^]]*)\].*/\1/'; }
+afxval() { afxvals "$1" | cut -d, -f$(($2 + 1)); }
+afxpg() { afx "$1" | sed -E 's/.*"pg":([0-9]+).*/\1/'; }
+mixf() { mix | sed -E "s/.*\"$1\":([0-9]+).*/\\1/"; }
 
 echo "fx_e2e"
 start
-[ "$(field fx_mods)" = 6 ] && curl -s "$U/api/fx" | grep -q '"id":"arp"' && curl -s "$U/api/fx" | grep -q '"key":"room_size"' \
+[ "$(field fx_mods)" = 7 ] && curl -s "$U/api/fx" | grep -q '"id":"arp"' && curl -s "$U/api/fx" | grep -q '"key":"room_size"' \
     && ok "the installed modules listed: $(curl -s "$U/api/fx" | grep -o '"name":"[^"]*","abbrev' | sed 's/"name":"\([^"]*\)".*/\1/' | tr '\n' ' ')" \
     || bad "/api/fx: $(curl -s "$U/api/fx" | head -c 300)"
 
@@ -125,8 +131,8 @@ cmd "cc 71 3"; sleep 0.4
 wait_for 3 '[ "$(field level0)" = 53 ]' && mix | grep -q '"level":53' \
     && ok "the page set slot 1's level to 50 in the core; the Move's knob 1 then made it 53, and the page sees 53" \
     || bad "level: $(field level0)"
-cmd "cc 74 5"; sleep 0.4
-wait_for 3 'mix | grep -q "\"sends\":\[100,5,0\]"' && ok "the Move's knob 4 (send 2) on the Mixer: the page's sends follow (100, 5, 0)" \
+press "note 89"; cmd "cc 71 5"; sleep 0.4   # (0.5.0 Mixer: the right 4 x 4's Send 2, then knob 1 for slot 1)
+wait_for 3 'mix | grep -q "\"sends\":\[100,5,0\]"' && ok "the Move's Mixer: Send 2 picked (its pad), knob 1 sets slot 1's: the page's sends follow (100, 5, 0)" \
     || bad "the Move's send: $(mix | grep -o '"sends":\[[0-9,]*\]' | head -1)"
 press "cc 50"; press "cc 51"
 
@@ -150,9 +156,40 @@ echo "  info  CPU: $(status | grep -o '"slots":\[[^]]*\]' | sed 's/"worst_us[^}]
     && ok "3 firmwares, 3 MIDI FX, 3 audio FX playing for 6 s: no late block ($late1 so far; FX $(field fx_cpu) % of a core)" \
     || bad "late blocks: $late0 -> $late1"
 
+# ---- (rfm1cs 0.5.0) a module's own parameter pages: Page Test (tests/fxmods/audio_fx/pagesfx, a multi-level
+# ui_hierarchy) chosen on the Move (audio FX 3's pad held + the jog, let go), its pages (the jog's click, the jog),
+# a knob on page 2; a parameter past index 8 from the page (op 23), reaching the module
+curl -s "$U/api/fx" | grep -o '"id":"pagesfx".*' | grep -q '"pages":\[{"name":"Pages","knobs":\[0,1,-1,2,3,4,5,6\]},{"name":"Pages 2".*"name":"Advanced".*"name":"Sub".*"name":"Deep".*"name":"Deep 2"' \
+    && ok "/api/fx: Page Test's 6 pages (root with its gap, its overflow page, Advanced, Sub, Deep, Deep 2)" \
+    || bad "pagesfx pages: $(curl -s "$U/api/fx" | grep -o '"id":"pagesfx".*' | grep -o '"pages":.*' | head -c 300)"
+view; press "cc 50"; press "cc 41"   # (FX setup, the audio FX column)
+cmd "note 80 127"; sleep 0.3; cmd "cc 14 1"; sleep 0.3
+[ "$(field afx2)" = freeverb ] && ok "audio FX 3's pad held + the jog: the list shows the next module, nothing loaded yet" \
+    || bad "held + jog loaded already: afx2 '$(field afx2)'"
+cmd "note 80 0"
+wait_for 5 '[ "$(field afx2)" = pagesfx ]' && ok "the pad let go: Page Test loaded into audio FX 3 (one FX_LOAD)" || bad "the release: afx2 '$(field afx2)'"
+grep -q "pagesfx: set d9=9" "$T/host.log" && ok "every planned parameter set as it loaded (Deep 9, index 23: 9)" || bad "pagesfx defaults not set"
+press "cc 3"
+wait_for 3 '[ "$(mixf fxpages)" = 1 ]' && ok "the jog's click: its pages open (the mix says so)" || bad "pages: fxpages $(mixf fxpages)"
+cmd "cc 14 1"; sleep 0.3
+wait_for 3 '[ "$(afxpg 2)" = 1 ]' && ok "the jog: page 2 (Pages 2), the page sees it (pg 1)" || bad "page 2: pg $(afxpg 2)"
+v0=$(afxval 2 9); cmd "cc 73 5"; sleep 0.3
+wait_for 3 '[ "$(afxval 2 9)" = $((v0 + 5)) ]' && grep -q "pagesfx: set spare1=15" "$T/host.log" \
+    && ok "knob 3 on page 2: Spare One (index 9) $v0 -> $(afxval 2 9), the module set (spare1=15)" || bad "knob on page 2: $v0 -> $(afxval 2 9)"
+[ "$(edit 23 11 $((1 << 9 | 2 << 7 | 100)))" = 202 ] \
+    && wait_for 3 '[ "$(afxval 2 11)" = 100 ] && grep -q "pagesfx: set time=1.5700" "$T/host.log"' \
+    && ok "the page's op 23: Delay Time (index 11, page 3) 100 in the core, the module set (time=1.57 s, its step 0.01)" \
+    || bad "op 23: vals $(afxvals 2)"
+[ "$(edit 24 6 2)" = 202 ] && wait_for 3 '[ "$(afxpg 2)" = 2 ]' && ok "the page's op 24: the Move's page for audio FX 3 is Advanced (pg 2)" \
+    || bad "op 24: pg $(afxpg 2)"
+edit 22 $((2 | 1 << 2)) 0 >/dev/null
+wait_for 3 '[ "$(mixf focus)" = 0 ] && [ "$(mixf page)" = 2 ] && [ "$(mixf fxpages)" = 0 ]' \
+    && ok "the page's op 22 with a row: audio FX 1 selected on the Move (its pages closed)" || bad "focus $(mixf focus), page $(mixf page)"
+press "cc 51"; press "cc 50"
+
 # ---- the FX setup and the modules' own state survive a project save and load (the autosave, then a restart)
 edit 19 3 64 >/dev/null; edit 21 0 2 >/dev/null; edit 21 32 40 >/dev/null   # arp: track 7, mode down; freeverb: room 40
-edit 20 5 3 >/dev/null   # Slow State (80 ms over its saved state) into audio FX 2
+edit 20 5 4 >/dev/null   # Slow State (80 ms over its saved state) into audio FX 2
 wait_for 4 '[ "$(field afx1)" = slowfx ]' || bad "slowfx: afx1 '$(field afx1)'"
 wait_for 6 '[ -s "$ROOT/move/projects/move-project-01.fx.json" ] && grep -q Arpeggiator "$ROOT/move/projects/move-project-01.fx.json"' \
     && ok "the project autosaved, its modules' state beside it (move-project-01.fx.json: $(grep -o '"[ma][0-9]":{"name":"[^"]*"' "$ROOT/move/projects/move-project-01.fx.json" | sed 's/":{"name":"/ /;s/"//g' | tr '\n' ' '))" \
@@ -161,10 +198,14 @@ sleep 2.5
 before=$(mixstate)
 stop
 start
-wait_for 8 '[ "$(field mfx0)" = arp ] && [ "$(field mfx1)" = chord ] && [ "$(field afx2)" = freeverb ]' || true
+wait_for 8 '[ "$(field mfx0)" = arp ] && [ "$(field mfx1)" = chord ] && [ "$(field afx2)" = pagesfx ]' || true
 after=$(mixstate)
 [ -n "$before" ] && [ "$before" = "$after" ] && ok "restarted: the same FX setup, mix and routing from the project (modules, values, filters, sends, levels)" \
     || { bad "the FX setup after a restart differs"; echo "    before: $before"; echo "    after:  $after"; }
+[ "$(afxval 2 11)" = 100 ] && [ "$(afxval 2 9)" = 15 ] && grep -q 'time=1.5700' "$ROOT/move/projects/move-project-01.fx.json" \
+    && [ "$(grep -c "pagesfx: set time=1.5700" "$T/host.log")" -ge 2 ] \
+    && ok "restarted: Page Test's page-3 value kept (Delay Time 100, version 6 project), set again; its state (get_param) had it" \
+    || bad "page-3 value after restart: $(afxvals 2)"
 wait_for 4 '[ "$(field afx1)" = slowfx ]' && grep -q "Slow State: its saved state.*off the engine thread" "$T/host.log" \
     && ok "Slow State came back with its saved state, set off the engine thread" || bad "slowfx after restart: afx1 '$(field afx1)'"
 [ "$(field mfx0)" = arp ] && [ "$(field afx0)" = freeverb ] && grep -q "Arpeggiator: its saved state" "$T/host.log" \

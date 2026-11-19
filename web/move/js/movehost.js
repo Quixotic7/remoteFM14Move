@@ -20,7 +20,7 @@
 //           moveLink(up) the WebSocket went away / came back; error(text) a pick the Move could not start
 //   Mix & FX (js/moveslots.js, js/movemix.js): p.listen({ mix(m), meters(u8[7]), mini(slot, px565[48*48]) }) adds a
 //           listener (it gets the last ones at once); p.mix / p.meters / p.minis the last ones; p.edit(op, a, b) one
-//           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 22 PAGE) over /ws (POST /api/edit while /ws is
+//           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 24 FXPG) over /ws (POST /api/edit while /ws is
 //           down)
 // Everything else Player has (MIDI, flash, the recorder's taps, the output device, live input) is a no-op: the
 // firmware's flash and states stay on the Move, and its sound comes out of the Move.

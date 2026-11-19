@@ -254,26 +254,28 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-master { flex: 1 1 110px; min-width: 96px; display: flex; flex-direction: column; gap: 12px; align-items: center; background: #1c1915; }
 .mv-master .mv-meter { flex: 0 1 260px; }
 
-/* Routing */
-.mv-routing { display: grid; grid-template-columns: 230px 36px minmax(250px, 300px) 36px minmax(0, 1fr); height: 100%; min-height: 540px; align-items: stretch; }
+/* FX setup (rfm1cs 0.5.0: one layer): the chain as the Move's pad columns 1 / 3 / 5, the selected slot under it */
 .mv-arrow { color: var(--muted); display: flex; align-items: center; justify-content: center; }
-.mv-arrow-s { color: var(--muted); display: flex; justify-content: center; height: 12px; align-items: center; }
-.mv-seq { display: flex; flex-direction: column; gap: 12px; }
-.mv-trks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.mv-trks.c8 { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
-.mv-trk { background: var(--well); border: 1px solid var(--line); border-radius: 8px; padding: 6px 2px 5px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.mv-trk b { font: 700 13px/1.1 var(--hw); color: var(--row-text); }
-.mv-tdots { display: flex; gap: 2px; height: 5px; }
-.mv-tdots i { width: 5px; height: 5px; border-radius: 50%; }
-.mv-note-b { border-top: 1px solid var(--line); padding-top: 10px; font-size: 12px; line-height: 1.4; }
-.mv-mfx { display: flex; flex-direction: column; gap: 8px; }
+.mv-fxsetup { display: flex; flex-direction: column; gap: 16px; }
+.mv-chain { display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr); align-items: stretch; }
+.mv-chaincol { gap: 8px; }
+.mv-chain .mv-card { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.mv-fxdetail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
+.mv-knobs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.mv-knobs.ph { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mv-param.tile.gap { justify-content: center; border-style: dashed; background: transparent; min-height: 120px; }
+.mv-gap { font: 700 22px/1 var(--hw); color: var(--muted); }
+.mv-pager { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mv-pg { border: 1px solid var(--line); background: var(--well); color: var(--muted); font: 600 12px/1 var(--ui); padding: 7px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: background-color .15s, color .15s; }
+.mv-pg:hover { color: var(--text); }
+.mv-pg.on { background: var(--c, var(--accent)); color: #17140F; border-color: transparent; }
+.mv-pgn { margin-left: auto; }
 .mv-picker { display: flex; flex-direction: column; gap: 10px; }
 .mv-all.on { background: var(--c, var(--accent)); color: #17140F; border-color: transparent; }
 .mv-fw { display: flex; flex-direction: column; gap: 10px; }
 .mv-fwempty { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
 
-/* the FX pages */
-.mv-fxpage { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 300px); gap: 16px; height: 100%; min-height: 520px; }
+/* the selected FX slot */
 .mv-fxslot { display: flex; flex-direction: column; gap: 8px; }
 .mv-fxedit { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
 .mv-modpick { font-size: 15px; padding: 9px 14px; gap: 10px; min-width: 0; flex-shrink: 0; max-width: 100%; }
@@ -289,7 +291,6 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-param.tile.hinted { border-color: #7a5512; }
 .mv-param.tile .mv-cap, .mv-pname { font: 600 13px/1 var(--ui); }
 .mv-param.enum.tile .mv-segs { margin-top: 6px; flex-wrap: nowrap; }
-.mv-param.tile.wide { grid-column: span 2; }
 .mv-param.enum.tile { justify-content: center; }
 .mv-param { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .mv-fx-none { display: flex; flex-direction: column; gap: 6px; padding: 22px 4px; }
@@ -302,7 +303,7 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-sendin { padding: 8px; }
 .mv-sendin.dimmed { opacity: .65; }
 
-/* ---- narrower windows: the strips shrink, the FX pages and Routing stack */
+/* ---- narrower windows: the strips shrink, the selected slot's side goes under it */
 @media (max-width: 1100px) {
   .mv-view { padding: 14px 16px 16px; }
   .mv-mixer { gap: 10px; }
@@ -312,11 +313,7 @@ button.mv-card:hover { background: var(--raised-hover); }
   .mv-bar-top > .mv-mut { display: none; }
 }
 @media (max-width: 1000px) {
-  .mv-fxpage { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); height: auto; }
-  .mv-fxpage > .mv-col:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-items: start; }
-  .mv-fxpage > .mv-col:last-child > .mv-h { grid-column: 1 / -1; }
-  .mv-routing { grid-template-columns: minmax(0, 1fr); height: auto; gap: 10px; }
-  .mv-routing .mv-arrow { transform: rotate(90deg); height: 24px; }
+  .mv-fxdetail { grid-template-columns: minmax(0, 1fr); }
   .mv-mixer { overflow-x: auto; padding-bottom: 6px; }
 }
 
@@ -325,7 +322,7 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-view.phone .mv-head { padding: 0 12px 12px; }
 .mv-ph-top { display: flex; align-items: center; gap: 8px; padding: 10px 0 8px 4px; }
 .mv-title { font: 700 13px/1 var(--hw); letter-spacing: .14em; text-transform: uppercase; flex: 1; }
-.mv-view.phone .mv-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; }
+.mv-view.phone .mv-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
 .mv-view.phone .mv-tab { padding: 12px 2px; font-size: 10px; letter-spacing: .06em; }
 .mv-view.phone .mv-body { padding: 0 12px 28px; }
 .mv-view.phone .mv-card { padding: 12px; }
@@ -342,7 +339,16 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-view.phone .mv-fxedit { padding: 14px; gap: 12px; }
 .mv-view.phone .mv-segs { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
 .mv-view.phone .mv-seg { padding: 11px 2px; }
-.mv-view.phone .mv-mfx { padding: 10px 12px; }
+.mv-view.phone .mv-chain { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mv-view.phone .mv-chain .mv-arrow { display: none; }
+.mv-view.phone .mv-chain .mv-card { padding: 8px; }
+.mv-view.phone .mv-chain .mv-name { font-size: 12px; }
+.mv-view.phone .mv-chain .mv-h.mv-pad { padding: 0 2px; }
+.mv-view.phone .mv-fxdetail { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.mv-view.phone .mv-knobs .mv-param.tile { padding: 0; background: none; border: 0; gap: 4px; align-items: stretch; justify-content: center; }
+.mv-view.phone .mv-knobs .mv-bar { width: 100%; }
+.mv-view.phone .mv-knobs .mv-param.tile.gap { min-height: 44px; align-items: center; border: 1px dashed var(--line); border-radius: 10px; }
+.mv-view.phone .mv-knobs .mv-param.enum .mv-pname { font-size: 11px; color: var(--muted); }
 .mv-view.phone .mv-st { height: 34px; font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) {

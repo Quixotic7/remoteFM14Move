@@ -20,7 +20,7 @@
  *                                            (text): the /api/info JSON when it changes, the /api/mix JSON
  *                                                    ("type":"mix") when it changes
  *                           In (binary, 4 bytes each): op a b_lo b_hi (fwrt.h FWI_*: 1 KEY a vel|0, 2 LEAN a 0..100,
- *                                            3 BTN a 1|0, 4 ENC a detents, 5 MASTER b 0..1023; 16..22 engine.h
+ *                                            3 BTN a 1|0, 4 ENC a detents, 5 MASTER b 0..1023; 16..24 engine.h
  *                                            ENG_OP_*: slots, mix, routing, FX; other ops are dropped)
  * The server runs on its own thread; one request per connection. */
 #ifndef RFM14_WEB_H

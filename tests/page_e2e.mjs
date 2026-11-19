@@ -12,12 +12,14 @@
 //     a load from outside the page (as the Move's own projects view) is followed;
 //   - the chips play a slot (ACTIVE) and follow the Move's switch; a load into an empty slot and an unload from a
 //     chip's menu; ⌥1 ⌥2 ⌥3, ⌥M and Esc (Esc lets a latch go first);
-//   - the Mix & FX view: the page's edits (a level fader, a send dial, routing cells, Freeverb into audio FX 1, a
+//   - the Mix & FX view (rfm1cs 0.5.0: FX setup as one layer, the chain, and the Mixer): a module's own parameter pages
+//     (Page Test: its tabs, the gap, an edit on page 2 into the core, the Move's page followed), and the page's edits
+//     (a level fader, a send dial, routing cells, Freeverb into audio FX 1, a
 //     parameter) land in the core (GET /api/mix), edits from outside (POST /api/edit, as the Move's knobs) show on
 //     the page; the tab follows the Move's FX page and sets it;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet;
-//   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-mixfx.png, move-page-phone.png
-//     (the slot menu open) and move-page-phone-mixfx.png.
+//   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
+//     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png.
 //   node tests/page_e2e.mjs [--shot=docs/move-page.png] [--port=N]          (after make; needs Docker and Chromium)
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
@@ -236,28 +238,53 @@ try {
   await untilApi(async () => (await active()) === 0, 5000);
   await until(`document.getElementById("fw-name").textContent === "Felucca"`, 5000, "Felucca");
 
-  // ---- Mix & FX: ⌥M, the tab follows the Move's FX page and sets it
+  // ---- Mix & FX (rfm1cs 0.5.0): ⌥M; FX setup (one layer: the chain) and the Mixer follow the Move's and set it
   await edit(22, 3, 0);
   await key("KeyM", { alt: true, keyName: "µ", vk: 77 });
   ok(await until(`document.querySelector("#mv-view.open") && document.getElementById("mv-mixbtn").classList.contains("lit")`, 3000, "the view"), "⌥M opens the Mix & FX view");
-  ok(await until(`document.querySelector('.mv-tab.on[data-tab="3"]') && document.querySelector('.mv-strip[data-slot="0"]')`, 5000, "Mixer"), "the tab follows the Move's FX page: Mixer (T4)");
-  await edit(22, 1, 0);
-  ok(await until(`document.querySelector('.mv-tab.on[data-tab="1"]') && document.querySelector(".mv-routing")`, 5000, "Routing"), "the Move turns to Routing: the page follows");
-  await click('.mv-tab[data-tab="2"]');
-  ok(await untilApi(async () => ((await mixNow()) || {}).page === 2, 5000), `a tap on Audio FX sets the Move's page (mix.page ${((await mixNow()) || {}).page})`);
+  ok(await until(`document.querySelector('.mv-tab.on[data-tab="1"]') && document.querySelector('.mv-strip[data-slot="0"]')`, 5000, "Mixer"), "the tab follows the Move's FX setup: Mixer (T4)");
+  await edit(22, 1 | 2 << 2, 0);   // (the Move: firmware 2 selected, column 3)
+  ok(await until(`document.querySelector('.mv-tab.on[data-tab="0"]') && document.querySelector(".mv-chain") && document.querySelector('.mv-chfw.sel[data-slot="1"]') && document.querySelector('.mv-fwedit[data-slot="1"]')`, 5000, "FX setup"),
+    "the Move selects firmware 2 in FX setup: the page shows the chain, firmware 2 selected (its filter and knobs)");
+  ok(await js(`[...document.querySelectorAll(".mv-chaincol")].map((c) => c.querySelectorAll(".mv-card").length).join()`) === "3,3,3", "the chain: 3 MIDI FX, 3 firmwares, 3 audio FX (the Move's pad columns 1, 3, 5)");
+  await click('.mv-fxslot[data-kind="1"][data-fxslot="0"]');
+  ok(await untilApi(async () => { const m = await mixNow(); return m && m.page === 2 && m.focus === 0; }, 5000), `a tap on audio FX 1 selects it on the Move (page ${((await mixNow()) || {}).page}, slot ${((await mixNow()) || {}).focus})`);
   // Freeverb into audio FX 1 from the page's module list, a parameter dragged
   await until(`document.querySelector('.mv-modrow[data-mod="2"]')`, 5000, "the module list");
   await click('.mv-modrow[data-mod="2"]');
   ok(await untilApi(async () => { const m = await mixNow(); return m && m.afx[0].mod === 2 && m.afx[0].name === "Freeverb"; }, 8000), "Freeverb loaded into audio FX 1 from the page (the core's afx[0])");
-  ok(await until(`document.querySelector('[data-ctl="p-1-0-0"]') && /Freeverb/.test(document.querySelector(".mv-modpick").textContent)`, 5000, "Freeverb's parameters"), "its parameters show (Room Size, ...)");
+  ok(await until(`document.querySelector('[data-ctl="p-1-0-0"]') && /Freeverb/.test(document.querySelector(".mv-modpick").textContent)`, 5000, "Freeverb's parameters"), "its page shows (Room Size, ...)");
   const room0 = (await mixNow()).afx[0].vals[0];
   { const b = await box('[data-ctl="p-1-0-0"] .mv-dk'); await drag(b.x + b.w / 2, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h / 2 - 60); }
   ok(await untilApi(async () => (await mixNow()).afx[0].vals[0] > room0 + 20, 4000), `a dial drag sets Room Size in the core (${room0} -> ${(await mixNow()).afx[0].vals[0]})`);
-  ok(await until(`/wet for a send/.test(document.querySelector(".mv-fxedit").textContent)`, 2000, "the hint"), "Wet has the amber hint (100 % wet for a send)");
-  await edit(21, 1 << 5 | 0 << 3 | 1, 99);   // (the Move's knob: Damping)
+  ok(await until(`/wet for a send/.test(document.querySelector(".mv-fxedit").textContent) && /%/.test(document.querySelector('[data-ctl="p-1-0-0"] .mv-val').textContent)`, 2000, "the hint"),
+    `Wet has the amber hint (100 % wet for a send); values read as the Move shows them (${await js(`document.querySelector('[data-ctl="p-1-0-0"] .mv-val').textContent`)})`);
+  await edit(21, 1 << 5 | 0 << 3 | 1, 99);   // (the Move's knob: Damping, the 0.4 op)
   ok(await until(`document.querySelector('[data-ctl="p-1-0-1"]').dataset.v === "99"`, 5000, "Damping 99"), `an edit on the Move (Damping 99) shows on the page (${await dv('[data-ctl="p-1-0-1"]')})`);
+  // Page Test (a multi-level ui_hierarchy) into audio FX 2: its pages, an edit on page 2, the Move's page followed
+  await click('.mv-fxslot[data-kind="1"][data-fxslot="1"]');
+  await until(`document.querySelector('.mv-fxslot.sel[data-kind="1"][data-fxslot="1"]') && document.querySelector('.mv-modrow[data-mod="3"]')`, 5000, "audio FX 2");
+  await click('.mv-modrow[data-mod="3"]');
+  ok(await untilApi(async () => (await mixNow()).afx[1].mod === 3, 8000), "Page Test loaded into audio FX 2 from the page");
+  ok(await until(`document.querySelectorAll(".mv-pager .mv-pg").length === 6 && document.querySelectorAll('.mv-knobs [data-knob]').length === 8 && document.querySelector('.mv-knobs [data-knob="2"].gap')`, 5000, "its pages"),
+    `its 6 pages as tabs (${await js(`[...document.querySelectorAll(".mv-pager .mv-pg")].map((b) => b.textContent).join(", ")`)}), 8 knob cells, the gap at knob 3`);
+  await click('.mv-pg[data-pg="1"]');
+  ok(await until(`document.querySelector('.mv-pg.on[data-pg="1"]') && document.querySelector('[data-ctl="p-1-1-9"]')`, 3000, "page 2"), "a tap on \"Pages 2\": its knobs (Spare One, index 9)");
+  ok(await untilApi(async () => (await mixNow()).afx[1].pg === 1, 3000), "the Move's knobs follow: audio FX 2 on page 2 in the core (FXPG)");
+  const sp0 = (await mixNow()).afx[1].vals[9];
+  { const b = await box('[data-ctl="p-1-1-9"] .mv-dk'); await drag(b.x + b.w / 2, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h / 2 - 50); }
+  ok(await untilApi(async () => (await mixNow()).afx[1].vals[9] > sp0 + 20, 4000), `an edit on page 2 reaches the core (FXPAR): Spare One ${sp0} -> ${(await mixNow()).afx[1].vals[9]}`);
+  await edit(24, 4 + 1, 2);   // (the Move's jog: audio FX 2 on Advanced)
+  ok(await until(`document.querySelector('.mv-pg.on[data-pg="2"]') && document.querySelector('[data-ctl="p-1-1-11"]')`, 5000, "Advanced"), "the Move turns to Advanced: the page follows (Delay Time, index 11)");
+  await edit(23, 11, 1 << 9 | 1 << 7 | 100);
+  ok(await until(`document.querySelector('[data-ctl="p-1-1-11"]').dataset.v === "100" && /1\\.57 s/.test(document.querySelector('[data-ctl="p-1-1-11"] .mv-val').textContent)`, 5000, "Delay Time 100"),
+    `Delay Time 100 from outside shows on page 3 (${await js(`document.querySelector('[data-ctl="p-1-1-11"] .mv-val').textContent`)})`);
+  await sleep(300);
+  await js(`document.querySelector(".mv-body").scrollTop = 0`);
+  await shot(join(DOCS, "move-page-fxpages.png"));
   // Mixer: a send dial, the level fader; the Move's edits show
-  await click('.mv-tab[data-tab="3"]');
+  await click('.mv-tab[data-tab="1"]');
+  ok(await untilApi(async () => ((await mixNow()) || {}).page === 3, 5000), "a tap on Mixer sets the Move's FX setup to its Mixer (page 3)");
   await until(`document.querySelector('[data-ctl="send-0-0"]:not(.off)')`, 5000, "the send to Freeverb");
   { const b = await box('[data-ctl="send-0-0"] .mv-dk'); await drag(b.x + b.w / 2, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h / 2 - 50); }
   ok(await untilApi(async () => (await mixNow()).slots[0].sends[0] > 20, 4000), `a send dial drag: Felucca's send to Freeverb in the core (${(await mixNow()).slots[0].sends[0]})`);
@@ -277,23 +304,26 @@ try {
   ok(met[0] > 0 && met[met.length - 1] > 0, `the meters move: Felucca ${met[0]}, master ${met[met.length - 1]} (${met.join(" ")})`);
   await shot(join(DOCS, "move-page-mixfx.png"));
   for (const [code, k, vk] of [["KeyS", "s", 83], ["KeyG", "g", 71]]) await cdp("Input.dispatchKeyEvent", { type: "keyUp", code, key: k, windowsVirtualKeyCode: vk });
-  // Routing: a firmware's track filter, a MIDI FX's one track
+  // FX setup: a MIDI FX, a firmware's track filter, a MIDI FX's one track
   await click('.mv-tab[data-tab="0"]');
-  await until(`document.querySelector('.mv-modrow[data-mod="0"]')`, 5000, "the MIDI FX modules");
+  await until(`document.querySelector('.mv-fxslot[data-kind="0"][data-fxslot="0"]')`, 5000, "the chain");
+  await click('.mv-fxslot[data-kind="0"][data-fxslot="0"]');
+  await until(`document.querySelector('.mv-fxslot.sel[data-kind="0"][data-fxslot="0"]') && document.querySelector('.mv-modrow[data-mod="0"]')`, 5000, "the MIDI FX modules");
   await click('.mv-modrow[data-mod="0"]');
   ok(await untilApi(async () => (await mixNow()).mfx[0].mod === 0, 5000), "the Arpeggiator into MIDI FX 1 from the page");
-  // (the page's own copy of the mix catches up before the next tab: its rebuild would swallow a click in flight)
+  // (the page's own copy of the mix catches up before the next click: its rebuild would swallow a click in flight)
   await until(`document.querySelector('.mv-modrow[data-mod="0"].on')`, 5000, "the page shows the Arpeggiator");
-  await click('.mv-tab[data-tab="1"]');
-  await until(`document.querySelector('.mv-fw[data-slot="1"] .mv-st[data-track="9"]')`, 5000, "the filters");
-  const filt0 = (await mixNow()).slots[1].filt;
-  await click('.mv-fw[data-slot="1"] .mv-st[data-track="9"]');
-  ok(await untilApi(async () => (await mixNow()).slots[1].filt === (filt0 ^ 0x100), 4000), `a routing cell: track 9 toggled in ChoralRoot's filter (${filt0.toString(16)} -> ${(await mixNow()).slots[1].filt.toString(16)})`);
   await click('.mv-picker .mv-st[data-track="7"]');
   ok(await untilApi(async () => (await mixNow()).mfx[0].filt === 64, 4000), `the Arpeggiator acts on track 7 only (${(await mixNow()).mfx[0].filt})`);
+  await click('.mv-chfw[data-slot="1"]');
+  await until(`document.querySelector('.mv-fwedit[data-slot="1"] .mv-st[data-track="9"]')`, 5000, "firmware 2's filter");
+  const filt0 = (await mixNow()).slots[1].filt;
+  await click('.mv-fwedit[data-slot="1"] .mv-st[data-track="9"]');
+  ok(await untilApi(async () => (await mixNow()).slots[1].filt === (filt0 ^ 0x100), 4000), `a routing cell: track 9 toggled in ChoralRoot's filter (${filt0.toString(16)} -> ${(await mixNow()).slots[1].filt.toString(16)})`);
+  await edit(22, 1 | 1 << 2, 0);   // (the Move: firmware 1 selected)
   await edit(19, 0, 0x00ff);
-  ok(await until(`document.querySelector('.mv-fw[data-slot="0"] .mv-st[data-track="8"].on') && !document.querySelector('.mv-fw[data-slot="0"] .mv-st[data-track="9"].on')`, 5000, "Felucca 1-8"),
-    "a filter set on the Move (Felucca: tracks 1-8) shows on the page");
+  ok(await until(`document.querySelector('.mv-fwedit[data-slot="0"] .mv-st[data-track="8"].on') && !document.querySelector('.mv-fwedit[data-slot="0"] .mv-st[data-track="9"].on')`, 5000, "Felucca 1-8"),
+    "the Move selects firmware 1 and sets its filter (tracks 1-8): the page shows it");
   // Esc: a latch first, then the view
   await esc();
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "Esc"), "Esc goes back to the faceplate");
@@ -340,9 +370,18 @@ try {
   await click("#mv-slotbtn");
   await until(`document.getElementById("mv-ip-mix")`, 3000, "the menu again");
   await click("#mv-ip-mix");
-  ok(await until(`document.querySelector("#mv-view.open.phone") && document.querySelector(".mv-ph-strip") && document.querySelector('.mv-tab.on[data-tab="3"]')`, 5000, "the phone sheet"), "Mix & FX from the slot menu: the full-screen sheet, Mixer");
+  ok(await until(`document.querySelector("#mv-view.open.phone") && document.querySelector(".mv-ph-strip") && document.querySelector('.mv-tab.on[data-tab="1"]')`, 5000, "the phone sheet"), "Mix & FX from the slot menu: the full-screen sheet, Mixer");
   await sleep(600);
   await shot(join(DOCS, "move-page-phone-mixfx.png"));
+  await click('.mv-tab[data-tab="0"]');
+  await until(`document.querySelector('.mv-fxslot[data-kind="1"][data-fxslot="1"]')`, 5000, "the phone's chain");
+  await click('.mv-fxslot[data-kind="1"][data-fxslot="1"]');
+  ok(await until(`document.querySelectorAll(".mv-pager .mv-pg").length === 6 && document.querySelector('.mv-knobs.ph [data-knob="0"] .mv-bar')`, 5000, "the phone's pages"),
+    "the phone: FX setup's chain, Page Test's pages as tabs, its knobs as bar sliders");
+  await sleep(500);
+  await shot(join(DOCS, "move-page-phone-fxpages.png"));
+  await click('.mv-tab[data-tab="1"]');
+  await until(`document.querySelector('.mv-ph-strip[data-slot="1"] [data-ctl="level-1"]')`, 5000, "the phone's Mixer");
   { const b = await box('.mv-ph-strip[data-slot="1"] [data-ctl="level-1"]'); await drag(b.x + b.w * 0.5, b.y + b.h / 2, b.x + b.w * 0.25, b.y + b.h / 2); }
   const lv1 = (await mixNow()).slots[1].level;
   ok(lv1 > 20 && lv1 < 45, `the phone's Level bar dragged: ChoralRoot's level in the core ${lv1}`);

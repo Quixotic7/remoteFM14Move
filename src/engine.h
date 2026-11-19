@@ -55,7 +55,7 @@ typedef struct {
                                    * the last firmware the page asked for that failed to load */
     uint32_t info_seq;
     /* (Mix & FX) the slots, the FX setup and the mix as the core has them, JSON ({"type":"mix",..}: engine.c mix_json) */
-    char mix[12288];
+    char mix[16384];
     uint32_t mix_seq;
     /* meters, 0..255 (peak, square root scale): slots 1..3, returns 1..3, the master; at most 10 a second */
     uint8_t meters[7];
@@ -82,9 +82,12 @@ int engine_load(int slot, const char *id, int activate);   /* activate: then mak
  * (so the Move's own screens and the project agree), then the host's (engine.c page_edit):
  *   ENG_OP_ACTIVE a slot | ENG_OP_UNLOAD a slot | ENG_OP_MIX a slot*8+field (0 level, 1 pan, 2..4 sends) b 0..127
  *   ENG_OP_ROUTE a 0..2 firmware, 3..5 MIDI FX, b the 16-track filter | ENG_OP_FXLOAD a kind*4+slot, b module (-1 empty)
- *   ENG_OP_FXPARAM a kind<<5 | slot<<3 | param, b 0..127 | ENG_OP_PAGE a 0..3 (FX setup's page) */
+ *   ENG_OP_FXPARAM a kind<<5 | slot<<3 | param 0..7, b 0..127 (the 0.4 form) | ENG_OP_PAGE a 0..3 (FX setup's column,
+ *   3 the Mixer) | (row + 1) << 2 (0: the slot selected stays)
+ *   (rfm1cs 0.5.0) ENG_OP_FXPAR a param 0..127, b kind<<9 | slot<<7 | value 0..127 | ENG_OP_FXPG a kind*4+slot, b the
+ *   page its knobs are on (the Move's fw.fx_pg) */
 enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOAD, ENG_OP_FXPARAM, ENG_OP_PAGE,
-       ENG_OP_LAST = ENG_OP_PAGE };
+       ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_LAST = ENG_OP_FXPG };
 /* the installed FX modules, fx.h fx_lib_json (malloc'd copy), or NULL */
 char *engine_fx_modules(void);
 /* tests (engine_cfg_t.test_api): a sequencer MIDI message on track 1..16, as rfm_move_seq_advance gives it. 0 queued */

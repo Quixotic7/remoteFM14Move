@@ -274,6 +274,79 @@ static void fxstage(void)
         CHECK(st > 0, "arp: its state (get_param \"state\"): %d bytes", st);
         fx_close(arp);
     }
+    {   /* (rfm1cs 0.5.0) the page plan of a multi-level ui_hierarchy (tests/fxmods/audio_fx/pagesfx/module.json) */
+        const fx_mod_t *pm = NULL;
+        const rfm_move_fx_module_t *pc = NULL;
+        static const int16_t want[6][8] = { { 0, 1, -1, 2, 3, 4, 5, 6 }, { 7, 8, 9, 10, -1, -1, -1, -1 },
+                                            { 11, 12, 0, -1, -1, -1, -1, -1 }, { 13, 14, -1, -1, -1, -1, -1, -1 },
+                                            { 15, 16, 17, 18, 19, 20, 21, 22 }, { 23, -1, -1, -1, -1, -1, -1, -1 } };
+        static const char *const names[6] = { "Pages", "Pages 2", "Advanced", "Sub", "Deep", "Deep 2" };
+        int same = 1, k, ndrive = 0;
+        for (i = 0; i < L->n[1]; i++)
+            if (!strcmp(L->mod[1][i].id, "pagesfx"))
+                pm = &L->mod[1][i], pc = &L->core[1][i];
+        CHECK(pm && pm->np == 24 && pm->npg == 6 && pc->npages == 6 && pc->nparams == 24,
+              "pagesfx: 24 parameters (a filepath left out) on 6 pages (%d, %d)", pm ? pm->np : -1, pm ? pm->npg : -1);
+        if (pm && pm->npg == 6) {
+            for (k = 0; k < 6; k++) {
+                same &= !strcmp(pm->pg[k].name, names[k]) && !strcmp(pc->pages[k].name, names[k]);
+                for (i = 0; i < 8; i++) {
+                    same &= pm->pg[k].knob[i] == want[k][i] && pc->pages[k].knob[i] == want[k][i];
+                    ndrive += pm->pg[k].knob[i] == 0;
+                }
+            }
+            CHECK(same, "the plan: root's knobs with the null gap at knob 3, its knobs 9..10 then its params on no knob on "
+                  "\"Pages 2\" (no trailing gaps), Advanced, then Sub (Advanced's link) before Deep, Deep's 9 on two pages");
+            CHECK(ndrive == 2 && !strcmp(pm->p[0].key, "drive") && !strcmp(pm->p[8].key, "rate") && !strcmp(pm->p[14].key, "subB"),
+                  "a key on two levels (drive, root and Advanced) is one parameter (index 0) on both pages; rate (a knob "
+                  "named only in chain_params) is 8, Sub's subB 14");
+            CHECK(pm->p[1].def == 2000 && pm->p[1].max == 20000 && !strcmp(pm->p[1].unit, "Hz") && pm->p[14].max == 1 &&
+                  pm->p[14].def == 0.25,
+                  "metadata from either: tone's default from the hierarchy (2000), its range and unit from chain_params");
+            CHECK(!strcmp(pm->p[2].sname, "Mode") && !strcmp(pm->p[0].sname, "Drive") && !strcmp(pm->p[4].sname, "SWID") &&
+                  !strcmp(pm->p[1].sname, "TFRQ") && !strcmp(pm->p[15].sname, "Deep1") && !strcmp(pm->p[11].sname, "DTime"),
+                  "short labels: short_name as given (Mode), a short name as is (Drive), else squeezed (%s %s %s %s)",
+                  pm->p[4].sname, pm->p[1].sname, pm->p[15].sname, pm->p[11].sname);
+            CHECK(pc->params[0].lo == 0 && pc->params[0].hi == 100 && !strcmp(pc->params[0].unit, "%") && pc->params[0].decimals == 0 &&
+                  pc->params[11].hi == 2 && pc->params[11].decimals == 2 && !strcmp(pc->params[11].unit, "s") &&
+                  pc->params[8].decimals == 1 && pc->params[3].lo == -24 && !strcmp(pc->params[3].unit, "dB") &&
+                  pc->params[2].nwords == 3 && pc->params[2].def == 1 && pc->params[13].nwords == 2,
+                  "how values read: Drive 0..100 %%, Delay Time 0..2.00 s, Rate 1 decimal (its step), Gain -24..24 dB; "
+                  "Filter Mode's words (default HP: 1), Sub On a bool (Off / On) (%g..%g %s %d; %g %d %s; %d; %g %s; %d %d %d)",
+                  pc->params[0].lo, pc->params[0].hi, pc->params[0].unit, pc->params[0].decimals, pc->params[11].hi,
+                  pc->params[11].decimals, pc->params[11].unit, pc->params[8].decimals, pc->params[3].lo, pc->params[3].unit,
+                  pc->params[2].nwords, pc->params[2].def, pc->params[13].nwords);
+        }
+        if (pm && pm->np == 24) {   /* the value conversion, per type */
+            char s[64];
+            fx_wire(&pm->p[2], 2, s, sizeof s);
+            CHECK(!strcmp(s, "BP") && fx_wire(&pm->p[2], 3, s, sizeof s) < 0, "an enum by text: 2 -> BP, 3 none");
+            fx_wire(&pm->p[5], 3, s, sizeof s);
+            CHECK(!strcmp(s, "3"), "an enum by index: 3 -> \"3\" (%s)", s);
+            fx_wire(&pm->p[3], 0, s, sizeof s);
+            same = !strcmp(s, "-24");
+            fx_wire(&pm->p[3], 127, s, sizeof s);
+            same &= !strcmp(s, "24");
+            fx_wire(&pm->p[3], 64, s, sizeof s);
+            CHECK(same && !strcmp(s, "0"), "an int: 0 / 64 / 127 -> -24 / 0 / 24 (%s)", s);
+            fx_wire(&pm->p[8], 64, s, sizeof s);
+            CHECK(!strcmp(s, "5.1000"), "a float snapped to its step: Rate 64 -> 5.1 (0.1..10, step 0.1: %s)", s);
+            fx_wire(&pm->p[6], 127, s, sizeof s);
+            CHECK(!strcmp(s, "1.0000") && fx_wire(&pm->p[6], RFM_MOVE_FX_UNSET, s, sizeof s) < 0,
+                  "a float without a step: Color 127 -> 1.0; 255 (unset) nothing");
+            CHECK(fx_to127(&pm->p[1], 2000) == 13 && fx_to127(&pm->p[2], 1) == 1 && fx_to127(&pm->p[3], 24) == 127,
+                  "and back: Tone 2000 Hz -> 13, Filter Mode HP -> 1, Gain 24 -> 127");
+        }
+        {
+            char a[16];
+            fx_abbrev("Filter Envelope", a, sizeof a);
+            same = !strcmp(a, "FENV");
+            fx_abbrev("Osc 1 Octave", a, sizeof a);
+            same &= !strcmp(a, "O1OCT");
+            fx_abbrev("Resonance", a, sizeof a);
+            CHECK(same && !strcmp(a, "RES"), "abbreviations: Filter Envelope FENV, Osc 1 Octave O1OCT (its 1 kept), Resonance RES");
+        }
+    }
     {   /* a crash in create_instance: refused by the probe, this process unharmed */
         for (i = 0; i < L->n[1]; i++)
             if (!strcmp(L->mod[1][i].id, "crashfx")) {

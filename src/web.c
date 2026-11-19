@@ -214,7 +214,7 @@ static void api_load(client_t *c, const char *body)
     json_reply(c, "202 Accepted", "{\"ok\":true}");
 }
 
-/* POST /api/edit {"op": 16..22, "a": n, "b": n}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as the
+/* POST /api/edit {"op": 16..24, "a": n, "b": n}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as the
  * WebSocket's ops; POST /api/test/midi {"track": 0..16 (0: as the pads played live), "b0", "b1", "b2"}: tests only (--test-api) */
 static void api_edit(client_t *c, const char *body, int test)
 {
