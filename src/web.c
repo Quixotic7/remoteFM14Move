@@ -21,6 +21,9 @@
 #include "minijson.h"
 #include "mr_ws.h"
 #include "storage.h"
+#ifdef RFM14_PLAT_SIM
+#include "fm1sim.h"
+#endif
 
 #define MAXC 24     /* (a page loads ~40 files, 6 at a time, beside its WebSocket; a second page, a phone) */
 #define FILE_MAX (2 * 1024 * 1024)
@@ -284,6 +287,22 @@ static void request(client_t *c, const char *body)
             api_edit(c, body, 0);
         else if (!strcmp(path, "/api/test/midi"))
             api_edit(c, body, 1);
+#ifdef RFM14_PLAT_SIM
+        else if (!strcmp(path, "/api/test/fm1")) {   /* the simulator's fake FM-1 (fm1sim.c, --fake-fm1) */
+            char op[16];
+            long a = 0, b = 0;
+            if (!body || mj_string(body, "op", op, sizeof op)) {
+                json_reply(c, "400 Bad Request", "{\"ok\":false}");
+                return;
+            }
+            mj_int(body, "a", &a);
+            mj_int(body, "b", &b);
+            if (fm1sim_cmd(op, a, b) != 0)
+                json_reply(c, "403 Forbidden", "{\"ok\":false}");
+            else
+                json_reply(c, "202 Accepted", "{\"ok\":true}");
+        }
+#endif
         else
             http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
         return;
@@ -305,7 +324,15 @@ static void request(client_t *c, const char *body)
         char s[8192];
         const int n = engine_status(s, sizeof s);
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
-    } else if (!strcmp(path, "/api/info"))
+    }
+#ifdef RFM14_PLAT_SIM
+    else if (!strcmp(path, "/api/test/fm1")) {
+        char s[2048];
+        const int n = fm1sim_json(s, sizeof s);
+        http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
+    }
+#endif
+    else if (!strcmp(path, "/api/info"))
         http_reply(c, "200 OK", "application/json", g_v.info, strlen(g_v.info));
     else if (!strcmp(path, "/api/mix"))
         http_reply(c, "200 OK", "application/json", g_v.mix, strlen(g_v.mix));

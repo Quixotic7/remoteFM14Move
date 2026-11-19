@@ -146,6 +146,36 @@ make test
   (AudioContext, Web MIDI, WebUSB, microphone), the panel and the live screen, a click on a drawn key sounds in the
   simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed. Its
   screenshot: `docs/move-page.png`.
+- `tests/fm1_e2e.sh`: an FM-1 on USB-A (below) on the simulator: libremotefm1's fake unit behind Move Remote's simulated
+  USB-A, whose bridge loses what a burst from the unit does not fit (`--fake-fm1`, `/api/test/fm1`): the session, the
+  screen and LEDs converge, the unit's keys and MIDI in play the slot, an encoder's change shown on the unit (~120 ms),
+  a busy screen with the Move's own LEDs still written, nothing lost, a slot switch followed (a key held across it let go
+  on the old slot), an unplug (nothing stuck) and a replug, no late block.
+
+## An FM-1 on the Move's USB-A
+
+An FM-1 running the RemoteFM1 firmware (0.3.x), plugged into the Move's USB-A port, becomes a panel for the active slot,
+as "Use my FM-1" does on remotefm1.com (src/fm1link.c, on the engine's thread; libremotefm1's session).
+
+- **Discovery:** HELLO every 2 s while nothing answers; a "RemoteFM1" proto-2 HELLO_R starts a session (keepalive
+  3 s). Lost (unplugged, or nothing for ~2.5 s): every key and button the FM-1 held is let go, discovery again.
+- **The FM-1 -> the active slot:** keys (their velocity, and pressure as the firmware's key lean where the unit has
+  TOUCH), buttons, encoders and MASTER (the Move's volume, as the page's), the same input the page's panel gives; its
+  5-pin MIDI in (MIDI_IN) as MIDI played live (the MIDI FX of the channel's track, then the active slot).
+- **The active slot -> the FM-1:** its screen and LEDs. A slot switch on the Move switches what the FM-1 shows and plays
+  (a key it held on the old slot is let go there).
+- **The link is slow.** USB-A MIDI goes through the Move's surface controller, not Linux: a burst of more than ~200
+  bytes from the unit is lost, and the Move's side goes in its SPI transfers beside the LEDs. So the session is
+  libremotefm1's slow link (`slow_link`: Bluetooth's pacing): the screen at 8000 B/s (`--fm1-bps`), its tiles reduced to
+  4 colours first and made exact once the screen is still for a second, whole screen changes shown at once (HOLD), at
+  most 2 KB unacknowledged; Move Remote sends at most 10 USB-A packets a transfer (`--fm1-cap`; ~10 KB/s on the wire),
+  so the Move's LED writes keep the other 10. On the simulator: a small change shows on the unit ~120 ms after the
+  knob, a page change in ~1-3 s, a busy screen ~3-4 times a second. The unit itself only sends small messages.
+- **Status:** `fm1` in /api/status, /api/info and /api/mix (linked, state, name, fw, fps: frames acknowledged a
+  second, bps: bytes a second out, lost, sessions, ack times, USB-A counters); the page shows "FM-1 linked" in its
+  header (desktop) and says when it links or is lost. rfm1cs-abletonmove has no popup a host can raise, so the Move's
+  own screen says nothing.
+- `--no-fm1` leaves USB-A to Move Remote as before.
 
 ## Schwung FX (phase 2b)
 
@@ -231,6 +261,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `tools/sign_index.py` | index.json -> index.json.sig (make catalog, make testcat; tools/bundle.py checks it) |
 | `tools/build_move_catalog.py`, `tools/catalog_fw.sh`, `tools/bundle.py`, `module/bundle.txt` | the Move catalog; the module's starter set |
 | `src/fx.c` | Schwung FX: the installed modules, their parameters, loading (with the crash probe), the calls |
+| `src/fm1link.c`, `src/fm1sim.c` | an FM-1 on USB-A (libremotefm1's session over Move Remote's USB-A hooks); the simulator's fake FM-1 (tests) |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
 | `src/mdns.c` | `remotefm1.local` |
@@ -238,7 +269,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
 | `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks) |
 | `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.3` |
-| `third_party/RemoteFM1` | RemoteFM1 at 80f1f84 (its `web/site`: the page) |
+| `third_party/RemoteFM1` | RemoteFM1 at 32d03d6, branch `slow-link` (its `web/site`: the page; libremotefm1 for the FM-1 on USB-A) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
 
 On the Move, the RemoteFM1 folder is `/data/UserData/RemoteFM1`:

@@ -21,6 +21,10 @@
  *     --fx-budget   an FX module's CPU budget, permille of a core (default 200); past it the module is refused
  *     --test-api    (tests) POST /api/test/midi: sequencer MIDI from outside
  *     --fx-probe KIND DIR SO   (internal) load one FX module in this child process and exit 0 (fx.c's crash probe)
+ *     --no-fm1      no FM-1 link on USB-A (fm1link.c; USB-A stays Move Remote's)
+ *     --fm1-bps     the FM-1's screen, TILES body bytes a second (default fm1link.h FM1LINK_BPS_DEFAULT)
+ *     --fm1-cap     USB-A packets per SPI transfer (default FM1LINK_CAP_DEFAULT; the rest of a transfer is the LEDs')
+ *     --fake-fm1    (the simulator) a fake FM-1 on the simulated USB-A (fm1sim.c; the tests' /api/test/fm1)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
  *                   and its input log (inputs.log), written at exit */
@@ -33,6 +37,10 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "fm1link.h"
+#ifdef RFM14_PLAT_SIM
+#include "fm1sim.h"
+#endif
 #include "fx.h"
 #include "https.h"
 #include "mdns.h"
@@ -48,7 +56,8 @@ int main(int argc, char **argv)
     static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX], index[PATH_MAX];
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
-    int fx_budget = 0, test_api = 0;
+    int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0;
+    long fm1_bps = 0;
     long log_cap = 0;
     char *pargv[4];
     int pargc = 0, i, port = 7730, lead = 5, cap_s = 0, rc;
@@ -93,6 +102,14 @@ int main(int argc, char **argv)
             fx_dir = argv[++i];
         else if (!strcmp(argv[i], "--fx-budget") && i + 1 < argc)
             fx_budget = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--no-fm1"))
+            fm1_off = 1;
+        else if (!strcmp(argv[i], "--fm1-bps") && i + 1 < argc)
+            fm1_bps = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--fm1-cap") && i + 1 < argc)
+            fm1_cap = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fake-fm1"))
+            fake_fm1 = 1;
         else if (!strcmp(argv[i], "--test-api"))
             test_api = 1;
         else if (!strcmp(argv[i], "--no-mdns"))
@@ -111,7 +128,7 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
-                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] "
+                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--fake-fm1] "
                             "[--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -157,6 +174,9 @@ int main(int argc, char **argv)
         c.fx_dir = fx_dir;
         c.fx_budget = fx_budget;
         c.test_api = test_api;
+        c.fm1_off = fm1_off;
+        c.fm1_bps = (uint32_t)(fm1_bps > 0 ? fm1_bps : 0);
+        c.fm1_cap = fm1_cap;
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */
 #endif
@@ -196,7 +216,16 @@ int main(int argc, char **argv)
     (void)sim_dir;
 #endif
     pargv[pargc] = NULL;
+#ifdef RFM14_PLAT_SIM
+    if (fake_fm1 && fm1sim_start() != 0)
+        fprintf(stderr, "remotefm1-host: the fake FM-1 did not start\n");
+#else
+    (void)fake_fm1;
+#endif
     rc = mr_plat_main(pargc, pargv);
+#ifdef RFM14_PLAT_SIM
+    fm1sim_stop();
+#endif
     web_stop();
     mdns_stop();
     engine_stop();

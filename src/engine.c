@@ -19,6 +19,7 @@
 #include "../third_party/abletonmoveremote/common/ring.h"
 #include "catalog.h"
 #include "engine_dsp.h"
+#include "fm1link.h"
 #include "fwrt.h"
 #include "fx.h"
 #include "minijson.h"
@@ -1341,6 +1342,12 @@ static void view_info(void)
             }
         }
     }
+    if (n < (int)sizeof tmp - 64) {   /* the FM-1 on USB-A (fm1link.c) */
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
+        n += fm1link_json(tmp + n, (int)sizeof tmp - n);
+        if (n > (int)sizeof tmp - 2)
+            n = (int)sizeof tmp - 2;
+    }
     snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
     pthread_mutex_lock(&g_vmu);
     snprintf(g_view.info, sizeof g_view.info, "%s", tmp);
@@ -1407,6 +1414,12 @@ static void mix_json(void)
                 h->run != NULL, h->opening, h->cpu_permille / 10.0, esc[1]);
         }
         PUT("]");
+    }
+    if (n < (int)sizeof tmp - 64) {   /* the FM-1 on USB-A (fm1link.c) */
+        PUT(",\"fm1\":");
+        n += fm1link_json(tmp + n, (int)sizeof tmp - n);
+        if (n > (int)sizeof tmp - 2)
+            n = (int)sizeof tmp - 2;
     }
     PUT("}");
 #undef PUT
@@ -1713,6 +1726,45 @@ static void publish(uint32_t now)
     }
 }
 
+/* the panel's input (the page's, the FM-1's) into slot (-1: the active one); MASTER is the Move's volume, as its knob */
+void engine_fm1_in(int slot, int op, int a, int b)
+{
+    const int s = slot < 0 ? g_active : slot;
+    if (op == FWI_MASTER) {
+        rfm_move_act_t act;
+        rfm1cs_event_t ev;
+        memset(&act, 0, sizeof act);
+        memset(&ev, 0, sizeof ev);
+        act.kind = RFM_MOVE_ACT_MASTER, act.value = (int16_t)b;
+        ev.type = RFM1CS_EV_ACTION, ev.act = &act;
+        on_action(&ev);
+        rfm_move_set_master(&S->core, g_master);
+    } else if (s >= 0 && s < NSLOT && SL[s].on)
+        fw_in(&SL[s].fw, op, a, b, 0, 0);
+}
+
+/* the FM-1's MIDI in (its 5-pin jack): whole messages, as the pads played live (the MIDI FX of their channel's track,
+ * then the active slot); system messages straight to the active slot */
+void engine_fm1_midi(const uint8_t *m, int n)
+{
+    int i = 0;
+    while (i < n) {
+        const uint8_t b = m[i];
+        int len = b >= 0xF8 ? 1 : b < 0x80 ? 0 : (b & 0xF0) == 0xC0 || (b & 0xF0) == 0xD0 ? 2 : b < 0xF0 ? 3
+                  : b == 0xF1 || b == 0xF3 ? 2 : b == 0xF2 ? 3 : 1;
+        rfm_move_act_t a;
+        if (!len || i + len > n) {
+            i++;
+            continue;
+        }
+        memset(&a, 0, sizeof a);
+        a.kind = RFM_MOVE_ACT_MIDI, a.track = 0, a.n = (uint8_t)len;
+        memcpy(a.bytes, m + i, (size_t)len);
+        route_midi(&a);
+        i += len;
+    }
+}
+
 /* ------------------------------------------------------------------ the clock --- */
 static void render_block(uint32_t now)
 {
@@ -1943,6 +1995,11 @@ static void housekeeping(uint32_t now)
                       g_cat ? g_cat->n : 0, g_cat ? g_cat->nfw : 0, g_cat ? g_cat->from : 0, g_cat ? g_cat->generated : "",
                       g_dl.id, g_dl.state, g_dl.pct, g_dl.ok, g_dl.failed, esc[0], g_dl.index_ok, g_dl.index_failed,
                       esc[1]);
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
+        if (n < (int)sizeof tmp)
+            n += fm1link_json(tmp + n, (int)sizeof tmp - n);
+        if (n > (int)sizeof tmp - 2)
+            n = (int)sizeof tmp - 2;
         snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
         pthread_mutex_lock(&g_vmu);
         memcpy(g_status, tmp, sizeof tmp);
@@ -2039,18 +2096,15 @@ static void *engine_main(void *arg)
             for (i = 0; i < n; i++) {
                 if (pin[i].op >= ENG_OP_ACTIVE && pin[i].op <= ENG_OP_LAST)
                     page_edit(pin[i].op, pin[i].a, pin[i].b);
-                else if (pin[i].op == FWI_MASTER) {
-                    rfm_move_act_t a;
-                    rfm1cs_event_t ev;
-                    memset(&a, 0, sizeof a);
-                    memset(&ev, 0, sizeof ev);
-                    a.kind = RFM_MOVE_ACT_MASTER, a.value = (int16_t)pin[i].b;
-                    ev.type = RFM1CS_EV_ACTION, ev.act = &a;
-                    on_action(&ev);
-                    rfm_move_set_master(&S->core, g_master);
-                } else if (SL[g_active].on)
-                    fw_in(&SL[g_active].fw, pin[i].op, pin[i].a, pin[i].b, 0, 0);
+                else
+                    engine_fm1_in(-1, pin[i].op, pin[i].a, pin[i].b);
             }
+        }
+        /* the FM-1 on USB-A (fm1link.c): its panel and MIDI in, the active slot's screen and LEDs out */
+        fm1link_tick(now, g_active, SL[g_active].on ? &SL[g_active].fw : NULL);
+        if (fm1link_changed()) {
+            view_info();
+            g_mix_ver++;
         }
         rfm1cs_session_tick(S, now);
         do_deferred();
@@ -2095,6 +2149,7 @@ static void *engine_main(void *arg)
     {
         int s;
         rfm1cs_session_flush(S);
+        fm1link_stop(now_ms());
         do_deferred();
         for (s = 0; s < NSLOT; s++)
             slot_unload(s, 1);
@@ -2134,6 +2189,13 @@ int engine_start(const engine_cfg_t *cfg)
     fw_json();
     if (mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
         return -1;
+    {   /* the FM-1 on USB-A: its hooks are set before Move Remote's core starts (main.c: after engine_start) */
+        fm1link_cfg_t lc;
+        memset(&lc, 0, sizeof lc);
+        lc.off = C.fm1_off, lc.bps = C.fm1_bps, lc.usba_cap = C.fm1_cap;
+        if (fm1link_init(&lc) != 0)
+            fprintf(stderr, "engine: the FM-1 link did not start\n");
+    }
     if (C.capture_seconds) {
         g_cap_max = C.capture_seconds * FW_FS;
         if (C.capture_out)

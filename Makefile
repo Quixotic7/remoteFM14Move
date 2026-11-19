@@ -87,7 +87,13 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
-            src/fx.c src/https.c src/catsig.c src/ed25519.c
+            src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c
+# the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
+# gets its fake unit (src/fm1sim.c, --fake-fm1)
+RF := third_party/RemoteFM1
+RF_SRC := $(addprefix $(RF)/host/src/,codec.c screen.c panel.c session.c audio.c)
+RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
+RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods
@@ -133,17 +139,18 @@ build/gen/bridge_page.h: $(MR)/web/bridge.html
 	cd $(MR)/web && xxd -i bridge.html | sed 's/bridge_html/mr_bridge_page/g' > $(abspath $@)
 
 SW := third_party/schwung-api
-HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) -DMR_PLAT_MAIN=mr_plat_main
+HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) $(RF_INC) -DMR_PLAT_MAIN=mr_plat_main
 HOST_LIBS = -rdynamic -ldl -lm -lpthread
 
 # the simulator's host is the tests' (RFM14_TEST_BUILD: it also trusts build/testkey's catalog key, takes --ca-dir);
 # the Move's trusts only src/catalog_key.h's (tests/in_image.sh checks)
 TEST_BUILD = -DRFM14_TEST_BUILD -Ibuild/testkey
 build/%/remotefm1-host: $(HOST_SRC) $(HOST_HDR) $(CS_SRC) $(MR_SRC) $(MR)/device/plat_sim.c $(MR)/device/plat_move.c \
-                        build/obj/wasm-rt-impl.o build/testkey/catalog_test_key.h
+                        $(RF_SRC) $(RF_SIM_SRC) build/obj/wasm-rt-impl.o build/testkey/catalog_test_key.h
 	mkdir -p build/$*
 	$(CC) $(HOST_CFLAGS) $(WARN) -DRFM14_PLAT_$(shell echo $* | tr a-z A-Z) $(if $(filter sim,$*),$(TEST_BUILD)) -o $@ $(HOST_SRC) \
-	    $(MR)/device/plat_$*.c $(MR_SRC) $(CS_SRC) build/obj/wasm-rt-impl.o $(HOST_LIBS) $(if $(filter move,$*),-lrt)
+	    $(MR)/device/plat_$*.c $(MR_SRC) $(CS_SRC) $(RF_SRC) $(if $(filter sim,$*),$(RF_SIM_SRC)) build/obj/wasm-rt-impl.o \
+	    $(HOST_LIBS) $(if $(filter move,$*),-lrt)
 
 build/move/remotefm1-heal: $(MR)/device/heal.c
 	mkdir -p build/move

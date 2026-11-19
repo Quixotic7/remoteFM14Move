@@ -35,6 +35,10 @@ typedef struct {
     const char *fx_dir;           /* the Schwung modules (midi_fx/, audio_fx/): /data/UserData/schwung/modules; NULL none */
     int fx_budget;                /* an FX module's CPU budget, permille of real time (0: 200); past it: "Too busy" */
     int test_api;                 /* tests: engine_test_midi (sequencer MIDI from outside) */
+    /* the FM-1 on USB-A (fm1link.h): off, the screen's bytes a second, USB-A packets a transfer (0: the defaults) */
+    int fm1_off;
+    uint32_t fm1_bps;
+    int fm1_cap;
 } engine_cfg_t;
 
 int engine_start(const engine_cfg_t *cfg);

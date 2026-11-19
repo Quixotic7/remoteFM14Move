@@ -28,6 +28,10 @@ RemoteFM14Move itself is MPL-2.0 (LICENSE). What it is built from:
   compiled into remotefm1-host (src/fx.c hosts the user's installed Schwung MIDI FX and audio FX through them). The
   test modules `tests/fxmods/midi_fx/arp`, `chord` and `audio_fx/freeverb` are Schwung's own module sources at the same
   commit (MIT), built only for the tests and never packaged; `crashfx` and `hogfx` are ours (MPL-2.0).
+- **libremotefm1** (third_party/RemoteFM1's `host/src` codec, screen, panel, session, audio and their `host/include/rfm`
+  headers, with `proto/rfm1.h` and `firmware/src/remote_proto.h`, `rfm_adpcm.h`; MPL-2.0, Copyright (C) 2026 RemoteFM1
+  contributors): compiled into remotefm1-host for the FM-1 on USB-A (src/fm1link.c). The simulator's host also gets its
+  fake unit (`fake.c`, `tiles_ref.c`, MPL-2.0), for the tests only.
 - **RemoteFM1's web site** (third_party/RemoteFM1, https://github.com/Quixotic7/RemoteFM1, GPL-3.0-only): the page the
   Move serves (`site/` in the package, scripts/build_site.sh) is its `web/site`, with `web/move/site.patch` over it and
   `web/move/js/host.js` and `movehost.js` beside it (both GPL-3.0-only, so they can go upstream as they are). The

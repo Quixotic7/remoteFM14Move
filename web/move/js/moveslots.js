@@ -42,8 +42,10 @@ class SlotsUi {
     this.slotBtn = h("button", { class: "mv-slotbtn mv-wait", id: "mv-slotbtn", "aria-haspopup": "menu", "aria-expanded": "false", onclick: () => this.toggleMenu() });
     this.mixBtn = h("button", { class: "cap mv-mixbtn", id: "mv-mixbtn", "aria-pressed": "false", title: "Mix & FX (⌥M)", onclick: () => this.view.toggle() },
       svg(IC.mix, 15), h("span", {}, "Mix & FX"), h("span", { class: "mv-kbd mv-kbd-cap" }, "⌥M"));
+    // an FM-1 on the Move's USB-A (src/fm1link.c; the mix's "fm1"): a small pill while it is linked
+    this.fm1El = h("span", { class: "mv-fm1", id: "mv-fm1", role: "status", hidden: true }, h("i", { "aria-hidden": "true" }), "FM-1 linked");
     fw.after(this.chipsEl, this.hints, this.slotBtn);
-    nav.before(this.mixBtn);
+    nav.before(this.fm1El, this.mixBtn);
     this.chips = [0, 1, 2].map((i) => this.chip(i));
     this.chipsEl.append(...this.chips.map((c) => c.el));
   }
@@ -86,6 +88,11 @@ class SlotsUi {
       if (!s.on) this.minis.clear(c.i);
     }
     this.renderSlotBtn();
+    const f1 = st.mix && st.mix.fm1, linked = !!(f1 && f1.linked);
+    this.fm1El.hidden = !linked;
+    if (linked) this.fm1El.title = `${f1.name} ${f1.fw} on the Move's USB-A: ${f1.fps} frames/s, ${f1.bps} B/s`;
+    if (ready && this.fm1Was !== undefined && linked !== this.fm1Was) st.toast(linked ? "FM-1 linked" : "FM-1 lost", linked ? "" : "bad");
+    if (ready) this.fm1Was = linked;
     // (the menus rebuilt only when what they show changed: a rebuild under a press would lose its click)
     const key = JSON.stringify([act, st.slots.map((s) => [s.on, s.id, s.level]), st.pending.map((p) => p && p.id)]);
     if (key !== this.menuKey) {

@@ -356,3 +356,10 @@ button.mv-card:hover { background: var(--raised-hover); }
   .mv-body, .mv-ipmenu, .mv-pop, .mv-dim { animation: none; }
   .mv-meter i { transition: none; }
 }
+
+/* an FM-1 on the Move's USB-A: linked (moveslots.js; hidden on the phone) */
+.mv-fm1 { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 12px; flex: none;
+  white-space: nowrap; font: 700 11px/1 var(--ui); color: var(--green); background: rgba(59, 212, 122, .12); }
+.mv-fm1[hidden] { display: none; }
+.mv-fm1 i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+@media (max-width: 640px) { .mv-fm1 { display: none !important; } }
