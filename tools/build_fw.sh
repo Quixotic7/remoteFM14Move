@@ -3,7 +3,8 @@
 # One .rfm1 -> a compiled firmware object for the Move (src/rfm1m.h), in the build image (docker/Dockerfile):
 #   tools/build_fw.sh IN.rfm1 OUTDIR [WORKDIR]
 # OUTDIR gets <id>-<version>.rfm1m (wasm2c 1.0.32's C plus fw/fwglue.c, -O2 -ffp-contract=off, a shared object),
-# <id>-<version>.json ({"rfm1m":1, "file", "sha256" of the .rfm1, "arch", "wasm2c", "manifest": the .rfm1's own}) and
+# <id>-<version>.json ({"rfm1m":1, "file", "sha256" of the .rfm1, "arch", "wasm2c", "memory_pages" (its linear
+# memory, 64 KiB pages: the host checks it fits before making an instance), "manifest": the .rfm1's own}) and
 # <id>-<version>.licenses.txt (the .rfm1's credits and licence sections), and its skin's sections when it has one
 # (RFM1-FORMAT.md section 8): <id>-<version>.rfm1skin (JSON), .rfm1skin.bg, .rfm1skin.bgl (the images).
 set -eu
@@ -27,14 +28,22 @@ if [ ! -f "$W/done" ]; then
     : > "$W/done"
 fi
 DIR=$(cd "$(dirname "$0")/.." && pwd)
+# the import modules' instances instantiate takes, in wasm2c's order (fwglue.c RFM1M_INST_ARGS): WASI's, and a
+# Fantasy CFW's rfm1_host_1 (rfm1info --check allowed it: "virtual", "fs1" in "needs"); anything else: refused
+PROTO=$(grep "^void Z_${ID}_instantiate(" "$W/$ID.h" | head -1)
+[ -n "$PROTO" ] || { echo "build_fw: no Z_${ID}_instantiate in $W/$ID.h" >&2; exit 1; }
+ARGS=$(printf '%s' "$PROTO" | sed -e 's/^[^,)]*//' -e 's/);$//' \
+    -e 's/struct Z_wasi_snapshot_preview1_instance_t\*/WASII/g' -e 's/struct Z_rfm1_host_1_instance_t\*/HOSTI/g' | tr -d ' ')
+case "$ARGS" in *[!,A-Z]*) echo "build_fw: $ID imports a module this host does not give: $PROTO" >&2; exit 1;; esac
+PAGES=$(grep -o "wasm_rt_allocate_memory([^,]*, [0-9]*" "$W/$ID.c" | head -1 | sed 's/.*, //')
 "$CC" -O2 -ffp-contract=off -fPIC -shared -fvisibility=hidden -w \
     -DWASM_RT_MEMCHECK_SIGNAL_HANDLER=0 -I"$W2C_RT" -I"$W" \
-    -DMOD="$ID" -DRFM1M_ID="\"$ID\"" -DRFM1M_SHA="\"$SHA\"" \
+    -DMOD="$ID" -DRFM1M_ID="\"$ID\"" -DRFM1M_SHA="\"$SHA\"" -DRFM1M_INST_ARGS="$ARGS" \
     "$DIR/fw/fwglue.c" "$W/$ID.c" -o "$OUT/$BASE.rfm1m.tmp"
 mv "$OUT/$BASE.rfm1m.tmp" "$OUT/$BASE.rfm1m"
 {
-    printf '{\n  "rfm1m": 1,\n  "file": "%s",\n  "sha256": "%s",\n  "arch": "linux-%s",\n  "wasm2c": "%s",\n  "manifest": ' \
-        "$(basename "$IN")" "$SHA" "$(uname -m)" "$(wasm2c --version)"
+    printf '{\n  "rfm1m": 1,\n  "file": "%s",\n  "sha256": "%s",\n  "arch": "linux-%s",\n  "wasm2c": "%s",\n  "memory_pages": %s,\n  "manifest": ' \
+        "$(basename "$IN")" "$SHA" "$(uname -m)" "$(wasm2c --version)" "${PAGES:-0}"
     "$INFO" "$IN" --manifest
     printf '\n}\n'
 } > "$OUT/$BASE.json"

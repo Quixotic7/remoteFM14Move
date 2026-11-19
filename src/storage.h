@@ -8,6 +8,9 @@
  *   move/        settings.bin (rfm1cs's settings image), library.rmvl (its library blob), open-project (the slot),
  *                projects/move-project-NN.rfmmove (rfm1cs's project files, RMVP), and beside each
  *                move-project-NN.fx.json: its FX modules' own state (get_param "state"; R_PROJECT_LOADED's text)
+ *   audio/       a Fantasy CFW's shared samples (FM1VST docs/VIRTUAL-CARTS.md section 3: every cart reads them; the
+ *                page puts WAVs here, web.c /api/files/audio)
+ *   code/<id>/   a cart's own scripts and assets (read), data/<id>/ its own files (read and write): fsvc.c
  *
  * Writes go through a temporary file and a rename, so a power cut leaves the old file or the new one. */
 #ifndef RFM14_STORAGE_H
@@ -70,6 +73,8 @@ enum {
     J_FX_FREE,            /* ptr: an fx_inst_t closed (no result) */
     J_FX_STATE,           /* J_FX_OPEN's fields + data: a project's saved state (text) set on the opened instance here,
                            * off the engine thread (Schwung sets it on its loader thread too); back as the same job */
+    J_FS_IO,              /* ptr: a Fantasy CFW's file request (fsvc.c), done on the file thread (no result: fsvc
+                           * hands it back to its instance, which the engine reads between two calls) */
 };
 typedef struct st_job {
     int kind, slot, index, value, act;

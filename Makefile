@@ -23,7 +23,7 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v
 all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -42,7 +42,7 @@ inputs:
 	if [ ! -f build/ref/.done ]; then git -C "$(FM1VST)" archive "$(FM1VST_REF)" tools/rfm1_run third_party/wasm3 \
 	    core-api | tar -x -C build/ref && git -C "$(FM1VST)" rev-parse "$(FM1VST_REF)" > build/ref/.done; fi
 
-test: all testcat
+test: all testcat testcat-v
 	tests/test.sh
 
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
@@ -54,6 +54,10 @@ catalog: all
 testcat: all
 	python3 tools/build_move_catalog.py --only amb,choralroot,felucca --out build/testcat --jobs 3
 	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat/index.json
+# the Fantasy CFWs' (tests/fantasy_e2e.sh): Elasticat and Ripple, which read the RemoteFM1 folder
+testcat-v: all
+	python3 tools/build_move_catalog.py --only elasticat,ripple --out build/testcat-v --jobs 2
+	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat-v/index.json
 
 package: all
 	$(DOCKER_RUN) make in-package
@@ -86,7 +90,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/fsvc.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
@@ -113,9 +117,10 @@ build/obj/wasm-rt-impl.o: $(W2C_RT)/wasm-rt-impl.c
 	mkdir -p build/obj
 	$(CC) $(CFLAGS) -fPIC $(W2C_DEFS) -I$(W2C_RT) -c $< -o $@
 
-build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h build/obj/wasm-rt-impl.o
+build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c src/fsvc.h src/minijson.c build/obj/wasm-rt-impl.o
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c build/obj/wasm-rt-impl.o -ldl -lm
+	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c \
+	    build/obj/wasm-rt-impl.o -ldl -lm -lpthread
 
 build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/fw build/w2c >/dev/null
@@ -157,10 +162,10 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 	$(CC) -O2 $(WARN) -static -DHEAL_HOST='"remotefm1-host"' $< -o $@
 
 build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h src/catsig.c \
-                  src/ed25519.c src/catsig.h src/ed25519.h src/catalog_key.h build/testkey/catalog_test_key.h
+                  src/ed25519.c src/catsig.h src/ed25519.h src/catalog_key.h build/testkey/catalog_test_key.h src/fsvc.c src/fsvc.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT $(TEST_BUILD) -rdynamic -o $@ tests/unit.c src/minijson.c \
-	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c -lm -lpthread -ldl
+	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c src/fsvc.c -lm -lpthread -ldl
 
 # the tests' catalog signing key (never the real one: that is on the owner's Mac only, outside the repo): made once
 # under build/, its public half a header for the test build

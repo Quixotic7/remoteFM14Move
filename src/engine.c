@@ -20,6 +20,7 @@
 #include "catalog.h"
 #include "engine_dsp.h"
 #include "fm1link.h"
+#include "fsvc.h"
 #include "fwrt.h"
 #include "fx.h"
 #include "minijson.h"
@@ -244,14 +245,16 @@ static void fw_json(void)
         n += (size_t)snprintf(o + n, cap - n,
                               "%s{\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"license\":\"%s\",\"source_url\":\"%s\","
                               "\"sha256\":\"%s\",\"file\":\"%s\",\"base\":\"%.*s\",\"built_by\":\"%s\",\"authors\":%.*s,"
-                              "\"skin\":[%s%s%s],\"licenses\":%s,\"description\":\"%s\",\"categories\":[",
+                              "\"skin\":[%s%s%s],\"licenses\":%s,%s\"description\":\"%s\",\"categories\":[",
                               i ? "," : "", f->id, esc[0], f->version, esc[1], esc[2], f->sha256, file,
                               slash ? (int)strlen(slash + 1) - 5 : 0, slash ? slash + 1 : "", esc[3],
                               span && span < 2048 ? (int)span : 2, span && span < 2048 ? au : "[]",
                               has_file(f->json, ".rfm1skin") ? "\"rfm1skin\"" : "",
                               has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bg") ? ",\"rfm1skin.bg\"" : "",
                               has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bgl") ? ",\"rfm1skin.bgl\"" : "",
-                              has_file(f->json, ".licenses.txt") ? "true" : "false", desc);
+                              has_file(f->json, ".licenses.txt") ? "true" : "false",
+                              man && mj_find(man, "virtual") && !strncmp(mj_find(man, "virtual"), "true", 4)
+                                  ? "\"virtual\":true," : "", desc);
         for (k = 0; k < 5; k++)
             if (cats >> k & 1) {
                 n += (size_t)snprintf(o + n, cap - n, "%s\"%s\"", first ? "" : ",", CATS[k]);
@@ -1021,7 +1024,7 @@ static void slot_load_now(int s, const char *id)
     pre = fw_instantiate(obj);
     fw_obj_close(obj);
     if (!pre) {
-        fprintf(stderr, "engine: %s: no memory for an instance\n", id);
+        fprintf(stderr, "engine: %s: %s\n", id, fw_inst_why());
         return;
     }
     st_path(p, sizeof p, "states/%s/flash.bin", id);
@@ -1938,8 +1941,17 @@ static void housekeeping(uint32_t now)
                 sl->cpu_permille = (uint32_t)(ns / 1000u / (dt ? dt : 1));   /* us per ms = permille */
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n,
                               "%s{\"id\":\"%s\",\"cpu\":%.1f,\"worst_us\":%u,\"level\":%u,\"boot\":%u,"
-                              "\"states\":%u,\"dead\":%d}", s ? "," : "", sl->fw.id, sl->cpu_permille / 10.0,
+                              "\"states\":%u,\"dead\":%d", s ? "," : "", sl->fw.id, sl->cpu_permille / 10.0,
                               sl->fw.worst_us, sl->level, sl->serial, S->core.fw.st_used[s], sl->fw.dead);
+                if (sl->fw.wasi && sl->fw.wasi->fs) {   /* a Fantasy CFW's file API (fsvc.h) */
+                    fsvc_stats_t fst;
+                    fsvc_stats(sl->fw.wasi->fs, &fst);
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fs_req\":%u,\"fs_done\":%u,\"fs_refused\":%u,"
+                                  "\"fs_read\":%llu,\"fs_written\":%llu,\"mem_mb\":%llu", fst.made, fst.served,
+                                  fst.refused + fst.busy, (unsigned long long)fst.bytes_in,
+                                  (unsigned long long)fst.bytes_out, (unsigned long long)(sl->fw.mem_size >> 20));
+                }
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
             } else
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }

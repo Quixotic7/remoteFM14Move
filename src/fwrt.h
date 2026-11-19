@@ -29,11 +29,21 @@ typedef struct fw_obj {
     const rfm1m_t *vt;
     char path[512];
     int refs;
+    /* from its manifest (the .json beside it): a Fantasy CFW's file API (VIRTUAL-CARTS.md: "virtual", "needs":
+     * ["fs1"], "folders") and its memory (build_fw.sh's "memory_pages", else the manifest's "memory_mib"; 0 unknown) */
+    int virt, fs1;
+    uint8_t access[3];                /* fsvc.h: audio, code, data: FSV_R | FSV_W */
+    uint64_t mem_bytes;
 } fw_obj_t;
 
-/* the WASI imports' instance: which firmware calls (the type wasm2c's imports name); NULL until fw_create */
+/* the imports' instance: which firmware calls (the type wasm2c's imports name); NULL until fw_create. A Fantasy
+ * CFW's rfm1_host_1 imports get the same object (fwglue.c passes it for both modules), with its file service */
 struct Z_wasi_snapshot_preview1_instance_t {
     struct fw *volatile fw;
+    struct fsvc *fs;                  /* (NULL: the module has no file API, or no folder) */
+};
+struct Z_rfm1_host_1_instance_t {
+    struct Z_wasi_snapshot_preview1_instance_t w;
 };
 
 /* an instance made but not started: its memory allocated and its data loaded (wasm2c's instantiate: no firmware code
@@ -112,7 +122,12 @@ void fw_obj_ref(fw_obj_t *o);
 void fw_obj_close(fw_obj_t *o);
 
 /* ---- an instance made, or freed, off the engine's thread (see fw_inst_t) */
-fw_inst_t *fw_instantiate(fw_obj_t *obj);   /* NULL: no memory */
+fw_inst_t *fw_instantiate(fw_obj_t *obj);   /* NULL: no memory (fw_inst_why: why, on this thread) */
+const char *fw_inst_why(void);
+/* the memory an instance may still take (MB): MemAvailable less a reserve for the system; -1 unknown.
+ * RFM14_MEM_AVAIL_MB stands in for MemAvailable in the test build (the simulator's host) */
+long fw_mem_free_mb(void);
+#define FW_MEM_RESERVE_MB 160
 void fw_inst_free(fw_inst_t *pre);           /* (NULL: nothing) */
 
 /* ---- an instance (the engine's thread) */

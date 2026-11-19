@@ -9,7 +9,9 @@ Run on the Mac, from the repo, after `make` (it uses build/tools and build/ref i
 
     OUT/index.json              the catalog (schema 1): each firmware's id, name, version, categories, ASCII
                                 description, licence, source, the .rfm1's SHA-256, the files to install (name,
-                                SHA-256, size; the manifest .json last) and a 64x64 1-bit thumbnail (base64)
+                                SHA-256, size; the manifest .json last) and a 64x64 1-bit thumbnail (base64); a Fantasy
+                                CFW (Elasticat, Ripple: it reads the RemoteFM1 folder) also virtual: true, needs,
+                                wants, folders and memory_mib
     OUT/<id>-<version>.rfm1m    the compiled firmware (tools/build_fw.sh), with .json (its manifest), .licenses.txt
                                 and its skin's files (.rfm1skin, .rfm1skin.bg, .rfm1skin.bgl) when it has one
     OUT-report.md, OUT-report.json   what was tried, built, passed, left out and why; the sizes
@@ -261,8 +263,14 @@ def main():
                  rfm1m=dict(name=so, sha256=files[0]['sha256'], size=files[0]['size']),
                  skin=[n for n in names if '.rfm1skin' in n], licenses=base + '.licenses.txt' in names,
                  files=files)
+        if man.get('virtual'):
+            # a Fantasy CFW (FM1VST docs/VIRTUAL-CARTS.md): host-only, reads the RemoteFM1 folder (needs fs1), its
+            # folders (code r, data rw, audio r) and its memory (the Move checks it fits before loading)
+            e.update(virtual=True, needs=list(man.get('needs') or []), wants=list(man.get('wants') or []),
+                     folders=dict(man.get('folders') or {}), memory_mib=man.get('memory_mib'))
         entries.append(e)
-        passed.append(dict(id=f['id'], name=f['name'], version=e['version'], source=src, fwrun=res.get('fwrun'),
+        passed.append(dict(id=f['id'], name=f['name'] + (' (Fantasy CFW)' if e.get('virtual') else ''),
+                           version=e['version'], source=src, fwrun=res.get('fwrun'),
                            note=res.get('reason') or '',
                            hosted_only=e['hosted_only'], bytes=sum(x['size'] for x in files),
                            rfm1m=files[0]['size'], thumb=bool(thumb)))

@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "catalog.h"
+#include "fsvc.h"
 #include "fwrt.h"
 #include "minijson.h"
 #include "rfm1cs/store.h"
@@ -52,6 +53,15 @@ int st_init(const char *root)
     st_mkdirs(p);
     st_path(p, sizeof p, "catalog");
     st_mkdirs(p);
+    /* the Fantasy CFW folder (FM1VST docs/VIRTUAL-CARTS.md section 3): audio/ (every cart reads it), code/<id>/ and
+     * data/<id>/ (made as a cart loads); its file API is served from here (fsvc.c, the file thread below) */
+    st_path(p, sizeof p, "audio");
+    st_mkdirs(p);
+    st_path(p, sizeof p, "code");
+    st_mkdirs(p);
+    st_path(p, sizeof p, "data");
+    st_mkdirs(p);
+    fsvc_set_root(g_root);
     {   /* a download the last run left unfinished */
         DIR *d;
         struct dirent *e;
@@ -410,8 +420,9 @@ uint32_t st_projects_scan(int open_slot, uint8_t **blob, uint32_t *n)
 }
 
 /* ------------------------------------------------------------------ the workers --- */
-/* two threads, each with its queue: the storage thread (files, firmware objects and instances, projects) and the
- * network thread (catalog.h: the index, downloads: slow, so never in front of a load or a save) */
+/* three threads, each with its queue: the storage thread (files, firmware objects and instances, projects), the
+ * network thread (catalog.h: the index, downloads: slow, so never in front of a load or a save) and the file thread
+ * (a Fantasy CFW's file requests, fsvc.c: never behind a firmware load, never on the engine's or the audio thread) */
 typedef struct {
     st_job_t *head, *tail;
     pthread_cond_t cv;
@@ -419,8 +430,10 @@ typedef struct {
     const char *name;
 } queue_t;
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
-static queue_t g_q[2] = { { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-store" },
-                          { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-net" } };
+#define NQ 3
+static queue_t g_q[NQ] = { { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-store" },
+                           { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-net" },
+                           { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-files" } };
 static st_job_t *g_res, *g_res_tail;
 static int g_stop, g_running;
 
@@ -471,7 +484,7 @@ st_job_t *st_take(void)
 
 void st_post(st_job_t *j)
 {
-    queue_t *q = &g_q[j->kind >= J_NET_INDEX && j->kind <= J_NET_SCAN];
+    queue_t *q = &g_q[j->kind == J_FS_IO ? 2 : j->kind >= J_NET_INDEX && j->kind <= J_NET_SCAN];
     j->next = NULL;
     pthread_mutex_lock(&g_mu);
     if (q->tail)
@@ -540,7 +553,7 @@ static void run_job(st_job_t *j)
         fw_obj_t *obj = fw_obj_open(j->path, j->err, sizeof j->err);
         if (obj) {   /* the instance too: its memory and data, off the engine's thread */
             if (!(j->ptr = fw_instantiate(obj)))
-                snprintf(j->err, sizeof j->err, "%s: no memory for an instance", j->id);
+                snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
             fw_obj_close(obj);
         }
         j->data = j->aux_path[0] ? st_read(j->aux_path, &n) : NULL;
@@ -549,6 +562,10 @@ static void run_job(st_job_t *j)
     }
     case J_FW_FREE:
         fw_inst_free(j->ptr);
+        st_job_free(j);
+        return;
+    case J_FS_IO:
+        fsvc_serve(j->ptr);
         st_job_free(j);
         return;
     case J_FX_OPEN:
@@ -589,7 +606,7 @@ static void run_job(st_job_t *j)
         if (!j->data)
             snprintf(j->err, sizeof j->err, "no state %d for %s", j->index + 1, j->id);
         else if (j->obj && !(j->ptr = fw_instantiate(j->obj)))
-            snprintf(j->err, sizeof j->err, "%s: no memory for an instance", j->id);
+            snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
         if (j->obj)
             fw_obj_close(j->obj);
         j->obj = NULL;
@@ -660,12 +677,21 @@ static void *worker_main(void *arg)
     return NULL;
 }
 
+/* fsvc's dispatcher: a file request to the file thread (from the engine's thread, between two calls) */
+static void fs_dispatch(void *io)
+{
+    st_job_t *j = st_job_new(J_FS_IO);
+    j->ptr = io;
+    st_post(j);
+}
+
 int st_worker_start(uint32_t project_used)
 {
     int k;
     rfm1cs_store_init(&g_store, &IO, project_used);
     g_stop = 0;
-    for (k = 0; k < 2; k++)
+    fsvc_set_dispatch(fs_dispatch);
+    for (k = 0; k < NQ; k++)
         if (pthread_create(&g_q[k].thread, NULL, worker_main, &g_q[k]) != 0)
             return -1;
     g_running = 1;
@@ -688,11 +714,12 @@ void st_worker_stop(void)
         }
         g_q[1].head = g_q[1].tail = NULL;
     }
-    for (k = 0; k < 2; k++)
+    for (k = 0; k < NQ; k++)
         pthread_cond_signal(&g_q[k].cv);
     pthread_mutex_unlock(&g_mu);
     cat_cancel();
-    for (k = 0; k < 2; k++)
+    for (k = 0; k < NQ; k++)
         pthread_join(g_q[k].thread, NULL);
+    fsvc_set_dispatch(NULL);
     g_running = 0;
 }

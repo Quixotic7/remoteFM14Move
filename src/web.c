@@ -13,11 +13,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <dirent.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "engine.h"
+#include "fsvc.h"
 #include "minijson.h"
 #include "mr_ws.h"
 #include "storage.h"
@@ -41,7 +45,14 @@ typedef struct {
     int leds_ok, full;
     uint8_t *lcd;            /* what this page has (for the changed rows) */
     uint64_t born;
+    /* an upload under way (POST /api/files/audio/<name>): its body streamed into a temporary file */
+    int up_fd;               /* (-1 none; 0 is never used: cfree's memset) */
+    uint64_t up_left, up_total;
+    uint8_t up_head[12];
+    char up_tmp[ST_PATH + 64], up_dst[ST_PATH + 64];
 } client_t;
+#define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
+#define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
 
 static int g_listen = -1;
 static char g_site[512];     /* the site's folder (web_start) */
@@ -60,6 +71,10 @@ static uint64_t now_ms(void)
 
 static void cfree(client_t *c)
 {
+    if (c->up_fd > 0) {      /* (an upload cut short: nothing kept) */
+        close(c->up_fd);
+        unlink(c->up_tmp);
+    }
     if (c->fd >= 0)
         close(c->fd);
     free(c->in), free(c->out), free(c->lcd);
@@ -268,11 +283,222 @@ none:
     http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
 }
 
+/* ------------------------------------------------------------------ the audio folder (a Fantasy CFW's samples) --- */
+/* GET /api/files/audio: the RemoteFM1 folder's audio/ (FM1VST docs/VIRTUAL-CARTS.md section 3: every Fantasy CFW
+ * reads it): {"files": [{"name", "size", "mtime", "dir"}], "free": bytes, "max": a WAV's cap}, A-Z;
+ * POST /api/files/audio/<name> (the body: the file, Content-Length) adds one, DELETE /api/files/audio/<name> removes
+ * one. WAV only (RIFF/WAVE), a plain name (letters, digits, space _ - . , ( ) +; not hidden; .wav), the size capped
+ * and the disk kept UP_RESERVE free; written to a temporary file, renamed when whole. The carts' fs_changed moves. */
+static int name_ok(const char *n)
+{
+    const size_t k = strlen(n);
+    size_t i;
+    if (k < 5 || k > 96 || n[0] == '.' || n[0] == ' ' || strcasecmp(n + k - 4, ".wav"))
+        return 0;
+    for (i = 0; i < k; i++)
+        if (!((n[i] >= 'a' && n[i] <= 'z') || (n[i] >= 'A' && n[i] <= 'Z') || (n[i] >= '0' && n[i] <= '9') ||
+              strchr(" _-.,()+", n[i])))
+            return 0;
+    return !strstr(n, "..");
+}
+/* the URL's name, %XX decoded, checked: 0, or -1 */
+static int url_name(const char *in, char *out, size_t cap)
+{
+    size_t k = 0;
+    for (; *in && k + 1 < cap; in++) {
+        if (*in == '%' && in[1] && in[2]) {
+            char hx[3] = { in[1], in[2], 0 };
+            char *end;
+            const long v = strtol(hx, &end, 16);
+            if (*end || v <= 0 || v > 0x7e)
+                return -1;
+            out[k++] = (char)v;
+            in += 2;
+        } else
+            out[k++] = *in == '+' ? ' ' : *in;
+    }
+    out[k] = 0;
+    return *in || !name_ok(out) ? -1 : 0;
+}
+static uint64_t disk_free(void)
+{
+    struct statvfs v;
+    return statvfs(st_root(), &v) == 0 ? (uint64_t)v.f_bavail * v.f_frsize : 0;
+}
+static int by_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+static void api_audio_list(client_t *c)
+{
+    char dir[ST_PATH], **names = NULL;
+    size_t n = 0, cap = 0, i, o = 0, ocap = 256;
+    char *out = malloc(ocap);
+    DIR *d;
+    struct dirent *e;
+    st_path(dir, sizeof dir, "audio");
+    if ((d = opendir(dir))) {
+        while ((e = readdir(d)) && n < 4096) {
+            if (e->d_name[0] == '.')
+                continue;
+            if (n == cap) {
+                char **nn = realloc(names, (cap ? cap * 2 : 64) * sizeof *names);
+                if (!nn)
+                    break;
+                names = nn;
+                cap = cap ? cap * 2 : 64;
+            }
+            if (!(names[n] = strdup(e->d_name)))
+                break;
+            n++;
+        }
+        closedir(d);
+    }
+    if (n)
+        qsort(names, n, sizeof *names, by_str);
+    if (!out) {
+        http_reply(c, "500 Internal Server Error", "text/plain", "", 0);
+        return;
+    }
+    o += (size_t)snprintf(out, ocap, "{\"files\":[");
+    for (i = 0; i < n; i++) {
+        char p[ST_PATH + 260], esc[600];
+        struct stat st;
+        snprintf(p, sizeof p, "%s/%s", dir, names[i]);
+        if (stat(p, &st) == 0) {
+            mj_escape(names[i], esc, sizeof esc);
+            if (o + strlen(esc) + 128 > ocap) {
+                char *b = realloc(out, ocap = ocap * 2 + strlen(esc) + 128);
+                if (!b)
+                    break;
+                out = b;
+            }
+            o += (size_t)snprintf(out + o, ocap - o, "%s{\"name\":\"%s\",\"size\":%llu,\"mtime\":%ld,\"dir\":%s}",
+                                  o > 10 ? "," : "", esc, (unsigned long long)st.st_size, (long)st.st_mtime,
+                                  S_ISDIR(st.st_mode) ? "true" : "false");
+        }
+    }
+    for (i = 0; i < n; i++)
+        free(names[i]);
+    free(names);
+    if (o + 96 > ocap) {
+        char *b = realloc(out, ocap = o + 96);
+        if (b)
+            out = b;
+    }
+    if (o + 96 <= ocap)
+        snprintf(out + o, ocap - o, "],\"free\":%llu,\"max\":%llu}", (unsigned long long)disk_free(), UP_MAX);
+    json_reply(c, "200 OK", out);
+    free(out);
+}
+
+static void api_audio_delete(client_t *c, const char *urlname)
+{
+    char name[128], p[ST_PATH + 160];
+    struct stat st;
+    if (url_name(urlname, name, sizeof name) != 0) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"not a WAV's name\"}");
+        return;
+    }
+    st_path(p, sizeof p, "audio/%s", name);
+    if (lstat(p, &st) != 0 || !S_ISREG(st.st_mode)) {
+        json_reply(c, "404 Not Found", "{\"ok\":false,\"error\":\"no such file\"}");
+        return;
+    }
+    if (unlink(p) != 0) {
+        json_reply(c, "500 Internal Server Error", "{\"ok\":false,\"error\":\"cannot delete it\"}");
+        return;
+    }
+    fsvc_bump_changed();
+    fprintf(stderr, "web: audio/%s deleted\n", name);
+    json_reply(c, "200 OK", "{\"ok\":true}");
+}
+
+/* the headers of POST /api/files/audio/<name> seen: 1 an upload starts (or was refused: replied), 0 not one */
+static int upload_start(client_t *c, const char *req, long want)
+{
+    char path[256], name[128];
+    if (sscanf(req, "POST %255s", path) != 1 || strncmp(path, "/api/files/audio/", 17))
+        return 0;
+    path[strcspn(path, "?#")] = 0;
+    c->closing = 0;
+    if (url_name(path + 17, name, sizeof name) != 0) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"a WAV file's name: letters, digits, space _ - . , ( ) +, ending .wav\"}");
+        return 1;
+    }
+    if (want <= 44) {
+        json_reply(c, "411 Length Required", "{\"ok\":false,\"error\":\"the file, with its Content-Length\"}");
+        return 1;
+    }
+    if ((uint64_t)want > UP_MAX) {
+        json_reply(c, "413 Payload Too Large", "{\"ok\":false,\"error\":\"at most 256 MB a file\"}");
+        return 1;
+    }
+    if ((uint64_t)want + UP_RESERVE > disk_free()) {
+        json_reply(c, "507 Insufficient Storage", "{\"ok\":false,\"error\":\"not enough room on the Move\"}");
+        return 1;
+    }
+    st_path(c->up_dst, sizeof c->up_dst, "audio/%s", name);
+    st_path(c->up_tmp, sizeof c->up_tmp, "audio/.upload-%d.part", (int)(c - g_c));
+    c->up_fd = open(c->up_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (c->up_fd <= 0) {
+        c->up_fd = -1;
+        json_reply(c, "500 Internal Server Error", "{\"ok\":false,\"error\":\"cannot write in audio/\"}");
+        return 1;
+    }
+    c->up_left = c->up_total = (uint64_t)want;
+    return 1;
+}
+
+/* body bytes of an upload: written; whole: checked, renamed, answered. -1: the client is done with (replied) */
+static void upload_feed(client_t *c, const uint8_t *b, size_t n)
+{
+    const uint64_t at = c->up_total - c->up_left;
+    if (n > c->up_left)
+        n = (size_t)c->up_left;
+    if (at < sizeof c->up_head)
+        memcpy(c->up_head + at, b, n < sizeof c->up_head - at ? n : sizeof c->up_head - at);
+    while (n) {
+        const ssize_t w = write(c->up_fd, b, n);
+        if (w <= 0) {
+            close(c->up_fd);
+            c->up_fd = -1;
+            unlink(c->up_tmp);
+            json_reply(c, "507 Insufficient Storage", "{\"ok\":false,\"error\":\"the write failed (disk full?)\"}");
+            return;
+        }
+        b += w, n -= (size_t)w, c->up_left -= (uint64_t)w;
+    }
+    if (c->up_left)
+        return;
+    close(c->up_fd);
+    c->up_fd = -1;
+    if (memcmp(c->up_head, "RIFF", 4) || memcmp(c->up_head + 8, "WAVE", 4)) {
+        unlink(c->up_tmp);
+        json_reply(c, "415 Unsupported Media Type", "{\"ok\":false,\"error\":\"not a WAV file (RIFF/WAVE)\"}");
+        return;
+    }
+    if (rename(c->up_tmp, c->up_dst) != 0) {
+        unlink(c->up_tmp);
+        json_reply(c, "500 Internal Server Error", "{\"ok\":false,\"error\":\"cannot keep it\"}");
+        return;
+    }
+    fsvc_bump_changed();
+    fprintf(stderr, "web: %s added (%llu bytes)\n", c->up_dst, (unsigned long long)c->up_total);
+    json_reply(c, "201 Created", "{\"ok\":true}");
+}
+
 static void request(client_t *c, const char *body)
 {
     char path[256] = "", key[64];
     const char *req = (const char *)c->in;
     const int post = !strncmp(req, "POST ", 5);
+    if (sscanf(req, "DELETE %255s", path) == 1) {
+        path[strcspn(path, "?#")] = 0;
+        if (!strncmp(path, "/api/files/audio/", 17))
+            api_audio_delete(c, path + 17);
+        else
+            http_reply(c, "405 Method Not Allowed", "text/plain", "", 0);
+        return;
+    }
     if (!post && sscanf(req, "GET %255s", path) != 1) {
         http_reply(c, "405 Method Not Allowed", "text/plain", "", 0);
         return;
@@ -346,6 +572,8 @@ static void request(client_t *c, const char *body)
         free(j);
     } else if (!strncmp(path, "/api/fw/", 8))
         api_fw_file(c, path + 8);
+    else if (!strcmp(path, "/api/files/audio") || !strcmp(path, "/api/files/audio/"))
+        api_audio_list(c);
     else if (!strncmp(path, "/api/", 5) || !safe_path(path) || !g_site[0])
         http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
     else {   /* the site (scripts/build_site.sh: RemoteFM1's web/site for the Move) */
@@ -414,6 +642,13 @@ static void cread(client_t *c)
         }
         if (r < 0)
             return;
+        if (c->up_fd > 0) {   /* an upload's body: straight to its file (the 10 s limit counts from its last bytes) */
+            c->born = now_ms();
+            upload_feed(c, c->in, (size_t)r);
+            if (c->up_fd <= 0)
+                return;
+            continue;
+        }
         c->in_n += (size_t)r;
         if (c->ws) {
             if (ws_in(c) < 0) {
@@ -427,6 +662,17 @@ static void cread(client_t *c)
                 char v[32];
                 const size_t head = (size_t)(end + 4 - (const char *)c->in);
                 const long want = header((const char *)c->in, "Content-Length", v, sizeof v) ? atol(v) : 0;
+                if (c->up_fd == 0 && upload_start(c, (const char *)c->in, want)) {
+                    const size_t have = c->in_n - head;
+                    c->in_n = 0;
+                    if (c->up_fd > 0) {
+                        if (have)
+                            upload_feed(c, c->in + head, have);
+                        if (c->up_fd > 0)
+                            continue;
+                    }
+                    return;
+                }
                 if (want < 0 || head + (size_t)want >= IN_CAP - 1) {
                     cfree(c);
                     return;

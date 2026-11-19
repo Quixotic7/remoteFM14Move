@@ -17,6 +17,8 @@
 //     (a level fader, a send dial, routing cells, Freeverb into audio FX 1, a
 //     parameter) land in the core (GET /api/mix), edits from outside (POST /api/edit, as the Move's knobs) show on
 //     the page; the tab follows the Move's FX page and sets it;
+//   - the settings sheet's audio folder (js/movefiles.js): a WAV added through its file picker reaches the Move's
+//     audio/ (POST /api/files/audio), its trash button deletes it;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet;
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
 //     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png.
@@ -339,6 +341,32 @@ try {
   ok(latched && after.open && !after.latched, `with a key latched, Esc lets it go and the view stays (latched ${latched} -> ${after.latched}, open ${after.open})`);
   await esc();
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "Esc again"), "...and the next Esc goes back to the faceplate");
+
+  // ---- the settings sheet's audio folder (js/movefiles.js): a WAV added from the page lands in the Move's audio/, a
+  // delete removes it (the samples a Fantasy CFW such as Elasticat reads)
+  {
+    const wav = join(tmp, "page kick.wav"), frames = 4410, d = frames * 4, b = Buffer.alloc(44 + d);
+    b.write("RIFF", 0); b.writeUInt32LE(36 + d, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20);
+    b.writeUInt16LE(2, 22); b.writeUInt32LE(44100, 24); b.writeUInt32LE(176400, 28); b.writeUInt16LE(4, 32); b.writeUInt16LE(16, 34);
+    b.write("data", 36); b.writeUInt32LE(d, 40);
+    for (let i = 0; i < frames * 2; i++) b.writeInt16LE(Math.round(8000 * Math.sin(i / 20)), 44 + 2 * i);
+    writeFileSync(wav, b);
+    await js(`FM1MoveUi.o.sheet.open()`);
+    ok(await until(`[...document.querySelectorAll(".sheet h3.heading")].some((e) => e.textContent === "Audio files") && document.querySelector(".mv-files li")`, 5000, "the audio list"),
+      "the settings sheet has the Move's audio folder (\"Audio files\", its list)");
+    const inp = await cdp("Runtime.evaluate", { expression: `document.querySelector(".mv-files input[type=file]")` });
+    await cdp("DOM.setFileInputFiles", { files: [wav], objectId: inp.result.result.objectId });
+    const onMove = async () => { const j = await api("files/audio").catch(() => null); return j && j.files.find((f) => f.name === "page kick.wav"); };
+    ok(await untilApi(async () => { const f = await onMove(); return f && f.size === b.length; }, 10000) &&
+      await until(`[...document.querySelectorAll(".mv-files li .nm")].some((e) => e.textContent === "page kick.wav")`, 5000, "listed"),
+      `"Add WAV files": page kick.wav (${b.length} bytes) uploaded into the Move's audio/ and listed`);
+    await js(`window.confirm = () => true`);
+    await js(`document.querySelector('.mv-files li button[aria-label="Delete page kick.wav"]').click()`);   // (a toast may lie over it)
+    ok(await untilApi(async () => !(await onMove()), 5000) &&
+      await until(`![...document.querySelectorAll(".mv-files li .nm")].some((e) => e.textContent === "page kick.wav")`, 5000, "gone"),
+      "its trash button deletes it from the Move");
+    await js(`FM1MoveUi.o.sheet.close()`);
+  }
 
   // ---- the phone (390 x 844): the slot button, its menu, the Mix & FX sheet
   await edit(22, 3, 0);

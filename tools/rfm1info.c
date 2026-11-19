@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* rfm1info: an .rfm1 file's manifest and licence texts, and the checks a host makes before running it
  * (RFM1-FORMAT.md sections 1, 3, 4): the wasm magic, the rfm1 section, the imports (wasi_snapshot_preview1's six
- * only), the required manifest fields.
+ * only, and for a Fantasy CFW rfm1_host_1's four: FM1VST docs/VIRTUAL-CARTS.md, "virtual": true with "fs1" in "needs"),
+ * the required manifest fields; a Fantasy CFW's limits (the file under 16 MiB, its memory at most 512 MiB).
  *
  *   rfm1info FILE.rfm1 [--field KEY] [--manifest] [--licenses OUT.txt] [--check]
  *     --field KEY      a manifest string field (id, name, version, license, source_url, ..) on stdout
@@ -39,11 +40,26 @@ static int leb(size_t *at, uint32_t *v)
 }
 
 static const char *IMPORTS[] = { "fd_write", "fd_read", "fd_close", "fd_seek", "clock_time_get", "proc_exit" };
+static const char *HOST1[] = { "fs_request", "fs_poll", "fs_cancel", "fs_changed" };   /* rfm1_host_1 (fs1) */
+
+/* a manifest's array field (top level) lists s */
+static int lists(const char *man, const char *key, const char *s)
+{
+    const char *it = mj_find(man, key), *e;
+    const size_t n = strlen(s);
+    if (!it || *it != '[')
+        return 0;
+    while ((e = mj_elem(&it)))
+        if (*e == '"' && mj_span(e) == n + 2 && !strncmp(e + 1, s, n))
+            return 1;
+    return 0;
+}
 
 int main(int argc, char **argv)
 {
     const char *path = NULL, *field = NULL, *lic = NULL, *skin = NULL;
-    int want_manifest = 0, check = 0, i, bad = 0;
+    int want_manifest = 0, check = 0, i, bad = 0, host1 = 0;
+    uint32_t mem_pages = 0;
     char *manifest = NULL;
     FILE *f, *lf = NULL;
     size_t at;
@@ -149,11 +165,19 @@ int main(int argc, char **argv)
                     return 1;
                 for (j = 0; j < sizeof IMPORTS / sizeof IMPORTS[0]; j++)
                     ok |= !strcmp(mod, "wasi_snapshot_preview1") && !strcmp(fn, IMPORTS[j]);
+                for (j = 0; j < sizeof HOST1 / sizeof HOST1[0]; j++)
+                    if (!strcmp(mod, "rfm1_host_1") && !strcmp(fn, HOST1[j]))
+                        ok = host1 = 1;   /* (allowed below only for a Fantasy CFW with fs1 in its needs) */
                 if (!ok) {
                     fprintf(stderr, "rfm1info: imports %s.%s, which a host does not give\n", mod, fn);
                     bad = 1;
                 }
             }
+        } else if (id == 5) {   /* memory: its initial size (a Fantasy CFW's limit) */
+            uint32_t n, flags = 0;
+            size_t p = at;
+            if (!leb(&p, &n) && n >= 1 && !leb(&p, &flags))
+                leb(&p, &mem_pages);
         }
     next:
         at = end;
@@ -177,6 +201,31 @@ int main(int argc, char **argv)
         if (mj_int(manifest, "rfm1", &r) || r != 1 || mj_int(manifest, "abi", &abi) || abi < 5 || abi > 6) {
             fprintf(stderr, "rfm1info: manifest rfm1 %ld, abi %ld: not version 1 / ABI 5..6\n", r, abi);
             bad = 1;
+        }
+        {   /* a Fantasy CFW (VIRTUAL-CARTS.md 1-2, 4): its imports, its limits; a "needs" this host lacks refused */
+            const char *vv = mj_find(manifest, "virtual");
+            const int virt = vv && !strncmp(vv, "true", 4), fs1 = lists(manifest, "needs", "fs1");
+            if (host1 && !(virt && fs1)) {
+                fprintf(stderr, "rfm1info: imports rfm1_host_1 without \"virtual\": true and \"fs1\" in \"needs\"\n");
+                bad = 1;
+            }
+            if (virt && g_n >= 16u << 20) {
+                fprintf(stderr, "rfm1info: a Fantasy CFW of %zu bytes: at most 16 MiB\n", g_n);
+                bad = 1;
+            }
+            if (virt && mem_pages > 8192) {
+                fprintf(stderr, "rfm1info: a Fantasy CFW with %u MiB of memory: at most 512 MiB\n", mem_pages / 16);
+                bad = 1;
+            }
+            {
+                const char *it = mj_find(manifest, "needs"), *e;
+                if (it && *it == '[')
+                    while ((e = mj_elem(&it)))
+                        if (!(*e == '"' && mj_span(e) == 5 && !strncmp(e, "\"fs1\"", 5))) {
+                            fprintf(stderr, "rfm1info: needs %.*s, which this host does not give\n", (int)mj_span(e), e);
+                            bad = 1;
+                        }
+            }
         }
         if (!mj_string(manifest, "id", v, sizeof v)) {
             for (k = 0; v[k]; k++)

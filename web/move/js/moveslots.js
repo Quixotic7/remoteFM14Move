@@ -15,6 +15,7 @@
 import { NSLOT, MoveStore, Minis, h, svg, IC, pct, openPop, closePop, popOpen, popItem } from "./moveui.js";
 import { MixView } from "./movemix.js";
 import { LAYOUTS } from "./panel.js";
+import { mountMoveFiles } from "./movefiles.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -212,6 +213,7 @@ export function mountMoveUi(o) {
   if (!document.querySelector('link[href="css/move.css"]')) document.head.append(h("link", { rel: "stylesheet", href: "css/move.css" }));
   const ui = new SlotsUi(o);
   window.FM1MoveUi = ui;
+  mountMoveFiles(o);   // (the settings sheet's audio folder: js/movefiles.js)
   return ui;
 }
 export { NSLOT };
