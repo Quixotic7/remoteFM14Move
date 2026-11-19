@@ -46,7 +46,7 @@ firmware, `<id>-<version>.rfm1m`, its manifest `.json`, `.licenses.txt` and skin
   unpublished ones are not in it), each file fetched from the site and checked against the catalog's SHA-256, else
   RFM1Manager/out's copy with that SHA-256. The thumbnails come from RemoteFM1FW's catalog images (a centre square,
   64 x 64, autocontrast, an Atkinson dither on luma: the design mockup's method); the hosted-only marks from its
-  README. Never Bubba Machine; never a raw .syx.
+  README. Firmwares the owner excludes are never listed; never a raw .syx.
 - **The checks** (tools/catalog_fw.sh in the image, cached per .rfm1 SHA-256): it builds; its object needs glibc
   <= 2.35; it boots and runs rfm1_run's default run through the host's own runtime (tools/fwrun) with sound and the
   screen written; and that run's PCM is wasm3's (FM1VST's rfm1_run), byte for byte. A firmware silent on that chord

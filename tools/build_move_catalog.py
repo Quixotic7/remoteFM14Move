@@ -21,7 +21,7 @@ The inputs:
     - RemoteFM1FW's catalog/catalog.json and images (read only, beside this repo): the thumbnails (a centre square,
       squeezed to 64 x 64, autocontrast, an Atkinson dither on luma: the mockup's gen_data.py) and the hosted-only
       marks (README.md's daggers).
-Never Bubba Machine; never a raw .syx (only .rfm1 files are read, only compiled objects and their sections written).
+Firmwares the owner excludes are never listed; never a raw .syx (only .rfm1 files are read, only compiled objects and their sections written).
 Each firmware is built and checked by tools/catalog_fw.sh in the image; one that fails is left out and reported.
 """
 import argparse, base64, concurrent.futures, hashlib, io, json, os, re, shutil, subprocess, sys, time
@@ -156,7 +156,7 @@ def main():
         if only and f['id'] not in only:
             continue
         if 'bubba' in json.dumps(f).lower():
-            left.append(dict(id=f['id'], name=f.get('name'), why='never: Bubba Machine'))
+            left.append(dict(id=f['id'], name=f.get('name'), why='excluded by the owner'))
             continue
         if not r:
             continue   # not an .rfm1 the site hosts: gated, unpublished, or another engine only (not counted)
