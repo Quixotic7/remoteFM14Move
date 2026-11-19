@@ -34,6 +34,10 @@ typedef struct fw_obj {
     int virt, fs1;
     uint8_t access[3];                /* fsvc.h: audio, code, data: FSV_R | FSV_W */
     uint64_t mem_bytes;
+    /* ain1 (VIRTUAL-CARTS.md section 8): the manifest lists "ain1" in "wants" or "needs" (ain1), and the object
+     * exports rfm1_audio_in (ain: build_fw.sh's rfm1m_ain table); the host gives input only when both */
+    int ain1;
+    const rfm1m_ain_t *ain;
 } fw_obj_t;
 
 /* the imports' instance: which firmware calls (the type wasm2c's imports name); NULL until fw_create. A Fantasy
@@ -103,6 +107,11 @@ typedef struct fw {
     uint32_t log_n, log_cap;
     /* what the host reads */
     uint32_t lbl_epoch;
+    /* ain1: the input buffer in the module's memory (rfm1_alloc'd at the first fw_ain_info(1, ..)), the state and
+     * latency the module was last told (rfm1_audio_in_info), the blocks fed; ain_peak: the last block's peak */
+    uint32_t ain_buf, ain_state, ain_lat, ain_blocks;
+    int ain_said;                     /* (rfm1_audio_in_info was called at least once) */
+    int ain_peak;
     /* the cost: nanoseconds spent in the module */
     uint64_t ns_total;
     uint32_t worst_us;
@@ -144,6 +153,14 @@ fw_inst_t *fw_release(fw_t *fw);
 void fw_log_flush(fw_t *fw);
 /* the clock until the next block is due, then that block (128 stereo int16 frames). 0 ok; -1 silence (dead) */
 int fw_render(fw_t *fw, int16_t out[FW_BLOCK * 2]);
+/* ain1 (VIRTUAL-CARTS.md section 8): the module takes input (its manifest lists ain1 and it exports rfm1_audio_in) */
+int fw_has_ain(const fw_t *fw);
+/* the input's state (1 live, 0 off) and round-trip latency (frames), told to the module now (rfm1_audio_in_info) when
+ * either changed: before the first input, after boot. 0, or -1 (no ain1, not booted, dead) */
+int fw_ain_info(fw_t *fw, uint32_t state, uint32_t latency_frames);
+/* fw_render with the block's input (128 stereo int16 frames) given through rfm1_audio_in right before rfm1_audio, as
+ * rfm1_run --audio-in does; in NULL (or the state 0): no rfm1_audio_in for this block */
+int fw_render_in(fw_t *fw, int16_t out[FW_BLOCK * 2], const int16_t *in);
 /* an input, applied before the first device ms at or after frame due_frame of the firmware's own count (0: the next) */
 void fw_in(fw_t *fw, int op, int a, int b, uint32_t c, uint64_t due_frame);
 /* a whole MIDI message (n bytes) as USB-MIDI packets; returns 0, or -1 if not a message this sends */

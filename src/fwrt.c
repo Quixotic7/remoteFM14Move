@@ -248,12 +248,20 @@ static int obj_manifest(fw_obj_t *o, char *err, size_t cap)
             need[mj_span(e) - 2] = 0;
             if (!strcmp(need, "fs1"))
                 o->fs1 = 1;
+            else if (!strcmp(need, "ain1"))
+                o->ain1 = 1;
             else {
                 snprintf(err, cap, "needs \"%s\", which this host does not give yet: a newer RemoteFM1", need);
                 free(j);
                 return -1;
             }
         }
+    }
+    if ((it = mj_find(m, "wants")) && *it == '[') {   /* (unknown names in wants are ignored) */
+        const char *e;
+        while ((e = mj_elem(&it)))
+            if (*e == '"' && mj_span(e) == 6 && !strncmp(e + 1, "ain1", 4))
+                o->ain1 = 1;
     }
     if (o->fs1)
         fsvc_access(m, o->access);
@@ -282,6 +290,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         dlclose(o->so);
         free(o);
         return NULL;
+    }
+    {   /* ain1: rfm1m_ain (an object built with RFM1M_AIN1: its module exports rfm1_audio_in) */
+        const rfm1m_ain_fn ag = (rfm1m_ain_fn)(uintptr_t)dlsym(o->so, RFM1M_AIN_SYMBOL);
+        const rfm1m_ain_t *a = ag ? ag() : NULL;
+        o->ain = a && a->abi == RFM1M_AIN_ABI && a->audio_in ? a : NULL;
     }
     snprintf(o->path, sizeof o->path, "%s", path);
     if (obj_manifest(o, err, cap) != 0) {
@@ -526,6 +539,8 @@ fw_inst_t *fw_release(fw_t *fw)
 {
     fw_inst_t *p = NULL;
     if (fw->inst) {
+        if (fw->booted && !fw->dead && fw->ain_state)   /* (the input off first: VIRTUAL-CARTS.md 8) */
+            fw_ain_info(fw, 0, 0);
         if (fw->booted && !fw->dead)
             CALL(fw, "rfm1_shutdown", fw->obj->vt->shutdown(fw->inst));
         fw_log_flush(fw);
@@ -757,7 +772,45 @@ static void run_ms(fw_t *fw)
     fw->ms++;
 }
 
-int fw_render(fw_t *fw, int16_t out[FW_BLOCK * 2])
+int fw_has_ain(const fw_t *fw) { return fw->obj && fw->obj->ain1 && fw->obj->ain; }
+
+static int ain_alloc(fw_t *fw)   /* rfm1_alloc'd like the output's */
+{
+    volatile uint32_t b = 0;
+    CALL(fw, "rfm1_alloc", b = fw->obj->vt->alloc(fw->inst, FW_BLOCK * 4u));
+    if (fw->dead || !b || !in_mem(fw, b, FW_BLOCK * 4u))
+        return -1;
+    fw->ain_buf = b;
+    return 0;
+}
+
+static void ain_info_call(fw_t *fw, const rfm1m_ain_t *a, uint32_t st, uint32_t lt)
+{
+    volatile uint32_t v[2];
+    v[0] = st, v[1] = lt;
+    CALL(fw, "rfm1_audio_in_info", a->audio_in_info(fw->inst, v[0], v[1]));
+}
+
+int fw_ain_info(fw_t *fw, uint32_t state_, uint32_t lat_)
+{
+    const rfm1m_ain_t *a;
+    const uint32_t state = state_ ? 1u : 0u, lat = state_ ? lat_ : 0u;   /* (copies: CALL's longjmp) */
+    if (!fw->booted || fw->dead || !fw_has_ain(fw))
+        return -1;
+    a = fw->obj->ain;
+    if (state && !fw->ain_buf && ain_alloc(fw) != 0)   /* (the input buffer: as rfm1_run, after init) */
+        return -1;
+    if (fw->ain_said ? state == fw->ain_state && lat == fw->ain_lat : !state)
+        return 0;   /* (told only when something changed; never told: nothing to turn off) */
+    if (a->audio_in_info)
+        ain_info_call(fw, a, state, lat);
+    fw->ain_state = state, fw->ain_lat = lat, fw->ain_said = 1;
+    return fw->dead ? -1 : 0;
+}
+
+int fw_render(fw_t *fw, int16_t out[FW_BLOCK * 2]) { return fw_render_in(fw, out, NULL); }
+
+int fw_render_in(fw_t *fw, int16_t out[FW_BLOCK * 2], const int16_t *in)
 {
     const uint64_t t0 = now_ns();
     uint64_t dt;
@@ -767,6 +820,18 @@ int fw_render(fw_t *fw, int16_t out[FW_BLOCK * 2])
     }
     while (fw->frames_done + FW_BLOCK > fw->due && !fw->dead)
         run_ms(fw);
+    if (in && fw->ain_state && fw->ain_buf && !fw->dead) {   /* ain1: the input block, then the same frames out */
+        int i, pk = 0;
+        memcpy(fw->mem + fw->ain_buf, in, FW_BLOCK * 4u);
+        for (i = 0; i < FW_BLOCK * 2; i++) {
+            const int v = in[i] < 0 ? -in[i] : in[i];
+            if (v > pk)
+                pk = v;
+        }
+        fw->ain_peak = pk;
+        CALL(fw, "rfm1_audio_in", fw->obj->ain->audio_in(fw->inst, fw->ain_buf, FW_BLOCK));
+        fw->ain_blocks++;
+    }
     if (!fw->dead)
         CALL(fw, "rfm1_audio", fw->obj->vt->audio(fw->inst, fw->scratch + S_AUDIO, FW_BLOCK));
     if (fw->dead)

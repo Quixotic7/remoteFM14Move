@@ -24,6 +24,10 @@
  *     --no-fm1      no FM-1 link on USB-A (fm1link.c; USB-A stays Move Remote's)
  *     --fm1-bps     the FM-1's screen, TILES body bytes a second (default fm1link.h FM1LINK_BPS_DEFAULT)
  *     --fm1-cap     USB-A packets per SPI transfer (default FM1LINK_CAP_DEFAULT; the rest of a transfer is the LEDs')
+ *     --no-audio-in no input for the Fantasy CFWs with ain1 (Move Remote's input stays its own)
+ *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV, looped (wav.h), in place of its 440 Hz tone
+ *     --no-audio-in no input for the Fantasy CFWs with ain1 (Move Remote's own input path stays as it was)
+ *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV (wav.h), looped, in place of its 440 Hz tone
  *     --fake-fm1    (the simulator) a fake FM-1 on the simulated USB-A (fm1sim.c; the tests' /api/test/fm1)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
@@ -45,6 +49,7 @@
 #include "https.h"
 #include "mdns.h"
 #include "mr_core.h"
+#include "wav.h"
 #include "web.h"
 
 int mr_plat_main(int argc, char **argv);
@@ -56,7 +61,8 @@ int main(int argc, char **argv)
     static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX], index[PATH_MAX];
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
-    int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0;
+    int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0;
+    const char *sim_ain = NULL;
     long fm1_bps = 0;
     long log_cap = 0;
     char *pargv[4];
@@ -108,6 +114,10 @@ int main(int argc, char **argv)
             fm1_bps = atol(argv[++i]);
         else if (!strcmp(argv[i], "--fm1-cap") && i + 1 < argc)
             fm1_cap = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--no-audio-in"))
+            no_ain = 1;
+        else if (!strcmp(argv[i], "--sim-audio-in") && i + 1 < argc)
+            sim_ain = argv[++i];
         else if (!strcmp(argv[i], "--fake-fm1"))
             fake_fm1 = 1;
         else if (!strcmp(argv[i], "--test-api"))
@@ -129,7 +139,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
                             "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--fake-fm1] "
-                            "[--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
+                            "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
     }
@@ -206,6 +216,8 @@ int main(int argc, char **argv)
     mr_set_banner(banner_title, banner_name, port);
     mr_set_port(-1);
     mr_set_audio_source(engine_audio, NULL);
+    if (!no_ain)
+        mr_set_audio_in_sink(engine_audio_in, NULL);   /* (ain1: the Move's input for the carts that take it) */
     pargv[pargc++] = argv[0];
 #ifdef RFM14_PLAT_SIM
     if (sim_dir) {
@@ -216,6 +228,21 @@ int main(int argc, char **argv)
     (void)sim_dir;
 #endif
     pargv[pargc] = NULL;
+#ifdef RFM14_PLAT_SIM
+    if (sim_ain) {   /* (the input pcm stays until the end: Move Remote's simulator plays it looped) */
+        const char *why = NULL;
+        uint32_t nf = 0;
+        int16_t *pcm = wav_read(sim_ain, &nf, &why);
+        if (!pcm)
+            fprintf(stderr, "remotefm1-host: --sim-audio-in %s: %s\n", sim_ain, why);
+        else {
+            mr_sim_set_audio_in(pcm, nf);
+            fprintf(stderr, "remotefm1-host: the simulator's input: %s, %u frames, looped\n", sim_ain, nf);
+        }
+    }
+#else
+    (void)sim_ain;
+#endif
 #ifdef RFM14_PLAT_SIM
     if (fake_fm1 && fm1sim_start() != 0)
         fprintf(stderr, "remotefm1-host: the fake FM-1 did not start\n");

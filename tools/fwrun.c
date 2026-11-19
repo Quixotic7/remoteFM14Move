@@ -3,13 +3,20 @@
  *
  *   fwrun FW.rfm1m [--pcm OUT.raw] [--frame-ms 15]
  *       FM1VST rfm1_run's default run, call for call: a fresh flash, init, 4 s idle, keys 9 13 16 (D4 F#4 A4) at
- *       velocity 100 for 5 s, 200 ms more. OUT gets every block (s16 stereo interleaved), as rfm1_run --wav's data.
+ *       velocity 100 for 5 s, 200 ms more. OUT gets every block (s16 stereo interleaved), as rfm1_run --wav's data;
+ *       --settle MS and --seconds S move the chord as rfm1_run's do.
  *   fwrun FW.rfm1m ... [--folder DIR] [--press LABEL@MS[+D]].. [--ui]
  *       --folder: a Fantasy CFW's RemoteFM1 folder (rfm1_host_1, src/fsvc.c), as FM1VST rfm1_run's --folder: audio/,
  *       code/<id>/, data/<id>/ under DIR, each request answered one device ms after it was made (so the run is the
  *       same as rfm1_run --folder's, byte for byte). Without it the file API answers FS_ENOFOLDER.
- *       --press: the firmware's button LABEL (its own name: PLAY, HOME ..) held from device ms MS for D ms (60).
+ *       --press: the firmware's button LABEL (its own name, else rfm1_run's: PLAY, SAVE, OCT+ ..) held from device ms MS
+ *       for D ms (60).
  *       --ui: the firmware's ui_info at the end. The line then says what the file API did.
+ *   fwrun FW.rfm1m ... [--audio-in F.wav [--audio-in-latency N] [--audio-in-once]]
+ *       ain1 (FM1VST docs/VIRTUAL-CARTS.md section 8), as rfm1_run --audio-in: the WAV fed through rfm1_audio_in right
+ *       before each rfm1_audio, the same frames, looped (once: then no more calls), after rfm1_audio_in_info(1, N)
+ *       (the host's runtime: fw_ain_info, fw_render_in). Only when the manifest lists ain1 and the module exports
+ *       rfm1_audio_in (else said, and the run is without input).
  *   fwrun FW.rfm1m --replay LOG --frames N [--flash-in IMG] --pcm OUT.raw
  *       the host's input log (remotefm1-host --log-inputs) replayed: N frames rendered with every logged input put
  *       in before the same device ms. The host's own capture of that instance must be the same bytes.
@@ -24,6 +31,7 @@
 
 #include "../src/fsvc.h"
 #include "../src/fwrt.h"
+#include "../src/wav.h"
 #include "wasm-rt.h"
 
 static double now_s(void)
@@ -51,11 +59,34 @@ static uint8_t *read_all(const char *p, size_t *n)
     return b;
 }
 
+/* the next input block of the looped (or once-played) WAV; NULL: no more input (--audio-in-once, played) */
+static const int16_t *ain_next(const int16_t *pcm, uint32_t n, uint32_t *pos, int once, int16_t blk[FW_BLOCK * 2])
+{
+    int i;
+    if (!pcm || (once && *pos >= n))
+        return NULL;
+    for (i = 0; i < FW_BLOCK; i++) {
+        int16_t l = 0, r = 0;
+        if (*pos < n) {
+            l = pcm[2 * *pos];
+            r = pcm[2 * *pos + 1];
+            if (++*pos >= n && !once)
+                *pos = 0;
+        }
+        blk[2 * i] = l, blk[2 * i + 1] = r;
+    }
+    return blk;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = NULL, *pcm_path = NULL, *replay = NULL, *flash_in = NULL, *folder = NULL;
     struct { char label[16]; uint32_t at, dur; int b; } press[16];
-    int npress = 0, want_ui = 0;
+    int npress = 0, want_ui = 0, ain_once = 0;
+    uint32_t settle = 4000, seconds = 5;
+    const char *ain_path = NULL;
+    uint32_t ain_lat = 0, ain_frames = 0, ain_pos = 0;
+    int16_t *ain = NULL;
     static fw_t fw;
     fw_obj_t *obj;
     char err[256];
@@ -75,6 +106,16 @@ int main(int argc, char **argv)
             flash_in = argv[++i];
         else if (!strcmp(argv[i], "--folder") && i + 1 < argc)
             folder = argv[++i];
+        else if (!strcmp(argv[i], "--settle") && i + 1 < argc)
+            settle = (uint32_t)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--seconds") && i + 1 < argc)
+            seconds = (uint32_t)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--audio-in") && i + 1 < argc)
+            ain_path = argv[++i];
+        else if (!strcmp(argv[i], "--audio-in-latency") && i + 1 < argc)
+            ain_lat = (uint32_t)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--audio-in-once"))
+            ain_once = 1;
         else if (!strcmp(argv[i], "--ui"))
             want_ui = 1;
         else if (!strcmp(argv[i], "--press") && i + 1 < argc && npress < 16) {
@@ -90,7 +131,7 @@ int main(int argc, char **argv)
             path = argv[i];
         else {
             fprintf(stderr, "usage: fwrun FW.rfm1m [--pcm OUT] [--replay LOG --frames N [--flash-in IMG]] [--folder DIR]"
-                            " [--press LABEL@MS[+D]].. [--ui]\n");
+                            " [--press LABEL@MS[+D]].. [--ui] [--audio-in F.wav [--audio-in-latency N] [--audio-in-once]]\n");
             return 2;
         }
     }
@@ -132,14 +173,35 @@ int main(int argc, char **argv)
         free(img);
     }
     t_boot = now_s() - t0;
+    if (ain_path) {   /* (right after init, as rfm1_run: the input buffer, then rfm1_audio_in_info(1, latency)) */
+        const char *why = NULL;
+        if (!(ain = wav_read(ain_path, &ain_frames, &why))) {
+            fprintf(stderr, "fwrun: --audio-in %s: %s\n", ain_path, why);
+            return 2;
+        }
+        if (!fw_has_ain(&fw)) {
+            fprintf(stderr, "fwrun: --audio-in %s ignored: %s\n", ain_path,
+                    !fw.obj->ain1 ? "the manifest has no ain1 in wants or needs" : "the module exports no rfm1_audio_in");
+            free(ain);
+            ain = NULL;
+        } else if (fw_ain_info(&fw, 1, ain_lat) != 0) {
+            fprintf(stderr, "fwrun: rfm1_audio_in_info: %s\n", fw.err);
+            return 1;
+        }
+    }
     for (i = 0; i < npress; i++) {   /* a label -> its matrix button (fw_panel_ids: label order -> matrix) */
         uint8_t btn_id[FW_NBTN], enc_id[FW_NENC];
         int8_t enc_dir[FW_NENC];
         int k;
         fw_panel_ids(&fw, btn_id, enc_id, enc_dir);
         press[i].b = -1;
+        static const char *const STD[FW_NBTN] = { "FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP",
+                                                  "SEQ", "PLAY", "REC", "OCT-", "OCT+" };   /* (rfm1_run's labels) */
         for (k = 0; k < FW_NBTN; k++)
             if (!strcasecmp(fw.btn_name[k], press[i].label))
+                press[i].b = btn_id[k];
+        for (k = 0; k < FW_NBTN && press[i].b < 0; k++)
+            if (!strcasecmp(STD[k], press[i].label))
                 press[i].b = btn_id[k];
         if (press[i].b < 0) {
             fprintf(stderr, "fwrun: --press %s: the firmware has no such button\n", press[i].label);
@@ -171,7 +233,8 @@ int main(int argc, char **argv)
                 fw_in(&fw, log[k].op, log[k].a, log[k].b, log[k].c, due);
                 k++;
             }
-            fw_render(&fw, blk);
+            int16_t ib[FW_BLOCK * 2];
+            fw_render_in(&fw, blk, ain_next(ain, ain_frames, &ain_pos, ain_once, ib));
             for (i = 0; i < FW_BLOCK * 2; i++) {
                 const double v = blk[i] / 32768.0;
                 sumsq += v * v;
@@ -185,19 +248,21 @@ int main(int argc, char **argv)
         }
         free(log);
     } else {
-        /* rfm1_run: the chord at 4000 ms (velocity, then the taps for keys newly down, then the keys), up at 9000 ms,
-         * the run ends at 9200 ms: the blocks due by then */
+        /* rfm1_run: the chord at --settle (4000 ms: velocity, then the taps for keys newly down, then the keys), up
+         * --seconds later (5), the run ends 200 ms after: the blocks due by then */
         static const int keys[3] = { 9, 13, 16 };
-        const uint64_t end = (uint64_t)9199 * FW_FS / 1000u;
+        const uint32_t up = settle + seconds * 1000u;
+        const uint64_t end = (uint64_t)(up + 199u) * FW_FS / 1000u;
         for (i = 0; i < 3; i++)
-            fw_in(&fw, FWI_KEY, keys[i], 100, 0, (uint64_t)4000 * FW_FS / 1000u);
+            fw_in(&fw, FWI_KEY, keys[i], 100, 0, (uint64_t)settle * FW_FS / 1000u);
         for (i = 0; i < 3; i++)
-            fw_in(&fw, FWI_KEY, keys[i], 0, 0, (uint64_t)9000 * FW_FS / 1000u);
+            fw_in(&fw, FWI_KEY, keys[i], 0, 0, (uint64_t)up * FW_FS / 1000u);
         while (frames + FW_BLOCK <= end) {
             int16_t blk[FW_BLOCK * 2];
-            const int on = fw.ms > 4000 && fw.ms <= 9000;   /* (the chord's blocks: rendered after a ms in it) */
-            fw_render(&fw, blk);
-            if (on || (fw.ms - 1 >= 4000 && fw.ms - 1 < 9000)) {
+            const int on = fw.ms > settle && fw.ms <= up;   /* (the chord's blocks: rendered after a ms in it) */
+            int16_t ib[FW_BLOCK * 2];
+            fw_render_in(&fw, blk, ain_next(ain, ain_frames, &ain_pos, ain_once, ib));
+            if (on || (fw.ms - 1 >= settle && fw.ms - 1 < up)) {
                 for (i = 0; i < FW_BLOCK * 2; i++) {
                     const double v = blk[i] / 32768.0;
                     sumsq += v * v;
@@ -225,6 +290,8 @@ int main(int argc, char **argv)
                st.made, st.served, st.refused, st.busy, st.inflight, (unsigned long long)st.bytes_in,
                (unsigned long long)st.bytes_out);
     }
+    if (ain_path)
+        printf("  audio in: %u blocks fed, latency %u frames\n", fw.ain_blocks, fw.ain_lat);
     if (want_ui) {
         char ui[1024];
         fw_ui_info(&fw, ui, sizeof ui);
@@ -233,5 +300,6 @@ int main(int argc, char **argv)
     if (fw.dead)
         fprintf(stderr, "fwrun: %s\n", fw.err);
     fw_destroy(&fw);
+    free(ain);
     return fw.halted || chord_frames == 0 ? 1 : 0;
 }

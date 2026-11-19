@@ -5,7 +5,9 @@
  * Every call is a thin wrapper over the module's export of the same name; the instance is an opaque pointer.
  * RFM1M_INST_ARGS: the import modules' instances wasm2c's instantiate takes after the module's own, in its order
  * (tools/build_fw.sh reads them from the header): WASII the WASI imports', HOSTI a Fantasy CFW's rfm1_host_1 (the
- * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only. */
+ * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only.
+ * RFM1M_AIN1: the module exports rfm1_audio_in (ain1): rfm1m_ain() too (src/rfm1m.h). Without it the object is what it
+ * always was. */
 #include <stdlib.h>
 
 #include "wasm-rt.h"
@@ -128,3 +130,20 @@ const rfm1m_t *rfm1m_get(void)
     }
     return &t;
 }
+
+#ifdef RFM1M_AIN1
+extern void X(rfm1_audio_in_info)(INST *, u32, u32) __attribute__((weak));
+static void ain_in(void *i, uint32_t p, uint32_t n) { X(rfm1_audio_in)(I, p, n); }
+static void ain_info(void *i, uint32_t s, uint32_t l) { X(rfm1_audio_in_info)(I, s, l); }
+__attribute__((visibility("default"))) const rfm1m_ain_t *rfm1m_ain(void);
+const rfm1m_ain_t *rfm1m_ain(void)
+{
+    static rfm1m_ain_t t;
+    if (!t.abi) {
+        t.audio_in = ain_in;
+        t.audio_in_info = X(rfm1_audio_in_info) ? ain_info : NULL;
+        t.abi = RFM1M_AIN_ABI;
+    }
+    return &t;
+}
+#endif

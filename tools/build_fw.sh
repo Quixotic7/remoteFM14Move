@@ -35,10 +35,13 @@ PROTO=$(grep "^void Z_${ID}_instantiate(" "$W/$ID.h" | head -1)
 ARGS=$(printf '%s' "$PROTO" | sed -e 's/^[^,)]*//' -e 's/);$//' \
     -e 's/struct Z_wasi_snapshot_preview1_instance_t\*/WASII/g' -e 's/struct Z_rfm1_host_1_instance_t\*/HOSTI/g' | tr -d ' ')
 case "$ARGS" in *[!,A-Z]*) echo "build_fw: $ID imports a module this host does not give: $PROTO" >&2; exit 1;; esac
+# ain1 (VIRTUAL-CARTS.md 8): a module that exports rfm1_audio_in gets rfm1m_ain() (fwglue.c RFM1M_AIN1); others none
+AIN=""
+grep -q "Z_${ID}Z_rfm1_audio_in(" "$W/$ID.h" && AIN="-DRFM1M_AIN1"
 PAGES=$(grep -o "wasm_rt_allocate_memory([^,]*, [0-9]*" "$W/$ID.c" | head -1 | sed 's/.*, //')
 "$CC" -O2 -ffp-contract=off -fPIC -shared -fvisibility=hidden -w \
     -DWASM_RT_MEMCHECK_SIGNAL_HANDLER=0 -I"$W2C_RT" -I"$W" \
-    -DMOD="$ID" -DRFM1M_ID="\"$ID\"" -DRFM1M_SHA="\"$SHA\"" -DRFM1M_INST_ARGS="$ARGS" \
+    -DMOD="$ID" -DRFM1M_ID="\"$ID\"" -DRFM1M_SHA="\"$SHA\"" -DRFM1M_INST_ARGS="$ARGS" $AIN \
     "$DIR/fw/fwglue.c" "$W/$ID.c" -o "$OUT/$BASE.rfm1m.tmp"
 mv "$OUT/$BASE.rfm1m.tmp" "$OUT/$BASE.rfm1m"
 {

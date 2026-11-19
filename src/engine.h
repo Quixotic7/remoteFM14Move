@@ -46,6 +46,10 @@ void engine_stop(void);           /* the firmwares' flash saved, the files writt
 
 /* Move Remote's audio source (the rt thread) */
 int engine_audio(void *ctx, int16_t *out, int frames);
+/* Move Remote's audio input sink (the rt thread: mr_set_audio_in_sink): each block's input, for the carts with ain1 */
+void engine_audio_in(void *ctx, const int16_t *in, int frames);
+/* the round trip (frames) the carts are told: the input queued plus the output queued, and the SPI's block each way */
+uint32_t engine_ain_latency(void);
 
 /* ---- for the web page */
 #define ENG_LCD_BYTES (240 * 240 * 2)

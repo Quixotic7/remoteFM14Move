@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # The tests that need Linux (the build image, linux/arm64): unit, the firmwares against wasm3, the glibc the Move's
 # binaries need, the host on the simulator, the slots and Schwung FX (tests/fx_e2e.sh), the catalog's downloads (tests/dl_e2e.sh), the FM-1 on USB-A
-# (tests/fm1_e2e.sh), Fantasy CFWs: Elasticat and Ripple with the RemoteFM1 folder (tests/fantasy_e2e.sh).
+# (tests/fm1_e2e.sh), Fantasy CFWs: Elasticat and Ripple with the RemoteFM1 folder (tests/fantasy_e2e.sh), and the
+# Move's audio input for them (ain1: tests/ain_e2e.sh).
 cd "$(dirname "$0")/.."
 fail=0
 build/tools/unit || fail=1
@@ -34,4 +35,5 @@ tests/fx_e2e.sh || fail=1
 tests/dl_e2e.sh || fail=1
 tests/fm1_e2e.sh || fail=1
 tests/fantasy_e2e.sh || fail=1
+tests/ain_e2e.sh || fail=1
 exit $fail

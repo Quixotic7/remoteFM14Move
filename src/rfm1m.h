@@ -57,4 +57,16 @@ typedef struct {
 
 typedef const rfm1m_t *(*rfm1m_get_fn)(void);
 
+/* ain1 (FM1VST docs/VIRTUAL-CARTS.md section 8): an object made from a module that exports rfm1_audio_in also exports
+ * RFM1M_AIN_SYMBOL, this table (fwglue.c, built with -DRFM1M_AIN1 by tools/build_fw.sh only for such a module, so
+ * every other object stays byte for byte what it was). audio_in_info NULL: the module has no rfm1_audio_in_info */
+#define RFM1M_AIN_ABI 1
+#define RFM1M_AIN_SYMBOL "rfm1m_ain"
+typedef struct {
+    uint32_t abi;                       /* RFM1M_AIN_ABI */
+    void (*audio_in)(void *inst, uint32_t stereo, uint32_t frames);
+    void (*audio_in_info)(void *inst, uint32_t state, uint32_t latency_frames);
+} rfm1m_ain_t;
+typedef const rfm1m_ain_t *(*rfm1m_ain_fn)(void);
+
 #endif

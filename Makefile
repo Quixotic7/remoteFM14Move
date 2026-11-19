@@ -96,7 +96,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/fsvc.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/wav.c src/fsvc.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
@@ -108,11 +108,15 @@ HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods
 in-all: in-tools in-fw in-testfw in-ref in-host in-fxmods
-in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe
+in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT)
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
+
+build/tools/ainchk: tests/ainchk.c src/wav.c src/wav.h
+	mkdir -p build/tools
+	$(CC) $(CFLAGS) $(WARN) -o $@ tests/ainchk.c src/wav.c -lm
 
 build/tools/rfm1info: tools/rfm1info.c src/minijson.c src/minijson.h
 	mkdir -p build/tools
@@ -123,9 +127,9 @@ build/obj/wasm-rt-impl.o: $(W2C_RT)/wasm-rt-impl.c
 	mkdir -p build/obj
 	$(CC) $(CFLAGS) -fPIC $(W2C_DEFS) -I$(W2C_RT) -c $< -o $@
 
-build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c src/fsvc.h src/minijson.c build/obj/wasm-rt-impl.o
+build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c src/fsvc.h src/minijson.c src/wav.c src/wav.h build/obj/wasm-rt-impl.o
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c \
+	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c src/wav.c \
 	    build/obj/wasm-rt-impl.o -ldl -lm -lpthread
 
 build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info

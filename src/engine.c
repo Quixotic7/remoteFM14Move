@@ -76,6 +76,60 @@ int engine_audio(void *ctx, int16_t *out, int frames)
     return frames;
 }
 
+/* ---- ain1 (FM1VST docs/VIRTUAL-CARTS.md section 8): the Move's input (Move Remote's mr_set_audio_in_sink: the line
+ * in, else the mic) from the audio thread to the engine through a lock-free ring. The audio thread pushes one input
+ * block for each output block it pops, and the engine pops one for each it renders, so the input queued plus the
+ * output queued stays the same: the engine keeps it at AIN_TOTAL (dropping the input it does not need, or giving
+ * silence while it has too little: a firmware's start fills the output ring past the lead). An input frame is
+ * therefore heard (in the cart's output) AIN_TOTAL frames after it came in, plus the SPI's own block each way:
+ * engine_ain_latency(), the round trip each cart with ain1 is told (rfm1_audio_in_info) */
+#define AIN_RING 4096
+static mr_ring_t g_ain;
+static volatile uint32_t g_ain_in, g_ain_over;   /* (the audio thread's: blocks in, blocks dropped: the ring full) */
+static uint32_t g_ain_under, g_ain_dropped, g_lead = 5 * FW_BLOCK;
+static uint32_t g_ain_seen, g_ain_seen_ms;       /* (the engine's: g_ain_in when last looked, and when it moved) */
+static int g_ain_live;                           /* input is arriving (the sink is called) */
+static int16_t g_ain_blk[FW_BLOCK * 2];
+#define AIN_TOTAL (g_lead + 2u * FW_BLOCK)
+uint32_t engine_ain_latency(void) { return AIN_TOTAL + 2u * FW_BLOCK; }
+
+void engine_audio_in(void *ctx, const int16_t *in, int frames)
+{
+    (void)ctx;
+    if (!g_ain.buf || frames != FW_BLOCK)
+        return;
+    if (mr_ring_push(&g_ain, in, (uint32_t)frames) != (uint32_t)frames)
+        g_ain_over++;
+    g_ain_in++;
+}
+
+/* the input block for the block rendered now (NULL: no input arrives) */
+static const int16_t *ain_take(uint32_t now)
+{
+    uint32_t ic, oc;
+    if (g_ain_in != g_ain_seen)
+        g_ain_seen = g_ain_in, g_ain_seen_ms = now, g_ain_live = 1;
+    else if (g_ain_live && now - g_ain_seen_ms > 500u)
+        g_ain_live = 0;   /* (no input for half a second: the platform gives none, or the audio thread stopped) */
+    if (!g_ain_live)
+        return NULL;
+    ic = mr_ring_count(&g_ain);
+    oc = mr_ring_count(&g_ring);
+    if (ic + oc > AIN_TOTAL + FW_BLOCK) {   /* (more than the latency needs: the oldest goes) */
+        const uint32_t drop = ic + oc - AIN_TOTAL - FW_BLOCK < ic ? ic + oc - AIN_TOTAL - FW_BLOCK : ic;
+        mr_ring_pop(&g_ain, NULL, drop);
+        g_ain_dropped += drop;
+        ic -= drop;
+    }
+    if (ic >= FW_BLOCK)
+        mr_ring_pop(&g_ain, g_ain_blk, FW_BLOCK);
+    else {
+        memset(g_ain_blk, 0, sizeof g_ain_blk);
+        g_ain_under++;
+    }
+    return g_ain_blk;
+}
+
 /* ------------------------------------------------------------------ state (the engine thread's) --- */
 typedef struct {
     fw_t fw;
@@ -1772,6 +1826,7 @@ void engine_fm1_midi(const uint8_t *m, int n)
 static void render_block(uint32_t now)
 {
     int16_t blk[FW_BLOCK * 2], out[FW_BLOCK * 2];
+    const int16_t *ain;
     int s, k, sounding, sends = 0;
     {   /* the clock the modules ask for (host_api_v1: get_bpm, get_clock_status, get_beat_position) */
         const float bpm = (float)rfm_move_seq_bpm10(&S->core) / 10.0f;
@@ -1790,13 +1845,18 @@ static void render_block(uint32_t now)
             bus_clear(&g_bus[k], FW_BLOCK);
             sends |= 1 << k;
         }
+    ain = ain_take(now);
     for (s = 0; s < NSLOT; s++) {
         slot_t *sl = &SL[s];
         if (!sl->on)
             continue;
         if (!(sounding >> s & 1))
             continue;   /* loaded, past the voices: its clock waits */
-        fw_render(&sl->fw, blk);
+        if (fw_has_ain(&sl->fw)) {   /* ain1: the state when it changed, the input right before its audio */
+            fw_ain_info(&sl->fw, ain != NULL, engine_ain_latency());
+            fw_render_in(&sl->fw, blk, ain);
+        } else
+            fw_render(&sl->fw, blk);
         if (&sl->fw == g_raw_fw && g_cap_raw && g_cap_raw_n + FW_BLOCK <= g_cap_max) {
             memcpy(g_cap_raw + 2u * g_cap_raw_n, blk, sizeof blk);
             g_cap_raw_n += FW_BLOCK;
@@ -1951,11 +2011,16 @@ static void housekeeping(uint32_t now)
                                   fst.refused + fst.busy, (unsigned long long)fst.bytes_in,
                                   (unsigned long long)fst.bytes_out, (unsigned long long)(sl->fw.mem_size >> 20));
                 }
+                if (fw_has_ain(&sl->fw))   /* ain1: the state told, its latency, the blocks fed, the last block's peak */
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ain\":%u,\"ain_lat\":%u,\"ain_blocks\":%u,"
+                                  "\"ain_peak\":%d", sl->fw.ain_state, sl->fw.ain_lat, sl->fw.ain_blocks, sl->fw.ain_peak);
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
             } else
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }
-        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "],\"ain_live\":%d,\"ain_in\":%u,\"ain_under\":%u,"
+                      "\"ain_dropped\":%u,\"ain_over\":%u,\"ain_latency\":%u", g_ain_live, g_ain_in, g_ain_under,
+                      g_ain_dropped, g_ain_over, engine_ain_latency());
         {   /* the FX: CPU per module over the last second; past the budget twice running: refused ("Too busy") */
             int kind, k;
             uint32_t total = 0;
@@ -2199,7 +2264,8 @@ int engine_start(const engine_cfg_t *cfg)
     fprintf(stderr, "engine: %d firmware(s) installed; the catalog lists %d (index: %s %s)\n", g_nfw, g_cat->n,
             g_cat->from == 2 ? "downloaded" : g_cat->from == 1 ? "bundled" : "none", g_cat->generated);
     fw_json();
-    if (mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
+    g_lead = (uint32_t)(C.lead_blocks < 4 ? 4 : C.lead_blocks > 8 ? 8 : C.lead_blocks) * FW_BLOCK;
+    if (mr_ring_init(&g_ain, 4, AIN_RING) != 0 || mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
         return -1;
     {   /* the FM-1 on USB-A: its hooks are set before Move Remote's core starts (main.c: after engine_start) */
         fm1link_cfg_t lc;
