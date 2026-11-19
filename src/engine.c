@@ -1444,140 +1444,66 @@ static void emit(rfm_move_act_t *a)
     ev.type = RFM1CS_EV_ACTION, ev.act = a;
     on_action(&ev);
 }
-static void core_seq_dirty(void) { S->core.seq.dirty = 1, S->core.seq.dirty_us = S->core.seq.now_us; }
-static void core_lib_dirty(void) { S->core.fw.lib_dirty = 1, S->core.fw.lib_ms = (uint32_t)(S->core.seq.now_us / 1000u); }
-static void emit_mix(int s)
-{
-    rfm_move_act_t a;
-    int k;
-    memset(&a, 0, sizeof a);
-    a.kind = RFM_MOVE_ACT_MIX, a.index = a.slot = (uint8_t)s;
-    a.mix[0] = S->core.fw.level[s], a.mix[1] = S->core.seq.fx.pan[s];
-    for (k = 0; k < 3; k++)
-        a.mix[2 + k] = S->core.seq.fx.send[s][k];
-    emit(&a);
-}
-static void emit_route(void)
-{
-    rfm_move_act_t a;
-    int k;
-    memset(&a, 0, sizeof a);
-    a.kind = RFM_MOVE_ACT_ROUTE;
-    for (k = 0; k < 3; k++)
-        a.filt[k] = S->core.seq.fx.ffilt[k], a.filt[3 + k] = S->core.seq.fx.mfx[k].filt;
-    emit(&a);
-}
+/* the page's edits (/ws ops 16..22, /api/edit), on the engine thread outside any core callback: rfm1cs 0.4.1's host
+ * setters apply each as the Move's own edit does (the same action through the session to on_action, the same dirty
+ * marks: the project's autosave, the library); FW_UNLOAD has no setter: our own handler takes it as from Delete */
 static void page_edit(int op, int a, int b)
 {
     rfm_move_t *m = &S->core;
-    rfm_move_fxset_t *x = &m->seq.fx;
-    rfm_move_act_t act;
-    memset(&act, 0, sizeof act);
     switch (op) {
     case ENG_OP_ACTIVE:
         if (a < 0 || a >= NSLOT || !SL[a].on || a == m->fw.active)
             return;
-        m->fw.active = (uint8_t)a;
-        if (m->fw.track < 3)
-            m->fw.track = (uint8_t)a;   /* (the projects view shows the firmware track the controls play) */
-        core_lib_dirty();
-        act.kind = RFM_MOVE_ACT_FW_ACTIVE, act.index = act.slot = (uint8_t)a;
-        act.data = (const uint8_t *)SL[a].fw.id, act.len = (uint32_t)strlen(SL[a].fw.id);
-        emit(&act);
+        rfm_move_fw_set_active(m, a);
         break;
-    case ENG_OP_UNLOAD:
+    case ENG_OP_UNLOAD: {
+        rfm_move_act_t act;
         if (a < 0 || a >= NSLOT || !SL[a].on)
             return;
+        memset(&act, 0, sizeof act);
         act.kind = RFM_MOVE_ACT_FW_UNLOAD, act.index = act.slot = (uint8_t)a;
         emit(&act);
         break;
+    }
     case ENG_OP_MIX: {
         const int s = a / 8, f = a % 8, v = b < 0 ? 0 : b > 127 ? 127 : b;
+        int sends[RFM_MOVE_FX_SLOTS] = { -1, -1, -1 };
         if (s >= NSLOT || f > 4)
             return;
-        if (f == 0) {
-            m->fw.level[s] = (uint8_t)v;
-            core_lib_dirty();
-        } else {
-            if (f == 1)
-                x->pan[s] = (uint8_t)v;
-            else
-                x->send[s][f - 2] = (uint8_t)v;
-            core_seq_dirty();
+        if (f == 0)
+            rfm_move_fw_set_level(m, s, v);
+        else if (f == 1)
+            rfm_move_mix_set(m, s, -1, v, NULL);
+        else {
+            sends[f - 2] = v;
+            rfm_move_mix_set(m, s, -1, -1, sends);
         }
-        emit_mix(s);
         break;
     }
     case ENG_OP_ROUTE: {
-        uint16_t f = (uint16_t)b;
+        int ff[RFM_MOVE_FW_SLOTS] = { -1, -1, -1 }, mf[RFM_MOVE_FX_SLOTS] = { -1, -1, -1 };
         if (a < 0 || a > 5)
             return;
         if (a < 3)
-            x->ffilt[a] = f;
+            ff[a] = (uint16_t)b;
         else
-            x->mfx[a - 3].filt = f && !(f & (f - 1)) ? f : 0xFFFF;   /* (a MIDI FX: one track, or all) */
-        core_seq_dirty();
-        emit_route();
+            mf[a - 3] = (uint16_t)b;   /* (one track's bit, or all: the setter makes anything else all) */
+        rfm_move_route_set(m, ff, mf);
         break;
     }
-    case ENG_OP_FXLOAD: {
-        const int kind = a >> 2 & 1, s = a & 3, mod = (int16_t)b;
-        rfm_move_fxslot_t *sl;
-        const rfm_move_fx_module_t *md;
-        int k;
-        if (s >= RFM_MOVE_FX_SLOTS)
+    case ENG_OP_FXLOAD:
+        if ((a & 3) >= RFM_MOVE_FX_SLOTS)
             return;
-        sl = kind ? &x->afx[s] : &x->mfx[s];
-        md = mod >= 0 && mod < m->fw.nmods[kind] ? &m->fw.mods[kind][mod] : NULL;
-        memset(sl->name, 0, sizeof sl->name), memset(sl->val, 0, sizeof sl->val);   /* (as fw.c fx_load) */
-        sl->mod = -1;
-        if (md && md->name) {
-            snprintf(sl->name, sizeof sl->name, "%s", md->name);
-            sl->mod = (int16_t)mod;
-            for (k = 0; k < md->nparams && k < RFM_MOVE_FX_PARAMS; k++)
-                sl->val[k] = md->params[k].nwords > 0 ? (uint8_t)(md->params[k].def < md->params[k].nwords ? md->params[k].def : 0)
-                                                      : (uint8_t)(md->params[k].def > 127 ? 127 : md->params[k].def);
-        }
-        core_seq_dirty();
-        act.kind = RFM_MOVE_ACT_FX_LOAD, act.fx = (uint8_t)kind, act.index = act.slot = (uint8_t)s, act.value = sl->mod;
-        if (sl->mod >= 0)
-            act.data = (const uint8_t *)sl->name, act.len = (uint32_t)strlen(sl->name);
-        emit(&act);
+        rfm_move_fx_set_module(m, a >> 2 & 1, a & 3, (int16_t)b);
         break;
-    }
-    case ENG_OP_FXPARAM: {
-        const int kind = a >> 5 & 1, s = a >> 3 & 3, k = a & 7;
-        rfm_move_fxslot_t *sl;
-        const rfm_move_fx_module_t *md;
-        int v = b;
-        if (s >= RFM_MOVE_FX_SLOTS)
+    case ENG_OP_FXPARAM:
+        if ((a >> 3 & 3) >= RFM_MOVE_FX_SLOTS)
             return;
-        sl = kind ? &x->afx[s] : &x->mfx[s];
-        md = sl->mod >= 0 && sl->mod < m->fw.nmods[kind] ? &m->fw.mods[kind][sl->mod] : NULL;
-        if (!md || k >= md->nparams)
-            return;
-        v = md->params[k].nwords > 0 ? (v < 0 ? 0 : v >= md->params[k].nwords ? md->params[k].nwords - 1 : v)
-                                     : (v < 0 ? 0 : v > 127 ? 127 : v);
-        sl->val[k] = (uint8_t)v;
-        core_seq_dirty();
-        act.kind = RFM_MOVE_ACT_FX_PARAM, act.fx = (uint8_t)kind, act.index = act.slot = (uint8_t)s;
-        act.param = (uint8_t)k, act.value = (int16_t)v;
-        emit(&act);
+        rfm_move_fx_set_param(m, a >> 5 & 1, a >> 3 & 3, a & 7, b);
         break;
-    }
     case ENG_OP_PAGE:
-        if (a < 0 || a > 3 || m->s.fx_page == a)
+        if (rfm_move_fx_set_page(m, a) < 0)
             return;
-        if ((a == 0 && !m->fw.nmods[RFM_MOVE_FX_MIDI]) || (a == 2 && !m->fw.nmods[RFM_MOVE_FX_AUDIO]))
-            return;
-        m->s.fx_page = (uint8_t)a;
-        {   /* (a setting: saved as the core's SETTINGS would be) */
-            uint8_t buf[RFM_MOVE_SETTINGS_BYTES];
-            char p[ST_PATH];
-            const uint32_t n = rfm_move_save(&m->s, buf);
-            st_path(p, sizeof p, "move/settings.bin");
-            job_write(p, buf, n);
-        }
         g_mix_ver++;
         break;
     default:

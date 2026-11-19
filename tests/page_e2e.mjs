@@ -282,6 +282,8 @@ try {
   await until(`document.querySelector('.mv-modrow[data-mod="0"]')`, 5000, "the MIDI FX modules");
   await click('.mv-modrow[data-mod="0"]');
   ok(await untilApi(async () => (await mixNow()).mfx[0].mod === 0, 5000), "the Arpeggiator into MIDI FX 1 from the page");
+  // (the page's own copy of the mix catches up before the next tab: its rebuild would swallow a click in flight)
+  await until(`document.querySelector('.mv-modrow[data-mod="0"].on')`, 5000, "the page shows the Arpeggiator");
   await click('.mv-tab[data-tab="1"]');
   await until(`document.querySelector('.mv-fw[data-slot="1"] .mv-st[data-track="9"]')`, 5000, "the filters");
   const filt0 = (await mixNow()).slots[1].filt;
