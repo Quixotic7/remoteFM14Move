@@ -62,6 +62,20 @@ int fm1link_json(char *out, int cap);
 int fm1link_linked(void);
 void fm1link_stop(uint32_t now);     /* SESSION 0 (the unit back to its own screen) */
 
+/* The FM-1's Wi-Fi set up from the page (web.c /api/fm1/wifi*; RemoteFM1 docs/PROTOCOL.md section 10 WIFI): with an
+ * FM-1 running RemoteFM1 Wi-Fi on the Move's USB-A, the page lists the networks it hears (SCAN, then LIST's pages:
+ * small replies for the bridge), sends a network and its password (SET: over USB only), and follows the FM-1 until
+ * it has joined with an address; the networks it keeps (LIST 1) can be forgotten. One WIFI request at a time on
+ * USB-A, beside the session (rfm_session_send; it may run over TCP meanwhile). The password: in the request body
+ * only, copied once into the SET message, then wiped (never logged, never stored on the Move). These run on any
+ * thread (a lock of their own); the work happens in fm1link_tick */
+int fm1link_wifi_json(char *out, int cap);  /* GET /api/fm1/wifi: {"usb":..,"usb_wifi":..,"fm1":{..},"scan":{..},..} */
+int fm1link_wifi_scan(void);                /* 0 asked; -1 no FM-1 with RemoteFM1 Wi-Fi on USB-A */
+/* ssid (1..32 bytes), pass (0..63; "" an open network): 0 asked, -1 no FM-1 on USB-A, -2 a bad SSID or password.
+ * pass is wiped here, asked or not. pick >= 0 (with scan_seq): the scan's network pick, its SSID as the FM-1 gave it */
+int fm1link_wifi_set(const char *ssid, char *pass, int pick, int scan_seq);
+int fm1link_wifi_forget(const char *ssid);  /* a network the FM-1 keeps: 0 asked, -1 none on USB-A, -2 not kept */
+
 /* 44 levels led[col][line] + PLAY green as the unit's planes (remotefm1.com's mapping: lit >= 176, mid >= 96, dim >= 40,
  * faint > 0; PLAY green on when lit). out: an rfm_leds_t */
 void fm1link_leds(const uint8_t levels[FW_NLEVELS], uint8_t play_green, void *out);

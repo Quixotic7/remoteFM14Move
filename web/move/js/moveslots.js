@@ -16,6 +16,7 @@ import { NSLOT, MoveStore, Minis, h, svg, IC, pct, openPop, closePop, popOpen, p
 import { MixView } from "./movemix.js";
 import { LAYOUTS } from "./panel.js";
 import { mountMoveFiles } from "./movefiles.js";
+import { mountMoveWifi } from "./movewifi.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -228,6 +229,8 @@ export function mountMoveUi(o) {
   ui.filesBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn", id: "mv-filesbtn", title: "Files on the Move", onclick: () => ui.files.toggle() },
     svg('<path d="M2 3.5h4.5l1.3 1.5H14v8H2z"/>', 15), h("span", {}, "Files"));
   ui.mixBtn.before(ui.filesBtn);
+  // the FM-1's Wi-Fi set up over the Move's USB-A (js/movewifi.js): the settings sheet's FM-1 Wi-Fi section, ?wifi
+  ui.wifi = mountMoveWifi(o).view;
   return ui;
 }
 export { NSLOT };

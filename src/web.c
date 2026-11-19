@@ -9,6 +9,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 
 #include "engine.h"
 #include "files.h"
+#include "fm1link.h"
 #include "fsvc.h"
 #include "minijson.h"
 #include "mr_ws.h"
@@ -273,6 +275,65 @@ static void api_edit(client_t *c, const char *body, int test)
     }
     engine_panel((int)op, (int)a, (int)b);
     json_reply(c, "202 Accepted", "{\"ok\":true}");
+}
+
+/* The FM-1's Wi-Fi set up (fm1link.h fm1link_wifi_*), the FM-1 on the Move's USB-A:
+ *   GET  /api/fm1/wifi            its state, the networks it hears and keeps, a set up under way
+ *   POST /api/fm1/wifi/scan       look for networks (the list in GET's "scan" once done)
+ *   POST /api/fm1/wifi/set        {"ssid", "password" (none or "": an open network), "pick", "scan_seq"}: join it
+ *   POST /api/fm1/wifi/forget     {"ssid"}: a network it keeps
+ * 409: no FM-1 with RemoteFM1 Wi-Fi on USB-A; 400: a bad request. The password: only in this body, which is wiped
+ * once read (never logged, never in a URL, never kept on the Move) */
+static void wipe_str(const char *p)
+{
+    volatile char *v = (volatile char *)(uintptr_t)p;
+    while (v && *v)
+        *v++ = 0;
+}
+
+static void api_fm1_wifi(client_t *c, const char *what, const char *body)
+{
+    static const char NO_UNIT[] = "{\"ok\":false,\"error\":\"no FM-1 with RemoteFM1 Wi-Fi on the Move's USB-A\"}";
+    int r;
+    if (!strcmp(what, "scan")) {
+        r = fm1link_wifi_scan();
+    } else if (!strcmp(what, "set")) {
+        char ssid[128] = "", pass[160] = "";
+        long pick = -1, seq = 0;
+        if (!body || mj_string(body, "ssid", ssid, sizeof ssid)) {
+            wipe_str(body);
+            json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want {ssid, password}\"}");
+            return;
+        }
+        mj_string(body, "password", pass, sizeof pass);   /* (none: an open network) */
+        mj_int(body, "pick", &pick);
+        mj_int(body, "scan_seq", &seq);
+        wipe_str(body);                              /* (the request's copy of the password) */
+        r = strlen(pass) >= sizeof pass - 1 ? -2 : fm1link_wifi_set(ssid, pass, (int)pick, (int)seq);   /* (wipes pass) */
+        wipe_str(pass);
+        if (r == -2) {
+            json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"a network name of 1 to 32 bytes; a password of 8 to 63 characters, or none for an open network\"}");
+            return;
+        }
+    } else if (!strcmp(what, "forget")) {
+        char ssid[128] = "";
+        if (!body || mj_string(body, "ssid", ssid, sizeof ssid)) {
+            json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want {ssid}\"}");
+            return;
+        }
+        r = fm1link_wifi_forget(ssid);
+        if (r == -2) {
+            json_reply(c, "404 Not Found", "{\"ok\":false,\"error\":\"the FM-1 does not keep that network\"}");
+            return;
+        }
+    } else {
+        http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+        return;
+    }
+    if (r != 0)
+        json_reply(c, "409 Conflict", NO_UNIT);
+    else
+        json_reply(c, "202 Accepted", "{\"ok\":true}");
 }
 
 /* GET /api/fw/<id>-<version>.<what>: an installed firmware's licences or skin (RFM1-FORMAT.md section 8, kept beside
@@ -955,6 +1016,8 @@ static void request(client_t *c, const char *body)
             api_edit(c, body, 1);
         else if (!strncmp(path, "/api/fs/", 8))
             api_fs_post(c, path + 8, query);
+        else if (!strncmp(path, "/api/fm1/wifi/", 14))
+            api_fm1_wifi(c, path + 14, body);
 #ifdef RFM14_PLAT_SIM
         else if (!strcmp(path, "/api/test/fm1")) {   /* the simulator's fake FM-1 (fm1sim.c, --fake-fm1) */
             char op[16];
@@ -1001,6 +1064,11 @@ static void request(client_t *c, const char *body)
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
     }
 #endif
+    else if (!strcmp(path, "/api/fm1/wifi")) {
+        static char s[12288];   /* (the web thread's) */
+        const int n = fm1link_wifi_json(s, sizeof s);
+        http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
+    }
     else if (!strcmp(path, "/api/info"))
         http_reply(c, "200 OK", "application/json", g_v.info, strlen(g_v.info));
     else if (!strcmp(path, "/api/mix"))

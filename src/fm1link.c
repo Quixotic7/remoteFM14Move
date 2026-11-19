@@ -5,7 +5,10 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netdb.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -439,6 +442,453 @@ static int wifi_init(const fm1link_cfg_t *cfg)
     return 0;
 }
 
+/* ------------------------------------------------------------------ Wi-Fi set up (fm1link.h) --- */
+#define WS_TRY_MS 1500u              /* a WIFI request on USB-A unanswered this long: given up (asked again) */
+#define WS_SEEN_MS 5000u             /* the FM-1 on USB-A: a WIFI_R or HELLO_R from it this recently */
+#define WS_POLL_MS 2000u             /* its state, while the page looks (and the FM-1 is not busy with a job) */
+#define WS_WATCH_MS 15000u           /* the page looks: GET /api/fm1/wifi this recently */
+#define WS_JOIN_MS 45000u            /* a SET: joined (an address) within this, or "it did not join" */
+#define WS_SCAN_MS 15000u            /* a scan: done within this */
+enum { WJ_NONE, WJ_SENDING, WJ_JOINING, WJ_CONNECTED, WJ_FAILED, WJ_TIMEOUT };
+static const char *const WJ_NAME[] = { "", "sending", "joining", "connected", "failed", "timeout" };
+enum { WR_NONE, WR_SCAN, WR_SET, WR_FORGET };
+typedef struct {
+    /* the FM-1 on USB-A, as the last replies said */
+    int usb, usb_wifi, usb_known;                   /* answering; has the Wi-Fi build; a HELLO_R said which */
+    char usb_name[24], usb_fw[24];
+    rfm_wifi_state_t st;                            /* its last GET / SET / FORGET reply */
+    int st_ok;
+    /* the scan: the list (published whole once a scan is done), scanning, its sequence */
+    rfm_wifi_net_t nets[16];
+    int nnets, scanning, scan_seq, scan_err;
+    rfm_wifi_net_t kept[6];
+    int nkept, kept_ok;
+    /* the job: a SET followed to its end */
+    int job;
+    char job_ssid[33], job_why[41], job_ip[16];
+    uint32_t job_ms;                                /* how long it took / has taken */
+    int same_lan;                                   /* the address it got is on one of the Move's own networks */
+    char err[80];
+    uint32_t sets, scans, forgets, timeouts;
+    /* the link as the engine thread saw it last (for the page) */
+    char link[8], addr[32], search[12];
+    int wifi_on;
+} ws_t;
+static pthread_mutex_t ws_mu = PTHREAD_MUTEX_INITIALIZER;
+static ws_t W;                                       /* (ws_mu) */
+static struct {                                      /* (ws_mu) the page's request, taken by the tick */
+    int op, pick, scan_seq;
+    char ssid[33], pass[64];
+} ws_req;
+static volatile int ws_watched;                      /* (any thread: GET /api/fm1/wifi asked) */
+/* the engine thread's own */
+static uint32_t ws_watch_until, ws_t_sent, ws_t_poll, ws_t_seen, ws_t_hello, ws_t_job, ws_t_scan, ws_t_kept;
+static int ws_inflight;                             /* the op of the request waiting for its WIFI_R (-1 HELLO), 0 none */
+static int ws_scan_phase;                           /* 0 none, 1 asked, 2 waiting (LIST 0 0), 3 reading the pages */
+static int ws_scan_tries, ws_scan_first, ws_kept_first, ws_kept_due, ws_kept_phase;
+static rfm_wifi_net_t ws_tmp[16];
+static int ws_ntmp;
+static rfm_wifi_net_t ws_ktmp[6];
+static int ws_nktmp;
+static char ws_job_ssid[33];
+
+static void wipe(void *p, size_t n)
+{
+    volatile uint8_t *v = (volatile uint8_t *)p;
+    while (n--)
+        *v++ = 0;
+}
+
+static void ip_str(const uint8_t ip[4], char *out, size_t cap)
+{
+    snprintf(out, cap, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+}
+
+/* the address is on a network of the Move's own (an interface's subnet): the Move can reach it */
+static int on_my_lan(const uint8_t ip[4])
+{
+    struct ifaddrs *ifs, *i;
+    uint32_t a;
+    int yes = 0;
+    memcpy(&a, ip, 4);
+    if (getifaddrs(&ifs) != 0)
+        return -1;
+    for (i = ifs; i; i = i->ifa_next) {
+        const struct sockaddr_in *ad = (const struct sockaddr_in *)i->ifa_addr, *m = (const struct sockaddr_in *)i->ifa_netmask;
+        if (!ad || !m || ad->sin_family != AF_INET || (i->ifa_flags & IFF_LOOPBACK))
+            continue;
+        if ((ad->sin_addr.s_addr & m->sin_addr.s_addr) == (a & m->sin_addr.s_addr))
+            yes = 1;
+    }
+    freeifaddrs(ifs);
+    return yes || ip[0] == 127;
+}
+
+static int ws_send(int op, const uint8_t *body, uint32_t n, uint32_t now)
+{
+    if (g_usb_link < 0 || rfm_session_send(S, g_usb_link, RFM_WIFI, body, n) != 0)
+        return -1;
+    ws_inflight = op;
+    ws_t_sent = now;
+    return 0;
+}
+
+/* a WIFI_R (or another reply) from a link: only USB-A's WIFI_R counts */
+static void on_other_msg(void *ctx, int link, uint8_t cmd, const uint8_t *b, uint32_t n)
+{
+    rfm_wifi_state_t st;
+    rfm_wifi_list_t wl;
+    (void)ctx;
+    if (link != g_usb_link || cmd != RFM_WIFI_R || !n)
+        return;
+    ws_t_seen = g_now | 1u;
+    ws_inflight = 0;
+    pthread_mutex_lock(&ws_mu);
+    W.usb = 1;
+    W.usb_wifi = 1;                                  /* (only the Wi-Fi build answers WIFI) */
+    if (b[0] == RFM_WIFI_SCAN || b[0] == RFM_WIFI_LIST) {
+        if (rfm_parse_wifi_list(b, n, &wl) == 0) {
+            int i;
+            W.st.state = wl.state;
+            if (wl.op == RFM_WIFI_SCAN) {
+                if (wl.status == RFM_WIFI_OK) {
+                    ws_scan_phase = 2;
+                    ws_t_scan = g_now;
+                } else if (++ws_scan_tries > 8) {    /* (Wi-Fi starting, or the FM-1 getting an address) */
+                    ws_scan_phase = 0;
+                    W.scanning = 0;
+                    W.scan_err = 1;
+                    snprintf(W.err, sizeof W.err, "The FM-1 could not look for networks just now: try again.");
+                } else {
+                    ws_scan_phase = 1;               /* (asked again in a second) */
+                    ws_t_scan = g_now - 500u;
+                }
+            } else if (wl.which == RFM_WIFI_LIST_SCAN && ws_scan_phase == 2) {
+                if (!wl.scanning || g_now - ws_t_scan > WS_SCAN_MS) {
+                    ws_scan_phase = 3;
+                    ws_scan_first = 0;
+                    ws_ntmp = 0;
+                }
+            } else if (wl.which == RFM_WIFI_LIST_SCAN && ws_scan_phase == 3 && wl.first == ws_scan_first) {
+                for (i = 0; i < wl.count && ws_ntmp < 16; i++)
+                    ws_tmp[ws_ntmp++] = wl.net[i];
+                ws_scan_first += wl.count;
+                if (!wl.count || ws_scan_first >= wl.total) {   /* all of it: published */
+                    memcpy(W.nets, ws_tmp, sizeof ws_tmp);
+                    W.nnets = ws_ntmp;
+                    W.scanning = 0;
+                    W.scan_seq++;
+                    ws_scan_phase = 0;
+                    fprintf(stderr, "fm1link: Wi-Fi setup: the FM-1 hears %d network(s)\n", ws_ntmp);
+                }
+            } else if (wl.which == RFM_WIFI_LIST_KEPT && wl.first == ws_kept_first) {
+                if (!wl.first)
+                    ws_nktmp = 0;
+                for (i = 0; i < wl.count && ws_nktmp < 6; i++)
+                    ws_ktmp[ws_nktmp++] = wl.net[i];
+                ws_kept_first += wl.count;
+                if (!wl.count || ws_kept_first >= wl.total) {   /* all of them: published */
+                    memcpy(W.kept, ws_ktmp, sizeof ws_ktmp);
+                    W.nkept = ws_nktmp;
+                    W.kept_ok = 1;
+                    ws_kept_due = 0;
+                    ws_kept_phase = 0;
+                    ws_kept_first = 0;
+                    ws_t_kept = g_now;
+                }
+            }
+        }
+    } else if (rfm_parse_wifi_state(b, n, &st) == 0) {
+        const int had = W.st_ok ? W.st.saved : -1;
+        W.st = st;
+        W.st_ok = 1;
+        if (st.saved != had)
+            ws_kept_due = 1;
+        if (st.op == RFM_WIFI_SET) {
+            if (st.status == RFM_WIFI_OK) {
+                W.job = WJ_JOINING;
+            } else {
+                W.job = WJ_FAILED;
+                snprintf(W.job_why, sizeof W.job_why, "%s", st.status == RFM_WIFI_NOT_HERE ? "not over this link"
+                                                             : st.status == RFM_WIFI_BUSY ? "busy" : "refused");
+            }
+        } else if (st.op == RFM_WIFI_FORGET) {
+            ws_kept_due = 1;
+        }
+        if (W.job == WJ_JOINING && g_now - ws_t_job > 600u) {   /* (a reply sent before the SET was taken: not yet) */
+            if (st.state == RFM_WIFI_ST_CONNECTED && !strcmp(st.ssid, ws_job_ssid)) {
+                char a[24];
+                W.job = WJ_CONNECTED;
+                W.job_ms = g_now - ws_t_job;
+                ip_str(st.ip, W.job_ip, sizeof W.job_ip);
+                W.same_lan = on_my_lan(st.ip);
+                ws_kept_due = 1;
+                fprintf(stderr, "fm1link: Wi-Fi setup: the FM-1 joined \"%s\" as %s in %u ms%s\n", ws_job_ssid,
+                        W.job_ip, W.job_ms, W.same_lan == 0 ? " (not a network of the Move's)" : "");
+                /* the Wi-Fi search: that address first (remembered, asked at once), as an FM-1 linked before */
+                snprintf(a, sizeof a, "%s:%u", W.job_ip, st.tcp_port ? st.tcp_port : FM1LINK_TCP_PORT);
+                if (w_on && addr_parse(a, &w_kept) == 0) {
+                    w_has_kept = 1;
+                    w_t_probe = g_now - W_PROBE_MS;
+                }
+            } else if (st.state == RFM_WIFI_ST_FAILED) {
+                W.job = WJ_FAILED;
+                W.job_ms = g_now - ws_t_job;
+                snprintf(W.job_why, sizeof W.job_why, "%s", st.why[0] ? st.why : "it could not join");
+                fprintf(stderr, "fm1link: Wi-Fi setup: the FM-1 did not join \"%s\": %s\n", ws_job_ssid, W.job_why);
+            }
+        }
+    }
+    pthread_mutex_unlock(&ws_mu);
+}
+
+static void wsetup_tick(uint32_t now)
+{
+    uint8_t q[RFM_WIFI_BODY_MAX];
+    const rfm_hello_t *hl;
+    uint32_t age = 0;
+    int op = 0, pick = -1, seq = 0, present, active_usb;
+    char ssid[33] = "", pass[64] = "";
+    if (ws_watched) {
+        ws_watched = 0;
+        ws_watch_until = now + WS_WATCH_MS;
+    }
+    pthread_mutex_lock(&ws_mu);
+    if ((int32_t)(now - ws_watch_until) <= 0) {      /* (the link, for the page: read here, on this thread) */
+        const int fl = rfm_session_frame_link(S);
+        snprintf(W.link, sizeof W.link, "%s", !g_linked ? "" : fl >= 0 && fl == w_link ? "wifi" : "usb");
+        snprintf(W.addr, sizeof W.addr, "%s", w_state >= W_CONNECTING ? w_peer_str : "");
+        snprintf(W.search, sizeof W.search, "%s", !w_on ? "off" : w_state == W_CONNECTED ? "connected"
+                                                 : w_state == W_CONNECTING ? "connecting" : "searching");
+        W.wifi_on = w_on;
+    }
+    if (ws_req.op && !ws_inflight) {                 /* the page's request: taken (the password leaves the mailbox) */
+        op = ws_req.op, pick = ws_req.pick, seq = ws_req.scan_seq;
+        memcpy(ssid, ws_req.ssid, sizeof ssid);
+        memcpy(pass, ws_req.pass, sizeof pass);
+        wipe(&ws_req, sizeof ws_req);
+        if (op == WR_SET && pick >= 0 && pick < W.nnets && seq == W.scan_seq)
+            memcpy(ssid, W.nets[pick].ssid, sizeof ssid);   /* (its SSID as the FM-1 gave it) */
+    }
+    pthread_mutex_unlock(&ws_mu);
+    if (!op && (int32_t)(now - ws_watch_until) > 0 && !ws_scan_phase &&
+        (W.job != WJ_SENDING && W.job != WJ_JOINING))
+        return;                                      /* (nobody looks, nothing to do: USB-A left alone) */
+    if (ws_inflight && now - ws_t_sent >= WS_TRY_MS)
+        ws_inflight = -2;                            /* (counted below) */
+    hl = rfm_session_link_hello(S, g_usb_link, now, &age);
+    active_usb = g_linked && rfm_session_frame_link(S) == g_usb_link;
+    present = (ws_t_seen && now - ws_t_seen < WS_SEEN_MS) || (hl && age < WS_SEEN_MS) || active_usb;
+    pthread_mutex_lock(&ws_mu);
+    if (hl && (age < WS_SEEN_MS || active_usb)) {
+        W.usb_known = 1;                             /* (a WIFI_R lately says Wi-Fi whatever an old HELLO_R said) */
+        W.usb_wifi = (hl->caps & RFM_CAP_WIFI) != 0 || (ws_t_seen && now - ws_t_seen < WS_SEEN_MS);
+        snprintf(W.usb_name, sizeof W.usb_name, "%s", hl->identity);
+        snprintf(W.usb_fw, sizeof W.usb_fw, "%s", hl->fw_ver);
+    }
+    W.usb = present;
+    if (ws_inflight == -2) {
+        ws_inflight = 0;
+        W.timeouts++;
+    }
+    if (!present)
+        W.usb_known = W.usb_known && hl && age < 2u * WS_SEEN_MS;
+    if (W.job == WJ_JOINING && now - ws_t_job > WS_JOIN_MS) {
+        W.job = WJ_TIMEOUT;
+        W.job_ms = now - ws_t_job;
+    }
+    if (op && (!present || !W.usb_wifi)) {
+        snprintf(W.err, sizeof W.err, "%s", !present ? "No FM-1 on the Move's USB-A." : "The FM-1 on USB-A is not RemoteFM1 Wi-Fi.");
+        op = 0;
+    }
+    if (op == WR_SET) {
+        W.job = WJ_SENDING;
+        snprintf(W.job_ssid, sizeof W.job_ssid, "%s", ssid);
+        W.job_why[0] = W.job_ip[0] = 0;
+        W.job_ms = 0;
+        W.same_lan = -1;
+        W.sets++;
+        W.err[0] = 0;
+    } else if (op == WR_SCAN) {
+        W.scanning = 1;
+        W.scan_err = 0;
+        W.err[0] = 0;
+        W.scans++;
+    } else if (op == WR_FORGET) {
+        W.forgets++;
+        W.err[0] = 0;
+    }
+    pthread_mutex_unlock(&ws_mu);
+    if (op == WR_SET) {                              /* the password: into the message, sent, wiped */
+        const uint32_t n = rfm_build_wifi_set(q, ssid, pass);
+        wipe(pass, sizeof pass);
+        memcpy(ws_job_ssid, ssid, sizeof ws_job_ssid);
+        ws_t_job = now;
+        if (!n || ws_send(RFM_WIFI_SET, q, n, now) != 0) {
+            pthread_mutex_lock(&ws_mu);
+            W.job = WJ_FAILED;
+            snprintf(W.job_why, sizeof W.job_why, "%s", n ? "not sent" : "a bad name or password");
+            pthread_mutex_unlock(&ws_mu);
+        } else {
+            fprintf(stderr, "fm1link: Wi-Fi setup: \"%s\" sent to the FM-1 on USB-A\n", ssid);
+        }
+        wipe(q, sizeof q);
+        return;
+    }
+    wipe(pass, sizeof pass);
+    if (op == WR_SCAN) {
+        ws_scan_phase = 1;
+        ws_scan_tries = 0;
+        ws_t_scan = now - 1000u;
+    } else if (op == WR_FORGET) {
+        int k;
+        for (k = 0; k < W.nkept && strcmp(W.kept[k].ssid, ssid); k++)
+            ;
+        if (k < W.nkept && ws_send(RFM_WIFI_FORGET, q, rfm_build_wifi_forget(q, (uint32_t)k), now) == 0) {
+            fprintf(stderr, "fm1link: Wi-Fi setup: the FM-1 forgets \"%s\"\n", ssid);
+            return;
+        }
+    }
+    if (ws_inflight)
+        return;
+    if (!present) {                                  /* who is on USB-A: HELLO, then WIFI GET */
+        if (now - ws_t_hello >= WS_POLL_MS && !active_usb) {
+            ws_t_hello = now;
+            rfm_session_hello_link(S, g_usb_link);
+            ws_send(RFM_WIFI_GET, q, rfm_build_wifi_get(q), now);   /* (a USB build ignores it) */
+        }
+        return;
+    }
+    if (!W.usb_wifi) {                               /* (another unit since its HELLO_R? a WIFI GET now and then) */
+        if (now - ws_t_poll >= 3000u) {
+            ws_t_poll = now;
+            ws_send(RFM_WIFI_GET, q, rfm_build_wifi_get(q), now);
+        }
+        return;
+    }
+    if (ws_scan_phase == 1 && now - ws_t_scan >= 1000u) {
+        ws_send(RFM_WIFI_SCAN, q, rfm_build_wifi_scan(q, 1), now);
+    } else if (ws_scan_phase == 2 && now - ws_t_poll >= 600u) {
+        ws_t_poll = now;
+        ws_send(RFM_WIFI_LIST, q, rfm_build_wifi_list(q, RFM_WIFI_LIST_SCAN, 0), now);
+    } else if (ws_scan_phase == 3) {
+        ws_send(RFM_WIFI_LIST, q, rfm_build_wifi_list(q, RFM_WIFI_LIST_SCAN, (uint32_t)ws_scan_first), now);
+    } else if (ws_kept_phase || ((ws_kept_due || !W.kept_ok || now - ws_t_kept >= 10000u) && now - ws_t_poll >= 300u)) {
+        if (!ws_kept_phase)
+            ws_kept_first = 0;
+        ws_kept_phase = 1;
+        ws_t_poll = now;
+        ws_send(RFM_WIFI_LIST, q, rfm_build_wifi_list(q, RFM_WIFI_LIST_KEPT, (uint32_t)ws_kept_first), now);
+    } else if (now - ws_t_poll >= (W.job == WJ_JOINING || W.job == WJ_SENDING ? 700u : WS_POLL_MS)) {
+        ws_t_poll = now;
+        ws_send(RFM_WIFI_GET, q, rfm_build_wifi_get(q), now);
+    }
+}
+
+/* ---- the page's side (any thread) */
+static const char *const WST[] = { "off", "starting", "on", "joining", "address", "connected", "failed" };
+int fm1link_wifi_json(char *out, int cap)
+{
+    static ws_t w;                                   /* (one at a time: the web thread) */
+    char e[8][80], ip[16];
+    int n, i;
+    ws_watched = 1;
+    if (!g_on)
+        return snprintf(out, (size_t)cap, "{\"on\":false}");
+    pthread_mutex_lock(&ws_mu);
+    w = W;
+    pthread_mutex_unlock(&ws_mu);
+    mj_escape(w.usb_name, e[0], sizeof e[0]);
+    mj_escape(w.usb_fw, e[1], sizeof e[1]);
+    mj_escape(w.st.ssid, e[2], sizeof e[2]);
+    mj_escape(w.st.why, e[3], sizeof e[3]);
+    mj_escape(w.job_ssid, e[4], sizeof e[4]);
+    mj_escape(w.job_why, e[5], sizeof e[5]);
+    mj_escape(w.err, e[6], sizeof e[6]);
+    mj_escape(w.addr, e[7], sizeof e[7]);
+    ip_str(w.st.ip, ip, sizeof ip);
+    n = snprintf(out, (size_t)cap,
+                 "{\"on\":true,\"usb\":%s,\"usb_wifi\":%s,\"usb_known\":%s,\"usb_id\":\"%s\",\"usb_fw\":\"%s\","
+                 "\"link\":\"%s\",\"addr\":\"%s\",\"search\":\"%s\",\"wifi_off\":%s,"
+                 "\"fm1\":{\"known\":%s,\"state\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"why\":\"%s\",\"saved\":%u,"
+                 "\"host\":%u},"
+                 "\"job\":{\"phase\":\"%s\",\"ssid\":\"%s\",\"why\":\"%s\",\"ip\":\"%s\",\"ms\":%u,\"same_lan\":%d},"
+                 "\"err\":\"%s\",\"scan\":{\"scanning\":%s,\"seq\":%d,\"err\":%d,\"nets\":[",
+                 w.usb ? "true" : "false", w.usb_wifi ? "true" : "false", w.usb_known ? "true" : "false", e[0], e[1],
+                 w.link, e[7], w.search[0] ? w.search : "searching", w.wifi_on ? "false" : "true", w.st_ok ? "true" : "false",
+                 w.st_ok && w.st.state < 7 ? WST[w.st.state] : "", e[2],
+                 w.st.state == RFM_WIFI_ST_CONNECTED ? ip : "", w.st.rssi, e[3], w.st.saved, w.st.host,
+                 WJ_NAME[w.job], e[4], e[5], w.job_ip, w.job_ms, w.same_lan, e[6], w.scanning ? "true" : "false",
+                 w.scan_seq, w.scan_err);
+    for (i = 0; i < w.nnets && n < cap - 200; i++) {
+        mj_escape(w.nets[i].ssid, e[0], sizeof e[0]);
+        n += snprintf(out + n, (size_t)(cap - n), "%s{\"ssid\":\"%s\",\"rssi\":%d,\"ch\":%u,\"secured\":%s,\"kept\":%s,"
+                      "\"joined\":%s}", i ? "," : "", e[0], w.nets[i].rssi, w.nets[i].channel,
+                      w.nets[i].flags & RFM_WIFI_F_SECURED ? "true" : "false",
+                      w.nets[i].flags & RFM_WIFI_F_KEPT ? "true" : "false",
+                      w.nets[i].flags & RFM_WIFI_F_JOINED ? "true" : "false");
+    }
+    n += snprintf(out + n, (size_t)(cap - n), "]},\"kept\":[");
+    for (i = 0; i < w.nkept && n < cap - 160; i++) {
+        mj_escape(w.kept[i].ssid, e[0], sizeof e[0]);
+        n += snprintf(out + n, (size_t)(cap - n), "%s{\"ssid\":\"%s\",\"heard\":%s,\"rssi\":%d,\"joined\":%s}", i ? "," : "",
+                      e[0], w.kept[i].flags & RFM_WIFI_F_HEARD ? "true" : "false", w.kept[i].rssi,
+                      w.kept[i].flags & RFM_WIFI_F_JOINED ? "true" : "false");
+    }
+    n += snprintf(out + n, (size_t)(cap - n), "],\"counts\":{\"sets\":%u,\"scans\":%u,\"forgets\":%u,\"timeouts\":%u}}",
+                  w.sets, w.scans, w.forgets, w.timeouts);
+    return n < cap ? n : cap - 1;
+}
+
+static int ws_ask(int op, const char *ssid, char *pass, int pick, int seq)
+{
+    int r = 0;
+    if (!g_on)
+        r = -1;
+    pthread_mutex_lock(&ws_mu);
+    if (!r && (!W.usb || !W.usb_wifi))
+        r = -1;
+    if (!r) {
+        wipe(&ws_req, sizeof ws_req);
+        ws_req.op = op;
+        ws_req.pick = pick;
+        ws_req.scan_seq = seq;
+        snprintf(ws_req.ssid, sizeof ws_req.ssid, "%s", ssid ? ssid : "");
+        if (pass)
+            snprintf(ws_req.pass, sizeof ws_req.pass, "%s", pass);
+    }
+    pthread_mutex_unlock(&ws_mu);
+    if (pass)
+        wipe(pass, strlen(pass));
+    ws_watched = 1;
+    return r;
+}
+
+int fm1link_wifi_scan(void) { return ws_ask(WR_SCAN, NULL, NULL, -1, 0); }
+
+int fm1link_wifi_set(const char *ssid, char *pass, int pick, int scan_seq)
+{
+    const size_t sl = ssid ? strlen(ssid) : 0, pl = pass ? strlen(pass) : 0;
+    if (!sl || sl > RFM_WIFI_SSID_MAX || pl > RFM_WIFI_PASS_MAX || (pl && pl < 8)) {
+        if (pass)
+            wipe(pass, pl);
+        return -2;                                   /* (WPA: 8..63; an open network: none) */
+    }
+    return ws_ask(WR_SET, ssid, pass, pick, scan_seq);
+}
+
+int fm1link_wifi_forget(const char *ssid)
+{
+    int i, kept = 0;
+    pthread_mutex_lock(&ws_mu);
+    for (i = 0; i < W.nkept; i++)
+        kept |= !strcmp(W.kept[i].ssid, ssid ? ssid : "");
+    pthread_mutex_unlock(&ws_mu);
+    if (!kept)
+        return -2;
+    return ws_ask(WR_FORGET, ssid, NULL, -1, 0);
+}
+
 /* ------------------------------------------------------------------ the panel --- */
 static void release_all(int slot)
 {
@@ -571,6 +1021,7 @@ int fm1link_init(const fm1link_cfg_t *cfg)
     cb.state = on_state;
     cb.log = on_log;
     cb.midi_in = on_midi_in;
+    cb.msg = on_other_msg;               /* (WIFI_R: the Wi-Fi set up) */
     if (!(S = rfm_session_new(&sc, &cb)))
         return -1;
     if ((g_link = rfm_session_add_link(S, RFM_LINK_SX, usba_write, NULL, "Move USB-A")) < 0)
@@ -616,6 +1067,7 @@ void fm1link_tick(uint32_t now, int slot, fw_t *fw)
     g_now = now;
     mr_usba_poll();   /* (on_usba: into the session) */
     wifi_tick(now);   /* (the FM-1 over Wi-Fi: its bytes into the session) */
+    wsetup_tick(now); /* (its Wi-Fi set up from the page, over USB-A) */
     if (slot != g_slot || fw != g_fw) {   /* a slot switch (or its firmware changed): what it shows from now */
         if (g_slot >= 0 && slot != g_slot)
             release_all(g_slot);

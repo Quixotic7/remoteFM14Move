@@ -249,7 +249,22 @@ as USB-A, one FM-1 at a time.
 - **Status:** `fm1` gains `link` ("wifi" / "usb"), `addr`, `wifi` (off, searching, connecting, connected),
   `wifi_name`, `wifi_connects`, `wifi_drops`, `wifi_answers`, `panel_ev`; the page's pill says "FM-1 · Wi-Fi" or
   "FM-1 · USB-A" (the address in its tooltip). `--no-fm1-wifi`: USB-A only.
-- Putting the FM-1 on the network (its SSID and password) is RemoteFM1's `tools/wifi_probe.py setup` over USB for now.
+- **Putting the FM-1 on a network, from the page** (`js/movewifi.js`, `fm1link_wifi_*`): with the FM-1 on the Move's
+  USB-A, the settings sheet's "Set up the FM-1's Wi-Fi" (or `http://remotefm1.local:7730/?wifi`) opens "FM-1 Wi-Fi":
+  the FM-1's state, the networks it hears (its own scan, 2.4 GHz only: bars, a lock), a password (hidden, a show
+  toggle) and Join; the FM-1 is followed until it has an address ("Joined X as a.b.c.d. The Move will find it over
+  Wi-Fi: unplug it from USB-A"; a warning when the address is on none of the Move's networks); the networks it keeps,
+  each with Forget. RemoteFM1's WIFI over the USB-A SysEx link (SCAN, LIST's small pages, SET, FORGET, GET; RemoteFM1
+  docs/PROTOCOL.md section 10), one request at a time beside the session (which may run over TCP meanwhile). The
+  joined address goes first in the Wi-Fi search.
+  - API: `GET /api/fm1/wifi`; `POST /api/fm1/wifi/scan`, `/set` `{"ssid","password","pick","scan_seq"}`, `/forget`
+    `{"ssid"}`; 409 with no FM-1 running RemoteFM1 Wi-Fi on USB-A, 400 for a password outside 8..63 characters.
+  - The password: only in the POST body, wiped from the request buffer once read, copied once into the SET message,
+    wiped again; never logged, never in a URL, never written on the Move. The FM-1 keeps it in its own flash.
+  - `tests/fm1wifisetup_e2e.sh`: a fake RemoteFM1 Wi-Fi unit on the simulated USB-A (fm1sim.c `wifi`): the scan's
+    pages, bad passwords refused, a failed join explained, a join with the password arriving whole and in no log or
+    file, networks kept and forgotten, then RemoteFM1 Wi-Fi's simulator at the joined address linked over TCP.
+  - Without the Move: RemoteFM1's `tools/wifi_probe.py setup` (or `scan`) over USB from a computer.
 
 ## Fantasy CFWs (Elasticat, Ripple)
 

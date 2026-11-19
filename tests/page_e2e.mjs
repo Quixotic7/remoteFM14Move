@@ -22,7 +22,8 @@
 //   - Files (js/movefiles.js, js/movefs.js): the sheet's Add samples puts a WAV into the Move's audio/; the header's
 //     Files button's browser: the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder
 //     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
-//   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet;
+//   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet; FM-1 Wi-Fi (js/movewifi.js) from the
+//     settings sheet: the USB-A line, a canned list, a password picked and shown (move-page-phone-wifi.png);
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
 //     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png,
 //     move-page-editor.png (the Editor), move-page-files.png (the file browser).
@@ -546,6 +547,43 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await edit(18, 1 * 8, 100);
   await click(".mv-close");
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "close"), "the sheet's close button goes back to the faceplate");
+
+  // ---- FM-1 Wi-Fi (js/movewifi.js) on the phone: the settings sheet's button opens it; with no FM-1 on USB-A it says
+  // setup needs it there; with an FM-1 (the host's answer stood in for: a canned /api/fm1/wifi) the networks with
+  // their bars and locks, a pick opens the password (hidden, its show toggle), Join; Esc closes it
+  await js(`FM1MoveUi.o.sheet.open()`);
+  ok(await until(`[...document.querySelectorAll(".sheet h3.heading")].some((e) => e.textContent === "FM-1 Wi-Fi") && document.getElementById("mv-wf-open")`, 5000, "the sheet's FM-1 Wi-Fi"),
+    "the settings sheet's FM-1 Wi-Fi section: Set up the FM-1's Wi-Fi");
+  await sleep(500);   // (the sheet slides in: a tap before it is there lands on the scrim)
+  await click("#mv-wf-open");
+  ok(await until(`!document.getElementById("mv-wf").hidden && /USB-A/.test((document.getElementById("mv-wf-need") || {}).textContent || "")`, 6000, "the Wi-Fi panel"),
+    "it opens; no FM-1 on USB-A: \"Setup needs the FM-1 plugged into the Move's USB-A\"");
+  const wfBox = await js(`(() => { const b = document.getElementById("mv-wf").getBoundingClientRect(); return { w: b.width, x: b.left, sw: document.documentElement.scrollWidth }; })()`);
+  ok(wfBox.w >= 389 && wfBox.x <= 1 && wfBox.sw <= 390, `the panel fills the phone's width (${Math.round(wfBox.w)} px), no sideways scroll`);
+  await js(`(() => { const real = window.fetch, net = (ssid, rssi, ch, secured, kept, joined) => ({ ssid, rssi, ch, secured, kept, joined });
+    window.__wfFetch = real;
+    window.fetch = (u, o) => String(u).endsWith("api/fm1/wifi") ? Promise.resolve(new Response(JSON.stringify({ on: true, usb: true, usb_wifi: true, usb_known: true,
+      usb_id: "FM-1_729", usb_fw: "DEV", link: "usb", addr: "", search: "searching", wifi_off: false,
+      fm1: { known: true, state: "connected", ssid: "Dogsontheroof", ip: "10.0.0.165", rssi: -63, why: "", saved: 1, host: 0 },
+      job: { phase: "", ssid: "", why: "", ip: "", ms: 0, same_lan: -1 }, err: "",
+      scan: { scanning: false, seq: 1, err: 0, nets: [net("Dogsontheroof", -52, 6, true, true, true), net("Owner's iPhone", -58, 1, true, false, false),
+        net("Cafe open", -71, 11, false, false, false), net("A neighbour's network with a long name", -84, 3, true, false, false)] },
+      kept: [{ ssid: "Dogsontheroof", heard: true, rssi: -52, joined: true }], counts: {} }), { headers: { "Content-Type": "application/json" } })) : real(u, o); })()`);
+  ok(await until(`document.querySelectorAll("#mv-wf .mv-wf-row").length === 4 && document.querySelectorAll("#mv-wf .mv-wf-row .lk .mv-ic").length === 3 && document.querySelectorAll("#mv-wf .mv-wf-kept").length === 1`, 5000, "the canned list"),
+    "the networks the FM-1 hears: four rows, three locks, signal bars; the network it keeps with Forget");
+  await click(`#mv-wf .mv-wf-row[data-ssid="Owner's iPhone"]`);
+  ok(await until(`document.querySelector("#mv-wf .mv-wf-net.sel #mv-wf-pass") && document.getElementById("mv-wf-pass").type === "password" && document.getElementById("mv-wf-join").disabled`, 3000, "the password"),
+    "a pick opens its password (hidden; Join waits for 8 characters)");
+  await js(`(() => { const p = document.getElementById("mv-wf-pass"); p.value = "fake-pass-1"; p.dispatchEvent(new Event("input")); })()`);
+  await click("#mv-wf .mv-wf-eye");
+  ok(await until(`document.getElementById("mv-wf-pass").type === "text" && !document.getElementById("mv-wf-join").disabled`, 2000, "show"),
+    "the eye shows the password; Join is ready");
+  await sleep(1700);   // (a poll in between keeps the field, its text and the pick)
+  ok(await js(`document.getElementById("mv-wf-pass").value === "fake-pass-1" && !!document.querySelector("#mv-wf .mv-wf-net.sel")`), "a poll of the state keeps what was typed");
+  await shot(join(DOCS, "move-page-phone-wifi.png"));
+  await js(`(() => { window.fetch = window.__wfFetch; FM1MoveUi.wifi.pass.value = ""; })()`);
+  await esc();
+  ok(await until(`document.getElementById("mv-wf").hidden`, 3000, "Esc"), "Esc closes FM-1 Wi-Fi");
 
   const bad = [...responses].filter(([, s]) => s >= 400);
   ok(responses.size > 30 && !bad.length && !failed.length, `every file the page asked for loaded (${responses.size} responses; failed: ${bad.map(([u, s]) => `${s} ${u}`).concat(failed).join(", ") || "none"})`);

@@ -7,7 +7,9 @@
  *
  * The tests drive it through the page's test API (web.c, --test-api): POST /api/test/fm1 {"op":..,"a":..,"b":..}
  * (key a vel|0, press a p, btn a 1|0, enc a detents, master b, trs a note b vel (a note on the unit's 5-pin jack),
- * plug a 0|1 (1: a fresh unit plugged in)) and GET /api/test/fm1: how the unit stands (its session, its screen
+ * plug a 0|1 (1: a fresh unit plugged in), wifi a 0|1 b PORT (a fresh unit plugged in, RemoteFM1 Wi-Fi when a: its
+ * WIFI answers, the networks around FM1SIM_WIFI_NETS, joined it says 127.0.0.1:PORT; the tests' password
+ * FM1SIM_WIFI_PASS)) and GET /api/test/fm1: how the unit stands (its session, its screen
  * against the active slot's, its LEDs against the slot's, its counters, the bridge's). */
 #define _GNU_SOURCE
 #include "fm1sim.h"
@@ -21,6 +23,7 @@
 
 #include "engine.h"
 #include "fm1link.h"
+#include "minijson.h"
 #include "mr_core.h"
 #include "rfm/fake.h"
 
@@ -28,6 +31,11 @@ static pthread_t g_thr;
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static volatile int g_run;
 static rfm_fake_t *F;
+static int g_wifi, g_wifi_port;      /* the next fresh unit: RemoteFM1 Wi-Fi (fake.h cfg.wifi), its TCP port */
+#define FM1SIM_WIFI_NETS "Dogsontheroof:-52:1:6;Phone hotspot:-58:1:1;Cafe open:-71:0:11;" \
+                         "A neighbour's network with a long name:-80:1:3;Another neighbour's long network:-84:1:9;" \
+                         "Yet another network nearby, far:-88:1:13"
+#define FM1SIM_WIFI_PASS "test-pass-1234"   /* (fake credentials: tests/fm1wifisetup_e2e.sh) */
 static int g_plugged;
 static uint32_t g_plugs;
 /* the unit's MIDI out -> USB-MIDI packets (whole SysEx, 3 bytes a packet) */
@@ -46,6 +54,13 @@ static rfm_fake_t *fresh(void)
     rfm_fake_cfg_default(&fc);   /* a RemoteFM1 0.3.6 unit on USB: HOLD, MIDI_IN, TOUCH */
     fc.has_bulk = 0;
     fc.ble = 0;
+    if (g_wifi) {
+        fc.wifi = 1;
+        fc.wifi_nets = FM1SIM_WIFI_NETS;
+        fc.wifi_ip = 0x0100007Fu;    /* 127.0.0.1: the Wi-Fi simulator on this machine (tests) */
+        fc.wifi_port = (uint16_t)g_wifi_port;
+        fc.wifi_join_ms = 1200;
+    }
     return rfm_fake_new(&fc);
 }
 
@@ -170,6 +185,15 @@ int fm1sim_cmd(const char *op, long a, long b)
         }
         g_plugged = a != 0;
         mr_sim_usba_plug(g_plugged);
+    } else if (!strcmp(op, "wifi")) {   /* a fresh unit plugged in: RemoteFM1 Wi-Fi (a) or not */
+        g_wifi = a != 0;
+        g_wifi_port = b > 0 && b < 65536 ? (int)b : 7740;
+        rfm_fake_free(F);
+        F = fresh();
+        memset(&P, 0, sizeof P);
+        g_plugs++;
+        g_plugged = 1;
+        mr_sim_usba_plug(1);
     } else if (!F || !g_plugged)
         r = -1;
     else if (!strcmp(op, "key"))
@@ -197,7 +221,9 @@ int fm1sim_json(char *out, int cap)
     uint32_t seq = 0, led_pkts = 0, usba_pkts = 0, lost = 0, same = 0, i;
     rfm_fake_stats_t fs;
     rfm_leds_t want;
-    int sess = 0, exact, leds = 0, holding = 0, plug = 0;
+    int sess = 0, exact, leds = 0, holding = 0, plug = 0, wst = 0, wkept = 0, wpass = 0;
+    uint32_t wreqs = 0, wsets = 0, wscans = 0;
+    char wssid[33] = "", wesc[80];
     static uint16_t plug_px[240 * 240];   /* (the USB-A plug screen, made once) */
     static int plug_made;
     if (!g_run)
@@ -218,15 +244,24 @@ int fm1sim_json(char *out, int cap)
         if (!plug_made)
             fm1link_plug_screen(plug_px), plug_made = 1;
         plug = !memcmp(px, plug_px, sizeof plug_px);
+        if (g_wifi) {
+            char k[33];
+            wst = rfm_fake_wifi_state(F, wssid);
+            while (rfm_fake_wifi_kept(F, wkept, k))
+                wpass += rfm_fake_wifi_pass_is(F, k, FM1SIM_WIFI_PASS), wkept++;
+            rfm_fake_wifi_counts(F, &wreqs, &wsets, &wscans);
+        }
     }
+    mj_escape(wssid, wesc, sizeof wesc);
     exact = same == 240u * 240u;
     pthread_mutex_unlock(&g_mu);
     return snprintf(out, (size_t)cap,
                     "{\"on\":1,\"plugged\":%d,\"plugs\":%u,\"session\":%d,\"screen_same\":%u,\"screen_pct\":%.1f,"
                     "\"screen_exact\":%d,\"plug\":%d,\"holding\":%d,\"leds_match\":%d,\"hellos\":%u,\"sessions\":%u,\"frames\":%u,"
                     "\"held_frames\":%u,\"decode_errs\":%u,\"keepalive_expired\":%u,\"leds\":%u,\"panel_updates\":%u,"
-                    "\"led_pkts\":%u,\"usba_pkts\":%u,\"bridge_lost\":%u}",
+                    "\"led_pkts\":%u,\"usba_pkts\":%u,\"bridge_lost\":%u,\"wifi\":%d,\"wifi_state\":%d,\"wifi_ssid\":\"%s\","
+                    "\"wifi_kept\":%d,\"wifi_pass_ok\":%d,\"wifi_reqs\":%u,\"wifi_sets\":%u,\"wifi_scans\":%u}",
                     g_plugged, g_plugs, sess, same, same * 100.0 / (240.0 * 240.0), exact, plug, holding, leds, fs.hellos,
                     fs.sessions_started, fs.frames, fs.held_frames, fs.decode_errs, fs.keepalive_expired, fs.leds,
-                    fs.panel_updates, led_pkts, usba_pkts, lost);
+                    fs.panel_updates, led_pkts, usba_pkts, lost, g_wifi, wst, wesc, wkept, wpass, wreqs, wsets, wscans);
 }
