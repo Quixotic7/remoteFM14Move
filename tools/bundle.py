@@ -73,6 +73,17 @@ def main():
         for f in rows:
             o.write('| %s | %s | %s | %s | %s |\n' % (f['name'], f['version'], f['license'], f['source_url'],
                                                       f['rfm1']['sha256']))
+        dev = os.path.join(pkg, 'firmwares-dev')   # (make package DEV_FIRMWARES=..: README "Development builds")
+        if os.path.isdir(dev):
+            o.write('\n## Development builds (firmwares-dev/)\n\nInstalled over the same <id>-<version> when their .rfm1 '
+                    'differs (README "Development builds").\n\n| Firmware | Version | Licence | Source | .rfm1 SHA-256 |\n'
+                    '|---|---|---|---|---|\n')
+            for n in sorted(os.listdir(dev)):
+                if n.endswith('.json'):
+                    j = json.load(open(os.path.join(dev, n)))
+                    m = j.get('manifest', {})
+                    o.write('| %s | %s | %s | %s | %s |\n' % (m.get('name'), m.get('version'), m.get('license'),
+                                                              m.get('source_url'), j.get('sha256')))
     print('bundle: %d firmwares (%.1f MB) and the signed catalog index (%d firmwares) into %s'
           % (len(rows), size / 1e6, len(index['firmwares']), pkg))
 
