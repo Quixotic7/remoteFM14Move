@@ -74,6 +74,13 @@ midi 1 128 60 0; midi 1 128 64 0; midi 1 128 67 0; settle
     || bad "arp: $n0 -> $n1"
 settle; n0=$(field notes0); midi 2 144 62 100; settle; n1=$(field notes0); midi 2 128 62 0
 [ $((n1 - n0)) = 1 ] && ok "track 2 is not in the arp's filter: it passes straight through (1 note)" || bad "track 2: $n0 -> $n1"
+# the pads played live (track 0) on channel 1: through the arp too, to the active slot
+settle; n0=$(field notes0); midi 0 144 60 100; midi 0 144 64 100; midi 0 144 67 100; sleep 1.5; settle; n1=$(field notes0)
+midi 0 128 60 0; midi 0 128 64 0; midi 0 128 67 0; settle
+[ $((n1 - n0)) -ge 6 ] && ok "live pads on channel 1 go through the arp too: a held chord becomes $((n1 - n0)) notes at the active slot" \
+    || bad "live through the arp: $n0 -> $n1"
+settle; n0=$(field notes0); midi 0 145 62 100; settle; n1=$(field notes0); midi 0 129 62 0
+[ $((n1 - n0)) = 1 ] && ok "live on channel 2 (track 2, not the arp's): straight to the active slot (1 note)" || bad "live ch 2: $n0 -> $n1"
 # ---- a firmware's track filter: slot 2 without track 5
 edit 19 1 65519 >/dev/null; settle
 a0=$(field notes0); b0=$(field notes1); midi 5 144 72 100; settle; a1=$(field notes0); b1=$(field notes1); midi 5 128 72 0

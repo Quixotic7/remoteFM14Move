@@ -124,6 +124,7 @@ typedef struct {
     uint8_t val[RFM_MOVE_FX_PARAMS];   /* FX_PARAM's values (applied to an instance as it comes in) */
     uint16_t filt;             /* MIDI FX: the tracks it acts on (ROUTE) */
     int last_track;            /* MIDI FX: the track of the last message it took (its generated notes' track) */
+    int last_live;             /* MIDI FX: that message came from the pads played live (its notes go to the active slot) */
     uint64_t ns_mark;
     uint32_t cpu_permille, over;
     int peak;                  /* audio FX: its return's peak, this meter window */
@@ -406,7 +407,10 @@ static void slot_midi(int s, const uint8_t *b, int n, uint32_t frame)
 
 /* a sequencer message (track 1..16) after MIDI FX slot `from`: through the rest of the chain (each slot acts on the
  * tracks in its filter and passes the others through), then to every sounding firmware whose filter has the track */
-static void chain_midi(int from, int track, const uint8_t *b, int n, uint32_t frame)
+/* MIDI down the MIDI FX chain from slot `from`: each MIDI FX acts on the tracks in its filter and passes the rest on.
+ * What comes out goes to the firmwares: the sequencer's (live 0) to every sounding slot whose track filter has the
+ * track; the pads played live (live 1) to the active slot only, as without MIDI FX */
+static void chain_midi(int from, int track, int live, const uint8_t *b, int n, uint32_t frame)
 {
     int k, s;
     if (track < 1 || track > 16)
@@ -417,12 +421,17 @@ static void chain_midi(int from, int track, const uint8_t *b, int n, uint32_t fr
             uint8_t out[FX_MAX_OUT][3];
             int lens[FX_MAX_OUT], i;
             const int m = fx_midi(x->run, b, n, out, lens, FX_MAX_OUT);
-            x->last_track = track;
+            x->last_track = track, x->last_live = live;
             for (i = 0; i < m; i++)
                 if (lens[i] > 0 && lens[i] <= 3)
-                    chain_midi(k + 1, track, out[i], lens[i], frame);
+                    chain_midi(k + 1, track, live, out[i], lens[i], frame);
             return;
         }
+    }
+    if (live) {
+        if (SL[g_active].on)
+            slot_midi(g_active, b, n, frame);
+        return;
     }
     for (s = 0; s < NSLOT; s++)
         if (SL[s].on && (rfm_move_fw_sounding(&S->core) >> s & 1) && (SL[s].filt >> (track - 1) & 1))
@@ -433,12 +442,16 @@ static void route_midi(const rfm_move_act_t *a)
 {
     if (!a->n)
         return;
-    if (a->track == 0) {   /* the pads played live, Control mode: the shown firmware */
-        if (SL[g_active].on)
+    if (a->track == 0) {   /* the pads played live (MIDI, Control, the sequencer's live notes): through the MIDI FX as
+                            * the track of their channel (the sequencer's tracks play on their own channels), then to
+                            * the active slot; system messages straight there */
+        if (a->bytes[0] >= 0x80 && a->bytes[0] < 0xF0 && a->n <= 3)
+            chain_midi(0, (a->bytes[0] & 0x0F) + 1, 1, a->bytes, a->n, a->frame);
+        else if (SL[g_active].on)
             slot_midi(g_active, a->bytes, a->n, a->frame);
         return;
     }
-    chain_midi(0, a->track, a->bytes, a->n, a->frame);   /* the sequencer's: the MIDI FX, then the filters */
+    chain_midi(0, a->track, 0, a->bytes, a->n, a->frame);   /* the sequencer's: the MIDI FX, then the filters */
 }
 
 /* each MIDI FX's tick (once a block): its generated notes take its track (its filter's one track, else the track it
@@ -458,7 +471,7 @@ static void midi_fx_tick(void)
         t = t < 16 ? t + 1 : x->last_track ? x->last_track : 1;
         for (i = 0; i < m; i++)
             if (lens[i] > 0 && lens[i] <= 3)
-                chain_midi(k + 1, t, out[i], lens[i], 0);
+                chain_midi(k + 1, t, x->last_live, out[i], lens[i], 0);
     }
 }
 
@@ -601,7 +614,7 @@ static void fx_opened(st_job_t *j)
     x->opening = 0;
     fx_drop(kind, s);
     x->run = j->ptr;
-    x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0;
+    x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0, x->last_live = 0;
     fx_pend_apply(x);
     fx_apply(kind, s);
     fprintf(stderr, "engine: %s FX %d: %s\n", kind ? "audio" : "MIDI", s + 1, fx_inst_mod(x->run)->name);
@@ -1546,7 +1559,7 @@ char *engine_fx_modules(void)
 int engine_test_midi(int track, int b0, int b1, int b2)
 {
     int r = -1;
-    if (!C.test_api || track < 1 || track > 16)
+    if (!C.test_api || track < 0 || track > 16)   /* (track 0: as the pads played live) */
         return -1;
     pthread_mutex_lock(&g_vmu);
     if (g_ntmidi < (int)(sizeof g_tmidi / sizeof g_tmidi[0])) {
@@ -1991,8 +2004,13 @@ static void *engine_main(void *arg)
                 memcpy(tm, g_tmidi, sizeof tm[0] * (size_t)nt);
                 g_ntmidi = 0;
                 pthread_mutex_unlock(&g_vmu);
-                for (i = 0; i < nt; i++)
-                    chain_midi(0, tm[i].track, tm[i].b, 3, 0);
+                for (i = 0; i < nt; i++) {
+                    rfm_move_act_t a;
+                    memset(&a, 0, sizeof a);
+                    a.kind = RFM_MOVE_ACT_MIDI, a.track = tm[i].track, a.n = 3;
+                    memcpy(a.bytes, tm[i].b, 3);
+                    route_midi(&a);
+                }
             }
             for (i = 0; i < n; i++) {
                 if (pin[i].op >= ENG_OP_ACTIVE && pin[i].op <= ENG_OP_LAST)
