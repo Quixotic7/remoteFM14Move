@@ -21,6 +21,10 @@
  *     --fx-budget   an FX module's CPU budget, permille of a core (default 200); past it the module is refused
  *     --test-api    (tests) POST /api/test/midi: sequencer MIDI from outside
  *     --fx-probe KIND DIR SO   (internal) load one FX module in this child process and exit 0 (fx.c's crash probe)
+ *     --threads 0   every slot rendered on the engine's thread (default 1: a render thread per slot, README "Threads")
+ *     --no-cpu2     no core-1 thread for the firmwares with cpu2 (they run their core-1 jobs themselves)
+ *     --no-rt-threads   the engine's, the slots' and core 1's threads at normal priority (default: bin/heal asked for
+ *                   SCHED_FIFO, as Move Remote asks for its audio thread; the Move only)
  *     --no-fm1      no FM-1 link on USB-A (fm1link.c; USB-A stays Move Remote's)
  *     --fm1-bps     the FM-1's screen, TILES body bytes a second (default fm1link.h FM1LINK_BPS_DEFAULT)
  *     --fm1-cap     USB-A packets per SPI transfer (default FM1LINK_CAP_DEFAULT; the rest of a transfer is the LEDs')
@@ -45,6 +49,7 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "fwrt.h"
 #include "fm1link.h"
 #ifdef RFM14_PLAT_SIM
 #include "fm1sim.h"
@@ -66,6 +71,8 @@ int main(int argc, char **argv)
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
     int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0, fm1_wifi_off = 0, fm1_usba_screen = 0;
+    int threads = 1, cpu2 = 1, rt_threads = 1;
+    char heal[PATH_MAX];
     const char *fm1_addr = NULL;
     const char *sim_ain = NULL;
     long fm1_bps = 0;
@@ -113,6 +120,12 @@ int main(int argc, char **argv)
             fx_dir = argv[++i];
         else if (!strcmp(argv[i], "--fx-budget") && i + 1 < argc)
             fx_budget = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--threads") && i + 1 < argc)
+            threads = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--no-cpu2"))
+            cpu2 = 0;
+        else if (!strcmp(argv[i], "--no-rt-threads"))
+            rt_threads = 0;
         else if (!strcmp(argv[i], "--no-fm1"))
             fm1_off = 1;
         else if (!strcmp(argv[i], "--fm1-bps") && i + 1 < argc)
@@ -149,7 +162,7 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
-                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
+                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
                             "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -201,8 +214,19 @@ int main(int argc, char **argv)
         c.fm1_wifi_off = fm1_wifi_off;
         c.fm1_usba_screen = fm1_usba_screen;
         c.fm1_addr = fm1_addr;
+        c.serial = !threads;
+        fw_cpu2_enable(cpu2);
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */
+        if (rt_threads && realpath(argv[0], heal)) {   /* (the module's bin/heal, beside this program, as Move Remote's) */
+            char *slash = strrchr(heal, '/');
+            if (slash) {
+                snprintf(slash, sizeof heal - (size_t)(slash - heal), "/bin/heal");
+                c.heal = heal;
+            }
+        }
+#else
+        (void)rt_threads, (void)heal;
 #endif
         if (capture) {
             snprintf(cap[0], sizeof cap[0], "%s/out.raw", capture);

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* The engine: one thread (cores 0..2, never real time) that runs everything between the Move and the firmwares:
+/* The engine: one thread (cores 0..2) that runs everything between the Move and the firmwares, and a render thread
+ * per slot (README "Threads": fork-join per block; a dual-core firmware's core 1 on a thread of its own too):
  *
  *   - up to 3 firmware slots (fwrt.c instances) on their device clocks, mixed with each slot's level, through a soft
  *     limiter, rendered 4..8 blocks ahead into a lock-free ring that the Move's audio thread drains (engine_audio,
@@ -25,6 +26,9 @@ typedef struct {
     uint32_t splash_ms;           /* the session (the Move's controls and screen) starts this long after the engine: the
                                    * status screen with the page's address shows meanwhile */
     int cpu_mask;                 /* the engine thread's cores (bits; 0 any) */
+    int serial;                   /* 1: every slot rendered on the engine's thread (no render threads: README "Threads") */
+    const char *heal;             /* the module's bin/heal (Move Remote's setuid helper: SCHED_FIFO for a named thread of
+                                   * this process), asked for the engine's, the slots' and core 1's threads; NULL none */
     const char *bundled_index;    /* the module's catalog snapshot (catalog/index.json), or NULL */
     const char *catalog_url;      /* the catalog's base URL when the root's catalog-url names none (NULL: the default) */
     long log_cap;                 /* stderr's file is moved to <log>.1 past this many bytes (0: 1 MB, < 0: never) */

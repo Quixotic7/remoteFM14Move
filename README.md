@@ -5,7 +5,7 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
 
 - **The firmwares** run as native code: each `.rfm1` is translated by wasm2c and compiled for the Move
   (`<id>-<version>.rfm1m`), with the same sound as the `.rfm1` in wasm3, bit for bit (tested).
-- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.4, in-process: FM-1
+- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.5, in-process: FM-1
   mode on the pads and knobs, MIDI, Control and the sequencer, and the projects view (Shift + step 1, or Track 1 held +
   step 1) with three firmware slots, their levels and their states.
 - **The hardware** is [Move Remote](https://github.com/Quixotic7/abletonmoveremote)'s device code, in-process: the SPI
@@ -197,6 +197,12 @@ make test
   (`RFM14_TEST_DISK_FREE_MB`, the test build only), no temporary file left.
 - `tests/latch_e2e.sh` (rfm1cs 0.5.4, latch per slot): MIDI mode, latch on, a chord on slot 1 (Felucca); slot 2
   (ChoralRoot) made active: slot 1 keeps sounding, slot 2 plays its own note; latch off: both silent.
+- `tests/threads_e2e.sh` (below, "Threads"): core 1: the test firmware's jobs on the core-1 thread, the same PCM as
+  with core 1 off; an object from before the threads (dist/move-catalog's FIZZ, when there): its own call depth = the
+  one lock, the same PCM; the host with three slots on their threads (Felucca, the core-1 fixture with core 1 on, FIZZ's
+  old object or ChoralRoot) and a phrase on track 1: each slot's blocks equal that firmware replayed offline alone on
+  one thread (core 1 off) from the host's log of its input, bit for bit; the mix is what the audio thread played;
+  `--threads 0` too. `tests/threads_bench.sh [SECONDS]` (not in make test) prints the render split, serial vs threads.
 
 ## An FM-1 on the Move's USB-A
 
@@ -349,6 +355,92 @@ sequencer's tempo and transport) and NULL everything else, with a tail of NULLs 
   written with each project save and given back (`set_param("state")`) when that project's modules load.
 - Modules are listed at start: one installed while RemoteFM1 runs shows after a restart.
 
+## Threads
+
+The Move has four Cortex-A72 cores: core 3 is the SPI's (Move Remote's `mr-audio`, SCHED_FIFO 70), cores 0..2 are
+ours. Until 2026-11-19 one engine thread rendered all three slots one after another, so their costs added up (the
+owner's Move: FIZZ in slot 1 and SLOOP 3 in slot 3, the engine thread at 94 %, ~90 late blocks a second).
+
+- **A render thread per slot** (`rfm1-slot1..3`, pinned to cores 0, 1, 2), **fork-join per block.** The engine's thread
+  (`rfm1-engine`) does everything that touches a firmware between two blocks, exactly as before: the sequencer and its
+  MIDI, the panel, inputs queued at the block's frame, the active slot's MIDI out, the flash, the screen, loads. Then
+  it hands block N to every sounding slot's thread at once, waits for them all, and mixes in slot order (levels, pans,
+  sends, the FX returns, the limiter) into the ring. A slot's instance is touched by its render thread only while the
+  engine waits, and by the engine only between blocks: each firmware gets the same calls in the same order as on one
+  thread, so its sound is the same bytes (tests/threads_e2e.sh replays each slot offline and compares). A block now
+  costs the slowest slot plus the mix, not the sum. `--threads 0`: the old way, every slot on the engine's thread.
+- **The runtime per thread.** wasm2c 1.0.32 keeps its trap state in process globals: the jump buffer a trap longjmps
+  to, the unwind target, and `wasm_rt_call_stack_depth`, which every wasm function increments and decrements.
+  `tools/w2c_mt.sh` patches the host's copy of the runtime (every substitution checked): the trap state is
+  `__thread`; firmware objects built from now on (`tools/build_fw.sh`) count their depth in a thread-local
+  `wasm_rt_call_stack_depth_tls` (initial-exec TLS: one load more per call) and say so (`rfm1m_caps`). The generated
+  C is the same, so is the sound (bitident).
+- **Objects built before that** (the published Move catalog's, whose depth counter is the process global): on Linux
+  the host points each loaded object's GOT entry for that global (its one `R_AARCH64_GLOB_DAT` relocation, checked to
+  hold the global's address) at a counter of that object's own, so different old objects run on different threads at
+  once; two slots running the same old object take turns (its lock). Checked on all 118 objects of
+  dist/move-catalog. Anything unexpected: every call into that object under one process-wide lock (also
+  `RFM14_LEGACY_LOCK=1`). The status says `"obj":"mt"`, `"old"` or `"old-locked"` per slot. A `make catalog` rebuild
+  turns them into `mt` objects (nothing else changes; the catalog must then be published again).
+- **Real time without root.** The engine's, the slots' and core 1's threads ask the module's own `bin/heal` (Move
+  Remote's setuid helper, installed by schwung-heal, the one that already gives `mr-audio` SCHED_FIFO) to promote them,
+  exactly as Move Remote asks for its audio thread, then lower themselves to their own priority (slots and core 1
+  FIFO 60, the engine 58: lowering needs no privilege). No helper: normal priority, as before. `--no-rt-threads`:
+  never asked.
+
+### Core 1 (cpu2): dual-core firmwares
+
+On the FM-1, FIZZ and ChoralRoot render part of their voices on the chip's second core: each control block core 0
+updates the shared state, hands one job to core 1 ("voices 8..15 into bus B"), renders its own part, waits, and sums
+both parts in a fixed order, so the samples are one core's. **The .rfm1 format has no core 1** (RFM1-FORMAT.md: no
+threads, every export from one thread): their .rfm1 builds run the job inline (FIZZ's "simulated" back end,
+ChoralRoot's stub core), so a host cannot split them by itself. This host offers an optional extension, **cpu2**:
+
+| the module | what |
+|---|---|
+| imports `rfm1_cpu2_1.run(fn, arg) -> i32` | 1: handed over (core 1 runs the job now); 0: not (run it yourself) |
+| imports `rfm1_cpu2_1.wait() -> i32` | 0: the job is done; else it was not (run it yourself) |
+| exports `rfm1_c1_stack(top)` | sets its stack pointer and limits to `top` (Emscripten: `emscripten_stack_set_limits` and `_emscripten_stack_restore`) |
+| exports `rfm1_c1_call(fn, arg)` | calls `fn(arg)` through its function table |
+| manifest `"wants": ["cpu2"]` | (informative) |
+
+- The host makes a **twin** of the instance: the same module instantiated again (its own globals, so its own stack
+  pointer; its own table) whose linear memory is the instance's (the same bytes). It gives it a 256 KB stack
+  `rfm1_alloc`'d from the module (`rfm1_c1_stack`) and a thread of its own (`rfm1-c1-N`, cores 0..2). `run` hands the
+  job over (sequence numbers, a short spin, then a futex), the slot's thread goes on with core 0's part, `wait` joins.
+- The rules are the FM-1's: between run and wait, core 0 leaves the job's data alone; one job at a time; the job may
+  not ask for core 1 itself (the twin's `run` answers 0). A job's output to stdout is dropped. A trap in a job: `wait`
+  answers -2 (the module's fallback renders it) and core 1 stays off for that instance. A memory the twin shares never
+  grows (`memory.grow` answers -1; .rfm1 memories are fixed anyway). Hosts without cpu2 (wasm3 on iOS / Android, the
+  web) give imports that answer 0: the module runs every job itself, as today.
+- **What a firmware build needs:** FM1VST's `core-glue/common/rfm1_shim.c` exporting `rfm1_c1_stack` and
+  `rfm1_c1_call` and declaring the two imports, and the firmware's core-1 back end calling them (FIZZ: a
+  `fz_c1_backend_t` whose run / wait are the imports; ChoralRoot: its `fm1_cpu1_run` / `fm1_cpu1_wait` in the emulator
+  build). Nothing else changes; with core 1 off the samples are the same.
+- `tools/build_fw.sh` builds such a module with the twin's glue (`rfm1m_cpu2`); `rfm1info --check` allows the two
+  imports. `tests/cpu2fix/` is a test firmware written this way (16 voices, half on core 1, a scratch array on the
+  stack): 22.9x real time with core 1 off, 43.5x with it (the simulator), the same PCM. `--no-cpu2` (or
+  `RFM14_CPU2=0`): never.
+
+### The numbers
+
+`/api/status`, once a second: per slot `render_avg_us` / `render_max_us` (this slot's blocks; the budget is 2902 us
+a block), `obj`, and for core 1 `c1`, `c1_jobs`, `c1_inline`, `c1_cpu`, `c1_wait_cpu`, `c1_worst_us`; and
+`threads`, `block_avg_us` / `block_max_us` (a whole block: the slots and the mix), `block_cpu`, `par_cpu` (the
+fork-join), `tcpu` (each thread's CPU, % of a core: `rfm1-engine`, `rfm1-slotN`, `rfm1-c1-N`, `mr-audio`, ...). The log
+says the same every 10 s:
+
+```
+engine: blocks 817/4653 us (avg/max of 2902), slot1 fizz 764/4610 us (old object) slot2 choralroot 36/116 us (old object)
+  slot3 sloop3 32/232 us (old object); slots on their threads; cpu {"rfm1-engine":2.9,"rfm1-slot1":29.8,...}
+```
+
+**Does FIZZ fit?** A slot fits while its `render_avg_us` stays under ~2600 us (2902 less the mix and the hand-over)
+and its spikes are absorbed by the ring (5 blocks, 14.5 ms). On the simulator (an M-series Mac's Docker, ~5x faster
+per core than the Move's A72), FIZZ 0.12.0-beta.19 with a six-note chord renders a block in ~700-950 us on average
+(spikes 4-6 ms): roughly 3.5-4.5 ms on the Move, more than a block. The threads take every other slot, the mix and
+the FX off FIZZ's core; FIZZ itself needs its core 1 (cpu2, a FIZZ build change) to fit a heavy part.
+
 ## Package
 
 ```sh
@@ -368,8 +460,7 @@ The first launch copies the bundled firmwares into the RemoteFM1 folder (~45 MB)
 
 **Engine notes.** A firmware's load: the storage thread opens its object and makes its instance (wasm2c's
 instantiate: its memory, megabytes of locked pages); the engine thread fills the ring to ~80 ms of the other slots'
-sound, then starts it (its own code must run on the thread that runs every instance: wasm2c's trap state is
-global). An unloaded instance is freed on the storage thread. A firmware's stdout and stderr: whole lines, at most 4 a
+sound, then starts it (its first calls on the engine's thread, between two blocks: see "Threads"). An unloaded instance is freed on the storage thread. A firmware's stdout and stderr: whole lines, at most 4 a
 second after a burst of 20, the rest counted ("N lines dropped"); the log file (stderr's) is moved to `<log>.1` past
 1 MB (`--log-cap`).
 
@@ -394,10 +485,12 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
 | `src/mdns.c` | `remotefm1.local` |
-| `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table) |
+| `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table; cpu2's twin) |
+| `tools/w2c_mt.sh` | wasm2c's runtime per thread ("Threads"): the host's copy and the header firmware objects are built against |
+| `tests/cpu2fix/` | the core-1 test firmware (C, its `build.sh` with Emscripten, the `.rfm1` kept in git) |
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
 | `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks: the audio source, the input sink, USB-A) |
-| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.4` |
+| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.5` (f6144bc) |
 | `third_party/RemoteFM1` | RemoteFM1 at 32d03d6, branch `slow-link` (its `web/site`: the page; libremotefm1 for the FM-1 on USB-A) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
 

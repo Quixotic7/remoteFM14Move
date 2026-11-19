@@ -12,9 +12,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <dirent.h>
+#include <spawn.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <linux/futex.h>
+#endif
 
 #include "../third_party/abletonmoveremote/common/ring.h"
 #include "catalog.h"
@@ -151,6 +158,9 @@ typedef struct {
     int peak;                  /* this meter window's, after level and pan */
     int pk_acc, pk_last;       /* this second's peak so far, the last second's (the status: tests) */
     uint32_t mini_writes, mini_ms;   /* the page's mini screen: the LCD writes it was made from, when */
+    uint32_t rend_avg_us, rend_max_us;   /* its blocks' render time over the last second (the log's) */
+    uint64_t c1_job_ns, c1_wait_ns;      /* core 1's counters when last looked at */
+    uint32_t c1_cpu;                     /* core 1's jobs, permille of a core over the last second */
 } slot_t;
 
 static slot_t SL[NSLOT];
@@ -234,7 +244,7 @@ static engine_view_t g_view;
 static uint32_t g_view_lcd_ms;
 static struct { int op, a, b; } g_pin[256];
 static int g_npin;
-static char g_status[8192];
+static char g_status[12288];
 static char *g_fw_json;                      /* engine_firmwares: made whenever the installed ones change */
 static char (*g_web_ids)[RFM_MOVE_FW_ID_MAX];   /* the installed ids (engine_load's check) */
 static int g_web_n;
@@ -953,6 +963,24 @@ static void slot_save(int s, int sync)
     SL[s].dirty_seen = fw_flash_dirty(fw);
 }
 
+/* the tests' capture per slot (README "Threads": every slot replayed offline): the first instance each slot runs, its
+ * blocks and its input log, as raw-slotN.raw and inputs-slotN.log beside raw.raw */
+static struct { fw_t *fw; int16_t *pcm; uint32_t n; int done; } g_scap[NSLOT];
+static void scap_flush(int s)
+{
+    char p[ST_PATH + 32];
+    const char *slash = C.capture_raw ? strrchr(C.capture_raw, '/') : NULL;
+    if (!g_scap[s].fw || !slash)
+        return;
+    snprintf(p, sizeof p, "%.*s/raw-slot%d.raw", (int)(slash - C.capture_raw), C.capture_raw, s + 1);
+    st_write(p, g_scap[s].pcm, (size_t)g_scap[s].n * 4u);
+    snprintf(p, sizeof p, "%.*s/inputs-slot%d.log", (int)(slash - C.capture_raw), C.capture_raw, s + 1);
+    if (g_scap[s].fw->log)
+        st_write(p, g_scap[s].fw->log, (size_t)g_scap[s].fw->log_n * sizeof(fw_log_t));
+    g_scap[s].fw = NULL;
+    g_scap[s].done = 1;
+}
+
 static void raw_flush(void)   /* the test capture of the first instance: its blocks and its input log */
 {
     if (!g_raw_fw)
@@ -975,6 +1003,8 @@ static void slot_unload(int s, int save)
         slot_save(s, 1);
     if (g_raw_fw == &SL[s].fw)
         raw_flush();
+    if (g_scap[s].fw == &SL[s].fw)
+        scap_flush(s);
     /* its memory freed on the storage thread (megabytes of locked pages: not the engine's time) */
     if ((pre = fw_release(&SL[s].fw))) {
         st_job_t *j = st_job_new(J_FW_FREE);
@@ -1044,10 +1074,18 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n)
         g_raw_fw = &sl->fw;
         fw_log_start(&sl->fw, 1u << 20);
     }
+    if (C.capture_raw && g_cap_max && !g_scap[s].done && (g_scap[s].pcm || (g_scap[s].pcm = calloc(g_cap_max, 4)))) {
+        g_scap[s].fw = &sl->fw;
+        g_scap[s].n = 0;
+        if (!sl->fw.log)
+            fw_log_start(&sl->fw, 1u << 20);
+    }
     if (fw_boot(&sl->fw, flash, n) != 0) {
         fprintf(stderr, "engine: slot %d: boot: %s\n", s + 1, sl->fw.err);
         if (g_raw_fw == &sl->fw)
             g_raw_fw = NULL;
+        if (g_scap[s].fw == &sl->fw)
+            g_scap[s].fw = NULL;
         fw_destroy(&sl->fw);
         return -1;
     }
@@ -1060,6 +1098,7 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n)
     sl->dirty = 0;
     sl->dirty_seen = fw_flash_dirty(&sl->fw);
     sl->ns_mark = sl->fw.ns_total;
+    sl->c1_job_ns = sl->c1_wait_ns = 0;
     if (g_master >= 0)
         fw_in_now(&sl->fw, FWI_MASTER, 0, g_master, 0);
     fprintf(stderr, "engine: slot %d: %s %s (%s flash)\n", s + 1, sl->fw.name, sl->fw.version,
@@ -1945,12 +1984,295 @@ void engine_fm1_midi(const uint8_t *m, int n)
     }
 }
 
+
+/* ------------------------------------------------------------------ the slots' render threads --- */
+/* README "Threads". Each slot renders on a thread of its own (rfm1-slot1..3, cores 0..2), fork-join per block: the
+ * engine's thread does everything that touches a firmware between two blocks, exactly as before (the sequencer's
+ * MIDI, the panel, the queued inputs, MIDI out, the flash, the screen), then hands block N to every sounding slot's
+ * thread and waits for them all, then mixes in slot order. While a slot's thread renders, nothing else touches that
+ * instance; so each firmware gets the same calls in the same order as on one thread, and the sound is the same bytes.
+ * --threads 0 (cfg.serial): every slot rendered on the engine's thread, as before. */
+#define SPIN_GO_NS 50000u       /* a slot's thread spins this long for the next block before it sleeps */
+#define SPIN_JOIN_NS 30000u     /* the engine spins this long for a slot before it sleeps */
+typedef struct {
+    pthread_t thr;
+    int started, tid, slot;
+    uint32_t go, done, quit;            /* (futex words: go moves per block handed over, done follows it) */
+    int16_t blk[FW_BLOCK * 2];
+    const int16_t *ain;                 /* this block's input (fw_render_in), NULL none */
+    int with_ain;
+    /* the render time of this slot's blocks: this window (the engine reads and clears it once a second) */
+    uint64_t win_ns, win_n;
+    uint32_t win_max_us;
+} rthr_t;
+static rthr_t RT[NSLOT];
+static int g_threads;                   /* the slots render on their own threads */
+static uint64_t g_blk_ns, g_blk_n, g_par_ns;   /* this window: render_block's whole time, its blocks, the fork-join's */
+static uint32_t g_blk_max_us, g_blk_avg_us, g_blk_max_last;   /* (the last second's, for the log) */
+
+static uint64_t now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
+}
+static void fu_wait(uint32_t *a, uint32_t v)
+{
+#ifdef __linux__
+    syscall(SYS_futex, a, FUTEX_WAIT_PRIVATE, v, NULL, NULL, 0);
+#else
+    (void)a, (void)v;
+    sched_yield();
+#endif
+}
+static void fu_wake(uint32_t *a)
+{
+#ifdef __linux__
+    syscall(SYS_futex, a, FUTEX_WAKE_PRIVATE, 1, NULL, NULL, 0);
+#else
+    (void)a;
+#endif
+}
+
+/* ---- real time without root: Move Remote's way. bin/heal (the module's setuid helper, installed by schwung-heal)
+ * puts a named thread of this process at SCHED_FIFO 70; the thread is then lowered to its own priority, which needs
+ * no privilege. No helper (the simulator, a missing install): normal priority, as before */
+static void thread_setup(const char *name, int core, int prio)
+{
+#ifdef __linux__
+    pthread_setname_np(pthread_self(), name);
+    if (C.cpu_mask) {   /* (the Move: cores 0..2; a slot's own core when it has one) */
+        cpu_set_t set;
+        int c;
+        CPU_ZERO(&set);
+        for (c = 0; c < 8; c++)
+            if (core >= 0 ? c == core : C.cpu_mask >> c & 1)
+                CPU_SET(c, &set);
+        sched_setaffinity(0, sizeof set, &set);
+    }
+    if (C.heal && prio > 0) {
+        struct stat st;
+        const int tid = (int)syscall(SYS_gettid);
+        if (stat(C.heal, &st) == 0 && st.st_uid == 0 && (st.st_mode & S_ISUID)) {
+            char pid[16], t[16];
+            char *argv[] = { (char *)C.heal, "rt", pid, t, NULL };
+            extern char **environ;
+            pid_t child;
+            int status = -1;
+            struct sched_param sp = { .sched_priority = prio };
+            snprintf(pid, sizeof pid, "%d", (int)getpid());
+            snprintf(t, sizeof t, "%d", tid);
+            if (posix_spawn(&child, C.heal, NULL, NULL, argv, environ) == 0)
+                waitpid(child, &status, 0);
+            if (sched_getscheduler(0) == SCHED_FIFO)
+                sched_setscheduler(0, SCHED_FIFO, &sp);   /* (70 -> prio: lowering is allowed) */
+        }
+        fprintf(stderr, "engine: thread %s (tid %d): %s %d\n", name, tid,
+                sched_getscheduler(0) == SCHED_FIFO ? "SCHED_FIFO" : "normal priority, not",
+                sched_getscheduler(0) == SCHED_FIFO ? prio : 0);
+    }
+#else
+    (void)name, (void)core, (void)prio;
+#endif
+}
+#define PRIO_ENGINE 58
+#define PRIO_SLOT 60
+#define PRIO_C1 60
+
+static void c1_thread_init(fw_t *fw)   /* (fwrt.h fw_on_c1_thread: a core-1 thread starting) */
+{
+    char name[16];
+    int s;
+    for (s = 0; s < NSLOT && &SL[s].fw != fw; s++)
+        ;
+    snprintf(name, sizeof name, "rfm1-c1-%d", s + 1);
+    thread_setup(name, -1, PRIO_C1);
+}
+
+static void slot_render(int s, int16_t *blk, const int16_t *ain, int with_ain)
+{
+    slot_t *sl = &SL[s];
+    rthr_t *r = &RT[s];
+    const uint64_t t0 = now_ns();
+    uint64_t dt;
+    if (with_ain)
+        fw_render_in(&sl->fw, blk, ain);
+    else
+        fw_render(&sl->fw, blk);
+    dt = now_ns() - t0;
+    r->win_ns += dt;
+    r->win_n++;
+    if (dt / 1000u > r->win_max_us)
+        r->win_max_us = (uint32_t)(dt / 1000u);
+}
+
+static void *rthr_main(void *arg)
+{
+    rthr_t *r = arg;
+    char name[16];
+    uint32_t seen = 0;
+    r->tid = (int)syscall(SYS_gettid);
+    snprintf(name, sizeof name, "rfm1-slot%d", r->slot + 1);
+    thread_setup(name, r->slot, PRIO_SLOT);
+    for (;;) {
+        uint32_t g;
+        const uint64_t t0 = now_ns();
+        while ((g = __atomic_load_n(&r->go, __ATOMIC_ACQUIRE)) == seen && !__atomic_load_n(&r->quit, __ATOMIC_ACQUIRE))
+            if (now_ns() - t0 > SPIN_GO_NS)
+                fu_wait(&r->go, seen);
+        if (g == seen)
+            break;   /* (quit) */
+        seen = g;
+        slot_render(r->slot, r->blk, r->ain, r->with_ain);
+        __atomic_store_n(&r->done, seen, __ATOMIC_RELEASE);
+        fu_wake(&r->done);
+    }
+    return NULL;
+}
+
+static void rthr_start(void)
+{
+    int s;
+    if (C.serial)
+        return;
+    for (s = 0; s < NSLOT; s++) {
+        RT[s].slot = s;
+        if (pthread_create(&RT[s].thr, NULL, rthr_main, &RT[s]) != 0) {
+            fprintf(stderr, "engine: no render thread for slot %d: every slot on the engine's thread\n", s + 1);
+            break;
+        }
+        RT[s].started = 1;
+    }
+    g_threads = s == NSLOT;
+}
+
+static void rthr_stop(void)
+{
+    int s;
+    for (s = 0; s < NSLOT; s++)
+        if (RT[s].started) {
+            __atomic_store_n(&RT[s].quit, 1, __ATOMIC_RELEASE);
+            fu_wake(&RT[s].go);
+            pthread_join(RT[s].thr, NULL);
+            RT[s].started = 0;
+        }
+    g_threads = 0;
+}
+
+/* the sounding slots' blocks (bit n of mask: slot n), rendered on their threads at once (or here, in order); each
+ * slot's block in RT[s].blk */
+static void render_slots(int mask, const int16_t *ain)
+{
+    const uint64_t t0 = now_ns();
+    int s;
+    for (s = 0; s < NSLOT; s++)
+        if (mask >> s & 1) {
+            RT[s].with_ain = fw_has_ain(&SL[s].fw);
+            RT[s].ain = ain;
+        }
+    if (!g_threads) {
+        for (s = 0; s < NSLOT; s++)
+            if (mask >> s & 1)
+                slot_render(s, RT[s].blk, RT[s].ain, RT[s].with_ain);
+    } else {
+        for (s = 0; s < NSLOT; s++)
+            if (mask >> s & 1) {
+                __atomic_store_n(&RT[s].go, RT[s].go + 1, __ATOMIC_RELEASE);
+                fu_wake(&RT[s].go);
+            }
+        for (s = 0; s < NSLOT; s++)
+            if (mask >> s & 1) {
+                const uint64_t t1 = now_ns();
+                uint32_t d;
+                while ((d = __atomic_load_n(&RT[s].done, __ATOMIC_ACQUIRE)) != RT[s].go)
+                    if (now_ns() - t1 > SPIN_JOIN_NS)
+                        fu_wait(&RT[s].done, d);
+            }
+    }
+    g_par_ns += now_ns() - t0;
+}
+
+/* ---- each thread's CPU (/proc/self/task/<tid>/stat): by name, % of a core over the last window */
+#define TCPU_MAX 48
+static struct { int tid; char name[16]; uint64_t ticks; uint32_t permille; int seen; } g_tcpu[TCPU_MAX];
+static int g_ntcpu;
+static void tcpu_sample(uint32_t dt_ms)
+{
+#ifdef __linux__
+    DIR *d = opendir("/proc/self/task");
+    struct dirent *e;
+    long hz = sysconf(_SC_CLK_TCK);
+    int i, k;
+    if (!d)
+        return;
+    for (i = 0; i < g_ntcpu; i++)
+        g_tcpu[i].seen = 0;
+    while ((e = readdir(d))) {
+        char p[64], buf[512], *q;
+        unsigned long ut = 0, st = 0;
+        int tid = atoi(e->d_name), fd, n;
+        if (tid <= 0)
+            continue;
+        snprintf(p, sizeof p, "/proc/self/task/%d/stat", tid);
+        if ((fd = open(p, O_RDONLY)) < 0)
+            continue;
+        n = (int)read(fd, buf, sizeof buf - 1);
+        close(fd);
+        if (n <= 0)
+            continue;
+        buf[n] = 0;
+        if (!(q = strrchr(buf, ')')))
+            continue;
+        /* after "pid (comm)": state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime */
+        if (sscanf(q + 2, "%*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &ut, &st) != 2)
+            continue;
+        for (i = 0; i < g_ntcpu && g_tcpu[i].tid != tid; i++)
+            ;
+        if (i == g_ntcpu) {
+            char *a = strchr(buf, '(');
+            if (g_ntcpu == TCPU_MAX || !a)
+                continue;
+            g_ntcpu++;
+            g_tcpu[i].tid = tid;
+            snprintf(g_tcpu[i].name, sizeof g_tcpu[i].name, "%.*s", (int)(q - a - 1), a + 1);
+            g_tcpu[i].ticks = ut + st;
+            g_tcpu[i].permille = 0;
+        } else {
+            const uint64_t dtk = ut + st - g_tcpu[i].ticks;
+            g_tcpu[i].ticks = ut + st;
+            g_tcpu[i].permille = (uint32_t)(dtk * 1000000u / (uint64_t)(hz > 0 ? hz : 100) / (dt_ms ? dt_ms : 1));
+        }
+        g_tcpu[i].seen = 1;
+    }
+    closedir(d);
+    for (i = k = 0; i < g_ntcpu; i++)   /* (threads gone) */
+        if (g_tcpu[i].seen)
+            g_tcpu[k++] = g_tcpu[i];
+    g_ntcpu = k;
+#else
+    (void)dt_ms;
+#endif
+}
+/* {"rfm1-engine":12.5,...}: the threads that used any CPU, plus every rfm1-* and mr-audio */
+static int tcpu_json(char *out, int cap)
+{
+    int i, n = snprintf(out, (size_t)cap, "{");
+    for (i = 0; i < g_ntcpu && n < cap; i++)
+        if (g_tcpu[i].permille || !strncmp(g_tcpu[i].name, "rfm1-", 5) || !strcmp(g_tcpu[i].name, "mr-audio"))
+            n += snprintf(out + n, (size_t)(cap - n), "%s\"%s\":%.1f", n > 1 ? "," : "", g_tcpu[i].name,
+                          g_tcpu[i].permille / 10.0);
+    if (n < cap)
+        n += snprintf(out + n, (size_t)(cap - n), "}");
+    return n < cap ? n : cap - 1;
+}
+
 /* ------------------------------------------------------------------ the clock --- */
 static void render_block(uint32_t now)
 {
     int16_t blk[FW_BLOCK * 2], out[FW_BLOCK * 2];
     const int16_t *ain;
     int s, k, sounding, sends = 0;
+    const uint64_t t_blk = now_ns();
     {   /* the clock the modules ask for (host_api_v1: get_bpm, get_clock_status, get_beat_position) */
         const float bpm = (float)rfm_move_seq_bpm10(&S->core) / 10.0f;
         const int run = S->core.seq.playing;
@@ -1969,49 +2291,59 @@ static void render_block(uint32_t now)
             sends |= 1 << k;
         }
     ain = ain_take(now);
-    for (s = 0; s < NSLOT; s++) {
-        slot_t *sl = &SL[s];
-        if (!sl->on)
-            continue;
-        if (!(sounding >> s & 1))
-            continue;   /* loaded, past the voices: its clock waits */
-        if (fw_has_ain(&sl->fw)) {   /* ain1: the state when it changed, the input right before its audio */
-            fw_ain_info(&sl->fw, ain != NULL, engine_ain_latency());
-            fw_render_in(&sl->fw, blk, ain);
-        } else
-            fw_render(&sl->fw, blk);
-        if (&sl->fw == g_raw_fw && g_cap_raw && g_cap_raw_n + FW_BLOCK <= g_cap_max) {
-            memcpy(g_cap_raw + 2u * g_cap_raw_n, blk, sizeof blk);
-            g_cap_raw_n += FW_BLOCK;
+    {   /* the slots that sound: ain1's state first (between calls, as before), then their blocks, at once */
+        int mask = 0;
+        for (s = 0; s < NSLOT; s++) {
+            slot_t *sl = &SL[s];
+            if (!sl->on || !(sounding >> s & 1))
+                continue;   /* (loaded, past the voices: its clock waits) */
+            if (fw_has_ain(&sl->fw))   /* ain1: the state when it changed, the input right before its audio */
+                fw_ain_info(&sl->fw, ain != NULL, engine_ain_latency());
+            mask |= 1 << s;
         }
-        mix_add_lp(&g_mix, blk, FW_BLOCK, sl->level, sl->pan);
-        for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the sends: after its level and pan */
-            if (sends >> k & 1)
-                bus_add(&g_bus[k], blk, FW_BLOCK, sl->level, sl->pan, sl->send[k]);
-        {
-            const int p = peak16(blk, FW_BLOCK * 2) * sl->level / 127;
-            if (p > sl->peak)
-                sl->peak = p;
-            if (p > sl->pk_acc)
-                sl->pk_acc = p;
-        }
-        if (s == g_active) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page (editors) */
-            uint32_t pk[64];
-            const int k = fw_midi_out(&sl->fw, pk, 64);
-            int i;
-            for (i = 0; i < k; i++) {
-                const uint8_t b = (uint8_t)(pk[i] >> 8);
-                if (b == 0xF8 || b == 0xFA || b == 0xFB || b == 0xFC) {
-                    rfm1cs_session_midi_in(S, now, &b, 1);
-                } else if (b == 0xF2) {
-                    const uint8_t m[3] = { b, (uint8_t)(pk[i] >> 16), (uint8_t)(pk[i] >> 24) };
-                    rfm1cs_session_midi_in(S, now, m, 3);
-                }
+        render_slots(mask, ain);
+        for (s = 0; s < NSLOT; s++) {   /* the mix, in slot order */
+            slot_t *sl = &SL[s];
+            const int16_t *sb = RT[s].blk;
+            if (!(mask >> s & 1))
+                continue;
+            if (&sl->fw == g_raw_fw && g_cap_raw && g_cap_raw_n + FW_BLOCK <= g_cap_max) {
+                memcpy(g_cap_raw + 2u * g_cap_raw_n, sb, sizeof RT[s].blk);
+                g_cap_raw_n += FW_BLOCK;
             }
-            if (k)
-                midi_to_page(pk, k);
-            do_deferred();
+            if (&sl->fw == g_scap[s].fw && g_scap[s].n + FW_BLOCK <= g_cap_max) {
+                memcpy(g_scap[s].pcm + 2u * g_scap[s].n, sb, sizeof RT[s].blk);
+                g_scap[s].n += FW_BLOCK;
+            }
+            mix_add_lp(&g_mix, sb, FW_BLOCK, sl->level, sl->pan);
+            for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the sends: after its level and pan */
+                if (sends >> k & 1)
+                    bus_add(&g_bus[k], sb, FW_BLOCK, sl->level, sl->pan, sl->send[k]);
+            {
+                const int p = peak16(sb, FW_BLOCK * 2) * sl->level / 127;
+                if (p > sl->peak)
+                    sl->peak = p;
+                if (p > sl->pk_acc)
+                    sl->pk_acc = p;
+            }
+            if (s == g_active && sl->on) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page */
+                uint32_t pk[64];
+                const int n = fw_midi_out(&sl->fw, pk, 64);
+                int i;
+                for (i = 0; i < n; i++) {
+                    const uint8_t b = (uint8_t)(pk[i] >> 8);
+                    if (b == 0xF8 || b == 0xFA || b == 0xFB || b == 0xFC) {
+                        rfm1cs_session_midi_in(S, now, &b, 1);
+                    } else if (b == 0xF2) {
+                        const uint8_t m[3] = { b, (uint8_t)(pk[i] >> 16), (uint8_t)(pk[i] >> 24) };
+                        rfm1cs_session_midi_in(S, now, m, 3);
+                    }
+                }
+                if (n)
+                    midi_to_page(pk, n);
+            }
         }
+        do_deferred();   /* (what the active slot's clock made the sequencer do: after every slot's block is mixed) */
     }
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
         if (sends >> k & 1) {
@@ -2039,6 +2371,13 @@ static void render_block(uint32_t now)
         g_cap_mix_n += FW_BLOCK;
     }
     g_blocks++;
+    {
+        const uint64_t dt = now_ns() - t_blk;
+        g_blk_ns += dt;
+        g_blk_n++;
+        if (dt / 1000u > g_blk_max_us)
+            g_blk_max_us = (uint32_t)(dt / 1000u);
+    }
 }
 
 static void housekeeping(uint32_t now)
@@ -2140,6 +2479,28 @@ static void housekeeping(uint32_t now)
                                   fst.refused + fst.busy, (unsigned long long)fst.bytes_in,
                                   (unsigned long long)fst.bytes_out, (unsigned long long)(sl->fw.mem_size >> 20));
                 }
+                {   /* threads: this slot's blocks over the last second (avg, worst), its object, core 1 */
+                    rthr_t *r = &RT[s];
+                    fw_c1_stats_t c1;
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"render_avg_us\":%u,\"render_max_us\":%u,"
+                                  "\"render_blocks\":%u,\"obj\":\"%s\"", r->win_n ? (uint32_t)(r->win_ns / r->win_n / 1000u) : 0,
+                                  r->win_max_us, (uint32_t)r->win_n, !sl->fw.obj ? "" : sl->fw.obj->mt ? "mt"
+                                  : sl->fw.obj->lg ? "old" : "old-locked");
+                    sl->rend_avg_us = r->win_n ? (uint32_t)(r->win_ns / r->win_n / 1000u) : 0;
+                    sl->rend_max_us = r->win_max_us;
+                    r->win_ns = r->win_n = 0, r->win_max_us = 0;
+                    fw_c1_stats(&sl->fw, &c1);
+                    if (c1.state) {
+                        const uint64_t dj = c1.job_ns - sl->c1_job_ns, dw = c1.wait_ns - sl->c1_wait_ns;
+                        sl->c1_job_ns = c1.job_ns, sl->c1_wait_ns = c1.wait_ns;
+                        sl->c1_cpu = (uint32_t)(dj / 1000u / (dt ? dt : 1));
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"c1\":%d,\"c1_jobs\":%llu,\"c1_inline\":%llu,"
+                                      "\"c1_cpu\":%.1f,\"c1_wait_cpu\":%.1f,\"c1_worst_us\":%u", c1.state,
+                                      (unsigned long long)c1.jobs, (unsigned long long)c1.inline_jobs, sl->c1_cpu / 10.0,
+                                      (double)(dw / 1000u / (dt ? dt : 1)) / 10.0, c1.job_worst_us);
+                    } else
+                        sl->c1_cpu = 0;
+                }
                 if (fw_has_ain(&sl->fw))   /* ain1: the state told, its latency, the blocks fed, the last block's peak */
                     n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ain\":%u,\"ain_lat\":%u,\"ain_blocks\":%u,"
                                   "\"ain_peak\":%d", sl->fw.ain_state, sl->fw.ain_lat, sl->fw.ain_blocks, sl->fw.ain_peak);
@@ -2147,7 +2508,18 @@ static void housekeeping(uint32_t now)
             } else
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }
-        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "],\"ain_live\":%d,\"ain_in\":%u,\"ain_under\":%u,"
+        {   /* threads: the blocks (render_block whole, the slots' fork-join), each thread's CPU */
+            char tj[1024];
+            tcpu_sample(dt);
+            tcpu_json(tj, sizeof tj);
+            g_blk_avg_us = g_blk_n ? (uint32_t)(g_blk_ns / g_blk_n / 1000u) : 0;
+            g_blk_max_last = g_blk_max_us;
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "],\"threads\":%d,\"block_avg_us\":%u,\"block_max_us\":%u,"
+                          "\"block_cpu\":%.1f,\"par_cpu\":%.1f,\"tcpu\":%s", g_threads, g_blk_avg_us, g_blk_max_us,
+                          (double)(g_blk_ns / 1000u / (dt ? dt : 1)) / 10.0, (double)(g_par_ns / 1000u / (dt ? dt : 1)) / 10.0, tj);
+            g_blk_ns = g_blk_n = g_par_ns = 0, g_blk_max_us = 0;
+        }
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ain_live\":%d,\"ain_in\":%u,\"ain_under\":%u,"
                       "\"ain_dropped\":%u,\"ain_over\":%u,\"ain_latency\":%u,\"pmidi_msgs\":%u,\"pmidi_bytes\":%u,"
                       "\"pmidi_dropped\":%u,\"midi_out_bytes\":%u", g_ain_live, g_ain_in, g_ain_under,
                       g_ain_dropped, g_ain_over, engine_ain_latency(), g_pm_msgs, g_pm_bytes, g_pm_dropped, g_mo_bytes);
@@ -2214,6 +2586,23 @@ static void housekeeping(uint32_t now)
         if (g_late != last_late)
             fprintf(stderr, "engine: %u late block(s) so far\n", g_late);
         last_late = g_late;
+        {   /* every 10 s: the render time split (does it fit?) */
+            static uint32_t last_split;
+            if (now - last_split >= 10000u) {
+                char line[1400], tj[1024];
+                int m = 0;
+                last_split = now;
+                for (s = 0; s < NSLOT; s++)
+                    if (SL[s].on)
+                        m += snprintf(line + m, sizeof line - (size_t)m, " slot%d %s %u/%u us%s%s", s + 1, SL[s].fw.id,
+                                      SL[s].rend_avg_us, SL[s].rend_max_us, !SL[s].fw.obj || SL[s].fw.obj->mt ? ""
+                                      : SL[s].fw.obj->lg ? " (old object)" : " (old object, locked)",
+                                      SL[s].fw.c1 ? " +core1" : "");
+                tcpu_json(tj, sizeof tj);
+                fprintf(stderr, "engine: blocks %u/%u us (avg/max of 2902),%s; %s; cpu %s\n", g_blk_avg_us,
+                        g_blk_max_last, line, g_threads ? "slots on their threads" : "slots on one thread", tj);
+            }
+        }
     }
 }
 
@@ -2222,19 +2611,9 @@ static void *engine_main(void *arg)
     const uint32_t lead = (uint32_t)(C.lead_blocks < 4 ? 4 : C.lead_blocks > 8 ? 8 : C.lead_blocks) * FW_BLOCK;
     uint8_t buf[16384];
     (void)arg;
-#ifdef __linux__
-    pthread_setname_np(pthread_self(), "rfm1-engine");
-    if (C.cpu_mask) {
-        cpu_set_t set;
-        int c;
-        CPU_ZERO(&set);
-        for (c = 0; c < 8; c++)
-            if (C.cpu_mask >> c & 1)
-                CPU_SET(c, &set);
-        sched_setaffinity(0, sizeof set, &set);
-    }
-#endif
+    thread_setup("rfm1-engine", -1, PRIO_ENGINE);
     wasm_rt_init();
+    rthr_start();   /* (the slots' render threads: README "Threads") */
     while (g_run) {
         const uint32_t now = now_ms();
         int k = 0;
@@ -2366,6 +2745,7 @@ static void *engine_main(void *arg)
         rfm1cs_session_flush(S);
         fm1link_stop(now_ms());
         do_deferred();
+        rthr_stop();
         for (s = 0; s < NSLOT; s++)
             slot_unload(s, 1);
         raw_flush();
@@ -2394,6 +2774,7 @@ int engine_start(const engine_cfg_t *cfg)
         g_no_preroll = getenv("RFM14_NO_PREROLL") && *getenv("RFM14_NO_PREROLL") == '1';
         g_log_cap = C.log_cap > 0 ? C.log_cap : C.log_cap < 0 ? 0 : LOG_CAP_DEFAULT;
     }
+    fw_on_c1_thread = c1_thread_init;   /* (core 1's threads: named, on cores 0..2, real time as the slots') */
     if (st_fw_install_bundled(C.bundled) > 0)
         fprintf(stderr, "engine: bundled firmwares installed into %s/firmwares\n", C.root);
     cat_config(C.bundled_index, C.catalog_url);
