@@ -58,7 +58,7 @@ typedef struct {
 } wcand_t;
 static int w_on, w_state = W_OFF, w_udp = -1, w_tcp = -1, w_link = -1, w_failed;
 static uint16_t w_udp_port = FM1LINK_UDP_PORT;
-static uint32_t w_t_probe, w_t_state, w_last_rx;
+static uint32_t w_t_probe, w_t_state, w_last_rx, w_rx_gap_max;   /* (the longest silence of the connection, ms) */
 static int w_was_active;
 static struct sockaddr_in w_fixed, w_kept, w_peer;   /* asked for (cfg.wifi_addr), remembered, connected to */
 static int w_has_fixed, w_has_kept;
@@ -368,6 +368,8 @@ static void wifi_tick(uint32_t now)
             const ssize_t n = recv(w_tcp, b, sizeof b, 0);
             if (n > 0) {
                 rfm_session_rx(S, w_link, b, (uint32_t)n, now);
+                if (now - w_last_rx > w_rx_gap_max)
+                    w_rx_gap_max = now - w_last_rx;
                 w_last_rx = now;
                 continue;
             }
@@ -522,7 +524,8 @@ static void on_midi_in(void *ctx, const uint8_t *m, uint32_t n)
 static void on_log(void *ctx, const char *m)
 {
     (void)ctx;
-    if (strncmp(m, "FRAME_ACK", 9))   /* (a lost frame is said by the counters) */
+    if (strncmp(m, "FRAME_ACK", 9) || strstr(m, "shadow"))   /* (a lost frame is said by the counters; a shadow reset
+                                                               * and its reason are logged) */
         fprintf(stderr, "fm1link: %s\n", m);
 }
 
@@ -668,13 +671,15 @@ int fm1link_json(char *out, int cap)
                     "\"rate\":%u,\"held\":%u,\"in_flight\":%u,\"queued\":%d,\"usb_in\":%u,\"usb_in_dropped\":%u,"
                     "\"usb_out\":%u,\"send_full\":%u,\"midi_in\":%u,\"events\":%u,"
                     "\"link\":\"%s\",\"addr\":\"%s\",\"wifi\":\"%s\",\"wifi_name\":\"%s\",\"wifi_connects\":%u,"
-                    "\"wifi_drops\":%u,\"wifi_answers\":%u,\"panel_ev\":%u}",
+                    "\"wifi_drops\":%u,\"wifi_answers\":%u,\"panel_ev\":%u,\"draw_us_max\":%u,\"panel_r_gap_max\":%u,"
+                    "\"shadow_resets\":%u,\"reset_reason\":%u,\"wifi_rx_ms_max\":%u}",
                     g_linked ? "true" : "false", rfm_session_state_name(rfm_session_state(S)), nm, fv, g_fps, g_bps,
                     st.lost, st.sessions, st.frames, st.acks, st.acks ? st.ack_ms_sum / st.acks : 0, st.ack_ms_max,
                     st.ack_timeouts, st.rate, st.held, st.in_flight, mr_usba_queued(), in, in_drop, pk_out,
                     g_send_full, st.midi_in, st.events, !g_linked ? "" : wifi ? "wifi" : "usb",
                     w_state >= W_CONNECTING ? w_peer_str : "", WS[w_on ? w_state : W_OFF], pn, w_connects, w_drops,
-                    w_answers, st.panel_ev);
+                    w_answers, st.panel_ev, st.draw_us_max, st.panel_r_gap_max, st.shadow_resets, st.reset_reason,
+                    w_rx_gap_max);
 }
 
 void fm1link_stop(uint32_t now)
