@@ -16,6 +16,9 @@
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <errno.h>
+#include <limits.h>
+#include <sys/stat.h>
 #endif
 
 #include "wasm-rt.h"
@@ -286,7 +289,18 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         snprintf(err, cap, "no memory");
         return NULL;
     }
-    o->so = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    {   /* (through a link of its own: a rebuild installed over a path an older object still runs from (the same
+         * <id>-<version>) is another file, which dlopen would not load under the name it already has loaded) */
+        char alias[PATH_MAX];
+        struct stat st;
+        if (stat(path, &st) == 0 &&
+            snprintf(alias, sizeof alias, "%s.ld%llx", path, (unsigned long long)st.st_ino) < (int)sizeof alias &&
+            (link(path, alias) == 0 || errno == EEXIST)) {
+            o->so = dlopen(alias, RTLD_NOW | RTLD_LOCAL);
+            unlink(alias);
+        } else
+            o->so = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    }
     if (!o->so) {
         snprintf(err, cap, "%s", dlerror());
         free(o);

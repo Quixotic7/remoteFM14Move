@@ -42,7 +42,7 @@ back() { press "cc 51"; press "cc 51"; press "cc 51"; press "cc 51"; }
 U="http://127.0.0.1:$PORT"
 post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "$1" "$U/api/load"; }
 files() { ls "$ROOT/firmwares" | grep "^$1-" | tr '\n' ' '; }
-phase() { case "${PHASES:-ABCDEFGH}" in *$1*) return 0;; esac; return 1; }   # (PHASES=AD: only those)
+phase() { case "${PHASES:-ABCDEFGHR}" in *$1*) return 0;; esac; return 1; }   # (PHASES=AD: only those)
 raw() { status | grep -o "\"$1\":\"[^\"]*\"" | cut -d'"' -f4; }   # (a string field with commas in it)
 
 echo "dl_e2e"
@@ -302,6 +302,39 @@ stop
     && [ "$(stat -c %s "$LOG.1")" -lt 3000 ] \
     && ok "the log past its cap (600 bytes here, 1 MB on the Move) moved to .1, a new one in its place: $(stat -c %s "$LOG.1") + $(stat -c %s "$LOG") bytes" \
     || bad "the log's cap: $(ls -l "$LOG"* 2>/dev/null | awk '{print $5}' | tr '\n' ' ')"
+fi
+
+# ---------------------------------------------------------------- phase R: a rebuild of the installed version
+# The same <id>-<version> built again (another .rfm1: new glue, the same release): offered as an update, as the apps
+# offer it; downloaded over the installed files; the slot running the old build loads the new one when asked (another
+# file at the same path). The installed build: an rd1 ChoralRoot of the catalog's version among the development builds
+# (make DEV_FIRMWARES=..: build/fw-dev), else skipped
+sha_of() { sed -n 's/^ *"sha256": "\([0-9a-f]*\)".*/\1/p' "$1" | head -1; }
+if phase R; then
+REB=build/fw-dev/$CR
+if [ -f "$REB.rfm1m" ] && [ "$(sha_of "$REB.json")" != "$(sha_of "build/testcat/$CR.json")" ]; then
+    LOG=$T/host-r.log; ROOT=$T/root-r; mkdir -p "$ROOT/firmwares"; url "http://127.0.0.1:$GOOD"
+    cp "$REB".* "$ROOT/firmwares/"
+    old=$(sha_of "$REB.json"); new=$(sha_of "build/testcat/$CR.json")
+    start
+    [ "$(post '{"slot":0,"id":"choralroot"}')" = 202 ] && wait_for 10 '[ "$(field id0)" = choralroot ]' && [ "$(field sha0)" = "$(echo "$old" | cut -c1-12)" ] \
+        && ok "slot 1: the installed build of $CR ($(field sha0))" || bad "slot 1: '$(field id0)' $(field sha0)"
+    u0=$(field cat_updates)
+    [ "${u0:-0}" -ge 1 ] && ok "the same version built again is offered as an update ($u0 offered)" || bad "no update offered: $u0"
+    b0=$(field boot0); sleep 2.6   # (its flash saved)
+    view; press "cc 88"; press "note 93"; press "cc 3"
+    wait_for 15 '[ "$(field dl_ok)" = 1 ]' && [ "$(sha_of "$ROOT/firmwares/$CR.json")" = "$new" ] && [ "$(files choralroot)" = "$CR.json $CR.licenses.txt $CR.rfm1m $CR.rfm1skin $CR.rfm1skin.bg $CR.rfm1skin.bgl " ] \
+        && [ "$(field cat_updates)" = $((u0 - 1)) ] && [ "$(field sha0)" = "$(echo "$old" | cut -c1-12)" ] \
+        && ok "downloaded over it ($CR, $(echo "$new" | cut -c1-12)); no longer an update; slot 1 still runs the old build" \
+        || bad "the rebuild's download: ok $(field dl_ok), err '$(field dl_err)', sha $(sha_of "$ROOT/firmwares/$CR.json" | cut -c1-12), updates $(field cat_updates), slot $(field sha0), files '$(files choralroot)'"
+    back
+    [ "$(post '{"slot":0,"id":"choralroot"}')" = 202 ] && wait_for 10 '[ "$(field boot0)" != "$b0" ] && [ "$(field sha0)" = "$(echo "$new" | cut -c1-12)" ]' \
+        && ok "loaded again, slot 1 runs the new build ($(field sha0)): another file at the same path, not the old one dlopen had" \
+        || bad "after the rebuild: slot 1 boot $(field boot0) (was $b0), sha $(field sha0), want $(echo "$new" | cut -c1-12)"
+    stop
+else
+    info "phase R skipped: no other build of $CR in build/fw-dev"
+fi
 fi
 
 kill $S1 $S2 $S3 $S4 $S5 2>/dev/null

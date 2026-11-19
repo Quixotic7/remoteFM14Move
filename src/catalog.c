@@ -178,6 +178,10 @@ static int parse_entry(const char *o, cat_ent_t *e)
     if ((v = mj_find(o, "thumb")) && *v == '"' &&
         cat_b64(v + 1, e->thumb, sizeof e->thumb) == RFM_MOVE_FW_THUMB_BYTES)
         e->has_thumb = 1;
+    if ((v = mj_find(o, "rfm1")) && *v == '{' && (mj_string(v, "sha256", tmp, sizeof tmp) || !is_hex64(tmp)))
+        tmp[0] = 0;
+    if (v && *v == '{' && tmp[0])
+        snprintf(e->rfm1_sha, sizeof e->rfm1_sha, "%s", tmp);
     if ((it = mj_find(o, "files")) && *it == '[') {
         int nf = 0, manifest_last = 0;
         while ((v = mj_elem(&it))) {
@@ -479,8 +483,12 @@ cat_t *cat_build(const char *keep)
         }
         e = &c->e[k];
         snprintf(e->installed, sizeof e->installed, "%s", f->version);
-        /* the catalog's version is the one offered; an installed one as new or newer is not an update */
-        if (st_vercmp(f->version, e->version) >= 0)
+        /* the catalog's version is the one offered; an installed one as new or newer is not an update, but the same
+         * version built again (the index's .rfm1 another than the installed one's: new glue, the same release) is,
+         * as the apps (iOS, Android) offer it: its installed version reads "<version> old" */
+        if (e->indexed && e->rfm1_sha[0] && f->sha256[0] && !strcmp(f->version, e->version) && strcmp(f->sha256, e->rfm1_sha))
+            snprintf(e->installed, sizeof e->installed, "%.27s old", f->version);
+        else if (st_vercmp(f->version, e->version) >= 0)
             snprintf(e->version, sizeof e->version, "%s", f->version);
     }
     qsort(c->e, (size_t)c->n, sizeof *c->e, by_name);
