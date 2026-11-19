@@ -4,7 +4,7 @@
 # build of ChoralRoot among the development builds (make DEV_FIRMWARES=.../choralroot-<v>.rfm1: build/fw-dev): the host
 # on the simulator with it in slot 1; the Move's knob 5 (the FM-1's K1) turned one detent: the readout reaches the page
 # (/api/info "readout": ChoralRoot's "Voicing" and its value) and the Move's screen (rfm1cs 0.5.7+: the knob's popup,
-# the name then the value, in the left half: drawn where the FM-1 screen alone leaves it dark); then PRESETS turned:
+# the name then the value, full screen by default since rfm1cs 0.5.9); then PRESETS turned:
 # the sound's name; the slot switched: the readout forgotten.
 #   tests/rd1_e2e.sh
 set -u
@@ -34,6 +34,8 @@ rdf() { info | grep -o '"readout":{[^}]*}' | tr ',{}' '\n\n\n' | sed -n "s/^\"$1
 wait_for() { _n=$(( $1 * 10 )); shift; while [ $_n -gt 0 ]; do eval "$1" && return 0; sleep 0.1; _n=$((_n - 1)); done; return 1; }
 cmd() { printf '%s\n' "$@" > "$SIM/mr-cmd"; }
 load() { curl -s -o /dev/null -X POST --data "{\"slot\":$1,\"id\":\"$2\",\"activate\":$3}" "$U/api/load"; }
+# lit pixels in rows y0..y1 of the whole screen (rfm1cs 0.5.9: popups full screen by default)
+lit_all() { tail -n +3 "$SIM/mr-screen.pbm" | tr -cd 01 | fold -w 128 | sed -n "$(($1 + 1)),$(($2 + 1))p" | tr -cd 1 | wc -c; }
 # the left half's lit pixels in rows y0..y1 of the simulator's screen shot (P1 PBM, 128 x 64)
 lit_left() { tail -n +3 "$SIM/mr-screen.pbm" | tr -cd 01 | fold -w 128 | sed -n "$(($1 + 1)),$(($2 + 1))p" | cut -c1-64 | tr -cd 1 | wc -c; }
 shot() { rm -f "$SIM/mr-screen.pbm"; cmd shot; wait_for 3 '[ -s "$SIM/mr-screen.pbm" ]'; }
@@ -53,11 +55,11 @@ shot; cp "$SIM/mr-screen.pbm" build/test-out/rd1_before.pbm
 cmd "note 4 127"; sleep 0.05; cmd "cc 75 1"; sleep 0.05; cmd "cc 75 1"
 wait_for 3 '[ "$(rdf title)" = Voicing ]' && ok "K1 turned: the page's readout \"$(rdf title)\" \"$(rdf value)\" (control $(rdf control), bar $(rdf frac))" \
     || bad "no readout on the page: $(info | grep -o '"readout":{[^}]*}')"
-sleep 0.15; shot; after=$(lit_left 0 17); val=$(lit_left 20 52)
-# (the popup: the title at 2x in the top rows of the left half, the value big under it; build/test-out/rd1_k1.pbm)
+sleep 0.15; shot; after=$(lit_all 0 17); val=$(lit_all 20 52)
+# (the popup: the title at 2x in the top rows, the value big under it (full screen, 0.5.9); build/test-out/rd1_k1.pbm)
 [ "$after" -gt 60 ] && [ "$val" -gt 150 ] && ! cmp -s build/test-out/rd1_before.pbm "$SIM/mr-screen.pbm" \
-    && ok "the Move's screen: the knob's popup in the left half (title rows $after, value rows $val pixels lit)" \
-    || bad "the Move's screen's left half: title rows $after, value rows $val pixels lit"
+    && ok "the Move's screen: the knob's popup, full screen (title rows $after, value rows $val pixels lit)" \
+    || bad "the Move's screen: title rows $after, value rows $val pixels lit"
 cp "$SIM/mr-screen.pbm" build/test-out/rd1_k1.pbm   # (the shots kept: build/test-out/rd1_*.pbm)
 cmd "note 4 0"; sleep 1.5
 # PRESETS (Move knob 1): the sound's name (a PRESET readout: ChoralRoot's engine and sound)
