@@ -94,6 +94,21 @@ pan "spin K2 -2"
 wait_for 3 '[ "$(lf events)" -gt "$e1" ]' && ok "an encoder turn arrives ($(( $(lf events) - e0 )) events since the key)" \
     || bad "the encoder: events $(lf events)"
 
+# ---- a busy screen for 12 s (an encoder turned 10 times a second, the slot's screen changing), with a TCP stall of
+# 1.8 s every 3 s (the FM-1's sockets left alone: a segment lost on the radio and resent late): the session holds
+# (the owner's FM-1, 2026-11-19: the SESSION restarted every few seconds, "shadow reset" then "no PANEL_R")
+s0=$(lf sessions); l0=$(lf lost); f0=$(lf acks); a=$(now_ms); i=0
+while [ $i -lt 120 ]; do
+    pan "spin K2 $(( i / 5 % 2 * 2 - 1 ))"
+    [ $((i % 30)) = 10 ] && pan "stall 1800"
+    sleep 0.1; i=$((i + 1))
+done
+dt=$(( $(now_ms) - a ))
+info "busy screen for $((dt / 1000)) s: $(( ($(lf acks) - f0) * 1000 / dt )) frames acknowledged a second, $(lf bps) B/s, ack $(lf ack_ms) ms avg / $(lf ack_max) max"
+[ "$(lf sessions)" = "$s0" ] && [ "$(lf lost)" = "$l0" ] && [ "$(lf linked)" = true ] \
+    && ok "the session held through the busy screen (sessions $s0, lost $l0)" \
+    || bad "the session restarted under a busy screen: sessions $s0 -> $(lf sessions), lost $l0 -> $(lf lost)"
+
 # ---- the FM-1 drops the connection (as a new host would replace it): back by itself
 d0=$(lf wifi_drops); s0=$(lf sessions)
 pan "drop"
