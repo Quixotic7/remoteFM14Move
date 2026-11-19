@@ -65,6 +65,14 @@
 .mv-chev { flex: none; width: 26px; background: none; border: 0; color: inherit; opacity: .7; cursor: pointer; display: grid; place-items: center; border-radius: 0 11px 11px 0; padding: 0; }
 .mv-chev:hover { opacity: 1; background: rgba(0,0,0,.12); }
 .mv-chip.empty .mv-chev .mv-ic { transform: none; }
+/* before the first mix state (what the slots hold): quiet skeletons, no empty or grey chip flashing in */
+.mv-chips.mv-wait .mv-chip, .mv-slotbtn.mv-wait {
+  background: var(--chip); color: transparent; box-shadow: none; outline: 0; opacity: .55; filter: none; pointer-events: none;
+  animation: mv-skel 1.4s ease-in-out infinite;
+}
+.mv-chips.mv-wait .mv-chip > *, .mv-slotbtn.mv-wait > * { visibility: hidden; }
+@keyframes mv-skel { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .mv-chips.mv-wait .mv-chip, .mv-slotbtn.mv-wait { animation: none; } }
 .mv-hints { display: flex; gap: 3px; flex: none; }
 .mv-mixbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 10px; font: 700 13px/1 var(--ui); cursor: pointer; flex: none; white-space: nowrap; }
 .mv-mixbtn.lit { background: var(--bezel); color: var(--text); box-shadow: inset 0 2px 0 #2c2823, 0 3px 0 #000; }

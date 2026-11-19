@@ -36,9 +36,10 @@ class SlotsUi {
   // ---- the header: chips (desktop), the slot button (phone), the Mix & FX cap
   buildHeader() {
     const top = document.getElementById("top"), fw = document.getElementById("fw-btn"), nav = top.querySelector(":scope > nav");
-    this.chipsEl = h("nav", { class: "mv-chips", id: "mv-chips", "aria-label": "Firmware slots" });
+    // (skeletons, "mv-wait", until the first mix state says what the slots hold: render())
+    this.chipsEl = h("nav", { class: "mv-chips mv-wait", id: "mv-chips", "aria-label": "Firmware slots", "aria-busy": "true" });
     this.hints = h("span", { class: "mv-hints", "aria-hidden": "true" }, h("span", { class: "mv-kbd" }, "⌥1"), h("span", { class: "mv-kbd" }, "⌥2"), h("span", { class: "mv-kbd" }, "⌥3"));
-    this.slotBtn = h("button", { class: "mv-slotbtn", id: "mv-slotbtn", "aria-haspopup": "menu", "aria-expanded": "false", onclick: () => this.toggleMenu() });
+    this.slotBtn = h("button", { class: "mv-slotbtn mv-wait", id: "mv-slotbtn", "aria-haspopup": "menu", "aria-expanded": "false", onclick: () => this.toggleMenu() });
     this.mixBtn = h("button", { class: "cap mv-mixbtn", id: "mv-mixbtn", "aria-pressed": "false", title: "Mix & FX (⌥M)", onclick: () => this.view.toggle() },
       svg(IC.mix, 15), h("span", {}, "Mix & FX"), h("span", { class: "mv-kbd mv-kbd-cap" }, "⌥M"));
     fw.after(this.chipsEl, this.hints, this.slotBtn);
@@ -65,11 +66,14 @@ class SlotsUi {
   }
 
   render() {
-    const st = this.store, act = st.active;
+    const st = this.store, act = st.active, ready = !!st.mix;
+    this.chipsEl.classList.toggle("mv-wait", !ready);
+    this.slotBtn.classList.toggle("mv-wait", !ready);
+    if (ready) this.chipsEl.removeAttribute("aria-busy");
     for (const c of this.chips) {
       const s = st.slot(c.i), p = st.pending[c.i];
-      c.el.classList.toggle("on", !!s.on && c.i === act);
-      c.el.classList.toggle("empty", !s.on && !p);
+      c.el.classList.toggle("on", ready && !!s.on && c.i === act);
+      c.el.classList.toggle("empty", ready && !s.on && !p);
       c.el.classList.toggle("loading", !!p);
       c.el.style.setProperty("--c", st.colorOf(c.i));
       c.main.setAttribute("aria-pressed", s.on && c.i === act ? "true" : "false");
