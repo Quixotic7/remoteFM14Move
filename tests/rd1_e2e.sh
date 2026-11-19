@@ -5,7 +5,8 @@
 # on the simulator with it in slot 1; the Move's knob 5 (the FM-1's K1) turned one detent: the readout reaches the page
 # (/api/info "readout": ChoralRoot's "Voicing" and its value) and the Move's screen (rfm1cs 0.5.7+: the knob's popup,
 # the name then the value, full screen by default since rfm1cs 0.5.9); then PRESETS turned:
-# the sound's name; the slot switched: the readout forgotten.
+# the sound's name; the slot switched: the readout forgotten. Then FIZZ (when among them): its labels in rfm1cs are
+# its own (not all the last one read), MASTER's VOLUME, K1's readout names K1's job.
 #   tests/rd1_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -16,13 +17,17 @@ bad() { checks=$((checks + 1)); fail=$((fail + 1)); echo "  FAIL  $*"; }
 echo "rd1_e2e"
 CR=$(ls build/fw-dev/choralroot-*.rfm1m 2>/dev/null | sort -V | tail -1)
 if [ -z "$CR" ] || ! nm -D "$CR" | grep -q rfm1m_rd1; then echo "  skip  no rd1 build of ChoralRoot in build/fw-dev"; exit 0; fi
-# the development build over the catalog's own <id>-<version> (README "Development builds"): the module's firmwares/
-# with the catalog's ChoralRoot of that version (dist/move-catalog, when there), its firmwares-dev/ with ours
+# the development build over the catalog's ChoralRoot (README "Development builds"): the module's firmwares/ with the
+# catalog's (dist/move-catalog, when there), its firmwares-dev/ with ours: the same <id>-<version> replaced, or a
+# newer one ("0.42-r2" over "0.42": the older swept at the start)
 FWS=$T/fws; DEV=$T/dev; mkdir -p "$FWS" "$DEV"
 cp "${CR%.rfm1m}".* "$DEV/"
+FZ=$(ls build/fw-dev/fizz-*.rfm1m 2>/dev/null | sort -V | tail -1)
+[ -n "$FZ" ] && cp "${FZ%.rfm1m}".* "$DEV/"
 cp build/fw/felucca-1.8.2.* "$FWS/"
-CAT=dist/move-catalog/$(basename "${CR%.rfm1m}")
-if [ -f "$CAT.rfm1m" ]; then cp "$CAT".* "$FWS/"; else CAT=""; fi
+CAT=$(ls dist/move-catalog/choralroot-[0-9]*.rfm1m 2>/dev/null | sort -V | tail -1)
+CAT=${CAT%.rfm1m}
+if [ -n "$CAT" ]; then cp "$CAT".* "$FWS/"; fi
 sha_of() { sed -n 's/^ *"sha256": "\([0-9a-f]*\)".*/\1/p' "$1" | head -1; }
 SIM=$T/sim; R=$T/root; mkdir -p "$SIM" "$R"
 echo "http://127.0.0.1:1" > "$R/catalog-url"
@@ -45,9 +50,13 @@ HOST=$!
 wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
     && wait_for 10 '[ "$(field session)" = 2 ] && grep -q "drew=1" "$SIM/mr-state"' || { bad "the host did not start"; tail -20 "$T/host.log"; exit 1; }
 want=$(sha_of "${CR%.rfm1m}.json"); got=$(sha_of "$R/firmwares/$(basename "${CR%.rfm1m}").json")
-[ -n "$want" ] && [ "$got" = "$want" ] \
-    && ok "the development build installed$([ -n "$CAT" ] && echo " over the catalog's same version, $(sha_of "$CAT.json" | cut -c1-12)") ($(echo "$want" | cut -c1-12))" \
-    || bad "the installed $(basename "$CR"): '$got', not the development build's $want"
+if [ -z "$CAT" ]; then how=""
+elif [ "$(basename "$CAT")" = "$(basename "${CR%.rfm1m}")" ]; then how=" over the catalog's same version ($(sha_of "$CAT.json" | cut -c1-12))"
+elif [ ! -f "$R/firmwares/$(basename "$CAT").json" ]; then how=", newer than the catalog's $(basename "$CAT") (swept)"
+else how=" BESIDE $(basename "$CAT") (not swept)"; fi
+[ -n "$want" ] && [ "$got" = "$want" ] && [ "${how#* BESIDE}" = "$how" ] \
+    && ok "the development build $(basename "${CR%.rfm1m}") installed$how ($(echo "$want" | cut -c1-12))" \
+    || bad "the installed $(basename "$CR"): '$got', not the development build's $want$how"
 sleep 2.5   # (the firmware's splash and the session's own popups gone)
 mkdir -p build/test-out
 shot; cp "$SIM/mr-screen.pbm" build/test-out/rd1_before.pbm
@@ -72,6 +81,26 @@ cmd "note 0 0"; sleep 0.3
 load 1 felucca 1 >/dev/null
 wait_for 15 'info | grep -q "\"id\":\"felucca\""' && sleep 0.5
 info | grep -q '"readout"' && bad "the readout outlived the slot switch" || ok "a slot switch: no readout until the firmware gives one"
+# FIZZ (an rd1 build among the development builds): its 49 live labels as rfm1cs holds them are the firmware's, each
+# its own (the owner's 2026-11-19: every knob and MASTER showed "SEL/KEYS", label 48, the last one read); MASTER is
+# VOLUME; K1's readout names what K1 controls
+lab() { info | grep -o "\"$1\":\[[^]]*\]" | sed "s/^\"$1\"://"; }
+if [ -n "$FZ" ]; then
+    load 1 fizz 1 >/dev/null
+    wait_for 20 'info | grep -q "\"id\":\"fizz\""'
+    sleep 3; cmd "note 68 100"; sleep 0.2; cmd "note 68 0"; sleep 1.5   # (a pad wakes FIZZ's idle screen)
+    L=$(lab labels); M=$(lab move_labels)
+    [ -n "$L" ] && [ "$L" = "$M" ] && ok "FIZZ: rfm1cs holds the firmware's 49 labels ($(echo "$L" | cut -c1-60)..)" \
+        || bad "FIZZ: rfm1cs's labels $(echo "$M" | cut -c1-90) are not the firmware's $(echo "$L" | cut -c1-90)"
+    k=$(echo "$M" | tr -d '[]' | cut -d, -f8)
+    [ "$k" = '"VOLUME"' ] && ok "FIZZ: MASTER's label is VOLUME" || bad "FIZZ: MASTER's label is $k"
+    k1=$(echo "$L" | tr -d '[]' | cut -d, -f4 | tr -d '"')
+    seq0=$(rdf seq)
+    cmd "note 4 127"; sleep 0.05; cmd "cc 75 1"; sleep 0.05; cmd "cc 75 1"
+    wait_for 3 '[ "$(rdf seq)" != "$seq0" ]' && [ "$(rdf title)" = "$k1" ] && ok "FIZZ: K1's readout \"$(rdf title)\" \"$(rdf value)\" names what K1 controls" \
+        || bad "FIZZ: K1's readout '$(rdf title)', its label '$k1'"
+    cmd "note 4 0"; sleep 0.3
+fi
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 mv "$T" "$T.done" 2>/dev/null
 echo "rd1_e2e: $checks checks, $fail failed"

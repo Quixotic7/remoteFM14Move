@@ -261,6 +261,18 @@ static int install_dir(const char *dir, int dev)
     return n;
 }
 
+/* a rebuild's revision: "<version>-r<N>" (an .rfm1 of the same release with new glue, FM1VST fm1_add_rfm1 VERSION):
+ * N, else 0 (no revision, or another suffix: "-beta.19" compares as before) */
+static int ver_rev(const char *v)
+{
+    const char *d = strstr(v, "-r");
+    int n = 0;
+    if (!d || !d[2])
+        return 0;
+    for (d += 2; *d >= '0' && *d <= '9'; d++)
+        n = n * 10 + (*d - '0');
+    return *d ? 0 : n;
+}
 int st_vercmp(const char *x, const char *y)
 {
     int a[4] = { 0 }, b[4] = { 0 }, k;
@@ -269,7 +281,8 @@ int st_vercmp(const char *x, const char *y)
     for (k = 0; k < 4; k++)
         if (a[k] != b[k])
             return a[k] > b[k] ? 1 : -1;
-    return 0;
+    k = ver_rev(x) - ver_rev(y);   /* (the same numbers: "0.42-r2" is newer than "0.42" and "0.42-r1") */
+    return k > 0 ? 1 : k < 0 ? -1 : 0;
 }
 
 static int by_name(const void *a, const void *b)
