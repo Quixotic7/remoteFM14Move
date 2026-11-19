@@ -1022,7 +1022,7 @@ static void slot_load_now(int s, const char *id)
     pre = fw_instantiate(obj);
     fw_obj_close(obj);
     if (!pre) {
-        fprintf(stderr, "engine: %s: no memory for an instance\n", id);
+        fprintf(stderr, "engine: %s: %s\n", id, fw_inst_why());
         return;
     }
     st_path(p, sizeof p, "states/%s/flash.bin", id);

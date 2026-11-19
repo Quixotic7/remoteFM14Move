@@ -23,7 +23,7 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v
 all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -42,7 +42,7 @@ inputs:
 	if [ ! -f build/ref/.done ]; then git -C "$(FM1VST)" archive "$(FM1VST_REF)" tools/rfm1_run third_party/wasm3 \
 	    core-api | tar -x -C build/ref && git -C "$(FM1VST)" rev-parse "$(FM1VST_REF)" > build/ref/.done; fi
 
-test: all testcat
+test: all testcat testcat-v
 	tests/test.sh
 
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
@@ -54,6 +54,10 @@ catalog: all
 testcat: all
 	python3 tools/build_move_catalog.py --only amb,choralroot,felucca --out build/testcat --jobs 3
 	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat/index.json
+# the Fantasy CFWs' (tests/fantasy_e2e.sh): Elasticat and Ripple, which read the RemoteFM1 folder
+testcat-v: all
+	python3 tools/build_move_catalog.py --only elasticat,ripple --out build/testcat-v --jobs 2
+	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat-v/index.json
 
 package: all
 	$(DOCKER_RUN) make in-package
