@@ -170,7 +170,10 @@ static int ends_with(const char *s, const char *suf)
     return a >= b && !strcmp(s + a - b, suf);
 }
 
-int st_fw_install_bundled(const char *dir)
+static int install_dir(const char *dir, int dev);
+int st_fw_install_bundled(const char *dir) { return install_dir(dir, 0); }
+int st_fw_install_dev(const char *dir) { return install_dir(dir, 1); }
+static int install_dir(const char *dir, int dev)
 {
     DIR *d = dir ? opendir(dir) : NULL;
     struct dirent *e;
@@ -202,6 +205,21 @@ int st_fw_install_bundled(const char *dir)
         if (!man || mj_string(man, "id", id, sizeof id) || mj_string(man, "version", ver, sizeof ver)) {
             free(json);
             continue;
+        }
+        if (dev) {   /* (a dev build over the same <id>-<version>: when the installed manifest names another .rfm1) */
+            char sha[80], isha[80], *ij;
+            size_t il;
+            snprintf(to, sizeof to, "%s/firmwares/%s.json", g_root, base);
+            sha[0] = isha[0] = 0;
+            mj_string(json, "sha256", sha, sizeof sha);
+            if ((ij = (char *)st_read(to, &il))) {
+                mj_string(ij, "sha256", isha, sizeof isha);
+                free(ij);
+                if (sha[0] && strcmp(sha, isha)) {
+                    unlink(to);   /* (the manifest first: half a replacement is not listed) */
+                    fprintf(stderr, "storage: %s: the development build (%.12s) in place of %.12s\n", base, sha, isha);
+                }
+            }
         }
         free(json);
         for (i = 0; i < nh && !newer; i++)

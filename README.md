@@ -463,11 +463,55 @@ engine: blocks 817/4653 us (avg/max of 2902), slot1 fizz 764/4610 us (old object
   slot3 sloop3 32/232 us (old object); slots on their threads; cpu {"rfm1-engine":2.9,"rfm1-slot1":29.8,...}
 ```
 
+Per slot also `split` (where its blocks' time went, us a block: `audio_us` rfm1_audio, `tick_us` tick + idle,
+`frame_us` frame, `frames` a second and `frame_call_us` each).
+
 **Does FIZZ fit?** A slot fits while its `render_avg_us` stays under ~2600 us (2902 less the mix and the hand-over)
-and its spikes are absorbed by the ring (5 blocks, 14.5 ms). On the simulator (an M-series Mac's Docker, ~5x faster
-per core than the Move's A72), FIZZ 0.12.0-beta.19 with a six-note chord renders a block in ~700-950 us on average
-(spikes 4-6 ms): roughly 3.5-4.5 ms on the Move, more than a block. The threads take every other slot, the mix and
-the FX off FIZZ's core; FIZZ itself needs its core 1 (cpu2, a FIZZ build change) to fit a heavy part.
+and its spikes are absorbed by the ring (5 blocks, 14.5 ms). On the simulator (an M-series Mac's Docker; the Move's
+A72 is ~3.5x slower: the owner's Move ran the set below at 94 % where the simulator took 26 %), FIZZ 0.12.0-beta.19
+with a six-note chord rendered a block in ~760 us on average (spikes 4-5 ms): ~2.7 ms on the Move, a whole block.
+**The split showed why: 95 % of it was frame()** (plutovg drawing its screen: ~3.7 ms a call, 67 a second), its
+voices ~30-100 us. Core 1 (cpu2) cannot help that. Two changes did (tests/threads_bench.sh, FIZZ + ChoralRoot +
+SLOOP 3, slots on their threads):
+
+| | FIZZ render avg / max (us a block) | its frame() | all three, a block |
+|---|---|---|---|
+| 0.12.0-beta.19 (catalog), frames every 15 ms | 765 / 4648 | 3762 us x 67/s | 818 us |
+| 0.13.0 dev build (the unit's renderer, cpu2, rd1), frames every 15 ms | 251 / 1258 | 707 us x 67/s | 327 us |
+| the same, frames 33 ms on screen, 200 ms behind (default) | 186 / 1312 | 748 us x 30/s | 275 us |
+
+So ~1 ms a block on the Move for all three (from ~2.9 ms), FIZZ's longest block ~4.5 ms (absorbed by the ring).
+
+## Frames
+
+The ABI's clock calls frame() every 15 ms and idle() between (fm1core.h); frame() draws the screen, idle() keeps
+the input and the LEDs. The Move shows one firmware at a time and rfm1cs sends its OLED at most every 33 ms, so the
+host calls frame() every **33 ms for the slot on screen** and every **200 ms for the others** (the page's small
+screens; iOS already holds frames back up to 200 ms, so every firmware takes it). tick() still runs every ms, so the
+sound, the sequencers and MIDI keep their device time. `--frame-ms A[,B]` (15,15: the ABI's own). The rate is an
+input (`FWI_FRAMES`, logged), so `fwrun --replay` calls frame() as the host did: the slots stay bit-identical to their
+replays. What it changes: a firmware that acts on the panel in frame() alone (rather than tick / idle) sees a knob
+or button up to 33 ms later on screen, and a background slot's screen and readouts move 5 times a second.
+
+## Readouts (rd1)
+
+A firmware built with FM1VST's `WANTS rd1` exports `rfm1_readout()`: one 48-byte record (seq, control, kind, flags,
+ms10, frac, title, value: FM1VST docs/RFM1.md "Readouts (rd1)"). `tools/build_fw.sh` builds such a module with
+`RFM1M_RD1` (fwglue.c `rfm1m_rd1`). After each frame the engine reads the active slot's record (`fw_readout`: no call
+once its place is known) and, when its seq moved, gives it to rfm1cs (`rfm_move_readout`, 0.5.7+: the knob's popup,
+the name then the value; a sound's name; a message). A slot switch clears them (`rfm_move_readouts_clear`) and skips
+what the new slot said while behind. The page: `/api/info`'s `"readout"` (seq, control, kind, flags, frac, title,
+value). `tests/rd1_e2e.sh`: ChoralRoot's K1 (Move knob 5) turned: "Voicing" "+1" on the page and the popup on the
+Move's screen (build/test-out/rd1_k1.pbm); PRESETS: the sound's name; a slot switch: none.
+
+## Development builds
+
+`make package DEV_FIRMWARES="a.rfm1 b.rfm1"` compiles those .rfm1 files into `build/fw-dev` and puts them in the
+module as `firmwares-dev/`. At start the host installs each over the installed firmware of the same `<id>-<version>`
+when its manifest names another .rfm1 (its sha256), else as a bundled one (`--dev-firmwares DIR`, default the module's
+`firmwares-dev/`). The id and version stay, so the slots, states and projects that name them keep working; the
+signed catalog is untouched (an installed version as new as the catalog's is not an update), and the catalog's next
+version replaces it as usual. `FIRMWARES.md` lists them as development builds. Without `DEV_FIRMWARES` there are none.
 
 ## Package
 

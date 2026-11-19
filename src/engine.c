@@ -160,6 +160,10 @@ typedef struct {
     uint32_t mini_writes, mini_ms;   /* the page's mini screen: the LCD writes it was made from, when */
     uint32_t rend_avg_us, rend_max_us;   /* its blocks' render time over the last second (the log's) */
     uint64_t c1_job_ns, c1_wait_ns;      /* core 1's counters when last looked at */
+    uint64_t sp_audio, sp_tick, sp_frame;   /* fwrt's split (rfm1_audio, tick + idle, frame) when last looked at */
+    void *frames_inst;                   /* the instance the screen rate was last given to, and that rate (FWI_FRAMES) */
+    int frames_ms;
+    uint32_t sp_nframe;
     uint32_t c1_cpu;                     /* core 1's jobs, permille of a core over the last second */
 } slot_t;
 
@@ -1018,6 +1022,8 @@ static void slot_unload(int s, int save)
     run_ids_sync();
 }
 
+/* rd1: the active firmware's last readout, for the page (engine thread only; seq 0: none since the slot came up) */
+static fw_readout_t g_rd;
 static void active_changed(void)
 {
     int k;
@@ -1026,6 +1032,11 @@ static void active_changed(void)
     for (k = 0; k <= RFM_MOVE_E_MASTER; k++)
         rfm_move_set_label(&S->core, k, NULL);
     rfm_move_set_labels(&S->core, NULL);   /* (0.5.6) the new firmware's labels come with its next epoch */
+    rfm_move_readouts_clear(&S->core);     /* (rd1, rfm1cs 0.5.7) its readouts too; those it made while in the
+                                            * background are not shown (their seq taken) */
+    memset(&g_rd, 0, sizeof g_rd);
+    if (fw)
+        (void)fw_readout(fw, NULL, 0);
     {
         const char *nm[RFM_MOVE_NBTN];
         for (k = 0; k < RFM_MOVE_NBTN; k++)
@@ -1472,6 +1483,14 @@ static void view_info(void)
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
             }
         }
+        if (g_rd.seq && n < (int)sizeof tmp - 160) {   /* rd1: the last readout (FM1VST docs/RFM1.md "Readouts") */
+            char et[40], ev[40];
+            mj_escape(g_rd.title, et, sizeof et);
+            mj_escape(g_rd.value, ev, sizeof ev);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n,
+                          ",\"readout\":{\"seq\":%u,\"control\":%d,\"kind\":%d,\"flags\":%d,\"frac\":%d,\"title\":\"%s\","
+                          "\"value\":\"%s\"}", g_rd.seq, g_rd.control, g_rd.kind, g_rd.flags, g_rd.frac, et, ev);
+        }
     }
     if (n < (int)sizeof tmp - 64) {   /* the FM-1 on USB-A (fm1link.c) */
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
@@ -1896,9 +1915,29 @@ int engine_load(int slot, const char *id, int activate)
     return r;
 }
 
+/* FRAMES (README "Frames"): the slot on screen draws at the Move's rate (33 ms: rfm1cs sends the OLED at most every
+ * 33 ms), the others a few times a second (the page's small screens); every slot keeps tick() each ms and idle() in
+ * between, as the ABI's clock has it. The rate goes in as an input (FWI_FRAMES), so the input log replays it */
+static void frames_policy(void)
+{
+    int s;
+    const int fa = C.frame_ms_active > 0 ? C.frame_ms_active : 33, fb = C.frame_ms_bg > 0 ? C.frame_ms_bg : 200;
+    for (s = 0; s < NSLOT; s++) {
+        slot_t *sl = &SL[s];
+        const int want = s == g_active ? fa : fb;
+        if (!sl->on || !sl->fw.inst || sl->fw.dead)
+            continue;
+        if (sl->frames_inst != sl->fw.inst || sl->frames_ms != want) {
+            fw_in(&sl->fw, FWI_FRAMES, want > 255 ? 255 : want, 0, 0, 0);
+            sl->frames_inst = sl->fw.inst, sl->frames_ms = want;
+        }
+    }
+}
+
 /* the active firmware's screen and LEDs: to the session (the Move) and to the page */
 static void publish(uint32_t now)
 {
+    frames_policy();
     fw_t *fw = SL[g_active].on ? &SL[g_active].fw : NULL;
     uint8_t leds[FW_NLEVELS + 1];
     uint32_t w;
@@ -1947,6 +1986,15 @@ static void publish(uint32_t now)
             rfm_move_set_labels(&S->core, lbl);
             rfm1cs_session_redraw(S, now);
             view_info();   /* (the page's labels) */
+        }
+    }
+    {   /* rd1: a new readout (its seq moved) to rfm1cs (0.5.7: the knob's popup, its name then its value) and the page */
+        fw_readout_t r;
+        if (fw_readout(fw, &r, 1)) {
+            rfm_move_readout(&S->core, r.control, r.kind, r.title, r.value, r.frac, r.flags, r.ms);
+            g_rd = r;
+            rfm1cs_session_redraw(S, now);
+            view_info();
         }
     }
 }
@@ -2492,6 +2540,17 @@ static void housekeeping(uint32_t now)
                                   "\"render_blocks\":%u,\"obj\":\"%s\"", r->win_n ? (uint32_t)(r->win_ns / r->win_n / 1000u) : 0,
                                   r->win_max_us, (uint32_t)r->win_n, !sl->fw.obj ? "" : sl->fw.obj->mt ? "mt"
                                   : sl->fw.obj->lg ? "old" : "old-locked");
+                    {   /* where the blocks' time went: the sound, the clock, the screen (frame calls, their mean) */
+                        const uint64_t da = sl->fw.ns_audio - sl->sp_audio, dk = sl->fw.ns_tick - sl->sp_tick,
+                                       df = sl->fw.ns_frame - sl->sp_frame;
+                        const uint32_t nf = sl->fw.n_frame - sl->sp_nframe, nb = r->win_n ? (uint32_t)r->win_n : 1u;
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"split\":{\"audio_us\":%u,\"tick_us\":%u,"
+                                      "\"frame_us\":%u,\"frames\":%u,\"frame_call_us\":%u}", (uint32_t)(da / 1000u / nb),
+                                      (uint32_t)(dk / 1000u / nb), (uint32_t)(df / 1000u / nb), nf,
+                                      nf ? (uint32_t)(df / 1000u / nf) : 0u);
+                        sl->sp_audio = sl->fw.ns_audio, sl->sp_tick = sl->fw.ns_tick, sl->sp_frame = sl->fw.ns_frame;
+                        sl->sp_nframe = sl->fw.n_frame;
+                    }
                     sl->rend_avg_us = r->win_n ? (uint32_t)(r->win_ns / r->win_n / 1000u) : 0;
                     sl->rend_max_us = r->win_max_us;
                     r->win_ns = r->win_n = 0, r->win_max_us = 0;
@@ -2783,6 +2842,8 @@ int engine_start(const engine_cfg_t *cfg)
     fw_on_c1_thread = c1_thread_init;   /* (core 1's threads: named, on cores 0..2, real time as the slots') */
     if (st_fw_install_bundled(C.bundled) > 0)
         fprintf(stderr, "engine: bundled firmwares installed into %s/firmwares\n", C.root);
+    if (C.dev_bundled && st_fw_install_dev(C.dev_bundled) > 0)
+        fprintf(stderr, "engine: development builds installed into %s/firmwares (from %s)\n", C.root, C.dev_bundled);
     cat_config(C.bundled_index, C.catalog_url);
     if (!(g_cat = cat_build(NULL)))
         return -1;

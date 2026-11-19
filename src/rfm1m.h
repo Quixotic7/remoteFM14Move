@@ -69,6 +69,18 @@ typedef struct {
 } rfm1m_ain_t;
 typedef const rfm1m_ain_t *(*rfm1m_ain_fn)(void);
 
+/* rd1, readouts (FM1VST docs/RFM1.md "Readouts (rd1)"): a module that exports rfm1_readout gets RFM1M_RD1_SYMBOL
+ * (fwglue.c RFM1M_RD1, built by tools/build_fw.sh only for such a module). readout: rfm1_readout() -> the record's
+ * offset in the module's memory (48 bytes: version, size, seq, control, kind, flags, ms10, frac, title[17],
+ * value[17]), 0 none */
+#define RFM1M_RD1_ABI 1
+#define RFM1M_RD1_SYMBOL "rfm1m_rd1"
+typedef struct {
+    uint32_t abi;
+    uint32_t (*readout)(void *inst);
+} rfm1m_rd1_t;
+typedef const rfm1m_rd1_t *(*rfm1m_rd1_fn)(void);
+
 /* Threads (README "Threads"): RFM1M_CAPS_SYMBOL, in every object tools/build_fw.sh builds since the threads (an older
  * object has none: the host runs every call into it under one lock, as its call depth is a process global) */
 #define RFM1M_CAPS_SYMBOL "rfm1m_caps"

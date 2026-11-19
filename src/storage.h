@@ -42,6 +42,10 @@ typedef struct {
 /* copy the bundled firmwares (a module's firmwares/ folder) that the root lacks; then list the root's. Sorted A-Z by
  * name. Returns how many (at most max) */
 int st_fw_install_bundled(const char *bundled_dir);
+/* a development build to try (the module's firmwares-dev/: make package DEV_FIRMWARES=..): each one installed as
+ * st_fw_install_bundled does, and also over an installed <id>-<version> whose manifest names another .rfm1 (its
+ * sha256): the same id and version, so the slots, states and projects that name it keep working. Returns how many */
+int st_fw_install_dev(const char *dev_dir);
 int st_fw_scan(st_fw_t *out, int max);
 /* versions compared as dotted numbers: < 0, 0, > 0 */
 int st_vercmp(const char *a, const char *b);

@@ -49,4 +49,18 @@ for so in build/fw/*.rfm1m; do
              "$($I "$in" --field source_url) | $(sha256sum "$in" | cut -d' ' -f1) |" >> "$P/FIRMWARES.md"
     fi
 done
+# development builds (make package DEV_FIRMWARES=..: build/in-dev): firmwares-dev/, installed over the same
+# <id>-<version> by the host (README "Development builds"); listed in FIRMWARES.md as such
+for in in build/in-dev/*.rfm1; do
+    [ -f "$in" ] || continue
+    base=$(basename "$in" .rfm1)
+    mkdir -p "$P/firmwares-dev"
+    for x in rfm1m json licenses.txt rfm1skin rfm1skin.bg rfm1skin.bgl; do
+        if [ -f "build/fw-dev/$base.$x" ]; then cp "build/fw-dev/$base.$x" "$P/firmwares-dev/"; fi
+    done
+    chmod 755 "$P/firmwares-dev/$base.rfm1m"
+    I=build/tools/rfm1info
+    echo "| $($I "$in" --field name) (development build) | $($I "$in" --field version) | $($I "$in" --field license) |" \
+         "$($I "$in" --field source_url) | $(sha256sum "$in" | cut -d' ' -f1) |" >> "$P/FIRMWARES.md"
+done
 echo "package: staged $P"

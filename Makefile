@@ -21,6 +21,10 @@ GH := $(abspath ..)
 FIRMWARES ?= $(GH)/RFM1Manager/out/felucca-1.8.2.rfm1 $(GH)/RFM1Manager/out/choralroot-0.41.rfm1
 # an older ChoralRoot, for the catalog's update test (tests/dl_e2e.sh)
 TEST_FIRMWARES ?= $(GH)/RFM1Manager/out/choralroot-0.40.rfm1
+# development builds to try on a Move (make package DEV_FIRMWARES="a.rfm1 b.rfm1"): compiled into build/fw-dev and
+# packaged as firmwares-dev/, which the host installs over the same <id>-<version> (README "Development builds");
+# empty (the default): none, build/in-dev emptied
+DEV_FIRMWARES ?=
 FM1VST ?= $(GH)/FM1VST
 FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
@@ -39,7 +43,9 @@ image:
 
 # the inputs, copied in (the image sees only this folder): the .rfm1 files, FM1VST's rfm1_run and wasm3
 inputs:
-	mkdir -p build/in build/in-test build/ref
+	mkdir -p build/in build/in-test build/in-dev build/ref
+	rm -f build/in-dev/*.rfm1
+	for f in $(DEV_FIRMWARES); do cp -p "$$f" build/in-dev/ || exit 1; done
 	# (a file RFM1Manager no longer has, as it keeps only the newest: the copy already in build/ stands; the tests are
 	#  written for these exact versions)
 	for f in $(FIRMWARES); do if [ -f "$$f" ]; then cp -p "$$f" build/in/; \
@@ -96,6 +102,7 @@ CS := third_party/rfm1cs-abletonmove
 FW_IN := $(wildcard build/in/*.rfm1)
 FW_OUT := $(patsubst build/in/%.rfm1,build/fw/%.rfm1m,$(FW_IN))
 FW_TEST_OUT := $(patsubst build/in-test/%.rfm1,build/testfw/%.rfm1m,$(wildcard build/in-test/*.rfm1))
+FW_DEV_OUT := $(patsubst build/in-dev/%.rfm1,build/fw-dev/%.rfm1m,$(wildcard build/in-dev/*.rfm1))
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
@@ -117,7 +124,7 @@ HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 in-all: in-tools in-fw in-testfw in-cpu2fix in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk
 in-fw: $(FW_OUT)
-in-testfw: $(FW_TEST_OUT)
+in-testfw: $(FW_TEST_OUT) $(FW_DEV_OUT)
 # the core-1 test firmware (tests/cpu2fix: its .rfm1 kept in git, made on the Mac by its build.sh), for tests/threads_e2e.sh
 in-cpu2fix: build/cpu2fix/cpu2fix-1.0.rfm1m
 build/cpu2fix/cpu2fix-1.0.rfm1m: tests/cpu2fix/cpu2fix-1.0.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
@@ -150,6 +157,8 @@ build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c sr
 
 build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/fw build/w2c >/dev/null
+build/fw-dev/%.rfm1m: build/in-dev/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+	tools/build_fw.sh $< build/fw-dev build/w2c >/dev/null
 build/testfw/%.rfm1m: build/in-test/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/testfw build/w2c >/dev/null
 

@@ -153,6 +153,21 @@ const rfm1m_ain_t *rfm1m_ain(void)
 }
 #endif
 
+#ifdef RFM1M_RD1
+/* rd1 (src/rfm1m.h rfm1m_rd1_t): the readout record's offset */
+static uint32_t rd1_readout(void *i) { return X(rfm1_readout)(I); }
+__attribute__((visibility("default"))) const rfm1m_rd1_t *rfm1m_rd1(void);
+const rfm1m_rd1_t *rfm1m_rd1(void)
+{
+    static rfm1m_rd1_t t;
+    if (!t.abi) {
+        t.readout = rd1_readout;
+        t.abi = RFM1M_RD1_ABI;
+    }
+    return &t;
+}
+#endif
+
 /* threads (src/rfm1m.h RFM1M_CAP_MT): built against tools/w2c_mt.sh's header, the call depth is thread-local */
 __attribute__((visibility("default"))) uint32_t rfm1m_caps(void);
 uint32_t rfm1m_caps(void)

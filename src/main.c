@@ -11,6 +11,10 @@
  *     --lead        blocks rendered ahead, 4..8 (default 5)
  *     --fw          the firmware slot 1 gets when nothing was loaded before (default felucca)
  *     --firmwares   the bundled firmwares to install from (default: firmwares/ beside this program)
+ *     --frame-ms A[,B]  frame() every A device ms for the slot on screen, B for the others (default 33,200; 15,15:
+ *                   the ABI's every 15 ms: README "Frames")
+ *     --dev-firmwares  development builds to install, over the same <id>-<version> when they differ (default:
+ *                   firmwares-dev/ beside this program: make package DEV_FIRMWARES=..)
  *     --site        the page's files (scripts/build_site.sh; default: site/ beside this program)
  *     --catalog-index   the catalog's snapshot (default: catalog/index.json beside this program)
  *     --catalog-url     the catalog's base URL when the root's catalog-url file names none (default: catalog.h's)
@@ -67,9 +71,12 @@ int mr_plat_main(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
+    static char dev[PATH_MAX];
+    const char *dev_arg = NULL;
     static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX], index[PATH_MAX];
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
+    int frame_active = 0, frame_bg = 0;
     int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0, fm1_wifi_off = 0, fm1_usba_screen = 0;
     int threads = 1, cpu2 = 1, rt_threads = 1;
     char heal[PATH_MAX];
@@ -102,6 +109,8 @@ int main(int argc, char **argv)
             fw = argv[++i];
         else if (!strcmp(argv[i], "--firmwares") && i + 1 < argc)
             firmwares = argv[++i];
+        else if (!strcmp(argv[i], "--dev-firmwares") && i + 1 < argc)
+            dev_arg = argv[++i];
         else if (!strcmp(argv[i], "--site") && i + 1 < argc)
             site_arg = argv[++i];
         else if (!strcmp(argv[i], "--catalog-index") && i + 1 < argc)
@@ -120,6 +129,11 @@ int main(int argc, char **argv)
             fx_dir = argv[++i];
         else if (!strcmp(argv[i], "--fx-budget") && i + 1 < argc)
             fx_budget = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--frame-ms") && i + 1 < argc) {   /* ACTIVE[,BACKGROUND] */
+            const char *v = argv[++i], *cm = strchr(v, ',');
+            frame_active = atoi(v);
+            frame_bg = cm ? atoi(cm + 1) : frame_active;
+        }
         else if (!strcmp(argv[i], "--threads") && i + 1 < argc)
             threads = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-cpu2"))
@@ -162,7 +176,7 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
-                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
+                            "[--dev-firmwares DIR] [--frame-ms A[,B]] [--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
                             "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -176,6 +190,15 @@ int main(int argc, char **argv)
             snprintf(slash, sizeof bundled - (size_t)(slash - bundled), "/firmwares");
     } else
         bundled[0] = 0;
+    /* development builds to try: the module's firmwares-dev/ beside this program (make package DEV_FIRMWARES=..) */
+    if (dev_arg)
+        snprintf(dev, sizeof dev, "%s", dev_arg);
+    else if (realpath(argv[0], dev)) {
+        char *slash = strrchr(dev, '/');
+        if (slash)
+            snprintf(slash, sizeof dev - (size_t)(slash - dev), "/firmwares-dev");
+    } else
+        dev[0] = 0;
     /* the catalog's snapshot: the module's catalog/index.json beside this program */
     if (index_arg)
         snprintf(index, sizeof index, "%s", index_arg);
@@ -199,6 +222,7 @@ int main(int argc, char **argv)
         memset(&c, 0, sizeof c);
         c.root = root;
         c.bundled = bundled[0] ? bundled : NULL;
+        c.dev_bundled = dev[0] ? dev : NULL;
         c.default_fw = fw;
         c.lead_blocks = lead;
         c.splash_ms = (uint32_t)(splash < 0 ? 0 : splash);
@@ -207,6 +231,8 @@ int main(int argc, char **argv)
         c.log_cap = log_cap;
         c.fx_dir = fx_dir;
         c.fx_budget = fx_budget;
+        c.frame_ms_active = frame_active;
+        c.frame_ms_bg = frame_bg;
         c.test_api = test_api;
         c.fm1_off = fm1_off;
         c.fm1_bps = (uint32_t)(fm1_bps > 0 ? fm1_bps : 0);

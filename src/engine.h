@@ -20,6 +20,9 @@
 typedef struct {
     const char *root;             /* the RemoteFM1 root folder */
     const char *bundled;          /* the module's own firmwares/ (copied into the root when missing), or NULL */
+    const char *dev_bundled;      /* the module's firmwares-dev/ (make package DEV_FIRMWARES=..: builds to try, put in
+                                   * place of the installed object of the same <id>-<version> when theirs differ), or
+                                   * NULL */
     const char *default_fw;       /* the firmware for slot 1 when nothing was loaded before (an id), or NULL: the
                                    * first listed */
     int lead_blocks;              /* the ring's fill the engine keeps (blocks of 128), 4..8 */
@@ -38,6 +41,8 @@ typedef struct {
     uint32_t capture_seconds;
     const char *fx_dir;           /* the Schwung modules (midi_fx/, audio_fx/): /data/UserData/schwung/modules; NULL none */
     int fx_budget;                /* an FX module's CPU budget, permille of real time (0: 200); past it: "Too busy" */
+    int frame_ms_active, frame_ms_bg;   /* frame() every this many device ms for the slot on screen and for the
+                                         * others (README "Frames"; 0: 33 and 200; 15: the ABI's own) */
     int test_api;                 /* tests: engine_test_midi (sequencer MIDI from outside) */
     /* the FM-1 on USB-A (fm1link.h): off, the screen's bytes a second, USB-A packets a transfer (0: the defaults) */
     int fm1_off;

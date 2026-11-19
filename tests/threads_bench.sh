@@ -5,7 +5,7 @@
 # held on sequencer track 1 (all three hear it), the status read after SECONDS (default 8), once with --threads 0
 # (every slot on the engine's thread, as before) and once with the slots on their threads, then with the slots on their
 # threads and core 1 off (--no-cpu2: a cpu2 module runs its core-1 jobs itself). Prints the numbers only.
-# BENCH_CH (the chord's channel, 0-based: FIZZ's tracks have one each), BENCH_NOTES ("48 55 ..": the chord)
+# BENCH_ARGS (more host options for every run: "--frame-ms 15,15", the ABI's screen rate), BENCH_CH (the chord's channel, 0-based: FIZZ's tracks have one each), BENCH_NOTES ("48 55 ..": the chord)
 # BENCH_DIRS="dir.." : where the objects are looked for, in order (default dist/move-catalog; e.g. "build/fw
 # dist/move-catalog" for this build's cpu2 objects first)
 #   tests/threads_bench.sh [SECONDS]
@@ -40,7 +40,7 @@ one() {
     R=$T/$name; mkdir -p "$R/root" "$R/sim"
     echo "http://127.0.0.1:1" > "$R/root/catalog-url"
     build/sim/remotefm1-host --root "$R/root" --port $PORT --sim-dir "$R/sim" --firmwares "$FWS" --site build/site \
-        --fw "$A" --test-api --no-fm1 "$@" >"$R/host.log" 2>&1 &
+        --fw "$A" --test-api --no-fm1 ${BENCH_ARGS:-} "$@" >"$R/host.log" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$R/sim/mr-cmd" ] && [ "$(field session)" = 2 ]' || { echo "the host did not start"; tail "$R/host.log"; return; }
     load 1 "$B"; wait_for 20 '[ "$(slotf 1 id)" = "$B" ]'
@@ -55,7 +55,7 @@ one() {
     echo "  $(echo "$st" | grep -o '"block_avg_us[^}]*}')"
     for s in 0 1 2; do
         echo "  slot $((s + 1)): $(echo "$st" | grep -o '"slots":\[.*\]' | sed 's/},{/}\n{/g' | sed -n "$((s + 1))p" \
-            | grep -o '"id":"[^"]*"\|"version":"[^"]*"\|"cpu":[0-9.]*\|"render_avg_us":[0-9]*\|"render_max_us":[0-9]*\|"obj":"[^"]*"\|"c1":[0-9]*\|"c1_jobs":[0-9]*\|"c1_inline":[0-9]*\|"c1_cpu":[0-9.]*\|"c1_worst_us":[0-9]*' | tr '\n' ' ')"
+            | grep -o '"id":"[^"]*"\|"version":"[^"]*"\|"cpu":[0-9.]*\|"render_avg_us":[0-9]*\|"render_max_us":[0-9]*\|"obj":"[^"]*"\|"c1":[0-9]*\|"c1_jobs":[0-9]*\|"c1_inline":[0-9]*\|"c1_cpu":[0-9.]*\|"c1_worst_us":[0-9]*\|"split":{[^}]*}' | tr '\n' ' ')"
     done
     for n in $NOTES; do midi 1 $((128 + CH)) $n 0; done
     printf 'quit\n' > "$R/sim/mr-cmd"; wait $HOST

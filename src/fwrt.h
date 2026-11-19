@@ -42,6 +42,7 @@ typedef struct fw_obj {
      * exports rfm1_audio_in (ain: build_fw.sh's rfm1m_ain table); the host gives input only when both */
     int ain1;
     const rfm1m_ain_t *ain;
+    const rfm1m_rd1_t *rd1;            /* rd1: the module exports rfm1_readout (readouts), else NULL */
     /* threads: built with a thread-local call depth (rfm1m_caps RFM1M_CAP_MT); core 1 (rfm1m_cpu2: NULL none) */
     int mt;
     const rfm1m_cpu2_t *cpu2;
@@ -84,6 +85,8 @@ enum {
     FWI_SYNC = 7,     /* flash_sync (it may change the firmware's state: logged like an input) */
     FWI_RELEASE = 8,  /* every key and button up */
     FWI_TAKE = 9,     /* a: how many packets midi_out_take gave (the replay takes as many) */
+    FWI_FRAMES = 10,  /* a: frame() every a device ms from now (1..255; FW_FRAME_MS the ABI's), idle() between: the
+                       * host's screen rate (README "Frames"); logged, so a replay calls frame() as the host did */
 };
 typedef struct {
     uint32_t ms;      /* the device ms it was applied before (tick(ms)) */
@@ -125,6 +128,9 @@ typedef struct fw {
     uint32_t log_n, log_cap;
     /* what the host reads */
     uint32_t lbl_epoch;
+    uint32_t frame_ms;                 /* frame() every this many device ms (0: FW_FRAME_MS); FWI_FRAMES sets it */
+    uint32_t rd_ptr, rd_seen;          /* rd1: the readout record (0: none / not asked yet), the seq last taken */
+    int rd_asked;
     /* ain1: the input buffer in the module's memory (rfm1_alloc'd at the first fw_ain_info(1, ..)), the state and
      * latency the module was last told (rfm1_audio_in_info), the blocks fed; ain_peak: the last block's peak */
     uint32_t ain_buf, ain_state, ain_lat, ain_blocks;
@@ -226,6 +232,15 @@ const uint8_t *fw_flash(fw_t *fw);
 uint32_t fw_flash_dirty(fw_t *fw);
 /* live labels: the epoch (0 none) and one slot's text (NULL: not given) */
 uint32_t fw_labels_epoch(fw_t *fw);
+/* rd1 (FM1VST docs/RFM1.md "Readouts (rd1)"): the module's newest readout, if its seq moved since the last call
+ * (1, out filled), else 0 (none new, no rd1, not booted). take 0: only remember the seq (a slot made active: its
+ * older readouts are not shown) */
+typedef struct {
+    uint32_t seq;
+    int control, kind, flags, frac, ms;
+    char title[17], value[17];
+} fw_readout_t;
+int fw_readout(fw_t *fw, fw_readout_t *out, int take);
 const char *fw_label(fw_t *fw, int which);
 /* ui_info into buf */
 void fw_ui_info(fw_t *fw, char *buf, uint32_t n);

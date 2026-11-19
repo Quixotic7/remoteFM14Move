@@ -1,8 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
 # Core 1 for real firmwares (README "Threads", cpu2 without an import: FM1VST's shim, its docs/RFM1.md "cpu2"), in the
-# build image, after make with FIZZ and ChoralRoot cpu2 builds among the inputs (build/fw/fizz-*.rfm1m,
-# choralroot-*.rfm1m whose objects have rfm1m_cpu2): the host on the simulator, FIZZ in slot 1 and ChoralRoot in slot
+# build image, after make with FIZZ and ChoralRoot cpu2 builds among the inputs (make DEV_FIRMWARES=..: build/fw-dev,
+# else build/fw: fizz-*.rfm1m, choralroot-*.rfm1m whose objects have rfm1m_cpu2): the host on the simulator, FIZZ in slot 1 and ChoralRoot in slot
 # 2, a chord on FIZZ's third track (MIDI channel 3) and on ChoralRoot's channel; core 1 took jobs in both; each slot's
 # blocks are the bytes of that firmware replayed offline from the host's log of its input with core 1 off (the module
 # runs every job itself, as on a host without cpu2).
@@ -14,8 +14,9 @@ fail=0; checks=0
 ok() { checks=$((checks + 1)); echo "  ok    $*"; }
 bad() { checks=$((checks + 1)); fail=$((fail + 1)); echo "  FAIL  $*"; }
 echo "cpu2fw_e2e"
-FZ=$(ls build/fw/fizz-*.rfm1m 2>/dev/null | sort -V | tail -1)
-CR=$(ls build/fw/choralroot-*.rfm1m 2>/dev/null | sort -V | tail -1)
+pick() { f=$(ls build/fw-dev/$1-*.rfm1m 2>/dev/null | sort -V | tail -1); [ -n "$f" ] || f=$(ls build/fw/$1-*.rfm1m 2>/dev/null | sort -V | tail -1); echo "$f"; }
+FZ=$(pick fizz)
+CR=$(pick choralroot)
 for f in "$FZ" "$CR"; do
     if [ -z "$f" ] || ! nm -D "$f" | grep -q rfm1m_cpu2; then echo "  skip  no cpu2 build of FIZZ and ChoralRoot in build/fw"; exit 0; fi
 done

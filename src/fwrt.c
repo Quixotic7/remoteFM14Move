@@ -299,6 +299,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         free(o);
         return NULL;
     }
+    {   /* rd1: rfm1m_rd1 (an object built with RFM1M_RD1: its module exports rfm1_readout) */
+        const rfm1m_rd1_fn rg = (rfm1m_rd1_fn)(uintptr_t)dlsym(o->so, RFM1M_RD1_SYMBOL);
+        const rfm1m_rd1_t *r = rg ? rg() : NULL;
+        o->rd1 = r && r->abi == RFM1M_RD1_ABI && r->readout ? r : NULL;
+    }
     {   /* ain1: rfm1m_ain (an object built with RFM1M_AIN1: its module exports rfm1_audio_in) */
         const rfm1m_ain_fn ag = (rfm1m_ain_fn)(uintptr_t)dlsym(o->so, RFM1M_AIN_SYMBOL);
         const rfm1m_ain_t *a = ag ? ag() : NULL;
@@ -1129,6 +1134,9 @@ static void apply(fw_t *fw, int op, int a, int b, uint32_t c)
         fw->keys_held = fw->btns_held = 0;
         break;
     }
+    case FWI_FRAMES:   /* the screen's rate (the next frame due a ms from the last one) */
+        fw->frame_ms = a > 0 ? (uint32_t)a : FW_FRAME_MS;
+        break;
     case FWI_TAKE: {   /* (the replay: what the host took) */
         volatile int k;
         for (k = 0; k < a && !fw->dead; k++)
@@ -1310,7 +1318,7 @@ static void run_ms(fw_t *fw)
         CALL(fw, "rfm1_tick", vt->tick(fw->inst, ms));
         t1 = now_ns();
         fw->ns_tick += t1 - t0;
-        if (ms == 0 || ms - fw->last_frame >= FW_FRAME_MS) {
+        if (ms == 0 || ms - fw->last_frame >= (fw->frame_ms ? fw->frame_ms : FW_FRAME_MS)) {
             fw->last_frame = ms;
             CALL(fw, "rfm1_frame", vt->frame(fw->inst));
             fw->ns_frame += now_ns() - t1;
@@ -1442,6 +1450,45 @@ uint32_t fw_labels_epoch(fw_t *fw)
         return 0;
     CALL(fw, "rfm1_labels_epoch", e = fw->obj->vt->labels_epoch(fw->inst));
     return e;
+}
+
+int fw_readout(fw_t *fw, fw_readout_t *out, int take)
+{
+    const uint8_t *r;
+    uint32_t seq;
+    uint16_t ver, size;
+    int16_t frac;
+    if (!fw->booted || fw->dead || !fw->obj->rd1)
+        return 0;
+    if (!fw->rd_asked) {   /* (the record's place: once, after boot; it never moves) */
+        volatile uint32_t p = 0;
+        fw->rd_asked = 1;
+        CALL(fw, "rfm1_readout", p = fw->obj->rd1->readout(fw->inst));
+        fw->rd_ptr = !fw->dead && p && in_mem(fw, p, 48) ? p : 0;
+    }
+    if (!fw->rd_ptr)
+        return 0;
+    r = fw->mem + fw->rd_ptr;
+    memcpy(&ver, r, 2);
+    memcpy(&size, r + 2, 2);
+    memcpy(&seq, r + 4, 4);
+    if (ver != 1 || size < 48 || seq == fw->rd_seen)
+        return 0;
+    fw->rd_seen = seq;
+    if (!take)
+        return 0;
+    memcpy(&frac, r + 12, 2);
+    out->seq = seq;
+    out->control = (int8_t)r[8];
+    out->kind = r[9];
+    out->flags = r[10];
+    out->ms = r[11] * 10;
+    out->frac = frac;
+    memcpy(out->title, r + 14, 16);
+    out->title[16] = 0;
+    memcpy(out->value, r + 31, 16);
+    out->value[16] = 0;
+    return 1;
 }
 
 const char *fw_label(fw_t *fw, int which)
