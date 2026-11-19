@@ -5,15 +5,28 @@ web/move/css/move.css added beside it. Everything is behind one flag,
 js/host.js ON_MOVE (index.html's <meta name="fm1-host" content="web|move">: the build sets "move"), so with "web" the
 site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The page").
   index.html     the flag; no http -> https redirect on the Move; <html data-host> for the CSS
-  css/site.css   the header's install / app / FM-1 / recorder / editor buttons hidden on the Move
+  css/site.css   the header's install / app / FM-1 / recorder buttons hidden on the Move
   js/main.js     on the Move: the catalog is the Move's firmwares, the engine movehost.js (no AudioWorklet), no saves,
-                 files, MIDI, Use my FM-1, OMX-27, Move link, recorder, editor, folder, audio input; the page follows the
+                 files, MIDI input, Use my FM-1, OMX-27, Move link, recorder, folder, audio input; the Editor talks to the
+                 firmware on the Move (movehost.js midi(), moveEditors: remotefm1.com's editor list); the page follows the
                  firmware the Move switches to by itself; the Move's slots and Mix & FX (js/moveslots.js mountMoveUi:
                  the header's slot chips in place of the firmware picker, the phone's slot button, the Mix & FX view)
+  js/editor-panel.js   on the Move: the engine "move" runs the firmware's own code; a hosted copy from remotefm1.com in
+                 the live pages' sandbox (its own shim's tag dropped); a note for an editor that needs Web MIDI; no pop out
   js/sheet.js    on the Move: the firmware page lists the Move's firmwares; no saves, FM-1, playing, recording sections
   js/panel.js    a layout's buttons may name their legends' size (buttons.font; none of RemoteFM1's do): the Move's
                  phone layout sets 13 px, OCT 15 px (js/moveslots.js), as RemoteFM1 for iOS draws them
 
+--- a/css/site.css
++++ b/css/site.css
+@@ -631,3 +631,7 @@
+ .ain-meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: #3DDC84; transition: width .06s linear; }
+ .ain-meter i.hot { background: #FF6464; }
+ .offer.ain-ask { border-color: rgba(140, 220, 240, .7); }
++
++/* ---- the page on an Ableton Move (RemoteFM14Move, js/host.js): nothing that needs the browser's audio, MIDI or USB */
++[data-host="move"] #install-link, [data-host="move"] #vst-link, [data-host="move"] #ios-link, [data-host="move"] #android-link,
++[data-host="move"] #fm1-btn, [data-host="move"] #rec, [data-host="move"] #start-fm1 { display: none !important; }
 --- a/index.html
 +++ b/index.html
 @@ -3,7 +3,9 @@
@@ -27,6 +40,126 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
  <title>FM-1 Player</title>
  <meta name="description" content="Play FM-1 firmwares in the browser: the M-VAVE FM-1 drawn on screen, played with the computer keyboard, mouse, touch or a MIDI keyboard. Install RemoteFM1 to use your own FM-1 as the panel.">
+--- a/js/editor-panel.js
++++ b/js/editor-panel.js
+@@ -12,15 +12,20 @@
+ //   RemoteFM1 itself on the .rfm1 engine    its DX7 cartridges (js/cart.js) through the in-page port (cartPort); on
+ //                                           the emulated engine "switch Engine to .rfm1" (fm1-emu's MIDI in is the
+ //                                           TRS jack, which takes no cartridge, and it has no MIDI out)
++// On an Ableton Move (js/host.js ON_MOVE: plain http, the firmware on the Move, movehost.js): the author's live page
++// first, as here; else the hosted copy, from remotefm1.com (MOVE_MANAGERS) in the same sandbox as a live page (the Move
++// serves no managers of its own, and a copy from another origin can only be reached that way); no pop out.
+ // "Pop out": a hosted copy in a tab of its own (the BroadcastChannel); a live page in managers/live.html, which loads
+ // it the same way and relays between its sandbox and this tab over the BroadcastChannel.
+ import { ManagerBridge, editorOf, portOf } from "./managers.js";
+ import { LIVE_SANDBOX, HELLO_MS, fetchLive, injectLive, EditorStore, stashPop } from "./live-editor.js";
+ import { mountCart, corePort } from "./cart.js";
++import { ON_MOVE } from "./host.js";
++import { MOVE_MANAGERS, MOVE_PRELUDE } from "./movehost.js";
+ 
+ const $ = (id) => document.getElementById(id);
+ // the engines that run the firmware's own code, so its manager's SysEx gets answers: native, and an .rfm1 file
+-const runsOwnCode = (s) => s.engine === "native" || s.engine === "rfm1";
++const runsOwnCode = (s) => s.engine === "native" || s.engine === "rfm1" || s.engine === "move";
+ const hostOf = (u) => { try { return new URL(u).host; } catch (_) { return u; } };
+ // the catalog's repo ("owner/name": GitHub, or an address) as a link, or null
+ const repoUrl = (r) => (!r ? null : /^https:\/\//.test(r) ? r : /^[\w.-]+\/[\w.-]+$/.test(r) ? `https://github.com/${r}` : null);
+@@ -61,7 +66,7 @@
+     return !!(ed && ed.live && runsOwnCode(s) && portOf(s.entry, this.index) && !this.liveFail.has(ed.live)
+       && !(ed.kind === "hosted" && this.pref(s.entry) === "hosted"));
+   }
+-  get showingLive() { return !!(this.live && this.frameFor === "live:" + this.live.url); }
++  get showingLive() { return !!(this.live && this.frameFor === "live:" + this.live.url && !this.live.hosted); }
+ 
+   // the firmware, its engine or its state changed: the button, the bridge's port, the panel
+   update() {
+@@ -124,11 +129,11 @@
+     const dot = $("ed-dot"), cart = ed && ed.kind === "cart";
+     dot.className = "fm1-dot " + ((cart ? this.cartReady() : t.connected && (!live || live.ready)) ? "on" : "off");
+     const port = t.connected
+-      ? `port "${t.port}"${live ? "" : ` · ${s.entry.name} in this page`}${this.bridge.count > 1 ? ` · ${this.bridge.count} editors` : ""}`
++      ? `port "${t.port}"${live ? "" : ` · ${s.entry.name} ${ON_MOVE ? "on the Move" : "in this page"}`}${this.bridge.count > 1 ? ` · ${this.bridge.count} editors` : ""}`
+       : ed && (ed.kind === "hosted" || live) && runsOwnCode(s) && s.engineState !== "running" ? "starting the firmware..." : "no port";
+     $("ed-sub").textContent = cart ? (this.cartReady() ? `${s.entry.name} ${s.info.version || ""} in this page`.trim() : s.engine === "rfm1" ? "starting the firmware..." : "no port")
+       : live ? `live · ${live.host}${live.ready ? "" : " · loading"} · ${port}` : port;
+-    $("ed-pop").hidden = !ed || cart;
++    $("ed-pop").hidden = !ed || cart || ON_MOVE;
+     $("ed-pop").textContent = ed && ed.kind === "real" && !live ? "Open its site ↗" : "Pop out ↗";
+     const src = $("ed-src");
+     if (live) {
+@@ -174,7 +179,15 @@
+       this.renderHead();
+       return;
+     }
+-    if (ed.kind === "hosted" && runsOwnCode(s)) {
++    if (ON_MOVE && ed.kind === "hosted" && runsOwnCode(s) && !this.liveFail.has(this.moveHosted(ed))) {
++      const url = this.moveHosted(ed);   // (remotefm1.com's hosted copy, in the live pages' sandbox)
++      if (this.frameFor === "live:" + url) return;
++      this.dropFrame();
++      this.loadLive({ ...ed, live: url }, true);
++      this.renderHead();
++      return;
++    }
++    if (ed.kind === "hosted" && runsOwnCode(s) && !ON_MOVE) {
+       if (this.frameFor === "hosted:" + ed.manager.id) return;
+       this.dropFrame();
+       const f = document.createElement("iframe");
+@@ -190,7 +203,18 @@
+     const p = (text, cls = "") => { const el = document.createElement("p"); el.textContent = text; if (cls) el.className = cls; box.append(el); return el; };
+     const btn = (text, onclick, cls = "pill primary") => { const b = document.createElement("button"); b.className = cls; b.textContent = text; b.onclick = onclick; box.append(b); return b; };
+     const own = e.engines.find((k) => k === "native" || k === "rfm1") || null;
+-    if (ed.kind === "cart") {
++    if (ON_MOVE) {
++      // the Move: its page is plain http (no Web MIDI), so an editor works only in the panel, as a page this panel can
++      // read (its author's site or remotefm1.com, which allow it) talking to the firmware on the Move
++      const why = ed.live && this.liveFail.get(ed.live) || (ed.kind === "hosted" && this.liveFail.get(this.moveHosted(ed)));
++      if (why) {
++        p(`${this.title(s, ed)} could not be loaded here: ${why}.`, "ed-lead");
++        p("The editors load from their authors' sites or remotefm1.com: the device showing this page needs the internet. They then talk to the firmware on the Move.", "muted");
++      } else {
++        p(`${e.name}'s editor works only on its own site, with an FM-1 on USB.`, "ed-lead");
++        p(`It talks to an FM-1 through Web MIDI, which needs a secure (https) page; this page on the Move is plain http, and ${e.name}'s editor page cannot be loaded into it.`, "muted");
++      }
++    } else if (ed.kind === "cart") {
+       const rfm1 = e.engines.includes("rfm1");
+       p(`The DX7 cartridge sender works with ${e.name}'s .rfm1 engine${rfm1 ? "; switch Engine to .rfm1" : ", which this site does not have for this version"}.`, "ed-lead");
+       p(`${e.name} takes cartridges as SysEx on its USB MIDI. The emulated FM-1 (fm1-emu) has MIDI in only on the TRS jack, which takes no cartridge, and no MIDI out for the replies.`, "muted");
+@@ -221,6 +245,9 @@
+     this.body.replaceChildren(box);
+   }
+ 
++  // the Move: the hosted copy's address on remotefm1.com
++  moveHosted(ed) { return ed && ed.manager ? new URL(ed.manager.path, MOVE_MANAGERS).href : null; }
++
+   // ---- the author's live page: fetched, the shim put in, in a sandbox; it falls back when it cannot be read, does
+   // not answer in time, or its shim does not say hello
+   shimText() {
+@@ -228,10 +255,10 @@
+     this.shimP.catch(() => { this.shimP = null; });
+     return this.shimP;
+   }
+-  loadLive(ed) {
++  loadLive(ed, hostedCopy = false) {
+     const s = this.d.getState(), e = s.entry, url = ed.live, g = ++this.gen;
+     this.frameFor = "live:" + url;
+-    this.live = { url, final: url, host: hostOf(url), store: new EditorStore(url), win: null, frame: null, ready: false };
++    this.live = { url, final: url, host: hostOf(url), store: new EditorStore(url), win: null, frame: null, ready: false, hosted: hostedCopy };
+     const box = document.createElement("div");
+     box.className = "ed-note";
+     const p = document.createElement("p"); p.className = "muted"; p.textContent = `Loading ${this.title(s, ed)} from ${hostOf(url)}…`;
+@@ -251,7 +278,11 @@
+       f.className = "ed-frame"; f.title = `${this.title(s, ed)} (live from ${live.host})`;
+       f.setAttribute("sandbox", LIVE_SANDBOX);
+       f.setAttribute("referrerpolicy", "no-referrer");
+-      f.srcdoc = injectLive(page.html, { base: page.url, shim, manager: ed.kind === "hosted" ? ed.manager.id : e.id, storage: live.store.seed() });
++      // (a hosted copy carries its own same-origin shim's tag: the sandbox's goes in its place; on the Move, plain
++      // http, MOVE_PRELUDE first: what a page there lacks, crypto.subtle's SHA-256)
++      const html = hostedCopy ? page.html.replace(/<script[^>]*\ssrc="[^"]*fm1-shim\.js"[^>]*><\/script>/i, "") : page.html;
++      f.srcdoc = injectLive(html, { base: page.url, shim: ON_MOVE ? MOVE_PRELUDE + "\n" + shim : shim,
++        manager: ed.kind === "hosted" ? ed.manager.id : e.id, storage: live.store.seed() });
+       let loads = 0, t0 = Date.now();
+       const check = () => {
+         if (g !== this.gen) return;
 --- a/js/main.js
 +++ b/js/main.js
 @@ -6,6 +6,8 @@
@@ -43,7 +176,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  import { FolderUI } from "./folder-ui.js";
  import { AinUI } from "./ain-ui.js";
 +import { ON_MOVE } from "./host.js";
-+import { MoveHostPlayer, moveCatalog } from "./movehost.js";
++import { MoveHostPlayer, moveCatalog, moveEditors } from "./movehost.js";
 +import { mountMoveUi } from "./moveslots.js";
  
  const $ = (id) => document.getElementById(id);
@@ -86,25 +219,23 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    try {
      // an emulated firmware's package from where the Hub points now (a gone one: the Hub once more, then the snapshot's)
      if (eng === "emu" && !e.localBytes && e.emu && e.emu.pkg && emuHook && emuHook.fetchPackage) {
-@@ -321,12 +330,24 @@
-   toast(`${why} Playing a test engine instead.`, "bad");
-   setStatus("");
-   try { await player.load({ ...e, name: e.name }, "mock", null); } catch (err) { toast(String(err.message || err), "bad"); }
-+  if (sheet) sheet.render();
-+}
-+
+@@ -324,9 +333,22 @@
+   if (sheet) sheet.render();
+ }
+ 
 +// the Move switched firmware itself (its projects view, another track): the page follows it, nothing is loaded
 +function followMove(id) {
 +  const e = id ? findEntry(id) : null;
 +  if ((state.entry ? state.entry.id : null) === (e ? e.id : null)) return;
 +  if (state.fwSkin && (!e || state.fwSkin.id !== skinIdOf(e))) { state.fwSkin = null; applyTheme(); }
 +  state.entry = e; state.wantEngine = state.engine = e ? "move" : null; state.info = null; state.labels = null;
++  state.engineState = e ? "loading" : "idle";
 +  controls.releaseLatches();
 +  if (e) { prefs.last = e.id; savePrefs(); }
 +  updateTitle();
-   if (sheet) sheet.render();
- }
- 
++  if (sheet) sheet.render();
++}
++
  function updateTitle() {
 -  const e = state.entry;
 -  document.title = e ? `${nameOf(e, state.wantEngine)} · FM-1 Player` : "FM-1 Player";
@@ -113,7 +244,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    $("fw-name").textContent = e ? nameOf(e, state.wantEngine) : "";
    $("fw-ver").textContent = e ? versionOf(e, state.wantEngine) : "";
    updateSource();
-@@ -334,7 +355,7 @@
+@@ -334,7 +356,7 @@
  }
  // the header's link to the running firmware's own source, at the version that runs (live.js sourceOf); a file from the
  // visitor's computer (M-VAVE's stock firmware, any .fwsc) has none: the link shows so, disabled
@@ -122,7 +253,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  function updateSource() {
    const a = $("fw-src"), e = state.entry, s = e ? sourceNow() : null;
    a.hidden = !e;
-@@ -358,13 +379,14 @@
+@@ -358,13 +380,14 @@
  function metaLine() {
    const e = state.entry;
    if (!e) return "";
@@ -138,7 +269,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (siteRfm1(e) && state.wantEngine === "rfm1") {
      const r = e.rfm1;
      return [`${e.name}'s own code, built to WebAssembly by this site from its release (${r.fileName}${r.builtBy ? `, ${r.builtBy}` : ""}), runs natively here as in RemoteFM1 for iOS. The file is this site's (SHA-256 ${r.sha256.slice(0, 12)}..., checked as it loads); its saves are the firmware's under the .rfm1 engine.`,
-@@ -432,7 +454,9 @@
+@@ -432,7 +455,9 @@
  
  // ------------------------------------------------------------------ audio ---
  function makePlayer() {
@@ -149,7 +280,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      frame(px, seq) { state.pixels = px; state.frameSeq = seq; lcd.put(px); invalidate(); siteEmit("frame", px, seq); },
      labels(m) { state.labels = m.list || null; applyButtonNames(); invalidate(); },
      leds(levels, green) { state.levels = levels; state.playGreen = green; device.setLeds(levels, green); invalidate(); siteEmit("leds", levels, green); },
-@@ -489,6 +513,7 @@
+@@ -489,6 +514,7 @@
      beforeLoad() { if (rec) rec.beforeLoad(); },
      audioState(s) { if (s !== "running") setTimeout(soundHeldBack, 800); },
      error(msg) {
@@ -157,7 +288,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
        console.warn("worklet:", msg);
        if (/^load:/.test(msg) && state.engine !== "mock") fallback(msg.replace(/^load:\s*/, "The engine could not start: ") + ".");
        else if (/^render:/.test(msg)) toast(`The engine stopped: ${msg}`, "bad");
-@@ -496,7 +521,7 @@
+@@ -496,7 +522,7 @@
    });
    player.setVolume(state.volume);
    if (fm1 && fm1.status.audio) { player.tap(true); player.setMuted(true); }   // (Bluetooth audio already on)
@@ -166,7 +297,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  }
  let flashTimer = 0, pendingSave = null;
  const lastSaved = new Map();
-@@ -862,7 +887,7 @@
+@@ -862,7 +888,7 @@
  let skinSeq = 0;
  function takeFirmwareSkin(info) {
    const e = state.entry, id = skinIdOf(e), seq = ++skinSeq;
@@ -175,7 +306,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    if (state.fwSkin && state.fwSkin.id === id) return;
    firmwareSkin(info.skin, id).then((s) => {
      if (seq !== skinSeq || state.entry !== e) return;   // (another firmware since)
-@@ -899,8 +924,11 @@
+@@ -899,8 +925,11 @@
    new ResizeObserver(layout).observe($("stage"));
    matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener?.("change", layout);
    try {
@@ -189,24 +320,27 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    } catch (e) {
      toast("The firmware list could not be loaded. Reload the page.", "bad");
      return;
-@@ -915,6 +943,8 @@
+@@ -915,13 +944,17 @@
      if (!catalog.live) console.warn("the Hub's catalog:", catalog.liveError, "- using the deployed snapshot");
    }
    // the hosted managers (web/managers/build.mjs: managers/index.json); none: the Editor button shows only links
-+  // (not on the Move: the editors talk to the firmware's MIDI, which the Move's page has no way to)
-+  if (!ON_MOVE) {
++  // (on the Move: the editors' SysEx goes to the firmware on the Move over its WebSocket, movehost.js midi(); which
++  // firmware has which editor is remotefm1.com's catalog and managers index, read live (movehost.js moveEditors), and
++  // the editors run in a sandbox, loaded from their authors' sites or remotefm1.com: the browser needs the internet)
    const mbase = new URL(catalog.paths.managers || "managers/", document.baseURI);
    let mindex = null;
-   try { const r = await fetch(new URL("index.json", mbase), { cache: "no-cache" }); if (r.ok) mindex = await r.json(); } catch (_) { mindex = null; }
-@@ -922,6 +952,7 @@
-     toEngine: (b) => { if (player && (state.engine === "native" || state.engine === "rfm1")) player.midi(b); },
+-  try { const r = await fetch(new URL("index.json", mbase), { cache: "no-cache" }); if (r.ok) mindex = await r.json(); } catch (_) { mindex = null; }
++  if (!ON_MOVE) try { const r = await fetch(new URL("index.json", mbase), { cache: "no-cache" }); if (r.ok) mindex = await r.json(); } catch (_) { mindex = null; }
+   editor = new EditorPanel({ getState: () => state, index: mindex, base: mbase.href, onLayout: layout,
+-    toEngine: (b) => { if (player && (state.engine === "native" || state.engine === "rfm1")) player.midi(b); },
++    toEngine: (b) => { if (player && (state.engine === "native" || state.engine === "rfm1" || state.engine === "move")) player.midi(b); },
      toCart: (b) => { if (player && playingSelf() && state.engine === "rfm1") player.midi(b); }, setEngine: (n) => app.setEngine(n) });
    window.FM1Editor = editor;
-+  }
++  if (ON_MOVE) moveEditors(catalog).then((index) => { editor.index = index; editorChanged(); });
    app.installerUrl = catalog.paths.installer;
    $("install-link").href = catalog.paths.installer;
    sheet = new Sheet(app);
-@@ -934,7 +965,7 @@
+@@ -934,7 +967,7 @@
    site = made.site; siteEmit = made.emit;
    window.FM1Site = site;
    window.FM1Device = device;   // (the faceplate view: the e2e tests read its anchors)
@@ -215,7 +349,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      if (m && typeof m.RemoteFM1 === "function") {          // W4's class: the section is ours (use-fm1.js)
        app.remoteMounted = true;
        if (typeof m.isCandidatePortName === "function") midi.isUnitPort = m.isCandidatePortName;
-@@ -954,6 +985,7 @@
+@@ -954,6 +987,7 @@
    }).catch(() => { /* (web/remote is W4's: the stub stays) */ });
  
    // USE MY OMX-27: its port is the page's while it is in REMOTE mode (not a MIDI keyboard, nothing learned from it)
@@ -223,7 +357,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    omx = new OmxLink({ controls, site, prefs, save: savePrefs, toast, mapAct,
      onActive: () => { midi.bind(); if (sheet) sheet.render(); } });
    midi.skipPort = (i) => omx.owns(i);
-@@ -967,11 +999,12 @@
+@@ -967,11 +1001,12 @@
      onActive: () => { if (sheet) sheet.render(); } });
    mountMove(sheet.moveSlot, move);
    window.FM1Move = move;
@@ -239,7 +373,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      rec = new RecUI({
        getPlayer: () => player,
        ensureRunning: async () => state.running || start(),
-@@ -985,6 +1018,7 @@
+@@ -985,6 +1020,7 @@
    }
  
    // a Fantasy CFW's RemoteFM1 folder: the files changed (picked, added, back to the page) -> the cart's fs_changed
@@ -247,7 +381,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    folderUi = new FolderUI({ folder, cart: fantasyNow, toast, render: () => { if (sheet) sheet.render(); } });
    folder.on((kind) => { if (kind === "changed" && player) player.fsChanged(); folderUi.update(); if (sheet) sheet.render(); });
    addEventListener("focus", () => { if (player && fantasyNow() && folder.state === "ready") player.fsChanged(); });
-@@ -994,6 +1028,7 @@
+@@ -994,6 +1030,7 @@
    ainUi = new AinUI({ getPlayer: () => player, ensureRunning: async () => state.running || start(), cart: ainNow, toast,
      render: () => { if (sheet) sheet.render(); } });
    window.FM1Ain = ainUi;
@@ -255,7 +389,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
  
    // input
    new Keyboard({
-@@ -1027,7 +1062,7 @@
+@@ -1027,7 +1064,7 @@
      e.stopImmediatePropagation(); e.preventDefault();
    }, true);
    // MIDI on by itself where it was on before and the browser already allows it (no prompt)
@@ -264,7 +398,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    addEventListener("keydown", (e) => {
      if (e.key !== "Escape" || !sheet.isOpen) return;
      e.stopImmediatePropagation(); e.preventDefault();
-@@ -1035,8 +1070,8 @@
+@@ -1035,8 +1072,8 @@
    }, true);
  
    // a file dropped anywhere on the page: an .rfm1 or a .fwsc, opened as from the browser's "Open a file..."
@@ -275,7 +409,7 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
      const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
      if (!f) return;
      ev.preventDefault();
-@@ -1046,14 +1081,17 @@
+@@ -1046,14 +1083,17 @@
    });
  
    // the visitor's .rfm1 files, kept in this browser
@@ -300,6 +434,26 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    // ?open=carts (the installer's link): the settings sheet at Use my FM-1's DX7 cartridges
    if (params.get("open") === "carts") {
      sheet.open();
+--- a/js/panel.js
++++ b/js/panel.js
+@@ -238,7 +238,7 @@
+     oct: { x: 16, y: 246, w: 148, h: 52, pad: 5, gap: 6, r: 14, br: 10, font: 13 },
+     display: { x: 172, y: 96, size: 202 },
+     kn: { row: true, x: 16, y: 316, w: 358, knob: 46, led: 10 },
+-    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },
++    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },   // (font: the legends' size in points; none: from the caps' height)
+     keybed: { x: 16, y: 530, w: 358, h: 272, keyW: 40 },
+   },
+   phoneLandscape: {
+@@ -505,7 +505,7 @@
+     const refW = (6 * bt.bw + 5 * bt.gap + 20) * m.sx;
+     L.btnWell = { x: m.x(bt.x) + (refW - wellW) / 2, y: m.y(bt.y), w: wellW, h: wellH, r: Math.round(bh * 0.34) + 6 * s };
+     for (let i = 0; i < 12; i++) L.btns.push({ b: i, x: L.btnWell.x + bp + (i % 6) * (bw + bg), y: L.btnWell.y + bp + ((i / 6) | 0) * (bh + bg), w: bw, h: bh,
+-      r: Math.round(bh * 0.24), font: Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
++      r: Math.round(bh * 0.24), font: bt.font ? bt.font * s : Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
+     // the display
+     const d = R.display, ds = d.size * s;
+     L.display = { x: m.x(d.x) + d.size * m.sx / 2 - ds / 2, y: m.y(d.y), size: ds };
 --- a/js/sheet.js
 +++ b/js/sheet.js
 @@ -13,6 +13,7 @@
@@ -418,33 +572,3 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
        h("li", {}, "Chakra Petch, DM Sans, Unbounded and DM Mono, SIL Open Font License 1.1 (", h("a", { href: "fonts/OFL-chakrapetch.txt" }, "Chakra Petch"), ", ",
          h("a", { href: "fonts/OFL-dmsans.txt" }, "DM Sans"), ", ", h("a", { href: "fonts/OFL-unbounded.txt" }, "Unbounded"), ", ", h("a", { href: "fonts/OFL-dmmono.txt" }, "DM Mono"), ")."),
        h("li", {}, "This site: ", link("https://github.com/Quixotic7/RemoteFM1", "RemoteFM1"), ", GPL-3.0-only."),
---- a/css/site.css
-+++ b/css/site.css
-@@ -631,3 +631,7 @@
- .ain-meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: #3DDC84; transition: width .06s linear; }
- .ain-meter i.hot { background: #FF6464; }
- .offer.ain-ask { border-color: rgba(140, 220, 240, .7); }
-+
-+/* ---- the page on an Ableton Move (RemoteFM14Move, js/host.js): nothing that needs the browser's audio, MIDI or USB */
-+[data-host="move"] #install-link, [data-host="move"] #vst-link, [data-host="move"] #ios-link, [data-host="move"] #android-link,
-+[data-host="move"] #fm1-btn, [data-host="move"] #rec, [data-host="move"] #ed-btn, [data-host="move"] #start-fm1 { display: none !important; }
---- a/js/panel.js
-+++ b/js/panel.js
-@@ -238,7 +238,7 @@
-     oct: { x: 16, y: 246, w: 148, h: 52, pad: 5, gap: 6, r: 14, br: 10, font: 13 },
-     display: { x: 172, y: 96, size: 202 },
-     kn: { row: true, x: 16, y: 316, w: 358, knob: 46, led: 10 },
--    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },
-+    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },   // (font: the legends' size in points; none: from the caps' height)
-     keybed: { x: 16, y: 530, w: 358, h: 272, keyW: 40 },
-   },
-   phoneLandscape: {
-@@ -505,7 +505,7 @@
-     const refW = (6 * bt.bw + 5 * bt.gap + 20) * m.sx;
-     L.btnWell = { x: m.x(bt.x) + (refW - wellW) / 2, y: m.y(bt.y), w: wellW, h: wellH, r: Math.round(bh * 0.34) + 6 * s };
-     for (let i = 0; i < 12; i++) L.btns.push({ b: i, x: L.btnWell.x + bp + (i % 6) * (bw + bg), y: L.btnWell.y + bp + ((i / 6) | 0) * (bh + bg), w: bw, h: bh,
--      r: Math.round(bh * 0.24), font: Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
-+      r: Math.round(bh * 0.24), font: bt.font ? bt.font * s : Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
-     // the display
-     const d = R.display, ds = d.size * s;
-     L.display = { x: m.x(d.x) + d.size * m.sx / 2 - ds / 2, y: m.y(d.y), size: ds };

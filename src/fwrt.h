@@ -102,6 +102,10 @@ typedef struct fw {
     struct { uint64_t due; uint8_t op, a; int16_t b; uint32_t c; } q[256];
     int qn;
     uint32_t keys_held, btns_held;    /* the host's view (for FWI_RELEASE) */
+    /* MIDI messages fed whole (fw_midi_feed: SysEx from the page's editors): USB-MIDI packets given to rfm1_midi_in
+     * before each tick, as many as it takes (0: no room, the rest waits), as rfm1_run --sysex does */
+    uint32_t *mq;
+    uint32_t mq_head, mq_tail, mq_fed;
     /* the log of applied input (optional: fw_log_start) */
     fw_log_t *log;
     uint32_t log_n, log_cap;
@@ -165,6 +169,12 @@ int fw_render_in(fw_t *fw, int16_t out[FW_BLOCK * 2], const int16_t *in);
 void fw_in(fw_t *fw, int op, int a, int b, uint32_t c, uint64_t due_frame);
 /* a whole MIDI message (n bytes) as USB-MIDI packets; returns 0, or -1 if not a message this sends */
 int fw_midi(fw_t *fw, const uint8_t *msg, int n, uint64_t due_frame);
+/* a whole MIDI message of any kind (SysEx F0..F7 too) as USB-MIDI packets, queued for rfm1_midi_in (FW_MQ packets at
+ * most waiting): 0 queued, -1 no room or not a message */
+#define FW_MQ 16384
+int fw_midi_feed(fw_t *fw, const uint8_t *msg, int n);
+/* USB-MIDI packets -> MIDI bytes (the out's: SysEx in pieces); returns the bytes written (at most 3 a packet) */
+int fw_pkt_bytes(uint32_t pkt, uint8_t out[3]);
 /* an input applied now, before the next device ms (between renders: the same point a queued one has) */
 void fw_in_now(fw_t *fw, int op, int a, int b, uint32_t c);
 /* the firmware's MIDI out: up to max USB-MIDI packets taken into pkts (logged as one FWI_TAKE); how many */

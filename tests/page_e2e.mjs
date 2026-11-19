@@ -17,6 +17,8 @@
 //     (a level fader, a send dial, routing cells, Freeverb into audio FX 1, a
 //     parameter) land in the core (GET /api/mix), edits from outside (POST /api/edit, as the Move's knobs) show on
 //     the page; the tab follows the Move's FX page and sets it;
+//   - the Editor (Felucca's, from fixtures for remotefm1.com and its author's site): a SysEx request from the editor in
+//     its sandbox reaches the firmware on the Move, the reply reaches the editor (live page, then the hosted copy);
 //   - the settings sheet's audio folder (js/movefiles.js): a WAV added through its file picker reaches the Move's
 //     audio/ (POST /api/files/audio), its trash button deletes it;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet;
@@ -125,7 +127,38 @@ try {
     if (d.method === "Log.entryAdded" && d.params.entry.level === "error") consoleErrors.push(`${d.params.entry.text} ${d.params.entry.url || ""}`.slice(0, 300));
     if (d.method === "Network.responseReceived") responses.set(d.params.response.url, d.params.response.status);
     if (d.method === "Network.loadingFailed" && !d.params.canceled) failed.push(d.params.errorText);
+    if (d.method === "Fetch.requestPaused") {
+      const u = d.params.request.url, f = FIX[u];
+      fetched.push(u);
+      const headers = [{ name: "Content-Type", value: f ? f[0] : "text/plain" }, { name: "Access-Control-Allow-Origin", value: "*" }];
+      cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: f ? 200 : 404, responseHeaders: headers,
+        body: Buffer.from(f ? f[1] : "not here").toString("base64") });
+    }
   };
+  // remotefm1.com (its catalog's editor fields, its managers index, a hosted copy) and an author's editor site, served
+  // by the test (no network needed): Felucca's editor is a fixture that asks the firmware for INFO and, once the reply
+  // comes, sends PING (so the reply reached the editor inside its sandbox)
+  const EDITOR = `<!doctype html><html><head><meta charset="utf-8"><title>Felucca editor (test fixture)</title>%SHIM%</head><body>
+<p id="s">waiting</p><script>
+navigator.requestMIDIAccess({ sysex: true }).then((a) => {
+  const out = [...a.outputs.values()][0], inp = [...a.inputs.values()][0];
+  inp.onmidimessage = (e) => { const d = e.data; if (d[0] === 0xF0 && d[1] === 0x7D && d[4] === 1) { document.getElementById("s").textContent = "INFO " + d.length; out.send([0xF0, 0x7D, 0x46, 0x4C, 0x18, 0xF7]); } };
+  out.send([0xF0, 0x7D, 0x46, 0x4C, 0x01, 0xF7]);
+});
+</script></body></html>`;
+  const FIX = {
+    "https://remotefm1.com/catalog.json": ["application/json", JSON.stringify({ firmwares: [
+      { id: "felucca", editor: "https://editor.test/felucca/", port: "Felucca", repo: "hugelton/Felucca" },
+      { id: "choralroot", editor: "https://quixotic7.example/manager.html" }] })],
+    "https://remotefm1.com/managers/index.json": ["application/json", JSON.stringify({ ports: { felucca: "Felucca" }, managers: [
+      { id: "felucca", title: "Felucca editor", firmwares: ["felucca"], path: "felucca/", author: "Leo Kuroshita", license: "GPL-3.0-only",
+        source: "https://github.com/hugelton/Felucca", upstream: "https://editor.test/felucca/" }] })],
+    "https://editor.test/felucca/": ["text/html; charset=utf-8", EDITOR.replace("%SHIM%", "")],
+    // (a hosted copy carries its own shim's tag, which must not load in the sandbox: it is dropped)
+    "https://remotefm1.com/managers/felucca/": ["text/html; charset=utf-8", EDITOR.replace("%SHIM%", `<script src="../fm1-shim.js" data-manager="felucca"></script>`)],
+  };
+  const fetched = [];
+  await cdp("Fetch.enable", { patterns: [{ urlPattern: "https://remotefm1.com/*" }, { urlPattern: "https://editor.test/*" }] });
   await cdp("Runtime.enable"); await cdp("Page.enable"); await cdp("Network.enable"); await cdp("Log.enable");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   // what the page asks the browser for (none of it may be used on the Move: no secure context, no audio here)
@@ -145,7 +178,7 @@ try {
   const page = await js(`({ secure: isSecureContext, href: location.href, host: document.documentElement.dataset.host,
     meta: document.querySelector('meta[name="fm1-host"]').content, title: document.title,
     name: document.getElementById("fw-name").textContent, ver: document.getElementById("fw-ver").textContent,
-    hidden: ["install-link", "vst-link", "ios-link", "android-link", "fm1-btn", "rec", "ed-btn", "fw-btn"].filter((i) => { const e = document.getElementById(i); return e && e.offsetParent === null; }).length,
+    hidden: ["install-link", "vst-link", "ios-link", "android-link", "fm1-btn", "rec", "fw-btn"].filter((i) => { const e = document.getElementById(i); return e && e.offsetParent === null; }).length,
     shown: ["mv-chips", "fw-src", "site-src", "menu-btn", "mv-mixbtn"].filter((i) => { const e = document.getElementById(i); return e && e.offsetParent !== null; }).length,
     start: document.getElementById("start").hidden, asked: window.__asked.slice(),
     plate: (() => { const c = document.getElementById("device"); return [c.width, c.height]; })(),
@@ -154,7 +187,7 @@ try {
   ok(page.href === BASE && page.secure === false, `plain http on ${HOSTNAME}: not a secure context, no https redirect (${page.href})`);
   ok(page.host === "move" && page.meta === "move", "the host flag: move (index.html's meta, <html data-host>)");
   ok(page.name === "Felucca" && page.ver === "1.8.2" && /RemoteFM1 on Move/.test(page.title), `the header names what the Move runs: ${page.name} ${page.ver} (${page.title})`);
-  ok(page.hidden === 8 && page.shown === 5, `the header: slot chips, Source, Site source, settings, Mix & FX shown; the firmware picker, Install, app links, FM-1, recorder, editor hidden (${page.shown}/5, ${page.hidden}/8)`);
+  ok(page.hidden === 7 && page.shown === 5, `the header: slot chips, Source, Site source, settings, Mix & FX shown; the firmware picker, Install, app links, FM-1, recorder hidden (${page.shown}/5, ${page.hidden}/7)`);
   ok(page.start === true, "no Play overlay (no audio to start in the browser)");
   ok(page.asked.length === 0, `nothing asked of the browser: no AudioContext, Web MIDI, WebUSB, microphone, folder (${page.asked.join(", ") || "none"})`);
   ok(page.plate[0] > 1000 && page.lit > 2000 && page.seq > 0, `the panel drawn (${page.plate.join(" x ")}), the Move's screen live on it (${page.lit} pixels lit, frame ${page.seq})`);
@@ -197,6 +230,36 @@ try {
   await fetch(API + "load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slot: 0, id: "felucca" }) });
   ok(await until(`document.getElementById("fw-name").textContent === "Felucca" && FM1Site.current().info && FM1Site.current().info.id === "felucca" && !document.body.classList.contains("skinned")`, 15000, "the follow"),
     "the Move loaded Felucca by itself: the page follows (its name, its info, ChoralRoot's skin gone)");
+  // ---- the Editor (the firmware's own editor, as on remotefm1.com): the header's button (remotefm1.com's editor list,
+  // read live); the author's page in the panel's sandbox, its SysEx to Felucca on the Move over /ws (op 32), Felucca's
+  // reply back (op 5) into the editor, which answers it; then remotefm1.com's hosted copy ("Use hosted copy") the same
+  ok(await until(`!document.getElementById("ed-btn").hidden && document.getElementById("ed-btn").offsetParent`, 10000, "the Editor button"),
+    `the header's Editor button for Felucca (remotefm1.com's catalog and managers index: ${fetched.filter((u) => /catalog|index/.test(u)).length} fetched)`);
+  const st0 = await status();
+  await click("#ed-btn");
+  const roundTrip = async (what) => {
+    const got = await until(`(() => { const b = FM1Editor.bridge, i = b.stats.lastIn, o = b.stats.lastOut;
+      return b.count >= 1 && o && o[0] === 0xF0 && o[1] === 0x7D && o[4] === 1 && o[o.length - 1] === 0xF7 && i && i[4] === 0x18; })()`, 15000, what);
+    const r = await js(`(() => { const b = FM1Editor.bridge, o = b.stats.lastOut; return { n: o ? o.length : 0, v: o ? String.fromCharCode(...o.slice(5, 5 + Math.max(0, o.indexOf(0, 5) - 5))) : "",
+      sub: document.getElementById("ed-sub").textContent, dot: document.getElementById("ed-dot").className }; })()`);
+    return { got, ...r };
+  };
+  const live = await roundTrip("the live editor's round trip");
+  await untilApi(async () => { const t = await status(); return t.pmidi_msgs >= st0.pmidi_msgs + 2 && t.midi_out_bytes > st0.midi_out_bytes; }, 3000);
+  const st1 = await status();
+  ok(live.got && st1.pmidi_msgs >= st0.pmidi_msgs + 2 && st1.midi_out_bytes > st0.midi_out_bytes,
+    `the author's editor (editor.test, live in the sandbox): its INFO request reached Felucca on the Move, the reply (${live.n} bytes, "${live.v}") reached the editor, which answered (PING); ${st1.pmidi_msgs - st0.pmidi_msgs} messages in, ${st1.midi_out_bytes - st0.midi_out_bytes} bytes out (${live.sub})`);
+  await shot(join(DOCS, "move-page-editor.png"));
+  await js(`FM1Editor.bridge.stats.lastIn = FM1Editor.bridge.stats.lastOut = null`);
+  ok(await until(`!document.getElementById("ed-mode").hidden && document.getElementById("ed-mode").textContent === "Use hosted copy"`, 5000, "Use hosted copy"), "the panel offers the hosted copy");
+  await click("#ed-mode");
+  const hosted = await roundTrip("the hosted copy's round trip");
+  ok(hosted.got && fetched.includes("https://remotefm1.com/managers/felucca/") && !fetched.some((u) => /fm1-shim/.test(u) && /remotefm1\.com/.test(u)),
+    `remotefm1.com's hosted copy in the same sandbox (its own shim's tag dropped): the same round trip (${hosted.n} bytes back; ${hosted.sub})`);
+  await click("#ed-mode");   // (back to the live page, remembered per firmware otherwise)
+  await click("#ed-close");
+  ok(await until(`document.getElementById("ed-panel").hidden`, 3000, "the panel closed"), "the Editor panel closes");
+
   // ---- the slots: a load into an empty slot from its chip, the chips play a slot, they follow the Move's switch
   ok(await until(`document.querySelector('.mv-chip[data-slot="1"].empty')`, 3000, "slot 2 empty"), "slot 2's chip: empty, dashed (\"Load into 2\")");
   await click('.mv-chip[data-slot="1"] .mv-chip-main');

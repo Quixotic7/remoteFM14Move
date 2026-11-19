@@ -76,6 +76,13 @@ typedef struct {
 int engine_view(engine_view_t *v, uint32_t *seq);
 /* the page's panel input for the active firmware (fwrt.h FWI_*: KEY a vel|0, BTN a 1|0, ENC a detents, MASTER b) */
 void engine_panel(int op, int a, int b);
+/* the page's MIDI for the active firmware (its editors' SysEx; any thread): one whole message (SysEx F0..F7 too),
+ * fed to its rfm1_midi_in as USB-MIDI packets, as many a device ms as it takes. 0 queued, -1 no room */
+int engine_midi(const uint8_t *msg, int n);
+/* the active firmware's MIDI out for the page (SysEx and channel messages; the real-time bytes go to the sequencer
+ * only), from *pos on (bytes ever written; a reader that fell more than 64 KB behind skips ahead): bytes copied */
+int engine_midi_out(uint8_t *buf, int cap, uint32_t *pos);
+uint32_t engine_midi_out_pos(void);   /* (where a new page starts reading) */
 /* a JSON status line (the slots, CPU, late blocks, the ring) into out */
 int engine_status(char *out, int cap);
 /* the installed firmwares, {"firmwares":[...]} (each: id, name, version, license, source_url, sha256, file, base, authors,

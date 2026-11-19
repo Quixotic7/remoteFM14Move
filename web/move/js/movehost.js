@@ -22,9 +22,66 @@
 //           listener (it gets the last ones at once); p.mix / p.meters / p.minis the last ones; p.edit(op, a, b) one
 //           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 24 FXPG) over /ws (POST /api/edit while /ws is
 //           down)
-// Everything else Player has (MIDI, flash, the recorder's taps, the output device, live input) is a no-op: the
+//   MIDI (the firmware editors' SysEx, js/editor-panel.js): p.midi(bytes) to the firmware in the Move's active slot (/ws
+//           frames: 32 + the bytes, in pieces); its MIDI out (SysEx and channel messages, /ws binary 5) comes back as
+//           the worklet's midiOut(bytes) event. moveEditors(catalog): which firmware has which editor, as on
+//           remotefm1.com (its catalog's editor, liveEditor, port and repo merged into the Move's entries; its
+//           managers index), read from remotefm1.com (CORS): null when the browser cannot reach it
+// Everything else Player has (flash, the recorder's taps, the output device, live input) is a no-op: the
 // firmware's flash and states stay on the Move, and its sound comes out of the Move.
 import { CATEGORIES, HUB, rfm1Source, shortAuthor } from "./live.js";
+
+// where the editors' list and the hosted copies come from (the Move serves only the shim, managers/fm1-shim.js)
+export const MOVE_SITE = "https://remotefm1.com/";
+export const MOVE_MANAGERS = MOVE_SITE + "managers/";
+const MIDI_OP = 32, MIDI_CHUNK = 4000;
+
+// a script put first into an editor's sandbox on the Move: the page is plain http, so a sandboxed page has no
+// crypto.subtle; an editor that checks a file's SHA-256 (Felucca's PIANO HD) gets digest("SHA-256") from here
+export const MOVE_PRELUDE = `(function () {
+  var c = self.crypto; if (!c || c.subtle) return;
+  var K = [], H0 = [], p = 2, n = 0;
+  function frac(x) { return (x - Math.floor(x)) * 4294967296 | 0; }
+  for (; n < 64; p++) { var q = true; for (var d = 2; d * d <= p; d++) if (p % d === 0) { q = false; break; }
+    if (q) { if (n < 8) H0[n] = frac(Math.pow(p, 1 / 2)); K[n++] = frac(Math.pow(p, 1 / 3)); } }
+  function sha256(b) {
+    var l = b.length, m = new Uint8Array(((l + 9 + 63) >> 6) << 6), v = new DataView(m.buffer), h = H0.slice(), w = new Int32Array(64);
+    m.set(b); m[l] = 0x80; v.setUint32(m.length - 4, l * 8 >>> 0); v.setUint32(m.length - 8, Math.floor(l / 536870912));
+    for (var o = 0; o < m.length; o += 64) {
+      for (var i = 0; i < 16; i++) w[i] = v.getInt32(o + i * 4);
+      for (i = 16; i < 64; i++) { var a = w[i - 15], e = w[i - 2];
+        w[i] = (((a >>> 7 | a << 25) ^ (a >>> 18 | a << 14) ^ a >>> 3) + w[i - 7] + ((e >>> 17 | e << 15) ^ (e >>> 19 | e << 13) ^ e >>> 10) + w[i - 16]) | 0; }
+      var A = h[0], B = h[1], C = h[2], D = h[3], E = h[4], F = h[5], G = h[6], Hh = h[7];
+      for (i = 0; i < 64; i++) {
+        var t1 = (Hh + ((E >>> 6 | E << 26) ^ (E >>> 11 | E << 21) ^ (E >>> 25 | E << 7)) + (E & F ^ ~E & G) + K[i] + w[i]) | 0;
+        var t2 = (((A >>> 2 | A << 30) ^ (A >>> 13 | A << 19) ^ (A >>> 22 | A << 10)) + (A & B ^ A & C ^ B & C)) | 0;
+        Hh = G; G = F; F = E; E = (D + t1) | 0; D = C; C = B; B = A; A = (t1 + t2) | 0;
+      }
+      h[0] += A; h[1] += B; h[2] += C; h[3] += D; h[4] += E; h[5] += F; h[6] += G; h[7] += Hh;
+    }
+    var out = new DataView(new ArrayBuffer(32)); for (i = 0; i < 8; i++) out.setInt32(i * 4, h[i]); return out.buffer;
+  }
+  var bytes = function (d) { return d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength); };
+  var subtle = { digest: function (alg, data) {
+    var name = typeof alg === "string" ? alg : alg && alg.name;
+    return /^sha-?256$/i.test(name || "") ? Promise.resolve(sha256(bytes(data))) : Promise.reject(new Error("only SHA-256 here (the page is not a secure context)"));
+  } };
+  try { Object.defineProperty(c, "subtle", { value: subtle, configurable: true }); } catch (_) {}
+})();`;
+
+// which firmware has which editor, as remotefm1.com has it: its catalog's editor fields merged into the Move's entries
+// (by id), and its managers index (the hosted copies); null when remotefm1.com cannot be reached (no editor then)
+export async function moveEditors(catalog, fetchFn = (u, o) => fetch(u, o)) {
+  const get = (u) => fetchFn(u, { cache: "no-cache", mode: "cors", credentials: "omit" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const [site, index] = await Promise.all([get(MOVE_SITE + "catalog.json"), get(MOVE_MANAGERS + "index.json")]);
+  const byId = new Map((site && Array.isArray(site.firmwares) ? site.firmwares : []).map((f) => [f.id, f]));
+  for (const e of catalog.firmwares || []) {
+    const f = byId.get(e.id);
+    if (!f) continue;
+    for (const k of ["editor", "liveEditor", "port", "repo"]) if (typeof f[k] === "string" && f[k]) e[k] = f[k];
+  }
+  return index && Array.isArray(index.managers) ? index : null;
+}
 
 const OP = { KEY: 1, LEAN: 2, BTN: 3, ENC: 4, MASTER: 5 };   // remoteFM14Move src/fwrt.h FWI_*
 const NKEY = 27, NBTN = 14, NENC = 7, W = 240, MINI = 48;
@@ -149,6 +206,7 @@ export class MoveHostPlayer {
       if (d[0] === 1 && d.length >= 3) this.onRows(d[1], d[2], d.subarray(3));
       else if (d[0] === 2 && d.length >= 46) this.emit("leds", d.slice(1, 45), d[45]);
       else if (d[0] === 3 && d.length >= 8) { this.meters = d.slice(1, 8); this.emit("meters", this.meters); }
+      else if (d[0] === 5 && d.length > 1) this.emit("midiOut", d.slice(1), 0);   // (the firmware's MIDI out)
       else if (d[0] === 4 && d.length >= 3 + MINI * MINI * 2 && d[1] < 3 && d[2] === MINI) {
         const px = new Uint16Array(MINI * MINI), s = d.subarray(3);
         for (let i = 0; i < px.length; i++) px[i] = s[2 * i] << 8 | s[2 * i + 1];
@@ -307,8 +365,18 @@ export class MoveHostPlayer {
     if (ops.length) ws.send(new Uint8Array(ops));
   }
 
-  // (nothing of these on the Move: no MIDI path to the firmware, its flash stays there, no sound in the browser)
-  midi() {}
+  // MIDI bytes (whole messages, SysEx of any size) to the firmware in the Move's active slot: /ws frames of 32 + bytes
+  midi(bytes) {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== 1 || !bytes || !bytes.length) return;
+    const b = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+    for (let i = 0; i < b.length; i += MIDI_CHUNK) {
+      const part = b.subarray(i, i + MIDI_CHUNK), f = new Uint8Array(part.length + 1);
+      f[0] = MIDI_OP; f.set(part, 1);
+      ws.send(f);
+    }
+  }
+  // (nothing of these on the Move: its flash stays there, no sound in the browser)
   midiCut() {}
   flashReq() {}
   audioNow() { return null; }

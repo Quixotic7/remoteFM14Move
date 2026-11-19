@@ -561,6 +561,9 @@ fw_inst_t *fw_release(fw_t *fw)
     fw->obj = NULL;
     free(fw->log);
     fw->log = NULL;
+    free(fw->mq);
+    fw->mq = NULL;
+    fw->mq_head = fw->mq_tail = 0;
     fw->booted = 0;
     fw->dead = 1;
     return p;
@@ -737,6 +740,75 @@ int fw_midi(fw_t *fw, const uint8_t *m, int n, uint64_t due_frame)
     return 0;
 }
 
+int fw_midi_feed(fw_t *fw, const uint8_t *m, int n)
+{
+    uint32_t pk[64], np = 0, i;
+    int k;
+    if (!fw->inst || fw->dead || n <= 0 || m[0] < 0x80)
+        return -1;
+    if (!fw->mq && !(fw->mq = malloc(FW_MQ * sizeof *fw->mq)))
+        return -1;
+    if (m[0] == 0xF0) {   /* SysEx: CIN 4 for each 3 bytes, then 5 / 6 / 7 for the last 1 / 2 / 3 */
+        uint32_t need = ((uint32_t)n + 2u) / 3u;
+        if (m[n - 1] != 0xF7 || FW_MQ - (fw->mq_head - fw->mq_tail) < need)
+            return -1;
+        for (k = 0; k < n; k += 3) {
+            const int left = n - k, take = left < 3 ? left : 3;
+            const uint32_t cin = left > 3 ? 0x4 : take == 1 ? 0x5 : take == 2 ? 0x6 : 0x7;
+            uint32_t p = cin;
+            for (i = 0; i < (uint32_t)take; i++)
+                p |= (uint32_t)m[k + (int)i] << (8 * (i + 1));
+            fw->mq[fw->mq_head++ % FW_MQ] = p;
+        }
+        return 0;
+    }
+    {   /* one or more short messages (running status not taken) */
+        const uint8_t st = m[0];
+        const int len = st >= 0xF8 ? 1 : st < 0xF0 ? ((st & 0xF0) == 0xC0 || (st & 0xF0) == 0xD0 ? 2 : 3)
+                        : st == 0xF1 || st == 0xF3 ? 2 : st == 0xF2 ? 3 : 1;
+        uint32_t cin, p;
+        if (n < len || st == 0xF7)
+            return -1;
+        cin = st >= 0xF8 ? 0xF : st < 0xF0 ? (uint32_t)st >> 4 : len == 3 ? 3 : len == 2 ? 2 : 5;
+        p = cin;
+        for (i = 0; i < (uint32_t)len; i++)
+            p |= (uint32_t)m[i] << (8 * (i + 1));
+        pk[np++] = p;
+        if (FW_MQ - (fw->mq_head - fw->mq_tail) < np)
+            return -1;
+        fw->mq[fw->mq_head++ % FW_MQ] = pk[0];
+        return n > len ? fw_midi_feed(fw, m + len, n - len) : 0;
+    }
+}
+
+int fw_pkt_bytes(uint32_t pkt, uint8_t out[3])
+{
+    static const int8_t LEN[16] = { 0, 0, 2, 3, 3, 1, 2, 3, 3, 3, 3, 3, 2, 2, 3, 1 };
+    const int n = LEN[pkt & 0xF];
+    int i;
+    for (i = 0; i < n; i++)
+        out[i] = (uint8_t)(pkt >> (8 * (i + 1)));
+    return n;
+}
+
+/* the fed messages' packets, as many as the module takes now (between two calls, before the tick) */
+static void feed_ms(fw_t *fw)
+{
+    while (fw->mq && fw->mq_tail != fw->mq_head && !fw->dead) {
+        const uint32_t p = fw->mq[fw->mq_tail % FW_MQ];
+        volatile uint32_t ok = 0;
+        CALL(fw, "rfm1_midi_in", ok = fw->obj->vt->midi_in(fw->inst, p));
+        if (!ok || fw->dead)
+            break;   /* (no room: the rest at the next ms) */
+        fw->mq_tail++;
+        fw->mq_fed++;
+        if (fw->log && fw->log_n < fw->log_cap) {   /* (the replay gives it as an FWI_MIDI at the same ms) */
+            fw_log_t *l = &fw->log[fw->log_n++];
+            l->ms = fw->ms, l->op = FWI_MIDI, l->a = 0, l->b = 0, l->c = p;
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ the clock --- */
 static void run_ms(fw_t *fw)
 {
@@ -751,6 +823,8 @@ static void run_ms(fw_t *fw)
             fw->q[k++] = fw->q[i];
     }
     fw->qn = k;
+    if (fw->mq)
+        feed_ms(fw);
     if (fw->wasi->fs)   /* (between two calls: the file requests answered so far, into the module's memory) */
         fsvc_pump(fw->wasi->fs, fw->mem, fw->mem_size, ms);
     CALL(fw, "rfm1_tick", vt->tick(fw->inst, ms));

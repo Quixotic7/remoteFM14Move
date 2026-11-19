@@ -1679,6 +1679,101 @@ int engine_view(engine_view_t *v, uint32_t *seq)
     return r;
 }
 
+/* ---- MIDI to and from the page (the firmware editors' SysEx: web.c's ws op 32 in, op 5 out) */
+#define PM_CAP (256 * 1024)
+static uint8_t *g_pm;                        /* in: whole messages, each [len lo, len hi, bytes] (g_vmu) */
+static uint32_t g_pm_n, g_pm_dropped;
+#define MO_CAP 65536u
+static uint8_t g_mo[MO_CAP];                 /* out: the active firmware's MIDI out, SysEx and channel messages (g_vmu) */
+static uint32_t g_mo_pos;                    /* bytes ever written (a page reads from its own position) */
+static uint32_t g_pm_msgs, g_pm_bytes, g_mo_bytes;   /* (the status) */
+
+int engine_midi(const uint8_t *m, int n)
+{
+    int r = -1;
+    if (n <= 0 || n > 65535)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (!g_pm)
+        g_pm = malloc(PM_CAP);
+    if (g_pm && g_pm_n + 2u + (uint32_t)n <= PM_CAP) {
+        g_pm[g_pm_n] = (uint8_t)n, g_pm[g_pm_n + 1] = (uint8_t)(n >> 8);
+        memcpy(g_pm + g_pm_n + 2, m, (size_t)n);
+        g_pm_n += 2u + (uint32_t)n;
+        r = 0;
+    } else
+        g_pm_dropped++;
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
+uint32_t engine_midi_out_pos(void)
+{
+    uint32_t p;
+    pthread_mutex_lock(&g_vmu);
+    p = g_mo_pos;
+    pthread_mutex_unlock(&g_vmu);
+    return p;
+}
+
+int engine_midi_out(uint8_t *buf, int cap, uint32_t *pos)
+{
+    uint32_t avail, k, i;
+    pthread_mutex_lock(&g_vmu);
+    if (g_mo_pos - *pos > MO_CAP)   /* (fell behind: from what is still kept) */
+        *pos = g_mo_pos - MO_CAP;
+    avail = g_mo_pos - *pos;
+    k = avail < (uint32_t)cap ? avail : (uint32_t)cap;
+    for (i = 0; i < k; i++)
+        buf[i] = g_mo[(*pos + i) % MO_CAP];
+    *pos += k;
+    pthread_mutex_unlock(&g_vmu);
+    return (int)k;
+}
+
+/* the page's messages into the active firmware (fw_midi_feed: as many packets a device ms as it takes) */
+static void page_midi(void)
+{
+    static uint8_t *tmp;
+    uint32_t n, at = 0;
+    if (!g_pm_n)   /* (a racy peek: the next loop sees it) */
+        return;
+    if (!tmp && !(tmp = malloc(PM_CAP)))
+        return;
+    pthread_mutex_lock(&g_vmu);
+    n = g_pm_n;
+    memcpy(tmp, g_pm, n);
+    g_pm_n = 0;
+    pthread_mutex_unlock(&g_vmu);
+    while (at + 2 <= n) {
+        const uint32_t len = (uint32_t)tmp[at] | (uint32_t)tmp[at + 1] << 8;
+        if (at + 2 + len > n)
+            break;
+        if (SL[g_active].on && fw_midi_feed(&SL[g_active].fw, tmp + at + 2, (int)len) == 0)
+            g_pm_msgs++, g_pm_bytes += len;
+        else
+            g_pm_dropped++;
+        at += 2 + len;
+    }
+}
+
+/* the active firmware's MIDI out for the page (not the real-time bytes: those are the sequencer's) */
+static void midi_to_page(const uint32_t *pk, int k)
+{
+    int i, j;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < k; i++) {
+        uint8_t b[3];
+        const int n = fw_pkt_bytes(pk[i], b);
+        if ((pk[i] & 0xF) == 0xF || b[0] == 0xF2 || (n == 1 && b[0] >= 0xF8))
+            continue;
+        for (j = 0; j < n; j++)
+            g_mo[g_mo_pos++ % MO_CAP] = b[j];
+        g_mo_bytes += (uint32_t)n;
+    }
+    pthread_mutex_unlock(&g_vmu);
+}
+
 void engine_panel(int op, int a, int b)
 {
     pthread_mutex_lock(&g_vmu);
@@ -1870,9 +1965,9 @@ static void render_block(uint32_t now)
             if (p > sl->peak)
                 sl->peak = p;
         }
-        if (s == g_active) {   /* its MIDI out: the clock the sequencer can follow */
-            uint32_t pk[16];
-            const int k = fw_midi_out(&sl->fw, pk, 16);
+        if (s == g_active) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page (editors) */
+            uint32_t pk[64];
+            const int k = fw_midi_out(&sl->fw, pk, 64);
             int i;
             for (i = 0; i < k; i++) {
                 const uint8_t b = (uint8_t)(pk[i] >> 8);
@@ -1883,6 +1978,8 @@ static void render_block(uint32_t now)
                     rfm1cs_session_midi_in(S, now, m, 3);
                 }
             }
+            if (k)
+                midi_to_page(pk, k);
             do_deferred();
         }
     }
@@ -2019,8 +2116,9 @@ static void housekeeping(uint32_t now)
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "],\"ain_live\":%d,\"ain_in\":%u,\"ain_under\":%u,"
-                      "\"ain_dropped\":%u,\"ain_over\":%u,\"ain_latency\":%u", g_ain_live, g_ain_in, g_ain_under,
-                      g_ain_dropped, g_ain_over, engine_ain_latency());
+                      "\"ain_dropped\":%u,\"ain_over\":%u,\"ain_latency\":%u,\"pmidi_msgs\":%u,\"pmidi_bytes\":%u,"
+                      "\"pmidi_dropped\":%u,\"midi_out_bytes\":%u", g_ain_live, g_ain_in, g_ain_under,
+                      g_ain_dropped, g_ain_over, engine_ain_latency(), g_pm_msgs, g_pm_bytes, g_pm_dropped, g_mo_bytes);
         {   /* the FX: CPU per module over the last second; past the budget twice running: refused ("Too busy") */
             int kind, k;
             uint32_t total = 0;
@@ -2170,6 +2268,7 @@ static void *engine_main(void *arg)
                     route_midi(&a);
                 }
             }
+            page_midi();
             for (i = 0; i < n; i++) {
                 if (pin[i].op >= ENG_OP_ACTIVE && pin[i].op <= ENG_OP_LAST)
                     page_edit(pin[i].op, pin[i].a, pin[i].b);

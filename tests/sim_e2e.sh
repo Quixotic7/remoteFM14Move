@@ -92,6 +92,13 @@ if [ $? = 0 ]; then ok "the WebSocket: $(echo "$out" | head -1 | sed 's/wsprobe:
 echo "$out" | grep -q '"name":"Felucca"' && ok "the page's info names the firmware and its panel" || bad "info: $out"
 p=$(field peak)
 [ "$p" -gt 1000 ] && ok "a key from the page sounds (peak $q -> $p)" || bad "the page's key: peak $q -> $p"
+# the page's MIDI (ws op 32: an editor's SysEx, sent in 5-byte pieces) into the active firmware, its reply back (op 5):
+# Felucca's editor protocol INFO (F0 7D 46 4C 01 F7) answers with its version string
+out=$(build/tools/wsprobe $PORT 1500 --sysex F07D464C01F7)
+mo=$(echo "$out" | sed -n 's/^wsprobe: midi out [0-9]* bytes: //p')
+v=$(echo "$mo" | awk '{ for (i = 6; i <= NF && $i != "00"; i++) printf "%s", $i }' | xxd -r -p | tr -cd 'A-Za-z0-9. ')
+case "$mo" in "F0 7D 46 4C 01 "*" F7"*) ok "an editor's SysEx through the page's MIDI: Felucca's INFO answered ($(echo "$mo" | wc -w | tr -d ' ') bytes back, version '$v')";;
+    *) bad "the page's MIDI: no INFO reply: $(echo "$out" | tail -1 | cut -c1-200); $(status | grep -o '"pmidi[^,]*,"pmidi[^,]*,"pmidi[^,]*,"midi_out[^,]*')";; esac
 
 # ---- a firmware switch from the Move: Track 1 held + step 1 (the projects view), step 2 (All), the first pad
 # (ChoralRoot, A-Z), jog press (FW_LOAD)

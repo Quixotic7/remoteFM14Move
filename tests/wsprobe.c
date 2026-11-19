@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* wsprobe: the page's WebSocket from the test's side. Connects to ws://127.0.0.1:PORT/ws, reads for MS ms, and
  * optionally plays a key (panel input: KEY down after 300 ms, up 300 ms before the end).
- *   wsprobe PORT MS [--key K] [--btn ID]
+ *   wsprobe PORT MS [--key K] [--btn ID] [--sysex HEX]
+ * --sysex: MIDI bytes (hex, e.g. F07D464C01F7) sent as the page's MIDI (op 32) after 300 ms, in pieces of 5 bytes; the
+ * firmware's MIDI out that comes back (op 5) is printed as hex ("wsprobe: midi out ...").
  * Prints what came: info messages, screen rows (and whether one whole screen came first), LED messages, the slot
  * the info names. Exit 0 when info, a whole screen and the LEDs all came. */
 #include <arpa/inet.h>
@@ -23,14 +25,20 @@ static long ms(void)
 
 static void send_frame(int fd, const uint8_t *p, size_t n)
 {
-    uint8_t f[64];
+    uint8_t f[8 + 4096];
     const uint8_t mask[4] = { 1, 2, 3, 4 };
-    size_t i;
-    f[0] = 0x82, f[1] = (uint8_t)(0x80 | n);
-    memcpy(f + 2, mask, 4);
+    size_t i, h = 2;
+    if (n > 4096)
+        return;
+    f[0] = 0x82;
+    if (n < 126)
+        f[1] = (uint8_t)(0x80 | n);
+    else
+        f[1] = 0x80 | 126, f[2] = (uint8_t)(n >> 8), f[3] = (uint8_t)n, h = 4;
+    memcpy(f + h, mask, 4);
     for (i = 0; i < n; i++)
-        f[6 + i] = p[i] ^ mask[i & 3];
-    if (write(fd, f, 6 + n) < 0)
+        f[h + 4 + i] = p[i] ^ mask[i & 3];
+    if (write(fd, f, h + 4 + n) < 0)
         perror("write");
 }
 
@@ -42,6 +50,9 @@ int main(int argc, char **argv)
     size_t n = 0;
     char req[256], info[512] = "";
     long t0, down_at = -1;
+    static uint8_t sx[4096], mo[65536];
+    size_t nsx = 0, nmo = 0;
+    int sx_sent = 0;
     if (argc < 3)
         return 2;
     port = atoi(argv[1]);
@@ -51,6 +62,14 @@ int main(int argc, char **argv)
             key = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--btn"))
             btn = atoi(argv[i + 1]);
+        else if (!strcmp(argv[i], "--sysex")) {
+            const char *h = argv[i + 1];
+            while (h[0] && h[1] && nsx < sizeof sx) {
+                char b[3] = { h[0], h[1], 0 };
+                sx[nsx++] = (uint8_t)strtoul(b, NULL, 16);
+                h += 2;
+            }
+        }
     fd = socket(AF_INET, SOCK_STREAM, 0);
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET;
@@ -77,6 +96,17 @@ int main(int argc, char **argv)
             const uint8_t m[4] = { (uint8_t)(key >= 0 ? 1 : 3), (uint8_t)(key >= 0 ? key : btn), 0, 0 };
             send_frame(fd, m, 4);
             down_at = 1000000;
+        }
+        if (nsx && !sx_sent && t >= 300) {   /* the page's MIDI: op 32 + bytes, in pieces of 5 */
+            size_t k;
+            for (k = 0; k < nsx; k += 5) {
+                uint8_t m[6];
+                const size_t take = nsx - k < 5 ? nsx - k : 5;
+                m[0] = 32;
+                memcpy(m + 1, sx + k, take);
+                send_frame(fd, m, take + 1);
+            }
+            sx_sent = 1;
         }
         if (poll(&pf, 1, 20) <= 0)
             continue;
@@ -127,6 +157,9 @@ int main(int argc, char **argv)
                     first_screen = 0;
                 } else if (buf[h] == 2 && len == 46)
                     leds++;
+                else if (buf[h] == 5)
+                    for (i = 1; i < (int)len && nmo < sizeof mo; i++)
+                        mo[nmo++] = buf[h + i];
             }
             memmove(buf, buf + h + len, n - h - len);
             n -= h + len;
@@ -136,5 +169,12 @@ int main(int argc, char **argv)
     printf("wsprobe: %d info, %d screen rows (the first a whole screen: %s), %d LED messages\n", infos, rows,
            whole ? "yes" : "no", leds);
     printf("wsprobe: info %s\n", info);
+    if (nsx || nmo) {
+        size_t k;
+        printf("wsprobe: midi out %zu bytes:", nmo);
+        for (k = 0; k < nmo && k < 2048; k++)
+            printf(" %02X", mo[k]);
+        printf("\n");
+    }
     return infos > 0 && whole && leds > 0 ? 0 : 1;
 }

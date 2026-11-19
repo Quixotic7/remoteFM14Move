@@ -50,6 +50,13 @@ typedef struct {
     uint64_t up_left, up_total;
     uint8_t up_head[12];
     char up_tmp[ST_PATH + 64], up_dst[ST_PATH + 64];
+    /* the page's MIDI (ws op 32: the editors' SysEx in any chunking) assembled into whole messages; its MIDI out read
+     * from this position (engine_midi_out) */
+    uint8_t *mx;
+    uint32_t mx_n;
+    uint8_t mx_st, mx_d[2], mx_nd;
+    int mx_sysex;
+    uint32_t mo_pos;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -77,7 +84,7 @@ static void cfree(client_t *c)
     }
     if (c->fd >= 0)
         close(c->fd);
-    free(c->in), free(c->out), free(c->lcd);
+    free(c->in), free(c->out), free(c->lcd), free(c->mx);
     memset(c, 0, sizeof *c);
     c->fd = -1;
 }
@@ -542,6 +549,7 @@ static void request(client_t *c, const char *body)
         put(c, h, (size_t)k);
         c->ws = 1;
         c->in_n = 0;
+        c->mo_pos = engine_midi_out_pos();
         c->full = 1;
         c->lcd = calloc(1, ENG_LCD_BYTES);
         return;
@@ -586,7 +594,66 @@ static void request(client_t *c, const char *body)
     }
 }
 
-/* whole frames from a page: 4-byte panel messages; close; ping */
+/* the page's MIDI bytes (any chunking) -> whole messages for the active firmware (engine_midi): a SysEx F0..F7 as one
+ * (64 KB at most), channel and system messages with their data bytes (running status kept), real time on its own */
+static void midi_bytes(client_t *c, const uint8_t *b, size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        const uint8_t x = b[i];
+        if (x >= 0xF8) {
+            engine_midi(&x, 1);
+            continue;
+        }
+        if (x == 0xF0) {
+            if (!c->mx && !(c->mx = malloc(65536)))
+                continue;
+            c->mx[0] = x, c->mx_n = 1, c->mx_sysex = 1, c->mx_st = 0;
+            continue;
+        }
+        if (c->mx_sysex) {
+            if (x == 0xF7) {
+                c->mx[c->mx_n++] = x;
+                engine_midi(c->mx, (int)c->mx_n);
+                c->mx_sysex = 0;
+                continue;
+            }
+            if (x < 0x80) {
+                if (c->mx_n < 65534)
+                    c->mx[c->mx_n++] = x;
+                else
+                    c->mx_sysex = 0;   /* (too long: dropped) */
+                continue;
+            }
+            c->mx_sysex = 0;           /* (a status byte cut it off: dropped) */
+        }
+        if (x >= 0x80) {
+            c->mx_st = x, c->mx_nd = 0;
+            if (x >= 0xF4) {           /* (F4, F5 undefined; F6 tune request alone; F7 stray) */
+                if (x == 0xF6)
+                    engine_midi(&x, 1);
+                c->mx_st = 0;
+            }
+            continue;
+        }
+        if (!c->mx_st)
+            continue;
+        c->mx_d[c->mx_nd++] = x;
+        {
+            const uint8_t st = c->mx_st;
+            const int need = ((st & 0xF0) == 0xC0 || (st & 0xF0) == 0xD0 || st == 0xF1 || st == 0xF3) ? 1 : 2;
+            if (c->mx_nd >= need) {
+                const uint8_t m[3] = { st, c->mx_d[0], c->mx_d[1] };
+                engine_midi(m, 1 + need);
+                c->mx_nd = 0;
+                if (st >= 0xF0)
+                    c->mx_st = 0;
+            }
+        }
+    }
+}
+
+/* whole frames from a page: 4-byte panel messages, or (a frame that starts with 32) MIDI bytes; close; ping */
 static int ws_in(client_t *c)
 {
     size_t off = 0;
@@ -617,6 +684,8 @@ static int ws_in(client_t *c)
                 return -1;
             if (op == 0x9)
                 ws_send(c, 0xA, NULL, 0, d, plen > 125 ? 125 : plen);
+            else if (op == 0x2 && plen >= 1 && d[0] == 32)   /* MIDI for the active firmware (its editors' SysEx) */
+                midi_bytes(c, d + 1, plen - 1);
             else if (op == 0x2)
                 for (k = 0; k + 4 <= plen; k += 4)
                     if ((d[k] >= 1 && d[k] <= 5) || (d[k] >= ENG_OP_ACTIVE && d[k] <= ENG_OP_LAST))
@@ -711,6 +780,14 @@ static void cwrite(client_t *c)
 /* what changed since this page's last look */
 static void push(client_t *c)
 {
+    {   /* the active firmware's MIDI out (SysEx and channel messages): binary 5 + its bytes, in pieces */
+        uint8_t m[1 + 8192];
+        int k;
+        while (c->out_n - c->out_off < LAG && (k = engine_midi_out(m + 1, (int)sizeof m - 1, &c->mo_pos)) > 0) {
+            m[0] = 5;
+            ws_send(c, 0x2, NULL, 0, m, (size_t)k + 1);
+        }
+    }
     if (c->info_seq != g_v.info_seq) {
         c->info_seq = g_v.info_seq;
         ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.info, strlen(g_v.info));
