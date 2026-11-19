@@ -113,11 +113,15 @@ RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
 RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
-.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim
-in-all: in-tools in-fw in-testfw in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
+.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix
+in-all: in-tools in-fw in-testfw in-cpu2fix in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT)
+# the core-1 test firmware (tests/cpu2fix: its .rfm1 kept in git, made on the Mac by its build.sh), for tests/threads_e2e.sh
+in-cpu2fix: build/cpu2fix/cpu2fix-1.0.rfm1m
+build/cpu2fix/cpu2fix-1.0.rfm1m: tests/cpu2fix/cpu2fix-1.0.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+	tools/build_fw.sh $< build/cpu2fix build/w2c >/dev/null
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
 
@@ -129,19 +133,24 @@ build/tools/rfm1info: tools/rfm1info.c src/minijson.c src/minijson.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -o $@ tools/rfm1info.c src/minijson.c
 
-# the runtime the firmware objects link against: wasm2c's, built into every program that loads them (-rdynamic)
-build/obj/wasm-rt-impl.o: $(W2C_RT)/wasm-rt-impl.c
+# the runtime the firmware objects link against: wasm2c's, built into every program that loads them (-rdynamic),
+# made per-thread (tools/w2c_mt.sh: its trap state __thread, the objects' call depth thread-local). Its memory.grow is
+# fwrt.c's wasm_rt_grow_memory (a memory a core-1 twin shares never moves), the runtime's own renamed under it
+W2C_MT := build/gen/w2c
+build/gen/w2c/wasm-rt-impl.c: tools/w2c_mt.sh $(W2C_RT)/wasm-rt-impl.c $(W2C_RT)/wasm-rt-impl.h
+	tools/w2c_mt.sh host build/gen/w2c
+build/obj/wasm-rt-impl.o: build/gen/w2c/wasm-rt-impl.c
 	mkdir -p build/obj
-	$(CC) $(CFLAGS) -fPIC $(W2C_DEFS) -I$(W2C_RT) -c $< -o $@
+	$(CC) $(CFLAGS) -fPIC $(W2C_DEFS) -Dwasm_rt_grow_memory=w2c_rt_grow_memory -I$(W2C_RT) -c $< -o $@
 
 build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c src/fsvc.h src/minijson.c src/wav.c src/wav.h build/obj/wasm-rt-impl.o
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c src/wav.c \
+	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_MT) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c src/wav.c \
 	    build/obj/wasm-rt-impl.o -ldl -lm -lpthread
 
-build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/fw build/w2c >/dev/null
-build/testfw/%.rfm1m: build/in-test/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+build/testfw/%.rfm1m: build/in-test/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/testfw build/w2c >/dev/null
 
 # FM1VST's rfm1_run (wasm3), the reference the compiled firmwares are compared with
@@ -161,7 +170,7 @@ build/gen/bridge_page.h: $(MR)/web/bridge.html
 	cd $(MR)/web && xxd -i bridge.html | sed 's/bridge_html/mr_bridge_page/g' > $(abspath $@)
 
 SW := third_party/schwung-api
-HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) $(RF_INC) -DMR_PLAT_MAIN=mr_plat_main
+HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_MT) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) $(RF_INC) -DMR_PLAT_MAIN=mr_plat_main
 HOST_LIBS = -rdynamic -ldl -lm -lpthread
 
 # the simulator's host is the tests' (RFM14_TEST_BUILD: it also trusts build/testkey's catalog key, takes --ca-dir);

@@ -7,7 +7,8 @@
  * (tools/build_fw.sh reads them from the header): WASII the WASI imports', HOSTI a Fantasy CFW's rfm1_host_1 (the
  * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only.
  * RFM1M_AIN1: the module exports rfm1_audio_in (ain1): rfm1m_ain() too (src/rfm1m.h). Without it the object is what it
- * always was. */
+ * always was. RFM1M_MT: built against tools/w2c_mt.sh's header (rfm1m_caps says RFM1M_CAP_MT). RFM1M_CPU2: the
+ * module imports rfm1_cpu2_1 (CPU2I in RFM1M_INST_ARGS) and exports rfm1_c1_stack / rfm1_c1_call: rfm1m_cpu2() too. */
 #include <stdlib.h>
 
 #include "wasm-rt.h"
@@ -39,8 +40,10 @@ extern u32 X(rfm1_label)(INST *, u32) __attribute__((weak));
 #define RFM1M_INST_ARGS , WASII
 #endif
 struct Z_rfm1_host_1_instance_t;
+struct Z_rfm1_cpu2_1_instance_t;
 #define WASII wasi
 #define HOSTI ((struct Z_rfm1_host_1_instance_t *)(void *)wasi)
+#define CPU2I ((struct Z_rfm1_cpu2_1_instance_t *)(void *)wasi)
 
 static void *create(struct Z_wasi_snapshot_preview1_instance_t *wasi)
 {
@@ -143,6 +146,63 @@ const rfm1m_ain_t *rfm1m_ain(void)
         t.audio_in = ain_in;
         t.audio_in_info = X(rfm1_audio_in_info) ? ain_info : NULL;
         t.abi = RFM1M_AIN_ABI;
+    }
+    return &t;
+}
+#endif
+
+/* threads (src/rfm1m.h RFM1M_CAP_MT): built against tools/w2c_mt.sh's header, the call depth is thread-local */
+__attribute__((visibility("default"))) uint32_t rfm1m_caps(void);
+uint32_t rfm1m_caps(void)
+{
+#ifdef RFM1M_MT
+    return RFM1M_CAP_MT;
+#else
+    return 0;
+#endif
+}
+
+#ifdef RFM1M_CPU2
+/* core 1 (src/rfm1m.h rfm1m_cpu2_t): the twin is instantiated as any instance (its own memory made and loaded, then
+ * dropped for inst's: no module code runs here), so its globals and table are its own and its memory is inst's */
+extern void X(rfm1_c1_stack)(INST *, u32);
+extern void X(rfm1_c1_call)(INST *, u32, u32);
+static void *c1_twin(void *i, struct Z_wasi_snapshot_preview1_instance_t *wasi)
+{
+    INST *t = calloc(1, sizeof *t);
+    wasm_rt_memory_t *a, *b;
+    if (!t)
+        return NULL;
+    CAT(CAT(Z_, MOD), _instantiate)(t RFM1M_INST_ARGS);
+    a = X(memory)(I);
+    b = X(memory)(t);
+    wasm_rt_free_memory(b);
+    *b = *a;
+    return t;
+}
+static void c1_twin_free(void *t)
+{
+    wasm_rt_memory_t *b;
+    if (!t)
+        return;
+    b = X(memory)((INST *)t);
+    b->data = NULL;   /* (inst's: not freed here) */
+    b->size = 0;
+    CAT(CAT(Z_, MOD), _free)((INST *)t);
+    free(t);
+}
+static void c1_stack(void *t, uint32_t top) { X(rfm1_c1_stack)((INST *)t, top); }
+static void c1_call(void *t, uint32_t fn, uint32_t arg) { X(rfm1_c1_call)((INST *)t, fn, arg); }
+__attribute__((visibility("default"))) const rfm1m_cpu2_t *rfm1m_cpu2(void);
+const rfm1m_cpu2_t *rfm1m_cpu2(void)
+{
+    static rfm1m_cpu2_t t;
+    if (!t.abi) {
+        t.twin = c1_twin;
+        t.twin_free = c1_twin_free;
+        t.stack = c1_stack;
+        t.call = c1_call;
+        t.abi = RFM1M_CPU2_ABI;
     }
     return &t;
 }

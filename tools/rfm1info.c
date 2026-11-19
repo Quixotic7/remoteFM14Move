@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* rfm1info: an .rfm1 file's manifest and licence texts, and the checks a host makes before running it
  * (RFM1-FORMAT.md sections 1, 3, 4): the wasm magic, the rfm1 section, the imports (wasi_snapshot_preview1's six
- * only, and for a Fantasy CFW rfm1_host_1's four: FM1VST docs/VIRTUAL-CARTS.md, "virtual": true with "fs1" in "needs"),
- * the required manifest fields; a Fantasy CFW's limits (the file under 16 MiB, its memory at most 512 MiB).
+ * only, and for a Fantasy CFW rfm1_host_1's four: FM1VST docs/VIRTUAL-CARTS.md, "virtual": true with "fs1" in "needs";
+ * rfm1_cpu2_1's run and wait for any module: core 1, README "Threads"), the required manifest fields; a Fantasy CFW's
+ * limits (the file under 16 MiB, its memory at most 512 MiB).
  *
  *   rfm1info FILE.rfm1 [--field KEY] [--manifest] [--licenses OUT.txt] [--check]
  *     --field KEY      a manifest string field (id, name, version, license, source_url, ..) on stdout
@@ -41,6 +42,7 @@ static int leb(size_t *at, uint32_t *v)
 
 static const char *IMPORTS[] = { "fd_write", "fd_read", "fd_close", "fd_seek", "clock_time_get", "proc_exit" };
 static const char *HOST1[] = { "fs_request", "fs_poll", "fs_cancel", "fs_changed" };   /* rfm1_host_1 (fs1) */
+static const char *CPU2[] = { "run", "wait" };   /* rfm1_cpu2_1: core 1 (README "Threads"), any module */
 
 /* a manifest's array field (top level) lists s */
 static int lists(const char *man, const char *key, const char *s)
@@ -168,6 +170,8 @@ int main(int argc, char **argv)
                 for (j = 0; j < sizeof HOST1 / sizeof HOST1[0]; j++)
                     if (!strcmp(mod, "rfm1_host_1") && !strcmp(fn, HOST1[j]))
                         ok = host1 = 1;   /* (allowed below only for a Fantasy CFW with fs1 in its needs) */
+                for (j = 0; j < sizeof CPU2 / sizeof CPU2[0]; j++)
+                    ok |= !strcmp(mod, "rfm1_cpu2_1") && !strcmp(fn, CPU2[j]);
                 if (!ok) {
                     fprintf(stderr, "rfm1info: imports %s.%s, which a host does not give\n", mod, fn);
                     bad = 1;

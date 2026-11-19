@@ -5,11 +5,18 @@
 #include "fwrt.h"
 
 #include <dlfcn.h>
+#include <pthread.h>
+#include <sched.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef __linux__
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 #include "wasm-rt.h"
 #include "wasm-rt-impl.h"
@@ -202,6 +209,7 @@ uint32_t Z_rfm1_host_1Z_fs_changed(struct Z_rfm1_host_1_instance_t *h)
 }
 
 /* ------------------------------------------------------------------ the object --- */
+static struct fw_lg *lg_for(fw_obj_t *o);
 /* the manifest beside the object (<base>.json): what a Fantasy CFW needs; 0, or -1 with err (a need this host lacks) */
 static int obj_manifest(fw_obj_t *o, char *err, size_t cap)
 {
@@ -296,7 +304,16 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         const rfm1m_ain_t *a = ag ? ag() : NULL;
         o->ain = a && a->abi == RFM1M_AIN_ABI && a->audio_in ? a : NULL;
     }
+    {   /* threads: a thread-local call depth (else every call under the legacy lock); core 1 */
+        const rfm1m_caps_fn cf = (rfm1m_caps_fn)(uintptr_t)dlsym(o->so, RFM1M_CAPS_SYMBOL);
+        const rfm1m_cpu2_fn c2 = (rfm1m_cpu2_fn)(uintptr_t)dlsym(o->so, RFM1M_CPU2_SYMBOL);
+        const rfm1m_cpu2_t *c = c2 ? c2() : NULL;
+        o->mt = cf && (cf() & RFM1M_CAP_MT);
+        o->cpu2 = o->mt && c && c->abi == RFM1M_CPU2_ABI && c->twin && c->twin_free && c->stack && c->call ? c : NULL;
+    }
     snprintf(o->path, sizeof o->path, "%s", path);
+    if (!o->mt)
+        o->lg = lg_for(o);   /* (an old object: its own call depth, if it can be had) */
     if (obj_manifest(o, err, cap) != 0) {
         dlclose(o->so);
         free(o);
@@ -329,15 +346,422 @@ static void trapped(fw_t *fw, wasm_rt_trap_t code, const char *what)
     fprintf(stderr, "fwrt: %s\n", fw->err);
 }
 
-/* call: an expression on fw->obj->vt and fw->inst; on a trap the instance is dead and the expression's value is 0 */
+/* An object built before the threads (fw_obj_t.mt 0: no rfm1m_caps) counts its call depth in wasm2c's process global
+ * wasm_rt_call_stack_depth, ++ and -- on every call: two threads in such objects would corrupt it. Two ways out:
+ *   - its own counter (Linux): the object's GOT entry for that symbol (its R_AARCH64_GLOB_DAT relocation, found in its
+ *     dynamic section by name, checked to hold the global's address) is pointed at a counter of that loaded object's
+ *     own (fw_obj_t.lg: one per loaded file, shared by every fw_obj_t of it). Its instances are serialised by that
+ *     object's lock only, so different old objects run on different threads at once, as new ones do; the same object
+ *     in two slots takes turns. A trap restores the counter from the value saved before the call (the runtime's
+ *     restore is for the global);
+ *   - otherwise (no such relocation, another libc): every call into it under one process-wide lock, the global counter
+ *     restored on a trap only on the thread holding it (tools/w2c_mt.sh: rfm14_w2c_legacy_held). */
+typedef struct fw_lg {
+    const void *lm;                   /* the loaded object (its link_map) */
+    uint32_t depth;                   /* its call depth (the GOT points here) */
+    pthread_mutex_t mu;
+} fw_lg_t;
+#define LG_MAX 64
+static fw_lg_t *g_lg[LG_MAX];
+static pthread_mutex_t g_lg_mu = PTHREAD_MUTEX_INITIALIZER;
+#if defined(__linux__) && defined(__aarch64__)
+#include <link.h>
+#include <sys/mman.h>
+struct relro_q { ElfW(Addr) base; uintptr_t lo, hi; };
+static int relro_cb(struct dl_phdr_info *info, size_t size, void *arg)
+{
+    struct relro_q *q = arg;
+    int i;
+    (void)size;
+    if (info->dlpi_addr != q->base)
+        return 0;
+    for (i = 0; i < info->dlpi_phnum; i++)
+        if (info->dlpi_phdr[i].p_type == PT_GNU_RELRO) {
+            q->lo = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
+            q->hi = q->lo + info->dlpi_phdr[i].p_memsz;
+        }
+    return 1;
+}
+/* the object's GOT slots for sym (holding old) pointed at neu: how many (0: none, -1: a slot held something else) */
+static int got_redirect(void *so, const char *sym, void *old, void *neu)
+{
+    struct link_map *lm = NULL;
+    ElfW(Dyn) *d;
+    const ElfW(Rela) *rela = NULL;
+    const ElfW(Sym) *symtab = NULL;
+    const char *strtab = NULL;
+    size_t relasz = 0, i;
+    int n = 0;
+    struct relro_q q;
+    const long pg = sysconf(_SC_PAGESIZE);
+    if (dlinfo(so, RTLD_DI_LINKMAP, &lm) != 0 || !lm || !lm->l_ld)
+        return 0;
+#define LGPTR(v) ((uintptr_t)(v) < (uintptr_t)lm->l_addr ? (uintptr_t)(v) + lm->l_addr : (uintptr_t)(v))
+    for (d = lm->l_ld; d->d_tag != DT_NULL; d++)
+        switch (d->d_tag) {
+        case DT_RELA: rela = (const ElfW(Rela) *)LGPTR(d->d_un.d_ptr); break;
+        case DT_RELASZ: relasz = d->d_un.d_val; break;
+        case DT_SYMTAB: symtab = (const ElfW(Sym) *)LGPTR(d->d_un.d_ptr); break;
+        case DT_STRTAB: strtab = (const char *)LGPTR(d->d_un.d_ptr); break;
+        default: break;
+        }
+#undef LGPTR
+    if (!rela || !symtab || !strtab)
+        return 0;
+    q.base = lm->l_addr, q.lo = q.hi = 0;
+    dl_iterate_phdr(relro_cb, &q);
+    for (i = 0; i < relasz / sizeof *rela; i++) {   /* (first: every use of sym is a GOT slot that holds old) */
+        const ElfW(Rela) *r = &rela[i];
+        if (ELF64_R_SYM(r->r_info) && !strcmp(strtab + symtab[ELF64_R_SYM(r->r_info)].st_name, sym)
+            && (ELF64_R_TYPE(r->r_info) != R_AARCH64_GLOB_DAT || *(void **)(lm->l_addr + r->r_offset) != old))
+            return -1;
+    }
+    for (i = 0; i < relasz / sizeof *rela; i++) {
+        const ElfW(Rela) *r = &rela[i];
+        void **slot;
+        uintptr_t page;
+        if (ELF64_R_TYPE(r->r_info) != R_AARCH64_GLOB_DAT || strcmp(strtab + symtab[ELF64_R_SYM(r->r_info)].st_name, sym))
+            continue;
+        slot = (void **)(lm->l_addr + r->r_offset);
+        page = (uintptr_t)slot & ~(uintptr_t)(pg - 1);
+        if (mprotect((void *)page, (size_t)pg, PROT_READ | PROT_WRITE) != 0)
+            return -1;
+        *slot = neu;
+        if ((uintptr_t)slot >= q.lo && (uintptr_t)slot < q.hi)   /* (RELRO: read-only again) */
+            mprotect((void *)page, (size_t)pg, PROT_READ);
+        n++;
+    }
+    return n;
+}
+#endif
+/* o's own counter and lock (an old object), or NULL: the global lock then */
+static fw_lg_t *lg_for(fw_obj_t *o)
+{
+#if defined(__linux__) && defined(__aarch64__)
+    struct link_map *lm = NULL;
+    fw_lg_t *lg = NULL;
+    int i, free_i = -1;
+    if (getenv("RFM14_LEGACY_LOCK") || dlinfo(o->so, RTLD_DI_LINKMAP, &lm) != 0 || !lm)
+        return NULL;
+    pthread_mutex_lock(&g_lg_mu);
+    for (i = 0; i < LG_MAX && !lg; i++)
+        if (g_lg[i] && g_lg[i]->lm == lm)
+            lg = g_lg[i];
+        else if (!g_lg[i] && free_i < 0)
+            free_i = i;
+    if (!lg && free_i >= 0 && (lg = calloc(1, sizeof *lg))) {
+        lg->lm = lm;
+        pthread_mutex_init(&lg->mu, NULL);
+        if (got_redirect(o->so, "wasm_rt_call_stack_depth", &wasm_rt_call_stack_depth, &lg->depth) > 0)
+            g_lg[free_i] = lg;   /* (kept while the process runs: the object stays mapped, fw_obj_close) */
+        else {
+            fprintf(stderr, "fwrt: %s: an object from before the threads, its call depth not redirected: every call "
+                            "under the one lock\n", o->path);
+            pthread_mutex_destroy(&lg->mu);
+            free(lg);
+            lg = NULL;
+        }
+    }
+    pthread_mutex_unlock(&g_lg_mu);
+    return lg;
+#else
+    (void)o;
+    return NULL;
+#endif
+}
+
+static pthread_mutex_t g_legacy = PTHREAD_MUTEX_INITIALIZER;
+/* before a call: 0 (a new object), 1 (the object's own lock, *saved its depth), 2 (the global lock) */
+static int legacy_enter(const fw_t *fw, uint32_t *saved)
+{
+    const fw_obj_t *o = fw->obj;
+    if (!o || o->mt)
+        return 0;
+    if (o->lg) {
+        pthread_mutex_lock(&o->lg->mu);
+        *saved = o->lg->depth;
+        return 1;
+    }
+    pthread_mutex_lock(&g_legacy);
+    rfm14_w2c_legacy_held = 1;
+    return 2;
+}
+static void legacy_leave(const fw_t *fw, int held, int trapped_, uint32_t saved)
+{
+    if (held == 1) {
+        if (trapped_)
+            fw->obj->lg->depth = saved;   /* (the runtime restored the global's, not this) */
+        pthread_mutex_unlock(&fw->obj->lg->mu);
+    } else if (held == 2) {
+        rfm14_w2c_legacy_held = 0;
+        pthread_mutex_unlock(&g_legacy);
+    }
+}
+
+/* call: an expression on fw->obj->vt and fw->inst; on a trap the instance is dead and the expression's value is 0.
+ * The jump buffer is this thread's (tools/w2c_mt.sh) */
 #define CALL(fw, what, expr)                                                                                        \
     do {                                                                                                            \
+        uint32_t saved_ = 0;                                                                                        \
+        const volatile int held_ = legacy_enter(fw, &saved_);                                                       \
+        const volatile uint32_t sv_ = saved_;                                                                       \
         wasm_rt_trap_t code_ = (wasm_rt_trap_t)wasm_rt_impl_try();                                                  \
         if (code_ == WASM_RT_TRAP_NONE) {                                                                           \
             expr;                                                                                                   \
         } else                                                                                                      \
             trapped((fw), code_, (what));                                                                           \
+        legacy_leave((fw), held_, code_ != WASM_RT_TRAP_NONE, sv_);                                                 \
     } while (0)
+
+
+/* ------------------------------------------------------------------ core 1 (cpu2) --- */
+/* README "Threads". The module asks for core 1 inside its own calls (rfm1_audio, typically once per control block):
+ *   rfm1_cpu2_1.run(fn, arg): 1 handed over (core 1 runs fn(arg) now), 0 not (the module runs it itself);
+ *   rfm1_cpu2_1.wait(): 0 the job is done; else it was not (the module runs it itself).
+ * The job runs on the core-1 thread, on the twin: the same module instantiated again (its own globals, so its own
+ * stack pointer, set into a region rfm1_alloc'd from the module: rfm1_c1_stack; its own table) with the module's
+ * memory. Between run and wait the module's core 0 must leave the job's data alone, as on the FM-1. A trap in a job:
+ * the job is reported not done (wait answers -2), and core 1 is off for this instance from then on.
+ * The hand-over: sequence numbers, a short spin on each side, then a futex. One job at a time. */
+#define C1_STACK (256u * 1024u)        /* the twin's stack, in the module's memory */
+#define C1_IDLE_SPIN_NS 200000u         /* core 1 spins this long for the next job before it sleeps */
+#define C1_WAIT_SPIN_NS 100000u         /* core 0 spins this long in wait before it sleeps */
+
+struct fw_c1 {
+    fw_t *fw;
+    const rfm1m_cpu2_t *vt;
+    void *twin;
+    struct Z_wasi_snapshot_preview1_instance_t *twin_wasi;
+    pthread_t thr;
+    int started;
+    uint32_t stack;                    /* (rfm1_alloc'd) */
+    /* the hand-over: post (core 0) and done (core 1) move by one per job; quit ends the thread */
+    uint32_t post, done, quit;
+    uint32_t fn, arg;
+    int result;                        /* the last job: 0 ran, -2 trapped */
+    int state;                         /* fw_c1_stats_t.state */
+    int pending;                       /* (core 0's) a job handed over and not waited for yet */
+    int tid;
+    uint64_t jobs, inline_jobs, job_ns, wait_ns;
+    uint32_t job_worst_us;
+};
+
+void (*fw_on_c1_thread)(fw_t *fw);
+static int g_cpu2_off = -1;
+void fw_cpu2_enable(int on) { g_cpu2_off = !on; }
+static int cpu2_on(void)
+{
+    if (g_cpu2_off < 0) {
+        const char *e = getenv("RFM14_CPU2");
+        g_cpu2_off = e && *e == '0';
+    }
+    return !g_cpu2_off;
+}
+
+static void fu_wait(uint32_t *addr, uint32_t val)
+{
+#ifdef __linux__
+    syscall(SYS_futex, addr, FUTEX_WAIT_PRIVATE, val, NULL, NULL, 0);
+#else
+    (void)addr, (void)val;
+    sched_yield();
+#endif
+}
+static void fu_wake(uint32_t *addr)
+{
+#ifdef __linux__
+    syscall(SYS_futex, addr, FUTEX_WAKE_PRIVATE, 1, NULL, NULL, 0);
+#else
+    (void)addr;
+#endif
+}
+
+/* memories a twin shares never move: wasm_rt_grow_memory (the objects call it for memory.grow; the runtime's own is
+ * w2c_rt_grow_memory, Makefile) refuses to grow them (.rfm1 memories are fixed in size anyway: RFM1.md MEMORY_MIB) */
+uint32_t w2c_rt_grow_memory(wasm_rt_memory_t *memory, uint32_t delta);
+#define SHARED_MAX 16
+static pthread_mutex_t g_shared_mu = PTHREAD_MUTEX_INITIALIZER;
+static const void *g_shared[SHARED_MAX];
+static int shared_set(const void *data, int on)
+{
+    int i, ok = 0;
+    pthread_mutex_lock(&g_shared_mu);
+    for (i = 0; i < SHARED_MAX && !ok; i++)
+        if (on ? !g_shared[i] : g_shared[i] == data) {
+            g_shared[i] = on ? data : NULL;
+            ok = 1;
+        }
+    pthread_mutex_unlock(&g_shared_mu);
+    return ok ? 0 : -1;
+}
+__attribute__((visibility("default"))) uint32_t wasm_rt_grow_memory(wasm_rt_memory_t *memory, uint32_t delta);
+uint32_t wasm_rt_grow_memory(wasm_rt_memory_t *memory, uint32_t delta)
+{
+    int i, shared = 0;
+    if (delta) {
+        pthread_mutex_lock(&g_shared_mu);
+        for (i = 0; i < SHARED_MAX; i++)
+            shared |= g_shared[i] && g_shared[i] == memory->data;
+        pthread_mutex_unlock(&g_shared_mu);
+        if (shared)
+            return (uint32_t)-1;
+    }
+    return w2c_rt_grow_memory(memory, delta);
+}
+
+static void *c1_main(void *arg)
+{
+    struct fw_c1 *c = arg;
+    uint32_t seen = 0;
+#ifdef __linux__
+    c->tid = (int)syscall(SYS_gettid);
+#endif
+    if (fw_on_c1_thread)
+        fw_on_c1_thread(c->fw);
+    for (;;) {
+        uint32_t p;
+        const uint64_t t0 = now_ns();
+        while ((p = __atomic_load_n(&c->post, __ATOMIC_ACQUIRE)) == seen && !__atomic_load_n(&c->quit, __ATOMIC_ACQUIRE)) {
+            if (now_ns() - t0 > C1_IDLE_SPIN_NS)
+                fu_wait(&c->post, seen);
+        }
+        if (__atomic_load_n(&c->quit, __ATOMIC_ACQUIRE) && p == seen)
+            break;
+        seen = p;
+        {
+            const uint64_t t1 = now_ns();
+            uint64_t dt;
+            wasm_rt_trap_t code = (wasm_rt_trap_t)wasm_rt_impl_try();
+            if (code == WASM_RT_TRAP_NONE) {
+                c->vt->call(c->twin, c->fn, c->arg);
+                c->result = 0;
+            } else {
+                c->result = -2;
+                fprintf(stderr, "fwrt: %s: core 1's job trapped (%s): core 1 off\n", c->fw->id, wasm_rt_strerror(code));
+            }
+            dt = now_ns() - t1;
+            c->job_ns += dt;
+            if (dt / 1000u > c->job_worst_us)
+                c->job_worst_us = (uint32_t)(dt / 1000u);
+            c->jobs++;
+        }
+        __atomic_store_n(&c->done, seen, __ATOMIC_RELEASE);
+        fu_wake(&c->done);
+    }
+    return NULL;
+}
+
+uint32_t Z_rfm1_cpu2_1Z_run(struct Z_rfm1_cpu2_1_instance_t *h, uint32_t fn, uint32_t arg)
+{
+    fw_t *fw = h ? h->w.fw : NULL;
+    struct fw_c1 *c = fw ? fw->c1 : NULL;
+    if (!fw)
+        return 0;   /* (the twin: a job asking for core 1 runs its part itself) */
+    if (!c || c->state != 1 || c->pending) {
+        if (c)
+            c->inline_jobs++;
+        return 0;
+    }
+    c->fn = fn, c->arg = arg;
+    c->pending = 1;
+    __atomic_store_n(&c->post, c->post + 1, __ATOMIC_RELEASE);
+    fu_wake(&c->post);
+    return 1;
+}
+
+static void c1_join(struct fw_c1 *c)   /* core 0: the job handed over is done */
+{
+    const uint32_t want = c->post;
+    uint32_t d;
+    const uint64_t t0 = now_ns();
+    while ((d = __atomic_load_n(&c->done, __ATOMIC_ACQUIRE)) != want)
+        if (now_ns() - t0 > C1_WAIT_SPIN_NS)
+            fu_wait(&c->done, d);
+    c->wait_ns += now_ns() - t0;
+    c->pending = 0;
+}
+
+uint32_t Z_rfm1_cpu2_1Z_wait(struct Z_rfm1_cpu2_1_instance_t *h)
+{
+    fw_t *fw = h ? h->w.fw : NULL;
+    struct fw_c1 *c = fw ? fw->c1 : NULL;
+    if (!c || !c->pending)
+        return 0;   /* (nothing handed over: nothing to wait for) */
+    c1_join(c);
+    if (c->result != 0) {
+        c->state = 2;
+        return (uint32_t)-2;
+    }
+    return 0;
+}
+
+/* core 1 for fw (fw->c1: the twin fw_instantiate made): its stack in the module's memory, its thread. 0, or -1 (off) */
+static int c1_start(fw_t *fw)
+{
+    struct fw_c1 *c = fw->c1;
+    void *const twin = c->twin;
+    volatile uint32_t st = 0;
+    pthread_attr_t at;
+    CALL(fw, "rfm1_alloc", st = fw->obj->vt->alloc(fw->inst, C1_STACK));
+    if (fw->dead || !st || !in_mem(fw, st, C1_STACK)) {
+        fprintf(stderr, "fwrt: %s: no room for core 1's stack: core 1 off\n", fw->id);
+        c->state = 2;
+        return -1;
+    }
+    c->stack = st;
+    {
+        wasm_rt_trap_t code = (wasm_rt_trap_t)wasm_rt_impl_try();
+        if (code == WASM_RT_TRAP_NONE)
+            c->vt->stack(twin, (st + C1_STACK) & ~15u);
+        else {
+            fprintf(stderr, "fwrt: %s: rfm1_c1_stack trapped (%s): core 1 off\n", fw->id, wasm_rt_strerror(code));
+            c->state = 2;
+            return -1;
+        }
+    }
+    pthread_attr_init(&at);
+    pthread_attr_setstacksize(&at, 2u << 20);   /* (wasm2c functions keep their locals in C frames) */
+    if (pthread_create(&c->thr, &at, c1_main, c) != 0) {
+        pthread_attr_destroy(&at);
+        c->state = 2;
+        return -1;
+    }
+    pthread_attr_destroy(&at);
+    c->started = 1;
+    c->state = 1;
+    return 0;
+}
+
+/* the thread stopped (a job in flight finished first), the twin handed back to be freed with the instance */
+static void c1_stop(fw_t *fw, void **twin, struct Z_wasi_snapshot_preview1_instance_t **tw)
+{
+    struct fw_c1 *c = fw->c1;
+    if (!c)
+        return;
+    if (c->started) {
+        if (c->pending)
+            c1_join(c);
+        __atomic_store_n(&c->quit, 1, __ATOMIC_RELEASE);
+        fu_wake(&c->post);
+        pthread_join(c->thr, NULL);
+    }
+    *twin = c->twin, *tw = c->twin_wasi;
+    fw->c1 = NULL;
+    free(c);
+}
+
+void fw_c1_stats(const fw_t *fw, fw_c1_stats_t *st)
+{
+    const struct fw_c1 *c = fw ? fw->c1 : NULL;
+    memset(st, 0, sizeof *st);
+    if (!c)
+        return;
+    st->state = c->state;
+    st->jobs = c->jobs, st->inline_jobs = c->inline_jobs;
+    st->job_ns = c->job_ns, st->wait_ns = c->wait_ns;
+    st->job_worst_us = c->job_worst_us;
+    st->tid = c->tid;
+}
 
 /* ------------------------------------------------------------------ an instance --- */
 static __thread char g_why[160];
@@ -391,6 +815,16 @@ fw_inst_t *fw_instantiate(fw_obj_t *obj)
         fw_inst_free(p);
         return NULL;
     }
+    if (obj->cpu2 && cpu2_on() && (p->twin_wasi = calloc(1, sizeof *p->twin_wasi))) {   /* core 1's twin */
+        uint64_t sz;
+        const void *data = obj->vt->memory(p->inst, &sz);
+        if (shared_set(data, 1) == 0 && !(p->twin = obj->cpu2->twin(p->inst, p->twin_wasi)))
+            shared_set(data, 0);
+        if (!p->twin) {
+            free(p->twin_wasi);
+            p->twin_wasi = NULL;
+        }
+    }
     return p;
 }
 
@@ -398,6 +832,12 @@ void fw_inst_free(fw_inst_t *p)
 {
     if (!p)
         return;
+    if (p->twin) {   /* (first: the memory is the instance's) */
+        uint64_t sz;
+        p->obj->cpu2->twin_free(p->twin);
+        shared_set(p->obj->vt->memory(p->inst, &sz), 0);
+    }
+    free(p->twin_wasi);
     if (p->inst)
         p->obj->vt->destroy(p->inst);
     fw_obj_close(p->obj);
@@ -429,6 +869,16 @@ int fw_create_from(fw_t *fw, fw_inst_t *pre)
     fw->inst = pre->inst;
     fw->wasi = pre->wasi;
     fw->wasi->fw = fw;
+    if (pre->twin && (fw->c1 = calloc(1, sizeof *fw->c1))) {   /* (core 1: started once the module is up) */
+        fw->c1->fw = fw, fw->c1->vt = pre->obj->cpu2, fw->c1->twin = pre->twin, fw->c1->twin_wasi = pre->twin_wasi;
+        pre->twin = NULL, pre->twin_wasi = NULL;
+    }
+    if (pre->twin) {   /* (no memory for its record: the twin goes, the module runs its jobs itself) */
+        uint64_t sz;
+        pre->obj->cpu2->twin_free(pre->twin);
+        shared_set(pre->obj->vt->memory(pre->inst, &sz), 0);
+        free(pre->twin_wasi);
+    }
     free(pre);
     fw->mem = vt->memory(fw->inst, &fw->mem_size);
     if (vt->initialize)
@@ -498,6 +948,8 @@ int fw_create_from(fw_t *fw, fw_inst_t *pre)
         }
         fw->scratch = s;
     }
+    if (fw->c1)
+        c1_start(fw);   /* (failing: core 1 off, the module runs its jobs itself) */
     return 0;
 }
 
@@ -538,6 +990,11 @@ int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
 fw_inst_t *fw_release(fw_t *fw)
 {
     fw_inst_t *p = NULL;
+    void *tv = NULL;
+    struct Z_wasi_snapshot_preview1_instance_t *twv = NULL;
+    c1_stop(fw, &tv, &twv);   /* (before the module's last calls: a job in flight finished, the thread gone) */
+    void *volatile twin = tv;
+    struct Z_wasi_snapshot_preview1_instance_t *volatile tw = twv;
     if (fw->inst) {
         if (fw->booted && !fw->dead && fw->ain_state)   /* (the input off first: VIRTUAL-CARTS.md 8) */
             fw_ain_info(fw, 0, 0);
@@ -546,9 +1003,16 @@ fw_inst_t *fw_release(fw_t *fw)
         fw_log_flush(fw);
         if ((p = calloc(1, sizeof *p))) {
             p->obj = fw->obj, p->inst = fw->inst, p->wasi = fw->wasi;
+            p->twin = twin, p->twin_wasi = tw;
             p->wasi->fw = NULL;   /* (no firmware calls from here) */
             fw->obj = NULL;
         } else {
+            if (twin) {
+                uint64_t sz;
+                fw->obj->cpu2->twin_free(twin);
+                shared_set(fw->obj->vt->memory(fw->inst, &sz), 0);
+            }
+            free(tw);
             fw->obj->vt->destroy(fw->inst);
             fsvc_release(fw->wasi->fs);
             free(fw->wasi);

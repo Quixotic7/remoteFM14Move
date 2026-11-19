@@ -3,8 +3,12 @@
  * (fm1core ABI 6: tick(ms) once per device ms, frame() every 15 ms and at ms 0 else idle(), audio() for each 128-frame
  * block due at 44100 Hz). The panel is the module's own, in its linear memory, at the offsets rfm1_layout gives.
  *
- * THREADS: everything on one instance from one thread (the engine's); traps are caught with wasm2c's one global
- * jump buffer, so all instances of a process run on that one thread too. fw_obj_open (dlopen) may run elsewhere. */
+ * THREADS (README "Threads"): every call on one instance from one thread at a time, in order (the engine's thread, or
+ * the slot's render thread while the engine waits for it); different instances on different threads at once. The
+ * runtime's trap state is per thread (tools/w2c_mt.sh); an object built before that (fw_obj_t.mt 0: its call depth is
+ * a process global) gets a counter of its own (fw_obj_t.lg) and its instances take turns (fwrt.c). fw_obj_open (dlopen) and fw_instantiate may run
+ * elsewhere. A module with cpu2 (fw_obj_t.cpu2) gets a core-1 thread of its own: its jobs run there on a twin
+ * instance that shares the module's memory, between the module's rfm1_cpu2_1.run and .wait. */
 #ifndef RFM14_FWRT_H
 #define RFM14_FWRT_H
 #include <stddef.h>
@@ -38,6 +42,10 @@ typedef struct fw_obj {
      * exports rfm1_audio_in (ain: build_fw.sh's rfm1m_ain table); the host gives input only when both */
     int ain1;
     const rfm1m_ain_t *ain;
+    /* threads: built with a thread-local call depth (rfm1m_caps RFM1M_CAP_MT); core 1 (rfm1m_cpu2: NULL none) */
+    int mt;
+    const rfm1m_cpu2_t *cpu2;
+    struct fw_lg *lg;                 /* an old object (mt 0): its own call depth and lock (fwrt.c), NULL: the global lock */
 } fw_obj_t;
 
 /* the imports' instance: which firmware calls (the type wasm2c's imports name); NULL until fw_create. A Fantasy
@@ -49,6 +57,10 @@ struct Z_wasi_snapshot_preview1_instance_t {
 struct Z_rfm1_host_1_instance_t {
     struct Z_wasi_snapshot_preview1_instance_t w;
 };
+/* cpu2's imports get the same object too (a twin's: fw NULL, so its run answers 0 and its output goes nowhere) */
+struct Z_rfm1_cpu2_1_instance_t {
+    struct Z_wasi_snapshot_preview1_instance_t w;
+};
 
 /* an instance made but not started: its memory allocated and its data loaded (wasm2c's instantiate: no firmware code
  * runs). Made on any thread (the storage thread: with every page of a locked process faulted in, a firmware's memory
@@ -57,6 +69,8 @@ typedef struct fw_inst {
     struct fw_obj *obj;               /* (a reference) */
     void *inst;
     struct Z_wasi_snapshot_preview1_instance_t *wasi;
+    void *twin;                       /* cpu2: the core-1 twin (rfm1m_cpu2_t.twin), NULL none */
+    struct Z_wasi_snapshot_preview1_instance_t *twin_wasi;
 } fw_inst_t;
 
 /* the panel's inputs (fw_in), as the log records them */
@@ -119,6 +133,8 @@ typedef struct fw {
     /* the cost: nanoseconds spent in the module */
     uint64_t ns_total;
     uint32_t worst_us;
+    /* cpu2: the core-1 thread (NULL: none, or off) */
+    struct fw_c1 *c1;
     /* its stdout / stderr: whole lines, at most FW_LOG_RATE a second (a burst of FW_LOG_BURST), the rest counted */
     char line[160];
     int line_n;
@@ -128,6 +144,20 @@ typedef struct fw {
 } fw_t;
 #define FW_LOG_RATE 4
 #define FW_LOG_BURST 20
+
+/* ---- threads */
+/* cpu2 on (default) or off (RFM14_CPU2=0 in the environment says off too): set before the first instance */
+void fw_cpu2_enable(int on);
+/* called on each core-1 thread as it starts (the engine: its name, cores and priority), NULL: nothing */
+extern void (*fw_on_c1_thread)(fw_t *fw);
+typedef struct {
+    int state;                        /* 0 none, 1 working, 2 off (a job trapped or its stack failed) */
+    uint64_t jobs, inline_jobs;       /* jobs core 1 ran; jobs the module ran itself (run answered 0) */
+    uint64_t job_ns, wait_ns;         /* core 1's time in jobs; core 0's time waiting in .wait */
+    uint32_t job_worst_us;
+    int tid;                          /* the core-1 thread's (Linux) */
+} fw_c1_stats_t;
+void fw_c1_stats(const fw_t *fw, fw_c1_stats_t *st);   /* (zeros: no core 1) */
 
 /* ---- the object (any thread; its references are atomic) */
 fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap);

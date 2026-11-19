@@ -18,7 +18,7 @@ OUTROOT="$2"
 cd "$(dirname "$0")/.."
 SHA=$(sha256sum "$IN" | cut -d' ' -f1)
 D="$OUTROOT/$SHA"
-BSTAMP=$(cat tools/build_fw.sh fw/fwglue.c src/rfm1m.h | sha256sum | cut -c1-16)
+BSTAMP=$(cat tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h | sha256sum | cut -c1-16)
 STAMP=$(cat tools/catalog_fw.sh tools/fwrun.c src/fwrt.c src/fwrt.h src/fsvc.c src/fsvc.h | sha256sum | cut -c1-16)-$BSTAMP
 if [ -f "$D/result.json" ] && [ "$(cat "$D/stamp" 2>/dev/null)" = "$STAMP" ]; then
     exit 0
