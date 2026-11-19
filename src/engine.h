@@ -25,6 +25,9 @@ typedef struct {
     uint32_t splash_ms;           /* the session (the Move's controls and screen) starts this long after the engine: the
                                    * status screen with the page's address shows meanwhile */
     int cpu_mask;                 /* the engine thread's cores (bits; 0 any) */
+    const char *bundled_index;    /* the module's catalog snapshot (catalog/index.json), or NULL */
+    const char *catalog_url;      /* the catalog's base URL when the root's catalog-url names none (NULL: the default) */
+    long log_cap;                 /* stderr's file is moved to <log>.1 past this many bytes (0: 1 MB, < 0: never) */
     /* tests (the simulator): every output block from the audio thread / the engine, the first firmware's own blocks
      * and its input log (tools/fwrun --replay) */
     const char *capture_out, *capture_mix, *capture_raw, *log_inputs;
@@ -55,7 +58,8 @@ void engine_panel(int op, int a, int b);
 /* a JSON status line (the slots, CPU, late blocks, the ring) into out */
 int engine_status(char *out, int cap);
 /* the installed firmwares, {"firmwares":[...]} (each: id, name, version, license, source_url, sha256, file, base, authors,
- * built_by, categories, skin: the skin's files ([] none; web.c /api/fw/), licenses), made at start: a malloc'd copy (the caller frees it), or NULL */
+ * built_by, description and categories (the catalog's), skin: the skin's files ([] none; web.c /api/fw/), licenses),
+ * made whenever they change: a malloc'd copy (the caller frees it), or NULL */
 char *engine_firmwares(void);
 /* the page's firmware pick: firmware id into slot 0..2, done on the engine's thread as rfm1cs's FW_LOAD (the storage
  * worker opens it, the slot boots it, the Move is told). 0 queued; -1 an unknown id or slot, or the queue is full */

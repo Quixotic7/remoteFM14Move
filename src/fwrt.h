@@ -31,10 +31,19 @@ typedef struct fw_obj {
     int refs;
 } fw_obj_t;
 
-/* the WASI imports' instance: which firmware calls (the type wasm2c's imports name) */
+/* the WASI imports' instance: which firmware calls (the type wasm2c's imports name); NULL until fw_create */
 struct Z_wasi_snapshot_preview1_instance_t {
-    struct fw *fw;
+    struct fw *volatile fw;
 };
+
+/* an instance made but not started: its memory allocated and its data loaded (wasm2c's instantiate: no firmware code
+ * runs). Made on any thread (the storage thread: with every page of a locked process faulted in, a firmware's memory
+ * takes milliseconds), started on the engine's (fw_create_from); a stopped one is freed on any thread (fw_inst_free) */
+typedef struct fw_inst {
+    struct fw_obj *obj;               /* (a reference) */
+    void *inst;
+    struct Z_wasi_snapshot_preview1_instance_t *wasi;
+} fw_inst_t;
 
 /* the panel's inputs (fw_in), as the log records them */
 enum {
@@ -58,7 +67,7 @@ typedef struct {
 typedef struct fw {
     fw_obj_t *obj;
     void *inst;
-    struct Z_wasi_snapshot_preview1_instance_t wasi;
+    struct Z_wasi_snapshot_preview1_instance_t *wasi;
     uint8_t *mem;
     uint64_t mem_size;
     uint32_t L[34];
@@ -87,21 +96,37 @@ typedef struct fw {
     /* the cost: nanoseconds spent in the module */
     uint64_t ns_total;
     uint32_t worst_us;
-    int log_lines;                    /* fd_write lines said (rate limit) */
-    int line_open;                    /* .. in the middle of one */
+    /* its stdout / stderr: whole lines, at most FW_LOG_RATE a second (a burst of FW_LOG_BURST), the rest counted */
+    char line[160];
+    int line_n;
+    double log_tokens;
+    uint64_t log_ns;
+    uint32_t log_dropped, log_said;
 } fw_t;
+#define FW_LOG_RATE 4
+#define FW_LOG_BURST 20
 
-/* ---- the object (any thread) */
+/* ---- the object (any thread; its references are atomic) */
 fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap);
 void fw_obj_ref(fw_obj_t *o);
 void fw_obj_close(fw_obj_t *o);
 
+/* ---- an instance made, or freed, off the engine's thread (see fw_inst_t) */
+fw_inst_t *fw_instantiate(fw_obj_t *obj);   /* NULL: no memory */
+void fw_inst_free(fw_inst_t *pre);           /* (NULL: nothing) */
+
 /* ---- an instance (the engine's thread) */
 /* instantiated, _initialize'd, descriptor and layout checked: 0, or -1 with fw->err */
 int fw_create(fw_t *fw, fw_obj_t *obj);
+/* the same from an instance fw_instantiate made (fw takes it, whatever the result) */
+int fw_create_from(fw_t *fw, fw_inst_t *pre);
 /* the power-on: from a saved flash image (NULL / 0: a fresh one). 0 ok, -1 trapped (fw->err) */
 int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n);
 void fw_destroy(fw_t *fw);
+/* fw_destroy, but the instance's memory is handed back to be freed elsewhere (fw_inst_free; NULL: nothing to free) */
+fw_inst_t *fw_release(fw_t *fw);
+/* a "N lines dropped" line for what the rate limit held back, if any (the engine calls it now and then) */
+void fw_log_flush(fw_t *fw);
 /* the clock until the next block is due, then that block (128 stereo int16 frames). 0 ok; -1 silence (dead) */
 int fw_render(fw_t *fw, int16_t out[FW_BLOCK * 2]);
 /* an input, applied before the first device ms at or after frame due_frame of the firmware's own count (0: the next) */

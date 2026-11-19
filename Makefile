@@ -4,7 +4,10 @@
 #   make              everything, in the build image (docker/Dockerfile, linux/arm64): the host for the Move and for
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
-#   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1"
+#   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1" (with the starter firmwares of
+#                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there)
+#   make catalog      dist/move-catalog: every published .rfm1 compiled for the Move, with its index.json
+#                     (tools/build_move_catalog.py; the files a release at the catalog's base URL holds)
 #   make site         build/site: the page (RemoteFM1's web/site for the Move, scripts/build_site.sh; part of make)
 #   make sim-run      the host on the simulator in the image, its page on http://localhost:7730/
 #
@@ -12,12 +15,14 @@
 # repo). FM1VST (for the wasm3 reference, tools/rfm1_run at origin/rfm1-manager) is found beside it too.
 GH := $(abspath ..)
 FIRMWARES ?= $(GH)/RFM1Manager/out/felucca-1.8.2.rfm1 $(GH)/RFM1Manager/out/choralroot-0.41.rfm1
+# an older ChoralRoot, for the catalog's update test (tests/dl_e2e.sh)
+TEST_FIRMWARES ?= $(GH)/RFM1Manager/out/choralroot-0.40.rfm1
 FM1VST ?= $(GH)/FM1VST
 FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean
+.PHONY: all test package sim-run image inputs site clean catalog testcat
 all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -30,16 +35,24 @@ image:
 
 # the inputs, copied in (the image sees only this folder): the .rfm1 files, FM1VST's rfm1_run and wasm3
 inputs:
-	mkdir -p build/in build/ref
+	mkdir -p build/in build/in-test build/ref
 	for f in $(FIRMWARES); do cp -p "$$f" build/in/; done
+	for f in $(TEST_FIRMWARES); do cp -p "$$f" build/in-test/; done
 	if [ ! -f build/ref/.done ]; then git -C "$(FM1VST)" archive "$(FM1VST_REF)" tools/rfm1_run third_party/wasm3 \
 	    core-api | tar -x -C build/ref && git -C "$(FM1VST)" rev-parse "$(FM1VST_REF)" > build/ref/.done; fi
 
-test: all
+test: all testcat
 	tests/test.sh
+
+# the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
+catalog: all
+	python3 tools/build_move_catalog.py --out dist/move-catalog
+testcat: all
+	python3 tools/build_move_catalog.py --only amb,choralroot,felucca --out build/testcat --jobs 3
 
 package: all
 	$(DOCKER_RUN) make in-package
+	python3 tools/bundle.py build/pkg/remotefm1
 	mkdir -p dist
 	COPYFILE_DISABLE=1 tar -C build/pkg -czf dist/remotefm1-module.tar.gz remotefm1
 	ls -l dist/remotefm1-module.tar.gz
@@ -60,6 +73,7 @@ MR := third_party/abletonmoveremote
 CS := third_party/rfm1cs-abletonmove
 FW_IN := $(wildcard build/in/*.rfm1)
 FW_OUT := $(patsubst build/in/%.rfm1,build/fw/%.rfm1m,$(FW_IN))
+FW_TEST_OUT := $(patsubst build/in-test/%.rfm1,build/testfw/%.rfm1m,$(wildcard build/in-test/*.rfm1))
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
@@ -67,13 +81,14 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/web.c src/mdns.c src/minijson.c
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
-.PHONY: in-all in-host in-fw in-tools in-ref in-package
-in-all: in-tools in-fw in-ref in-host
+.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package
+in-all: in-tools in-fw in-testfw in-ref in-host
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe
 in-fw: $(FW_OUT)
+in-testfw: $(FW_TEST_OUT)
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
 
@@ -92,6 +107,8 @@ build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h build/obj/was
 
 build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/fw build/w2c >/dev/null
+build/testfw/%.rfm1m: build/in-test/%.rfm1 tools/build_fw.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+	tools/build_fw.sh $< build/testfw build/w2c >/dev/null
 
 # FM1VST's rfm1_run (wasm3), the reference the compiled firmwares are compared with
 build/ref/rfm1_run: build/ref/.done
@@ -122,9 +139,9 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 	mkdir -p build/move
 	$(CC) -O2 $(WARN) -static -DHEAL_HOST='"remotefm1-host"' $< -o $@
 
-build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/engine_dsp.h
+build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) -Isrc -o $@ tests/unit.c src/minijson.c src/mdns.c -lm -lpthread
+	$(CC) $(CFLAGS) $(WARN) -Isrc -o $@ tests/unit.c src/minijson.c src/mdns.c src/sha256.c -lm -lpthread
 
 build/tools/wsprobe: tests/wsprobe.c
 	mkdir -p build/tools

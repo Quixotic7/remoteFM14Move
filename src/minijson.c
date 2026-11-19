@@ -86,6 +86,18 @@ size_t mj_span(const char *v)
     return e ? (size_t)(e - v) : 0;
 }
 
+const char *mj_elem(const char **it)
+{
+    const char *p = *it ? ws(*it) : NULL, *e;
+    if (!p || (*p != '[' && *p != ','))
+        return NULL;
+    p = ws(p + 1);
+    if (*p == ']' || !*p || !(e = skip(p)))
+        return NULL;
+    *it = ws(e);
+    return p;
+}
+
 const char *mj_find(const char *json, const char *key)
 {
     const char *p = ws(json);

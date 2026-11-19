@@ -12,10 +12,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "../third_party/abletonmoveremote/common/ring.h"
+#include "catalog.h"
 #include "engine_dsp.h"
 #include "fwrt.h"
 #include "minijson.h"
@@ -27,6 +29,10 @@
 #define NSLOT RFM_MOVE_FW_SLOTS
 #define RING_FRAMES 4096
 #define AUTOSAVE_MS 2000u      /* a firmware's flash saved this long after its last change */
+#define PREROLL_FRAMES (RING_FRAMES - 4 * FW_BLOCK)   /* the ring's fill before a firmware starts (~81 ms) */
+#define INDEX_EVERY_MS (6u * 3600u * 1000u)           /* the catalog's index: fetched again this often */
+#define INDEX_RETRY_MS (10u * 60u * 1000u)            /* .. and this long after a failure (offline) */
+#define LOG_CAP_DEFAULT (1024 * 1024)                 /* the log file: moved aside past this (two at most) */
 
 static engine_cfg_t C;
 static volatile int g_run;
@@ -65,7 +71,8 @@ int engine_audio(void *ctx, int16_t *out, int frames)
 typedef struct {
     fw_t fw;
     int on;                    /* a firmware runs here */
-    int idx;                   /* its index in the catalog */
+    int idx;                   /* its index in the installed firmwares (g_cat->fw) */
+    char so[ST_PATH];          /* the object it runs (an update installs another beside it) */
     uint8_t level;             /* 0..127 */
     uint16_t filt;             /* the sequencer tracks it hears (ROUTE) */
     uint32_t dirty_seen;       /* flash_dirty when last looked at */
@@ -83,10 +90,18 @@ static int g_master = -1;                    /* the volume knob's MASTER, -1 not
 static uint32_t g_serial;
 static fw_t *g_raw_fw;                       /* the instance the raw capture and the input log follow */
 
-static st_fw_t g_fws[ST_FW_MAX];
-static rfm_move_fw_t g_list[ST_FW_MAX];
-static char g_desc[ST_FW_MAX][200];
-static int g_nfw;
+/* the catalog (catalog.h): the core's list (g_cat->list), the installed firmwares (g_cat->fw); the engine's thread's */
+static cat_t *g_cat;
+#define g_fws (g_cat->fw)
+#define g_nfw (g_cat->nfw)
+static int g_dl_busy, g_index_busy, g_sweep;
+static uint32_t g_next_index_ms;
+static struct { char id[RFM_MOVE_FW_ID_MAX], err[300]; int pct, state; uint32_t ok, failed, index_ok, index_failed; }
+    g_dl;                                    /* (the status: state 0 none, 1 downloading, 2 installed, 3 failed) */
+static char g_index_err[300];
+static int g_log_cap, g_rotating;
+static uint32_t g_test_boot_ms;              /* tests: a slow firmware start, as on the Move (RFM14_TEST_BOOT_MS) */
+static int g_no_preroll;                     /* tests: the start without the ring filled first (RFM14_NO_PREROLL) */
 
 static rfm1cs_session_t *S;
 static int g_sock = -1;
@@ -120,8 +135,10 @@ static engine_view_t g_view;
 static uint32_t g_view_lcd_ms;
 static struct { int op, a, b; } g_pin[256];
 static int g_npin;
-static char g_status[1024];
-static char *g_fw_json;                      /* engine_firmwares: made at start */
+static char g_status[3072];
+static char *g_fw_json;                      /* engine_firmwares: made whenever the installed ones change */
+static char (*g_web_ids)[RFM_MOVE_FW_ID_MAX];   /* the installed ids (engine_load's check) */
+static int g_web_n;
 static struct { int slot; char id[RFM_MOVE_FW_ID_MAX]; } g_wload[8];   /* the page's loads (engine_load) */
 static int g_nwload;
 static char g_fail_id[RFM_MOVE_FW_ID_MAX];   /* the last firmware that failed to load, and how many failed so far */
@@ -135,52 +152,43 @@ static uint32_t now_ms(void)
 }
 
 /* ------------------------------------------------------------------ the catalog --- */
-static uint8_t cats_of(const char *id, uint8_t *cat)
-{
-    /* the catalog's categories are not in the manifest yet: the two bundled firmwares' are known */
-    if (!strcmp(id, "felucca"))
-        return *cat = 0, RFM_MOVE_CAT_SYNTH;
-    if (!strcmp(id, "choralroot"))
-        return *cat = 2, RFM_MOVE_CAT_CHORDS | RFM_MOVE_CAT_SYNTH;
-    *cat = 255;
-    return 0;
-}
-
 static int has_file(const char *json_path, const char *suffix)
 {
     char p[ST_PATH + 32];
     const size_t n = strlen(json_path);
-    FILE *f;
+    struct stat st;
     if (n < 5)
         return 0;
     snprintf(p, sizeof p, "%.*s%s", (int)(n - 5), json_path, suffix);
-    if (!(f = fopen(p, "rb")))
-        return 0;
-    fclose(f);
-    return 1;
+    return stat(p, &st) == 0;
 }
 
 /* the page's firmware list (engine_firmwares): each installed firmware's manifest fields, its file's stem (base: the
- * page asks for its skin and licences by it, web.c /api/fw/), its categories (rfm1cs's), whether it has a skin */
+ * page asks for its skin and licences by it, web.c /api/fw/), the catalog's description and categories (rfm1cs's),
+ * whether it has a skin */
 static void fw_json(void)
 {
     static const char *CATS[] = { "Synth", "Groovebox", "Chords", "Drums", "Other" };
-    size_t cap = 1024 + (size_t)g_nfw * 8192, n = 0;   /* (a firmware: at most ~6 KB below) */
+    size_t cap = 1024 + (size_t)g_nfw * 12288, n = 0;   /* (a firmware: at most ~10 KB below) */
     char *o = malloc(cap);
+    char (*ids)[RFM_MOVE_FW_ID_MAX] = calloc((size_t)g_nfw + 1, sizeof *ids);
     int i, k;
-    if (!o)
+    if (!o || !ids) {
+        free(o), free(ids);
         return;
+    }
     n += (size_t)snprintf(o + n, cap - n, "{\"firmwares\":[");
     for (i = 0; i < g_nfw; i++) {
         const st_fw_t *f = &g_fws[i];
         size_t jn;
-        char *json = (char *)st_read(f->json, &jn), esc[4][600], file[256] = "", built[200] = "";
+        char *json = (char *)st_read(f->json, &jn), esc[4][600], desc[CAT_DESC * 2], file[256] = "", built[200] = "";
         const char *man = json ? mj_find(json, "manifest") : NULL, *au = man ? mj_find(man, "authors") : NULL;
         const char *slash = strrchr(f->json, '/');
         const size_t span = au && *au == '[' ? mj_span(au) : 0;
-        uint8_t cat;
-        const uint8_t cats = cats_of(f->id, &cat);
+        const int e = cat_find(g_cat, f->id);
+        const uint8_t cats = e >= 0 ? g_cat->e[e].cats : 0;
         int first = 1;
+        snprintf(ids[i], sizeof ids[i], "%s", f->id);
         if (json)
             mj_string(json, "file", file, sizeof file);
         if (man)
@@ -189,17 +197,18 @@ static void fw_json(void)
         mj_escape(f->license, esc[1], sizeof esc[1]);
         mj_escape(f->source_url, esc[2], sizeof esc[2]);
         mj_escape(built, esc[3], sizeof esc[3]);
+        mj_escape(e >= 0 && g_cat->e[e].indexed ? g_cat->e[e].desc : "", desc, sizeof desc);
         n += (size_t)snprintf(o + n, cap - n,
                               "%s{\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"license\":\"%s\",\"source_url\":\"%s\","
                               "\"sha256\":\"%s\",\"file\":\"%s\",\"base\":\"%.*s\",\"built_by\":\"%s\",\"authors\":%.*s,"
-                              "\"skin\":[%s%s%s],\"licenses\":%s,\"categories\":[",
+                              "\"skin\":[%s%s%s],\"licenses\":%s,\"description\":\"%s\",\"categories\":[",
                               i ? "," : "", f->id, esc[0], f->version, esc[1], esc[2], f->sha256, file,
                               slash ? (int)strlen(slash + 1) - 5 : 0, slash ? slash + 1 : "", esc[3],
                               span && span < 2048 ? (int)span : 2, span && span < 2048 ? au : "[]",
                               has_file(f->json, ".rfm1skin") ? "\"rfm1skin\"" : "",
                               has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bg") ? ",\"rfm1skin.bg\"" : "",
                               has_file(f->json, ".rfm1skin") && has_file(f->json, ".rfm1skin.bgl") ? ",\"rfm1skin.bgl\"" : "",
-                              has_file(f->json, ".licenses.txt") ? "true" : "false");
+                              has_file(f->json, ".licenses.txt") ? "true" : "false", desc);
         for (k = 0; k < 5; k++)
             if (cats >> k & 1) {
                 n += (size_t)snprintf(o + n, cap - n, "%s\"%s\"", first ? "" : ",", CATS[k]);
@@ -214,27 +223,10 @@ static void fw_json(void)
     pthread_mutex_lock(&g_vmu);
     free(g_fw_json);
     g_fw_json = o;
+    free(g_web_ids);
+    g_web_ids = ids;
+    g_web_n = g_nfw;
     pthread_mutex_unlock(&g_vmu);
-}
-
-static void catalog_load(void)
-{
-    int i;
-    g_nfw = st_fw_scan(g_fws, ST_FW_MAX);
-    for (i = 0; i < g_nfw; i++) {
-        rfm_move_fw_t *e = &g_list[i];
-        memset(e, 0, sizeof *e);
-        e->id = g_fws[i].id;
-        e->name = g_fws[i].name;
-        e->version = g_fws[i].version;
-        e->installed = g_fws[i].version;
-        snprintf(g_desc[i], sizeof g_desc[i], "%s %s. %s. Source: %s", g_fws[i].name, g_fws[i].version,
-                 g_fws[i].license, g_fws[i].source_url);
-        e->desc = g_desc[i];
-        e->cats = cats_of(g_fws[i].id, &e->cat);
-    }
-    fprintf(stderr, "engine: %d firmware(s) installed\n", g_nfw);
-    fw_json();
 }
 
 static int catalog_find(const char *id)
@@ -244,6 +236,64 @@ static int catalog_find(const char *id)
         if (!strcmp(g_fws[i].id, id))
             return i;
     return -1;
+}
+
+/* the objects the slots run (catalog.h's keep list: an older version a slot runs stays on disk), malloc'd */
+static char *keep_list(void)
+{
+    char *k = calloc(NSLOT, ST_PATH + 1);
+    int s;
+    if (k)
+        for (s = 0; s < NSLOT; s++)
+            if (SL[s].on && SL[s].so[0]) {
+                strcat(k, SL[s].so);
+                strcat(k, "\n");
+            }
+    return k;
+}
+
+static void slots_tell(void);
+
+/* a new catalog (the storage module's network thread made it): taken on the engine's thread (the core reads the list
+ * only inside its calls, on this thread). The same index and entries: only what is installed changed (a download, a
+ * sweep): the entries are updated in place (rfm_move_fw_installed), so the browser keeps its place. Otherwise a new list
+ * (rfm_move_fw_list), the old one freed after the call. */
+static void cat_take(cat_t *n)
+{
+    int i, s;
+    if (!n)
+        return;
+    if (g_cat && n->index_hash == g_cat->index_hash && cat_same_ids(g_cat, n)) {   /* (the same index's bytes) */
+        st_fw_t *t = g_cat->fw;
+        g_cat->from = n->from;
+        for (i = 0; i < n->n; i++) {
+            cat_ent_t *o = &g_cat->e[i];
+            const cat_ent_t *e = &n->e[i];
+            if (strcmp(o->installed, e->installed) || strcmp(o->version, e->version)) {
+                memcpy(o->installed, e->installed, sizeof o->installed);
+                memcpy(o->version, e->version, sizeof o->version);
+                if (!o->indexed)
+                    memcpy(o->desc, e->desc, sizeof o->desc);
+                rfm_move_fw_installed(&S->core, i, o->installed[0] ? o->installed : NULL);
+            }
+        }
+        g_cat->fw = n->fw, g_cat->nfw = n->nfw;
+        n->fw = t;
+        cat_free(n);
+    } else {
+        cat_t *old = g_cat;
+        g_cat = n;
+        if (S)
+            rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
+        cat_free(old);
+        if (S)
+            slots_tell();
+        fprintf(stderr, "engine: the catalog: %d firmwares (%d installed), index %s%s\n", g_cat->n, g_cat->nfw,
+                g_cat->from == 2 ? "downloaded " : g_cat->from == 1 ? "bundled " : "none", g_cat->generated);
+    }
+    for (s = 0; s < NSLOT; s++)
+        SL[s].idx = SL[s].on ? catalog_find(SL[s].fw.id) : -1;
+    fw_json();
 }
 
 /* ------------------------------------------------------------------ the socket to Move Remote's core --- */
@@ -532,14 +582,24 @@ static void raw_flush(void)   /* the test capture of the first instance: its blo
 
 static void slot_unload(int s, int save)
 {
+    fw_inst_t *pre;
+    int i;
     if (!SL[s].on)
         return;
     if (save)
         slot_save(s, 1);
     if (g_raw_fw == &SL[s].fw)
         raw_flush();
-    fw_destroy(&SL[s].fw);
+    /* its memory freed on the storage thread (megabytes of locked pages: not the engine's time) */
+    if ((pre = fw_release(&SL[s].fw))) {
+        st_job_t *j = st_job_new(J_FW_FREE);
+        j->ptr = pre;
+        st_post(j);
+    }
     SL[s].on = 0;
+    if ((i = catalog_find(SL[s].fw.id)) >= 0 && strcmp(g_fws[i].so, SL[s].so))
+        g_sweep = 1;   /* (it ran an older version than the one installed: its files can go now) */
+    SL[s].so[0] = 0;
 }
 
 static void active_changed(void)
@@ -562,14 +622,32 @@ static void active_changed(void)
     view_info();
 }
 
-/* a firmware into slot s (its object open, a saved flash or none) */
-static int slot_boot(int s, fw_obj_t *obj, const uint8_t *flash, uint32_t n)
+static void render_block(uint32_t now);
+
+/* Before a firmware starts on the engine's thread (its code: _initialize, rfm1_init, a few ms on the Move; the slot's
+ * old firmware saved and shut down), the ring is filled well past the lead, so the audio thread has ~80 ms of the
+ * other slots' sound meanwhile: no late block. (The slow parts, the object's dlopen and the instance's memory, are made
+ * on the storage thread: J_FW_OPEN.) */
+static void preroll(void)
+{
+    if (g_no_preroll)
+        return;
+    while (g_run && mr_ring_count(&g_ring) + FW_BLOCK <= PREROLL_FRAMES)
+        render_block(now_ms());
+}
+
+/* a firmware into slot s (an instance fw_instantiate made from its object, a saved flash or none) */
+static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n)
 {
     slot_t *sl = &SL[s];
+    char so[ST_PATH];
     int rc;
+    snprintf(so, sizeof so, "%s", pre->obj->path);
+    preroll();
+    if (g_test_boot_ms)
+        usleep(g_test_boot_ms * 1000u);
     slot_unload(s, 1);
-    rc = fw_create(&sl->fw, obj);
-    fw_obj_close(obj);   /* (the instance holds it) */
+    rc = fw_create_from(&sl->fw, pre);
     if (rc != 0) {
         fprintf(stderr, "engine: slot %d: %s\n", s + 1, sl->fw.err);
         fw_destroy(&sl->fw);
@@ -587,6 +665,7 @@ static int slot_boot(int s, fw_obj_t *obj, const uint8_t *flash, uint32_t n)
         return -1;
     }
     sl->on = 1;
+    snprintf(sl->so, sizeof sl->so, "%s", so);
     sl->reboot = 0;
     sl->serial = ++g_serial;
     sl->idx = catalog_find(sl->fw.id);
@@ -606,6 +685,7 @@ static void slot_load_now(int s, const char *id)
 {
     const int i = catalog_find(id);
     fw_obj_t *obj;
+    fw_inst_t *pre;
     char err[200], p[ST_PATH];
     uint8_t *img;
     size_t n = 0;
@@ -615,9 +695,15 @@ static void slot_load_now(int s, const char *id)
         fprintf(stderr, "engine: %s: %s\n", id, err);
         return;
     }
+    pre = fw_instantiate(obj);
+    fw_obj_close(obj);
+    if (!pre) {
+        fprintf(stderr, "engine: %s: no memory for an instance\n", id);
+        return;
+    }
     st_path(p, sizeof p, "states/%s/flash.bin", id);
     img = st_read(p, &n);
-    slot_boot(s, obj, img, (uint32_t)n);
+    slot_boot(s, pre, img, (uint32_t)n);
     free(img);
 }
 
@@ -655,12 +741,19 @@ static void do_deferred(void)
                 load_failed(id);
                 break;
             }
-            if (SL[s].on && !strcmp(SL[s].fw.id, id)) {   /* there already */
+            if (SL[s].on && !strcmp(SL[s].fw.id, id) && !strcmp(SL[s].so, g_fws[i].so)) {   /* there already */
                 rfm_move_fw_progress(&S->core, id, 100);
                 slots_tell();
                 break;
             }
             rfm_move_fw_progress(&S->core, id, 10);
+            {   /* a slot running it (another version: an update) saves its flash first; the storage thread writes
+                 * it before it reads it back for this load (one queue, in order) */
+                int o;
+                for (o = 0; o < NSLOT; o++)
+                    if (SL[o].on && !strcmp(SL[o].fw.id, id))
+                        slot_save(o, 1);
+            }
             {
                 st_job_t *j = st_job_new(J_FW_OPEN);
                 j->slot = s;
@@ -683,9 +776,36 @@ static void do_deferred(void)
             g_active = s;
             active_changed();
             break;
-        case RFM_MOVE_ACT_FW_DOWNLOAD:   /* (phase 2: the catalog) */
-            rfm_move_fw_progress(&S->core, id, RFM_MOVE_FW_FAILED);
+        case RFM_MOVE_ACT_FW_DOWNLOAD: {   /* the network thread fetches, checks and installs it (catalog.h) */
+            const int e = cat_find(g_cat, id);
+            if (g_dl_busy) {
+                rfm_move_fw_progress(&S->core, id, RFM_MOVE_FW_BUSY);
+                break;
+            }
+            snprintf(g_dl.id, sizeof g_dl.id, "%s", id);
+            g_dl.pct = 0;
+            g_dl.err[0] = 0;
+            if (e < 0 || !g_cat->e[e].indexed || !g_cat->e[e].files) {
+                snprintf(g_dl.err, sizeof g_dl.err, "%s is not in the catalog's index", id);
+                g_dl.state = 3, g_dl.failed++;
+                fprintf(stderr, "engine: download: %s\n", g_dl.err);
+                rfm_move_fw_progress(&S->core, id, RFM_MOVE_FW_FAILED);
+                break;
+            }
+            {
+                st_job_t *j = st_job_new(J_NET_DOWNLOAD);
+                snprintf(j->id, sizeof j->id, "%s", id);
+                j->text = strdup(g_cat->e[e].files);
+                j->total = g_cat->e[e].bytes;
+                j->data = (uint8_t *)keep_list();
+                st_post(j);
+            }
+            g_dl_busy = 1;
+            g_dl.state = 1;
+            fprintf(stderr, "engine: download: %s %s (%llu bytes)\n", id, g_cat->e[e].version,
+                    (unsigned long long)g_cat->e[e].bytes);
             break;
+        }
         case RFM_MOVE_ACT_STATE_SAVE:
             if (SL[s].on) {
                 fw_t *fw = &SL[s].fw;
@@ -710,6 +830,10 @@ static void do_deferred(void)
                 st_job_t *j = st_job_new(a->kind == RFM_MOVE_ACT_STATE_LOAD ? J_STATE_LOAD : J_STATE_DELETE);
                 j->slot = s, j->index = a->index;
                 snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                if (a->kind == RFM_MOVE_ACT_STATE_LOAD) {   /* (a new instance of the same object, made there) */
+                    fw_obj_ref(SL[s].fw.obj);
+                    j->obj = SL[s].fw.obj;
+                }
                 st_post(j);
             }
             break;
@@ -728,13 +852,13 @@ static void do_results(void)
         const int s = j->slot >= 0 && j->slot < NSLOT ? j->slot : 0;
         switch (j->kind) {
         case J_FW_OPEN:
-            if (!j->obj) {
+            if (!j->ptr) {
                 fprintf(stderr, "engine: %s: %s\n", j->id, j->err);
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
                 load_failed(j->id);
                 break;
             }
-            if (slot_boot(s, j->obj, j->data, j->len) != 0) {
+            if (slot_boot(s, j->ptr, j->data, j->len) != 0) {
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
                 slots_tell();
                 load_failed(j->id);
@@ -756,17 +880,55 @@ static void do_results(void)
                 rfm_move_fw_states(&S->core, s, j->used);
             break;
         case J_STATE_LOAD:
-            if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->data) {
-                fw_obj_t *obj = SL[s].fw.obj;
-                fw_obj_ref(obj);
+            if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->data && j->ptr) {
                 slot_unload(s, 0);   /* (the state replaces what was there: its flash.bin follows on the next save) */
-                if (slot_boot(s, obj, j->data, j->len) == 0) {
+                if (slot_boot(s, j->ptr, j->data, j->len) == 0) {
                     SL[s].dirty = 1, SL[s].dirty_ms = now_ms();
                     if (s == g_active)
                         active_changed();
                 }
                 slots_tell();
+            } else
+                fw_inst_free(j->ptr);
+            break;
+        case R_DL_PROGRESS:
+            if (g_dl_busy && !strcmp(j->id, g_dl.id)) {
+                g_dl.pct = j->value;
+                rfm_move_fw_progress(&S->core, j->id, j->value);
             }
+            break;
+        case R_DL_DONE:
+            g_dl_busy = 0;
+            cat_take(j->ptr);   /* (what is installed now, either way) */
+            if (j->ok) {
+                const int e = cat_find(g_cat, j->id);
+                g_dl.state = 2, g_dl.pct = 100, g_dl.ok++;
+                fprintf(stderr, "engine: download: %s %s installed\n", j->id, e >= 0 ? g_cat->e[e].installed : "?");
+                rfm_move_fw_progress(&S->core, j->id, 100);
+            } else {
+                g_dl.state = 3, g_dl.failed++;
+                snprintf(g_dl.err, sizeof g_dl.err, "%s", j->err);
+                fprintf(stderr, "engine: download: %s failed: %s\n", j->id, j->err);
+                rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
+            }
+            break;
+        case R_INDEX:
+            g_index_busy = 0;
+            g_next_index_ms = now_ms() + (j->ok ? INDEX_EVERY_MS : INDEX_RETRY_MS);
+            if (j->ok) {
+                g_dl.index_ok++;
+                g_index_err[0] = 0;
+                if (j->ptr)
+                    fprintf(stderr, "engine: the catalog's index changed\n");
+                cat_take(j->ptr);
+            } else {
+                g_dl.index_failed++;
+                snprintf(g_index_err, sizeof g_index_err, "%s", j->err);
+                fprintf(stderr, "engine: the catalog's index: %s (again in %u min)\n", j->err, INDEX_RETRY_MS / 60000u);
+            }
+            break;
+        case R_CATALOG:
+            cat_take(j->ptr);
             break;
         case R_PROJECT_LOADED:
             if (rfm1cs_session_project_answer(S, now_ms(), j->index, j->data, j->len) < 0)
@@ -891,10 +1053,10 @@ int engine_load(int slot, const char *id)
     if (slot < 0 || slot >= NSLOT || !id || strlen(id) >= RFM_MOVE_FW_ID_MAX)
         return -1;
     pthread_mutex_lock(&g_vmu);
-    for (i = 0; i < g_nfw; i++)   /* (g_fws is written only before the engine's thread starts) */
-        if (!strcmp(g_fws[i].id, id))
+    for (i = 0; i < g_web_n; i++)   /* (the installed ids as fw_json last saw them) */
+        if (!strcmp(g_web_ids[i], id))
             break;
-    if (i < g_nfw && g_nwload < (int)(sizeof g_wload / sizeof g_wload[0])) {
+    if (i < g_web_n && g_nwload < (int)(sizeof g_wload / sizeof g_wload[0])) {
         g_wload[g_nwload].slot = slot;
         snprintf(g_wload[g_nwload].id, sizeof g_wload[g_nwload].id, "%s", id);
         g_nwload++;
@@ -1013,8 +1175,38 @@ static void render_block(uint32_t now)
 
 static void housekeeping(uint32_t now)
 {
-    static uint32_t last_save_check, last_stat;
+    static uint32_t last_save_check, last_stat, last_log;
     int s;
+    if (g_session_on && !g_index_busy && !g_dl_busy && (int32_t)(now - g_next_index_ms) >= 0) {
+        /* the catalog's index: at start (once the controls are up), then every few hours; offline: a while later */
+        st_job_t *j = st_job_new(J_NET_INDEX);
+        j->used = g_cat ? g_cat->index_hash : 0;
+        j->text = keep_list();
+        st_post(j);
+        g_index_busy = 1;
+    }
+    if (g_sweep && !g_dl_busy && !g_index_busy) {   /* older versions no slot runs any more: their files go */
+        st_job_t *j = st_job_new(J_NET_SCAN);
+        j->text = keep_list();
+        st_post(j);
+        g_sweep = 0;
+    }
+    if (now - last_log >= 1000u) {   /* the firmwares' held-back lines said; the log file kept under its cap */
+        struct stat st;
+        last_log = now;
+        for (s = 0; s < NSLOT; s++)
+            if (SL[s].on)
+                fw_log_flush(&SL[s].fw);
+        if (g_log_cap > 0 && fstat(2, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > g_log_cap) {
+            if (!g_rotating) {
+                st_job_t *j = st_job_new(J_LOG_ROTATE);
+                j->value = g_log_cap;
+                st_post(j);
+                g_rotating = 1;
+            }
+        } else
+            g_rotating = 0;
+    }
     if (now - last_save_check >= 250u) {   /* the flash: saved once it has been quiet a while */
         last_save_check = now;
         for (s = 0; s < NSLOT; s++) {
@@ -1049,7 +1241,7 @@ static void housekeeping(uint32_t now)
     }
     if (now - last_stat >= 1000u) {   /* the status: CPU per slot over the last second */
         static uint32_t last_late;
-        char tmp[1024];
+        char tmp[sizeof g_status], esc[2][600];
         int n;
         const uint32_t dt = last_stat ? now - last_stat : 1000u;
         last_stat = now;
@@ -1075,8 +1267,19 @@ static void housekeeping(uint32_t now)
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]");
         for (s = 0; s < NSLOT; s++)   /* (flat, for scripts) */
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u", s,
-                          SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s]);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"ver%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u", s,
+                          SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].fw.version : "", s,
+                          SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s]);
+        /* the catalog and its downloads */
+        mj_escape(g_dl.err, esc[0], sizeof esc[0]);
+        mj_escape(g_index_err, esc[1], sizeof esc[1]);
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n,
+                      ",\"cat_n\":%d,\"cat_installed\":%d,\"cat_from\":%d,\"cat_gen\":\"%s\",\"dl_id\":\"%s\","
+                      "\"dl_state\":%d,\"dl_pct\":%d,\"dl_ok\":%u,\"dl_failed\":%u,\"dl_err\":\"%s\",\"index_ok\":%u,"
+                      "\"index_failed\":%u,\"index_err\":\"%s\"",
+                      g_cat ? g_cat->n : 0, g_cat ? g_cat->nfw : 0, g_cat ? g_cat->from : 0, g_cat ? g_cat->generated : "",
+                      g_dl.id, g_dl.state, g_dl.pct, g_dl.ok, g_dl.failed, esc[0], g_dl.index_ok, g_dl.index_failed,
+                      esc[1]);
         snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
         pthread_mutex_lock(&g_vmu);
         memcpy(g_status, tmp, sizeof tmp);
@@ -1213,9 +1416,20 @@ int engine_start(const engine_cfg_t *cfg)
         fprintf(stderr, "engine: cannot make %s\n", C.root);
         return -1;
     }
+    {
+        const char *e = getenv("RFM14_TEST_BOOT_MS");
+        g_test_boot_ms = e ? (uint32_t)atoi(e) : 0;
+        g_no_preroll = getenv("RFM14_NO_PREROLL") && *getenv("RFM14_NO_PREROLL") == '1';
+        g_log_cap = C.log_cap > 0 ? C.log_cap : C.log_cap < 0 ? 0 : LOG_CAP_DEFAULT;
+    }
     if (st_fw_install_bundled(C.bundled) > 0)
         fprintf(stderr, "engine: bundled firmwares installed into %s/firmwares\n", C.root);
-    catalog_load();
+    cat_config(C.bundled_index, C.catalog_url);
+    if (!(g_cat = cat_build(NULL)))
+        return -1;
+    fprintf(stderr, "engine: %d firmware(s) installed; the catalog lists %d (index: %s %s)\n", g_nfw, g_cat->n,
+            g_cat->from == 2 ? "downloaded" : g_cat->from == 1 ? "bundled" : "none", g_cat->generated);
+    fw_json();
     if (mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
         return -1;
     if (C.capture_seconds) {
@@ -1238,7 +1452,7 @@ int engine_start(const engine_cfg_t *cfg)
     if (rfm_move_fw_library(&S->core, lib, (uint32_t)nl) < 0)
         fprintf(stderr, "engine: %s is not a library; starting empty\n", p);
     free(lib);
-    rfm_move_fw_list(&S->core, g_list, g_nfw);
+    rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
     rfm_move_set_master(&S->core, 768);
     {
@@ -1289,6 +1503,7 @@ int engine_start(const engine_cfg_t *cfg)
     }
     active_changed();
     g_session_at = now_ms() + C.splash_ms;
+    g_next_index_ms = g_session_at + 2000u;
     if (!C.splash_ms) {
         rfm1cs_session_start(S, now_ms());   /* -> EV_OPEN: the socketpair, adopted by Move Remote's core */
         g_session_on = 1;

@@ -1,0 +1,44 @@
+# The firmwares the module bundles (tools/bundle.py, make package): one catalog id a line, from dist/move-catalog
+# (make catalog). The rest of the catalog downloads on the Move (Mute in the projects view), so the module stays small.
+# Chosen 2026-11-18 from the catalog's 114: Felucca and ChoralRoot, plus every public firmware (not hosted-only),
+# not marked beta, that sounds on the default check (not silent on its chord) and is under 0.85 MB compressed: 39
+# firmwares, 21.6 MB compressed. Edit freely; an id the catalog does not have is skipped (with a warning).
+amb
+amenity
+arcticscream
+bytemania
+chipbox
+choralroot
+conductor
+ctl
+dub
+felucca
+chimeravocal
+fmini
+glitch
+golana
+golf
+grimm
+hadal1
+hawkchua
+hyp1
+mvsynth2
+mightyarp
+mono2k
+mutabledreams
+nachtfahrt
+obervave
+obssynth
+orgigs
+penumbra
+pond
+remotefm1
+rupture
+s1vave
+samsara
+sid1
+smileyface
+speak37
+tekstuur
+tonitor
+zen1

@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "catalog.h"
 #include "fwrt.h"
 #include "minijson.h"
 #include "rfm1cs/store.h"
@@ -48,6 +49,22 @@ int st_init(const char *root)
     st_mkdirs(p);
     st_path(p, sizeof p, "move/projects");
     st_mkdirs(p);
+    st_path(p, sizeof p, "catalog");
+    st_mkdirs(p);
+    {   /* a download the last run left unfinished */
+        DIR *d;
+        struct dirent *e;
+        st_path(p, sizeof p, "firmwares/.dl");
+        if ((d = opendir(p))) {
+            while ((e = readdir(d)))
+                if (e->d_name[0] != '.') {
+                    char f[ST_PATH + 260];
+                    snprintf(f, sizeof f, "%s/%s", p, e->d_name);
+                    unlink(f);
+                }
+            closedir(d);
+        }
+    }
     return 0;
 }
 
@@ -146,17 +163,40 @@ int st_fw_install_bundled(const char *dir)
 {
     DIR *d = dir ? opendir(dir) : NULL;
     struct dirent *e;
-    int n = 0;
+    st_fw_t *have;
+    int n = 0, nh;
     if (!d)
         return 0;
+    if (!(have = calloc(ST_FW_MAX, sizeof *have))) {
+        closedir(d);
+        return 0;
+    }
+    nh = st_fw_scan(have, ST_FW_MAX);
     while ((e = readdir(d))) {
-        char base[256], from[ST_PATH], to[ST_PATH];
+        char base[256], from[ST_PATH], to[ST_PATH], id[RFM_MOVE_FW_ID_MAX], ver[32];
         struct stat st;
         static const char *SUF[] = { ".rfm1m", ".json", ".licenses.txt", ".rfm1skin", ".rfm1skin.bg", ".rfm1skin.bgl" };
-        size_t k;
+        size_t k, len;
+        int i, newer = 0;
+        char *json;
+        const char *man;
         if (!ends_with(e->d_name, ".json") || strlen(e->d_name) >= sizeof base)
             continue;
         snprintf(base, sizeof base, "%.*s", (int)(strlen(e->d_name) - 5), e->d_name);
+        /* a manifest, of a firmware the root has no newer (or the same) version of under another name */
+        snprintf(from, sizeof from, "%s/%s", dir, e->d_name);
+        if (!(json = (char *)st_read(from, &len)))
+            continue;
+        man = mj_find(json, "manifest");
+        if (!man || mj_string(man, "id", id, sizeof id) || mj_string(man, "version", ver, sizeof ver)) {
+            free(json);
+            continue;
+        }
+        free(json);
+        for (i = 0; i < nh && !newer; i++)
+            newer = !strcmp(have[i].id, id) && st_vercmp(have[i].version, ver) > 0;
+        if (newer)
+            continue;   /* (an update was downloaded: the bundled one is older) */
         snprintf(to, sizeof to, "%s/firmwares/%s.json", g_root, base);
         if (stat(to, &st) == 0) {
             /* there already (the user's, or an earlier install): the same <id>-<version>, so only what an older
@@ -188,7 +228,19 @@ int st_fw_install_bundled(const char *dir)
             n++;
     }
     closedir(d);
+    free(have);
     return n;
+}
+
+int st_vercmp(const char *x, const char *y)
+{
+    int a[4] = { 0 }, b[4] = { 0 }, k;
+    sscanf(x, "%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3]);
+    sscanf(y, "%d.%d.%d.%d", &b[0], &b[1], &b[2], &b[3]);
+    for (k = 0; k < 4; k++)
+        if (a[k] != b[k])
+            return a[k] > b[k] ? 1 : -1;
+    return 0;
 }
 
 static int by_name(const void *a, const void *b)
@@ -239,12 +291,7 @@ int st_fw_scan(st_fw_t *out, int max)
     for (i = 0; i < n; i++)
         for (j = i + 1; j < n; j++)
             if (!strcmp(out[i].id, out[j].id)) {
-                int a[4] = { 0 }, b[4] = { 0 }, k, newer = 0;
-                sscanf(out[i].version, "%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3]);
-                sscanf(out[j].version, "%d.%d.%d.%d", &b[0], &b[1], &b[2], &b[3]);
-                for (k = 0; k < 4 && !newer; k++)
-                    newer = b[k] > a[k] ? 1 : b[k] < a[k] ? -1 : 0;
-                if (newer > 0)
+                if (st_vercmp(out[j].version, out[i].version) > 0)
                     out[i] = out[j];
                 memmove(&out[j], &out[j + 1], sizeof *out * (size_t)(n - j - 1));
                 n--, j--;
@@ -356,11 +403,19 @@ uint32_t st_projects_scan(int open_slot, uint8_t **blob, uint32_t *n)
     return used;
 }
 
-/* ------------------------------------------------------------------ the worker --- */
-static pthread_t g_thread;
+/* ------------------------------------------------------------------ the workers --- */
+/* two threads, each with its queue: the storage thread (files, firmware objects and instances, projects) and the
+ * network thread (catalog.h: the index, downloads: slow, so never in front of a load or a save) */
+typedef struct {
+    st_job_t *head, *tail;
+    pthread_cond_t cv;
+    pthread_t thread;
+    const char *name;
+} queue_t;
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_cv = PTHREAD_COND_INITIALIZER;
-static st_job_t *g_jobs, *g_jobs_tail, *g_res, *g_res_tail;
+static queue_t g_q[2] = { { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-store" },
+                          { NULL, NULL, PTHREAD_COND_INITIALIZER, 0, "rfm1-net" } };
+static st_job_t *g_res, *g_res_tail;
 static int g_stop, g_running;
 
 st_job_t *st_job_new(int kind)
@@ -410,15 +465,55 @@ st_job_t *st_take(void)
 
 void st_post(st_job_t *j)
 {
+    queue_t *q = &g_q[j->kind >= J_NET_INDEX && j->kind <= J_NET_SCAN];
     j->next = NULL;
     pthread_mutex_lock(&g_mu);
-    if (g_jobs_tail)
-        g_jobs_tail->next = j;
+    if (q->tail)
+        q->tail->next = j;
     else
-        g_jobs = j;
-    g_jobs_tail = j;
-    pthread_cond_signal(&g_cv);
+        q->head = j;
+    q->tail = j;
+    pthread_cond_signal(&q->cv);
     pthread_mutex_unlock(&g_mu);
+}
+
+/* the log (stderr's file, as the launcher opened it) past cap: moved to <log>.1 (the one before that goes), a new one
+ * in its place for stdout and stderr. Together the two stay under twice the cap. */
+static void log_rotate(long cap)
+{
+    char path[ST_PATH], old[ST_PATH + 4];
+    struct stat s2, s1;
+    ssize_t k;
+    int fd;
+    if (fstat(2, &s2) != 0 || !S_ISREG(s2.st_mode) || s2.st_size <= cap)
+        return;
+    k = readlink("/proc/self/fd/2", path, sizeof path - 1);
+    if (k <= 0 || path[0] != '/')
+        return;
+    path[k] = 0;
+    if (strstr(path, " (deleted)"))
+        return;
+    snprintf(old, sizeof old, "%s.1", path);
+    if (rename(path, old) != 0)
+        return;
+    if ((fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_TRUNC | O_CLOEXEC, 0644)) < 0)
+        return;
+    if (fstat(1, &s1) == 0 && s1.st_dev == s2.st_dev && s1.st_ino == s2.st_ino) {
+        fflush(stdout);
+        dup2(fd, 1);
+    }
+    dup2(fd, 2);
+    close(fd);
+    fprintf(stderr, "log: %s reached %ld bytes; the lines before are in %s\n", path, (long)s2.st_size, old);
+}
+
+static void net_progress(void *ctx, int pct)
+{
+    const st_job_t *j = ctx;
+    st_job_t *r = st_job_new(R_DL_PROGRESS);
+    snprintf(r->id, sizeof r->id, "%s", j->id);
+    r->value = pct;
+    post_result(r);
 }
 
 static void run_job(st_job_t *j)
@@ -436,11 +531,24 @@ static void run_job(st_job_t *j)
         return;
     case J_FW_OPEN: {
         size_t n = 0;
-        j->obj = fw_obj_open(j->path, j->err, sizeof j->err);
+        fw_obj_t *obj = fw_obj_open(j->path, j->err, sizeof j->err);
+        if (obj) {   /* the instance too: its memory and data, off the engine's thread */
+            if (!(j->ptr = fw_instantiate(obj)))
+                snprintf(j->err, sizeof j->err, "%s: no memory for an instance", j->id);
+            fw_obj_close(obj);
+        }
         j->data = j->aux_path[0] ? st_read(j->aux_path, &n) : NULL;
         j->len = (uint32_t)n;
         break;
     }
+    case J_FW_FREE:
+        fw_inst_free(j->ptr);
+        st_job_free(j);
+        return;
+    case J_LOG_ROTATE:
+        log_rotate(j->value);
+        st_job_free(j);
+        return;
     case J_STATE_SAVE: {
         char p[ST_PATH];
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
@@ -463,6 +571,11 @@ static void run_job(st_job_t *j)
         j->len = (uint32_t)n;
         if (!j->data)
             snprintf(j->err, sizeof j->err, "no state %d for %s", j->index + 1, j->id);
+        else if (j->obj && !(j->ptr = fw_instantiate(j->obj)))
+            snprintf(j->err, sizeof j->err, "%s: no memory for an instance", j->id);
+        if (j->obj)
+            fw_obj_close(j->obj);
+        j->obj = NULL;
         break;
     }
     case J_STATE_DELETE: {
@@ -481,6 +594,23 @@ static void run_job(st_job_t *j)
         rfm1cs_store_request(&g_store, j->act, j->index, j->value, j->data, j->len);
         st_job_free(j);
         return;
+    case J_NET_INDEX: {
+        int changed = 0;
+        j->ok = cat_fetch_index(j->used, &changed, j->err, sizeof j->err) == 0;
+        if (j->ok && changed)
+            j->ptr = cat_build(j->text);
+        j->kind = R_INDEX;
+        break;
+    }
+    case J_NET_DOWNLOAD:
+        j->ok = cat_download(j->id, j->text, j->total, net_progress, j, j->err, sizeof j->err) == 0;
+        j->ptr = cat_build((const char *)j->data);
+        j->kind = R_DL_DONE;
+        break;
+    case J_NET_SCAN:
+        j->ptr = cat_build(j->text);
+        j->kind = R_CATALOG;
+        break;
     default:
         st_job_free(j);
         return;
@@ -490,21 +620,21 @@ static void run_job(st_job_t *j)
 
 static void *worker_main(void *arg)
 {
-    (void)arg;
+    queue_t *q = arg;
 #ifdef __linux__
-    pthread_setname_np(pthread_self(), "rfm1-store");
+    pthread_setname_np(pthread_self(), q->name);
 #endif
     pthread_mutex_lock(&g_mu);
     for (;;) {
         st_job_t *j;
-        while (!g_jobs && !g_stop)
-            pthread_cond_wait(&g_cv, &g_mu);
-        if (!g_jobs && g_stop)
+        while (!q->head && !g_stop)
+            pthread_cond_wait(&q->cv, &g_mu);
+        if (!q->head && g_stop)
             break;
-        j = g_jobs;
-        g_jobs = j->next;
-        if (!g_jobs)
-            g_jobs_tail = NULL;
+        j = q->head;
+        q->head = j->next;
+        if (!q->head)
+            q->tail = NULL;
         pthread_mutex_unlock(&g_mu);
         run_job(j);
         pthread_mutex_lock(&g_mu);
@@ -515,22 +645,37 @@ static void *worker_main(void *arg)
 
 int st_worker_start(uint32_t project_used)
 {
+    int k;
     rfm1cs_store_init(&g_store, &IO, project_used);
     g_stop = 0;
-    if (pthread_create(&g_thread, NULL, worker_main, NULL) != 0)
-        return -1;
+    for (k = 0; k < 2; k++)
+        if (pthread_create(&g_q[k].thread, NULL, worker_main, &g_q[k]) != 0)
+            return -1;
     g_running = 1;
     return 0;
 }
 
 void st_worker_stop(void)
 {
+    int k;
     if (!g_running)
         return;
     pthread_mutex_lock(&g_mu);
     g_stop = 1;
-    pthread_cond_signal(&g_cv);
+    {   /* the network's queue: dropped (a download is not finished at exit) */
+        st_job_t *j = g_q[1].head;
+        while (j) {
+            st_job_t *n = j->next;
+            st_job_free(j);
+            j = n;
+        }
+        g_q[1].head = g_q[1].tail = NULL;
+    }
+    for (k = 0; k < 2; k++)
+        pthread_cond_signal(&g_q[k].cv);
     pthread_mutex_unlock(&g_mu);
-    pthread_join(g_thread, NULL);
+    cat_cancel();
+    for (k = 0; k < 2; k++)
+        pthread_join(g_q[k].thread, NULL);
     g_running = 0;
 }

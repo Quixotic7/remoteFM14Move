@@ -73,6 +73,40 @@ static void rdstr(const fw_t *fw, uint32_t a, char *out, size_t cap)
 /* ------------------------------------------------------------------ the WASI imports --- */
 static fw_t *of(struct Z_wasi_snapshot_preview1_instance_t *w) { return w ? w->fw : NULL; }
 
+/* the firmware's stdout / stderr into the log: whole lines, one write each, rate-limited per instance (a token bucket:
+ * FW_LOG_RATE lines a second, bursts of FW_LOG_BURST); what the limit holds back is counted, and said in one line a
+ * second at most (fw_log_flush: the engine's housekeeping). A firmware that prints on every key (ChoralRoot: "touch: key 15
+ * vel 100 fixed") would otherwise write the Move's flash storage from the engine's thread all the time. */
+static void log_line(fw_t *fw)
+{
+    const uint64_t t = now_ns();
+    if (fw->log_ns)
+        fw->log_tokens += (double)(t - fw->log_ns) * 1e-9 * FW_LOG_RATE;
+    else
+        fw->log_tokens = FW_LOG_BURST;
+    if (fw->log_tokens > FW_LOG_BURST)
+        fw->log_tokens = FW_LOG_BURST;
+    fw->log_ns = t;
+    if (fw->log_tokens < 1.0) {
+        fw->log_dropped++;
+        fw->line_n = 0;
+        return;
+    }
+    fw->log_tokens -= 1.0;
+    fprintf(stderr, "[%s] %.*s\n", fw->id[0] ? fw->id : "fw", fw->line_n, fw->line);
+    fw->log_said++;
+    fw->line_n = 0;
+}
+
+void fw_log_flush(fw_t *fw)
+{
+    if (fw->log_dropped) {
+        fprintf(stderr, "[%s] (%u lines dropped: at most %d a second)\n", fw->id[0] ? fw->id : "fw", fw->log_dropped,
+                FW_LOG_RATE);
+        fw->log_dropped = 0;
+    }
+}
+
 uint32_t Z_wasi_snapshot_preview1Z_fd_write(struct Z_wasi_snapshot_preview1_instance_t *w, uint32_t fd, uint32_t iov, uint32_t n, uint32_t out)
 {
     fw_t *fw = of(w);
@@ -81,16 +115,14 @@ uint32_t Z_wasi_snapshot_preview1Z_fd_write(struct Z_wasi_snapshot_preview1_inst
         return 8;
     for (i = 0; i < n; i++) {
         const uint32_t p = rd32(fw, iov + 8 * i), l = rd32(fw, iov + 8 * i + 4);
-        if ((fd == 1 || fd == 2) && in_mem(fw, p, l) && fw->log_lines < 200) {   /* rate-limited: the first 200 */
+        if ((fd == 1 || fd == 2) && in_mem(fw, p, l)) {
             uint32_t k;
             for (k = 0; k < l; k++) {
                 const char ch = (char)fw->mem[p + k];
-                if (!fw->line_open)
-                    fprintf(stderr, "[%s] ", fw->id[0] ? fw->id : "fw");
-                fputc(ch, stderr);
-                fw->line_open = ch != '\n';
                 if (ch == '\n')
-                    fw->log_lines++;
+                    log_line(fw);
+                else if (fw->line_n < (int)sizeof fw->line)
+                    fw->line[fw->line_n++] = ch == '\r' || ch == '\t' ? ' ' : ch;
             }
         }
         total += l;
@@ -158,11 +190,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
     return o;
 }
 
-void fw_obj_ref(fw_obj_t *o) { o->refs++; }
+void fw_obj_ref(fw_obj_t *o) { __atomic_add_fetch(&o->refs, 1, __ATOMIC_ACQ_REL); }
 
 void fw_obj_close(fw_obj_t *o)
 {
-    if (!o || --o->refs > 0)
+    if (!o || __atomic_sub_fetch(&o->refs, 1, __ATOMIC_ACQ_REL) > 0)
         return;
     /* the object stays mapped: wasm2c's init_module registered its function types in the runtime, which keeps them */
     free(o);
@@ -191,21 +223,56 @@ static void trapped(fw_t *fw, wasm_rt_trap_t code, const char *what)
     } while (0)
 
 /* ------------------------------------------------------------------ an instance --- */
+fw_inst_t *fw_instantiate(fw_obj_t *obj)
+{
+    fw_inst_t *p = calloc(1, sizeof *p);
+    if (!p || !(p->wasi = calloc(1, sizeof *p->wasi))) {
+        free(p);
+        return NULL;
+    }
+    p->obj = obj;
+    fw_obj_ref(obj);
+    if (!(p->inst = obj->vt->create(p->wasi))) {   /* (wasm2c's instantiate: allocations and copies, no wasm code) */
+        fw_inst_free(p);
+        return NULL;
+    }
+    return p;
+}
+
+void fw_inst_free(fw_inst_t *p)
+{
+    if (!p)
+        return;
+    if (p->inst)
+        p->obj->vt->destroy(p->inst);
+    fw_obj_close(p->obj);
+    free(p->wasi);
+    free(p);
+}
+
 int fw_create(fw_t *fw, fw_obj_t *obj)
 {
-    const rfm1m_t *vt = obj->vt;
-    volatile uint32_t ver = 0, desc = 0, i;
-    memset(fw, 0, sizeof *fw);
-    fw->exit_code = -1;
-    fw->obj = obj;
-    fw_obj_ref(obj);
-    snprintf(fw->id, sizeof fw->id, "%s", vt->id);
-    fw->wasi.fw = fw;
-    fw->inst = vt->create(&fw->wasi);
-    if (!fw->inst) {
+    fw_inst_t *p = fw_instantiate(obj);
+    if (!p) {
+        memset(fw, 0, sizeof *fw);
         snprintf(fw->err, sizeof fw->err, "no memory for an instance");
         return -1;
     }
+    return fw_create_from(fw, p);
+}
+
+int fw_create_from(fw_t *fw, fw_inst_t *pre)
+{
+    const rfm1m_t *vt = pre->obj->vt;
+    volatile uint32_t ver = 0, desc = 0, i;
+    memset(fw, 0, sizeof *fw);
+    fw->exit_code = -1;
+    fw->obj = pre->obj;   /* (the instance's reference is fw's now) */
+    snprintf(fw->id, sizeof fw->id, "%s", vt->id);
+    fw->inst = pre->inst;
+    fw->wasi = pre->wasi;
+    fw->wasi->fw = fw;
+    free(pre);
     fw->mem = vt->memory(fw->inst, &fw->mem_size);
     if (vt->initialize)
         CALL(fw, "_initialize", vt->initialize(fw->inst));
@@ -311,14 +378,24 @@ int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
     return 0;
 }
 
-void fw_destroy(fw_t *fw)
+fw_inst_t *fw_release(fw_t *fw)
 {
+    fw_inst_t *p = NULL;
     if (fw->inst) {
         if (fw->booted && !fw->dead)
             CALL(fw, "rfm1_shutdown", fw->obj->vt->shutdown(fw->inst));
-        fw->obj->vt->destroy(fw->inst);
+        fw_log_flush(fw);
+        if ((p = calloc(1, sizeof *p))) {
+            p->obj = fw->obj, p->inst = fw->inst, p->wasi = fw->wasi;
+            p->wasi->fw = NULL;   /* (no firmware calls from here) */
+            fw->obj = NULL;
+        } else {
+            fw->obj->vt->destroy(fw->inst);
+            free(fw->wasi);
+        }
     }
     fw->inst = NULL;
+    fw->wasi = NULL;
     if (fw->obj)
         fw_obj_close(fw->obj);
     fw->obj = NULL;
@@ -326,6 +403,12 @@ void fw_destroy(fw_t *fw)
     fw->log = NULL;
     fw->booted = 0;
     fw->dead = 1;
+    return p;
+}
+
+void fw_destroy(fw_t *fw)
+{
+    fw_inst_free(fw_release(fw));
 }
 
 /* ------------------------------------------------------------------ input --- */

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* Unit tests: the manifest reader, the output stage (mix and limiter), the mDNS answers. */
+/* Unit tests: the manifest reader (and the catalog index's arrays), SHA-256, the output stage (mix and limiter), the
+ * mDNS answers. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,7 @@
 #include "engine_dsp.h"
 #include "mdns.h"
 #include "minijson.h"
+#include "sha256.h"
 
 static int g_fail, g_n;
 #define CHECK(c, ...)                                                                                               \
@@ -33,6 +35,47 @@ static void json(void)
     CHECK(!mj_int(m, "abi", &n) && n == 6, "an integer");
     CHECK(mj_string(j, "id", v, sizeof v) == -1, "top level only: no id outside the manifest");
     CHECK(mj_escape("a\"b\n", v, sizeof v) && !strcmp(v, "a\\\"b\\u000a"), "escape");
+}
+
+static void arrays(void)
+{
+    const char *j = "{\"firmwares\": [ {\"id\":\"a\",\"files\":[{\"name\":\"x\"},{\"name\":\"y.json\"}]} , "
+                    "{\"id\":\"b\"}, 3 ], \"empty\": []}";
+    const char *it = mj_find(j, "firmwares"), *e;
+    char ids[8] = "", v[16];
+    int n = 0;
+    while ((e = mj_elem(&it)))
+        if (*e == '{' && !mj_string(e, "id", v, sizeof v))
+            strcat(ids, v), n++;
+        else
+            n++;
+    CHECK(n == 3 && !strcmp(ids, "ab"), "an array's elements in turn: %d, ids %s", n, ids);
+    it = mj_find(j, "empty");
+    CHECK(mj_elem(&it) == NULL, "an empty array");
+}
+
+static void sha(void)
+{
+    sha256_t s;
+    uint8_t d[32];
+    static char big[1000001];
+    char hex[65];
+    int i;
+    sha256_init(&s);
+    sha256_update(&s, "abc", 3);
+    sha256_final(&s, d);
+    for (i = 0; i < 32; i++)
+        snprintf(hex + 2 * i, 3, "%02x", d[i]);
+    CHECK(!strcmp(hex, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "SHA-256 of abc");
+    memset(big, 'a', 1000000);
+    sha256_init(&s);
+    for (i = 0; i < 1000000; i += 999)
+        sha256_update(&s, big + i, (size_t)(1000000 - i < 999 ? 1000000 - i : 999));
+    sha256_final(&s, d);
+    for (i = 0; i < 32; i++)
+        snprintf(hex + 2 * i, 3, "%02x", d[i]);
+    CHECK(!strcmp(hex, "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"),
+          "SHA-256 of a million a's, in uneven pieces");
 }
 
 static void dsp(void)
@@ -111,6 +154,8 @@ int main(void)
 {
     printf("unit\n");
     json();
+    arrays();
+    sha();
     dsp();
     mdns();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);

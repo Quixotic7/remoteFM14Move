@@ -9,6 +9,9 @@ const char *mj_find(const char *json, const char *key);
 size_t mj_span(const char *v);
 /* a top-level string field (escapes decoded, cut to cap - 1): 0, or -1 when missing or not a string */
 int mj_string(const char *json, const char *key, char *out, size_t cap);
+/* an array's elements in turn: *it at the array ('['), each call the next element (a pointer into the JSON) and *it past
+ * it; NULL at the end */
+const char *mj_elem(const char **it);
 int mj_int(const char *json, const char *key, long *out);
 /* in as a JSON string's contents (no quotes); the length written */
 size_t mj_escape(const char *in, char *out, size_t cap);

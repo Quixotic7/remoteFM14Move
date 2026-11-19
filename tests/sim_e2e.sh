@@ -7,7 +7,8 @@ set -u
 cd "$(dirname "$0")/.."
 T=$(mktemp -d /tmp/rfm14e2e.XXXXXX)
 ROOT=$T/root; SIM=$T/sim; CAP=$T/cap; PORT=17730
-mkdir -p "$SIM" "$CAP"
+mkdir -p "$SIM" "$CAP" "$ROOT"
+echo "http://127.0.0.1:1" > "$ROOT/catalog-url"   # (no catalog server here: tests/dl_e2e.sh has one)
 fail=0; checks=0
 ok() { checks=$((checks + 1)); echo "  ok    $*"; }
 bad() { checks=$((checks + 1)); fail=$((fail + 1)); echo "  FAIL  $*"; }

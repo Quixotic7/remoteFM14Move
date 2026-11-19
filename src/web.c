@@ -271,7 +271,7 @@ static void request(client_t *c, const char *body)
         return;
     }
     if (!strcmp(path, "/api/status")) {
-        char s[1024];
+        char s[4096];
         const int n = engine_status(s, sizeof s);
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
     } else if (!strcmp(path, "/api/info"))
