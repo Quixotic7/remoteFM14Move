@@ -40,6 +40,9 @@ typedef struct {
     uint8_t virt;                    /* a Fantasy CFW (the index's / its manifest's "virtual": rfm_move_fw_t.virt) */
     int indexed;                     /* listed by the index (downloadable) */
     char *files;                     /* the index's files to install, "name sha256 size\n" each, the manifest last */
+    char rfm1_sha[65];               /* the index's .rfm1's SHA-256 ("" none): a rebuild of the installed version when it
+                                      * differs from the installed one's (its installed is then "<version> old": an
+                                      * update, as the apps offer one) */
     uint64_t bytes;                  /* .. their sizes added */
 } cat_ent_t;
 

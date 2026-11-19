@@ -504,6 +504,16 @@ what the new slot said while behind. The page: `/api/info`'s `"readout"` (seq, c
 value). `tests/rd1_e2e.sh`: ChoralRoot's K1 (Move knob 5) turned: "Voicing" "+1" on the page and the popup on the
 Move's screen (build/test-out/rd1_k1.pbm); PRESETS: the sound's name; a slot switch: none.
 
+## A rebuild of the same version
+
+A catalog entry whose version is the installed one but whose .rfm1 is another (the index's `rfm1.sha256` is not the
+installed manifest's: the same release built again with new glue, e.g. ChoralRoot 0.42 with cpu2 and rd1) is offered
+as an update, as the iOS and Android apps offer it: its installed version reads "<version> old" (catalog.c), the
+status counts `cat_updates`. The download goes over the installed files (the same names); a slot that runs the old
+build keeps it until the firmware is loaded again, which then runs the new one: objects are opened through a link of
+their own (fwrt.c fw_obj_open), since dlopen would hand back the old object for a path it already has loaded. A
+version "<v>-rN" also ranks above "<v>" (storage.c st_vercmp). tests/dl_e2e.sh phase R.
+
 ## Development builds
 
 `make package DEV_FIRMWARES="a.rfm1 b.rfm1"` compiles those .rfm1 files into `build/fw-dev` and puts them in the

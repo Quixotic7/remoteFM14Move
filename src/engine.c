@@ -1274,7 +1274,9 @@ static void do_deferred(void)
                 load_failed(id);
                 break;
             }
-            if (SL[s].on && !strcmp(SL[s].fw.id, id) && !strcmp(SL[s].so, g_fws[i].so)) {   /* there already */
+            if (SL[s].on && !strcmp(SL[s].fw.id, id) && !strcmp(SL[s].so, g_fws[i].so) && SL[s].fw.obj &&
+                !strcmp(SL[s].fw.obj->vt->sha256, g_fws[i].sha256)) {   /* there already (the same build: a rebuild
+                                                                         * of its version installed: loaded again) */
                 rfm_move_fw_progress(&S->core, id, 100);
                 slots_tell();
                 if (g_activate == s) {
@@ -2765,12 +2767,19 @@ static void housekeeping(uint32_t now)
         }
         for (s = 0; s < NSLOT; s++)   /* (flat, for scripts) */
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"id%d\":\"%s\",\"ver%d\":\"%s\",\"boot%d\":%u,\"states%d\":%u,\"notes%d\":%u,"
-                          "\"level%d\":%d,\"pan%d\":%d", s,
+                          "\"level%d\":%d,\"pan%d\":%d,\"sha%d\":\"%.12s\"", s,
                           SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].fw.version : "", s,
-                          SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s], s, SL[s].notes, s, SL[s].level, s, SL[s].pan);
+                          SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s], s, SL[s].notes, s, SL[s].level, s, SL[s].pan,
+                          s, SL[s].on && SL[s].fw.obj ? SL[s].fw.obj->vt->sha256 : "");   /* (sha: its .rfm1's) */
         /* the catalog and its downloads */
         mj_escape(g_dl.err, esc[0], sizeof esc[0]);
         mj_escape(g_index_err, esc[1], sizeof esc[1]);
+        {   /* (the entries offered as an update: installed, another version or another build of it) */
+            int k, up = 0;
+            for (k = 0; g_cat && k < g_cat->n; k++)
+                up += g_cat->e[k].installed[0] && strcmp(g_cat->e[k].installed, g_cat->e[k].version) != 0;
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"cat_updates\":%d", up);
+        }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n,
                       ",\"cat_n\":%d,\"cat_installed\":%d,\"cat_from\":%d,\"cat_gen\":\"%s\",\"dl_id\":\"%s\","
                       "\"dl_state\":%d,\"dl_pct\":%d,\"dl_ok\":%u,\"dl_failed\":%u,\"dl_err\":\"%s\",\"index_ok\":%u,"
