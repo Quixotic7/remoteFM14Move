@@ -211,7 +211,11 @@ From Schwung's docs:
   check (the same PCM and the same files written as wasm3 with a RemoteFM1 folder) and run in the slots with the
   folder's audio/, code/<id>/ and data/<id>/ (src/fsvc.c, the storage module's file thread). The page gets a minimal
   Audio files list (upload, delete); the file browser stays in phase 2.
-- **Open:** audio input (`ain1`) for Elasticat's INPUT and REC; a Fantasy CFW badge on the Move's own browser
+- **Built since (2026-11-19, simulator only):** audio input (`ain1`) for Elasticat's INPUT and REC: a fixed round trip
+  of 1152 frames at lead 5 (README.md, "Fantasy CFWs"); the firmware Editor on the page (SysEx both ways over /ws)
+  and the file browser with the exports (README.md, "The page").
+- **Open:** the real Move: the input's latency measured (a loopback: line out to line in), the line in / mic
+  choice (Move Remote gives what the SPI mailbox holds); a Fantasy CFW badge on the Move's own browser
   (rfm1cs has no field for it); the real Move: the memory (280 MB locked per Elasticat), CPU, SD-card reads.
 
 ## Design source

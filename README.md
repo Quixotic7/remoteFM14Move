@@ -15,6 +15,12 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
   firmware picker. Its engine is the firmware running on the Move: the screen and LEDs live, the panel back, the
   sound out of the Move. See "The page" below.
 
+- **On the page too:** the firmware's own **Editor** (as on remotefm1.com: its SysEx goes to the firmware on the
+  Move and back), and a **file browser** for the RemoteFM1 folder (download, a folder as a .zip, upload, rename,
+  delete; Export all projects, Export states). See "The page".
+- **Audio input** for Fantasy CFWs (`ain1`): the Move's line in / mic reaches a cart that takes it (Elasticat's INPUT
+  machine and REC). See "Fantasy CFWs".
+
 - **Schwung FX**: the MIDI FX and audio FX the user installed in Schwung (`/data/UserData/schwung/modules`) run inside
   RemoteFM1: 3 MIDI FX in series on the sequencer's MIDI, 3 audio FX on send / return buses, set up from the Move's FX
   setup (Session in the projects view) or the page's Mix & FX view. See "Schwung FX" below.
@@ -117,7 +123,10 @@ make test
   (.., ., //, a trailing /, \\, NUL, bad UTF-8, outside the three areas), the manifest's folders, symlinks out, every
   op, LIST's order, paging and never-split entries, the limits (1 MiB, 32 in flight, a buffer past the memory),
   cancel, answers only in the pump (inline one ms late; from another thread only at the next pump), an instance freed
-  while its request runs;
+  while its request runs; the page's file browser (src/files.c): the path rules (.., ., hidden, //, a trailing /,
+  absolute, \, control characters, bad UTF-8, 255 / 1024 bytes, a new name's characters), %-unescaping, what may
+  change (the five folders, firmwares/ and catalog/ read-only, a running firmware's states/ and data/, the open
+  project), CRC-32, a zip read in 64 KB and 7-byte pieces the same, files_rmtree (a link unlinked, not followed);
 - `tests/bitident.sh`: each compiled firmware against FM1VST's `rfm1_run` (wasm3, `origin/rfm1-manager`): the same
   run's PCM, the same bytes;
 - the glibc each Move binary needs (the Move has 2.35);
@@ -126,7 +135,8 @@ make test
   projects view, a state saved and loaded, a restart that brings the slots back; the audio thread's output is the
   engine's mix sample for sample, and the first firmware's blocks equal an offline replay of its input log
   (`tools/fwrun --replay`); the page's files (every file the site refers to, their content types, no `..`), the
-  firmware list, a firmware's skin and licences, `POST /api/load`;
+  firmware list, a firmware's skin and licences, `POST /api/load`; the page's MIDI (`/ws` op 32: an editor's SysEx in
+  5-byte pieces) reaches Felucca and its INFO reply comes back (binary 5);
 - `tests/fx_e2e.sh`: the slots and Schwung FX on the simulator, with Schwung's arp, chord and freeverb (and crashfx,
   hogfx) built as the installed modules: the page's slot loads, switches and unloads (into the core), the Move's switch
   followed; the arp turns a held chord into a stream on its track and passes other tracks through; a firmware's track
@@ -148,9 +158,13 @@ make test
 - `tests/page_e2e.mjs` (on the Mac: the host in the image, headless Chromium): the page at `http://remotefm1.local:PORT/`
   (not a secure context, as on a real Move): no 404, no exception or console error, nothing asked of the browser
   (AudioContext, Web MIDI, WebUSB, microphone), the panel and the live screen, a click on a drawn key sounds in the
-  simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed; a WAV added
-  through the settings sheet's Audio files reaches the Move's audio/ and its trash button deletes it. Its
-  screenshot: `docs/move-page.png`;
+  simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed; the Editor
+  (remotefm1.com and an author's site stood in for by the test, CDP Fetch): Felucca's editor in the panel's sandbox
+  asks the firmware on the Move for INFO, the reply reaches the editor, which answers it; the same with
+  remotefm1.com's hosted copy; Files: the sheet's Add samples puts a WAV into audio/, the header's file browser
+  (the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder deleted with what is in it,
+  firmwares/ read-only), Export states and Export all projects downloaded. Screenshots: `docs/move-page.png`,
+  `move-page-editor.png`, `move-page-files.png` and the slots' and Mix & FX's;
 - `tests/fm1_e2e.sh`: an FM-1 on USB-A (below) on the simulator: libremotefm1's fake unit behind Move Remote's simulated
   USB-A, whose bridge loses what a burst from the unit does not fit (`--fake-fm1`, `/api/test/fm1`): the session, the
   screen and LEDs converge, the unit's keys and MIDI in play the slot, an encoder's change shown on the unit (~120 ms),
@@ -161,7 +175,20 @@ make test
   ../, a hidden name, a slash, over 256 MB; a delete), the Move's catalog downloads both, Elasticat in slot 1 reads
   the uploaded WAV through rfm1_host_1, writes its own data/elasticat/ (nothing else), plays the WAV from the page's
   key, Ripple in slot 2 reads its code/ripple/, no late block, both back after a restart (Elasticat from what it
-  wrote), and a Move with 300 MB available refuses Elasticat (280 MB) and still loads Ripple.
+  wrote), and a Move with 300 MB available refuses Elasticat (280 MB) and still loads Ripple;
+- `tests/ain_e2e.sh` (audio input, `ain1`): offline, `tools/fwrun --audio-in` against FM1VST's `rfm1_run --audio-in`
+  (wasm3) with Elasticat recording a take (FILE x5, REC held, OCT+, PLAY): the same PCM byte for byte, the same
+  blocks fed, ui_info `ain:1 lat:1152`, the same take, which is the input sample for sample; on the simulator
+  (`--sim-audio-in`: the WAV as the Move's input) Elasticat in slot 1 is told `rfm1_audio_in_info(1, 1152)`, gets
+  the WAV's blocks, and its take from the page's panel (data/elasticat/rec/rec-0001.wav) is the input sample for
+  sample; Ripple (no ain1) beside it gets nothing and runs; no late block; `--no-audio-in`: Elasticat runs without;
+- `tests/files_e2e.sh` (the file browser): list (folders first, the root read-only, the slots' firmwares), mkdir,
+  put (a space and brackets, an empty file, 409 then replace=1; audio/ WAV or AIFF only), get (an attachment with its
+  name and length), a zip of states/ and of the whole folder that unzip (BusyBox) to the same files, rename (a move;
+  refused onto a name, into itself, into firmwares/, a bad name), delete (a non-empty folder only with recursive=1
+  and its name), the path rules, links out not followed, listed or zipped, firmwares/ and the root read-only, a
+  running firmware's flash and the open project refused with the reason, 256 MB and the 64 MB floor
+  (`RFM14_TEST_DISK_FREE_MB`, the test build only), no temporary file left.
 
 ## An FM-1 on the Move's USB-A
 
@@ -216,13 +243,31 @@ them like the others (wasm2c, the catalog, the slots), with:
   a scratch copy of a few samples, never in git), and its PCM and what it wrote must be wasm3's (rfm1_run
   `--folder`), byte for byte; index.json marks it `virtual` with `needs`, `wants`, `folders` and `memory_mib`.
   `/api/firmwares` marks it `virtual` for the page.
-- **Getting samples on:** the settings sheet's **Audio files** (js/movefiles.js): the list, Add WAV files, a delete;
-  `GET /api/files/audio`, `POST /api/files/audio/<name>` (the file as the body: WAV only, a plain name ending .wav,
-  256 MB at most, 64 MB left free; streamed into a temporary file, renamed when whole), `DELETE /api/files/audio/<name>`.
-  The full file browser is later (phase 2).
+- **Getting samples on:** the settings sheet's **Files** section, **Add samples** (WAV or AIFF into audio/), or the
+  page's file browser (below, "Files"). The older `GET /api/files/audio`, `POST` / `DELETE /api/files/audio/<name>`
+  stay (WAV only, a plain name ending .wav).
 - **Checked offline:** `tools/fwrun FW.rfm1m --folder DIR [--press PLAY@1000] [--ui]`: the same run as rfm1_run's
   `--folder` (each request one device ms late), with what the file API did and the cart's ui_info.
-- **Not given yet:** `ain1` (audio input: Elasticat's INPUT machine and REC are silent; its `wants`, so it runs).
+- **Audio input (`ain1`, VIRTUAL-CARTS.md section 8):** a cart whose manifest lists `ain1` in `wants` or `needs` and
+  that exports `rfm1_audio_in` gets the Move's input: Move Remote's rt thread hands each SPI block's input pcm (what the
+  Move's SPI mailbox carries: its line in / mic) to the host (`mr_set_audio_in_sink`, Move Remote's `in-process` branch); a lock-free ring
+  takes it to the engine thread, which gives each such slot `rfm1_audio_in_info(1, latency)` when the state changes
+  (before the first block), then the block through `rfm1_audio_in` right before its `rfm1_audio` (rfm1_run
+  `--audio-in`'s order; the buffer `rfm1_alloc`'d after init, as rfm1_run does). The audio thread pushes one input
+  block for each output block it pops and the engine pops one for each it renders, so the input queued plus the
+  output queued stays constant; the engine holds it at the lead + 2 blocks (dropping input it does not need, or
+  silence while a firmware's start has filled the output ring), so the **round trip is fixed: 1152 frames (26 ms)**
+  at the default lead of 5 (`--lead N`: (N + 4) x 128): the queues (896 frames) plus the SPI's block each way (256,
+  an estimate to measure on a Move). Elasticat uses it to line its takes up (`rshift`) and shows `ain:1 lat:1152` in
+  its ui_info; its INPUT machine is the monitor. A cart without ain1 gets nothing. Unloading (or the input stopping
+  for half a second) tells the cart `rfm1_audio_in_info(0, 0)`. `--no-audio-in`: none. Status: each slot's `ain`,
+  `ain_lat`, `ain_blocks`, `ain_peak`; `ain_latency`, `ain_under`, `ain_dropped`. On the simulator `--sim-audio-in
+  F.wav` is the Move's input (looped; else its quiet 440 Hz tone).
+- **The compiled objects:** `tools/build_fw.sh` builds a module that exports `rfm1_audio_in` with `-DRFM1M_AIN1`, which
+  adds `rfm1m_ain()` (src/rfm1m.h) beside `rfm1m_get()`; every other object is byte for byte what it was (Felucca,
+  ChoralRoot, Ripple checked; `make catalog` rebuilds them all since its build stamp covers fwglue.c and
+  build_fw.sh, with the same bytes but Elasticat's). `tools/fwrun --audio-in F.wav [--audio-in-latency N]
+  [--audio-in-once]` runs the same as rfm1_run's.
 
 ## Schwung FX (phase 2b)
 
@@ -310,13 +355,15 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/fx.c` | Schwung FX: the installed modules, their parameters, loading (with the crash probe), the calls |
 | `src/fm1link.c`, `src/fm1sim.c` | an FM-1 on USB-A (libremotefm1's session over Move Remote's USB-A hooks); the simulator's fake FM-1 (tests) |
 | `src/fsvc.c` | a Fantasy CFW's file API (rfm1_host_1): the sandbox, the requests, the pump between calls; served on the storage module's file thread |
-| `web/move/js/movefiles.js` | the settings sheet's Audio files (the Move's audio/: list, add, delete) |
+| `web/move/js/movefs.js`, `movefiles.js` | the page's file browser (the header's Files) and the settings sheet's Files section |
+| `src/files.c` | the file browser's rules (paths, links, what may change), the listing, a folder as a streamed zip |
+| `src/wav.c`, `tests/ainchk.c` | a WAV read as 44.1 kHz stereo (`--sim-audio-in`, `fwrun --audio-in`); the input tests' WAV and take checks |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
 | `src/mdns.c` | `remotefm1.local` |
 | `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table) |
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
-| `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks) |
+| `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks: the audio source, the input sink, USB-A) |
 | `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.3` |
 | `third_party/RemoteFM1` | RemoteFM1 at 32d03d6, branch `slow-link` (its `web/site`: the page; libremotefm1 for the FM-1 on USB-A) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
@@ -376,15 +423,63 @@ slot) and FXPG (24: a slot's page); rfm1cs's host setters apply them as the Move
 (`GET /api/fx`), meters (binary 3) and the slots' mini screens (binary 4, at most 4 a second each, only when they
 changed). Screenshots: docs/move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png, move-page-phone.png,
 move-page-phone-mixfx.png, move-page-phone-fxpages.png. The page
-needs no secure context: no AudioWorklet, Web MIDI, WebUSB, microphone, IndexedDB saves or folder access.
+needs no secure context: no AudioWorklet, Web MIDI, WebUSB, microphone, IndexedDB saves or folder access. Besides
+the ops above, `/ws` carries MIDI (in: a frame that starts with 32; out: binary 5; the Editor, below).
+
+**The Editor** (the header's Editor button, as on remotefm1.com: RemoteFM1's editor-panel.js, behind ON_MOVE):
+
+- **MIDI both ways.** `MoveHostPlayer.midi(bytes)` sends MIDI to the firmware in the Move's active slot as `/ws`
+  frames that start with 32 (any size, in pieces). The host puts the bytes back into whole messages (SysEx up to
+  64 KB), and the engine gives their USB-MIDI packets to the firmware's `rfm1_midi_in` as many a device ms as it takes
+  (rfm1_run's `--sysex` way; logged for the replay). The active firmware's MIDI out (up to 64 packets a block): the
+  real-time bytes go to the sequencer as before; SysEx and channel messages go to every page as binary 5, which
+  MoveHostPlayer emits as the worklet's `midiOut`. Status: `pmidi_msgs`, `pmidi_bytes`, `pmidi_dropped`, `midi_out_bytes`.
+- **Which firmware has which editor** is remotefm1.com's: its `catalog.json` (`editor`, `liveEditor`, `port`, `repo`)
+  and `managers/index.json`, read live from remotefm1.com (CORS) by `moveEditors` and merged into the Move's entries.
+  No internet in the browser: no Editor button.
+- **The editors run in the panel's sandbox** (live-editor.js): the author's live page first, fetched from its site
+  with the Web MIDI shim (managers/fm1-shim.js, served by the Move) put in, as on remotefm1.com; else ("Use hosted
+  copy", or the live page cannot be read) remotefm1.com's hosted copy, fetched the same way into the same sandbox (its
+  own shim's tag dropped: an iframe of another origin could not reach the page). The page is plain http, so the
+  sandbox gets a SHA-256 `crypto.subtle.digest` stand-in (Felucca's editor checks files with it). No pop out.
+- **What works:** an editor whose page its site lets other sites read (GitHub Pages: most of them) and that talks
+  SysEx through Web MIDI: checked by hand with the real pages, Felucca's editor (connected, its sound, 298 messages
+  each way) and ChoralRoot's device manager (reads the firmware) on the simulator (`docs/move-page-editor-felucca.png`).
+  An editor that only lives on a site that does not allow it, or a firmware with only an editor link and no port,
+  shows "works only on its own site, with an FM-1 on USB" (Web MIDI needs https) and its link.
+
+**Files** (js/movefs.js, js/movefiles.js; the host's src/files.c and web.c `/api/fs`): the header's Files button (and
+the settings sheet's Files section, in place of Audio files: Add samples, Browse files, Export all projects, Export
+states) opens the RemoteFM1 folder: breadcrumbs, each entry's size and date, download, a folder as a .zip, upload
+(a file picker or files dropped on the panel), rename, delete (asked first; a folder with things in it asked twice),
+a new folder. `docs/move-page-files.png`.
+
+- **The API:** `GET /api/fs/list?path=P` (folders first, then A-Z; `writable`, `why`, `free`, the slots' firmwares,
+  the open project), `GET /api/fs/get?path=P` (streamed, an attachment), `GET /api/fs/zip?path=P` (a store-only zip,
+  streamed, its length known first; names inside start with the folder's own name, the root's `RemoteFM1/`),
+  `POST /api/fs/put?path=DIR&name=N[&replace=1]` (the body; 256 MB at most, 64 MB left free; a temporary file
+  renamed when whole; audio/ takes WAV and AIFF only), `POST /api/fs/mkdir?path=P`, `POST /api/fs/rename?path=P&to=Q`,
+  `POST /api/fs/delete?path=P[&recursive=1&confirm=NAME]` (a folder with things in it only with both). Refusals:
+  400 (the path), 403 (read-only or in use, with the reason), 404, 409, 413, 507.
+- **The rules (src/files.h):** paths relative to the root; segments of valid UTF-8, no control characters, no `\`,
+  not `.` / `..`, not hidden (the host's own temporary files are), 255 bytes a name and 1024 a path; a new name also
+  without `: * ? " < > |` and edge spaces (it must survive a zip on any computer); no symbolic link anywhere on the
+  way (links are not listed, zipped or followed).
+- **What may change:** audio/, code/, data/, states/ and move/projects/ only; those folders themselves stay.
+  **firmwares/ is read-only from the page:** a firmware is native code the host dlopens in a process with a real-time
+  thread, so only the signed catalog installs one (Mute in the projects view); an uploaded `.rfm1m` + `.json` would be
+  a way around the catalog's signature. catalog/ (the signed index), the root's own files and move/'s settings,
+  library and open-project are the Move's. While a firmware runs in a slot its states/<id>/ is left alone, and its
+  data/<id>/ and code/<id>/ take new files but no delete, rename or replace; the open project's
+  move/projects/move-project-NN.* neither.
 
 **On the Move the page shows:** the faceplate at the site's layouts, the themes and background image, firmware
 skins, the firmware's button names and live labels, the screen protector, the computer keyboard and mouse/touch
 panel, the header's firmware picker (the Move's firmwares), Source and Site source links, the sheet's Firmware,
 Look, Background, View, Engine (one line) and About pages. **Hidden:** the emulated and native browser engines,
 opening or dropping an .rfm1, saves in the browser, Use my FM-1 / Connect FM-1, Use my OMX-27, Use my Ableton Move,
-the RemoteFM1 folder, audio input, the recorder, volume / sound output / MIDI input / MIDI learn, Install RemoteFM1
-and the app links, the Editor (the firmware editors talk to the firmware's MIDI, which the page has no path to).
+the RemoteFM1 folder (the browser's: the Move's own folder is the Files view), audio input, the recorder, volume /
+sound output / MIDI input / MIDI learn, Install RemoteFM1 and the app links, the Editor's pop out.
 
 **Upstreaming.** Every change is behind `ON_MOVE`; with `content="web"` the site is RemoteFM1's unchanged. So
 RemoteFM1 can take `site.patch`, `host.js` and `movehost.js` as they are; RemoteFM14Move's build then only sets the
