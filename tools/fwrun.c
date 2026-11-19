@@ -283,6 +283,21 @@ int main(int argc, char **argv)
            fw.id, fw.version, chord_frames ? sqrt(sumsq / (double)(chord_frames * 2)) : 0.0, peak,
            fw_lcd_writes(&fw) - lcd0, (double)frames / FW_FS / wall, fw.worst_us, t_load * 1000, t_boot * 1000,
            fw.dead ? " (DEAD)" : "");
+    if (frames)   /* where a block's time went: the sound, the clock, the screen (frame: every FW_FRAME_MS) */
+        printf("  per block of %d frames: %.1f us audio, %.1f us tick + idle, %.1f us frame (%.0f us a frame call)\n",
+               FW_BLOCK, (double)fw.ns_audio / 1000.0 / (double)(frames / FW_BLOCK),
+               (double)fw.ns_tick / 1000.0 / (double)(frames / FW_BLOCK),
+               (double)fw.ns_frame / 1000.0 / (double)(frames / FW_BLOCK),
+               fw.n_frame ? (double)fw.ns_frame / 1000.0 / fw.n_frame : 0.0);
+    {   /* core 1 (cpu2): its jobs, those the module ran itself, the time */
+        fw_c1_stats_t c1;
+        fw_c1_stats(&fw, &c1);
+        if (c1.state || c1.jobs || c1.inline_jobs)
+            printf("  core1: state %d, %llu jobs (%.1f us each, worst %u us), %llu inline, core 0 waited %.1f us a job\n",
+                   c1.state, (unsigned long long)c1.jobs, c1.jobs ? (double)c1.job_ns / 1000.0 / (double)c1.jobs : 0.0,
+                   c1.job_worst_us, (unsigned long long)c1.inline_jobs,
+                   c1.jobs ? (double)c1.wait_ns / 1000.0 / (double)c1.jobs : 0.0);
+    }
     if (fw.wasi && fw.wasi->fs) {
         fsvc_stats_t st;
         fsvc_stats(fw.wasi->fs, &st);

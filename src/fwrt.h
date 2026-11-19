@@ -132,6 +132,8 @@ typedef struct fw {
     int ain_peak;
     /* the cost: nanoseconds spent in the module */
     uint64_t ns_total;
+    uint64_t ns_audio, ns_tick, ns_frame;   /* of ns_total: rfm1_audio's, tick + idle's, frame's (n_frame calls) */
+    uint32_t n_frame;
     uint32_t worst_us;
     /* cpu2: the core-1 thread (NULL: none, or off) */
     struct fw_c1 *c1;

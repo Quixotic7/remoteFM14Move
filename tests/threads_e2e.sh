@@ -42,7 +42,11 @@ else echo "  skip  no old object in dist/move-catalog"; OLD=""; fi
 # ---- the host: three slots on their threads, each the same bytes as its offline replay
 FWS=$T/fws; mkdir -p "$FWS"
 cp build/fw/* build/cpu2fix/*.rfm1m build/cpu2fix/*.json "$FWS/" 2>/dev/null
-if [ -n "$OLD" ]; then cp "${OLD%.rfm1m}".* "$FWS/"; THIRD=$(basename "$OLD" .rfm1m); THIRD=${THIRD%%-*}; else THIRD=choralroot; fi
+if [ -n "$OLD" ]; then
+    THIRD=$(basename "$OLD" .rfm1m); THIRD=${THIRD%%-*}
+    rm -f "$FWS/$THIRD"-*   # (a newer build of the same firmware among the inputs: the old object alone, as replayed)
+    cp "${OLD%.rfm1m}".* "$FWS/"
+else THIRD=choralroot; fi
 PORT=17790; U="http://127.0.0.1:$PORT"
 status() { curl -s "$U/api/status"; }
 field() { status | tr ',{}' '\n\n\n' | sed -n "s/^\"$1\":\"*\([^\"]*\)\"*$/\1/p" | head -1; }

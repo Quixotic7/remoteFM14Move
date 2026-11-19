@@ -309,7 +309,8 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         const rfm1m_cpu2_fn c2 = (rfm1m_cpu2_fn)(uintptr_t)dlsym(o->so, RFM1M_CPU2_SYMBOL);
         const rfm1m_cpu2_t *c = c2 ? c2() : NULL;
         o->mt = cf && (cf() & RFM1M_CAP_MT);
-        o->cpu2 = o->mt && c && c->abi == RFM1M_CPU2_ABI && c->twin && c->twin_free && c->stack && c->call ? c : NULL;
+        o->cpu2 = o->mt && c && (c->abi == 1 || c->abi == RFM1M_CPU2_ABI) && c->twin && c->twin_free && c->stack &&
+                  c->call ? c : NULL;   /* (ABI 1: an importing module's object, without hook) */
     }
     snprintf(o->path, sizeof o->path, "%s", path);
     if (!o->mt)
@@ -541,6 +542,7 @@ struct fw_c1 {
     int result;                        /* the last job: 0 ran, -2 trapped */
     int state;                         /* fw_c1_stats_t.state */
     int pending;                       /* (core 0's) a job handed over and not waited for yet */
+    int no_hook;                       /* the module's rfm1_cpu2 record was not usable: never started */
     int tid;
     uint64_t jobs, inline_jobs, job_ns, wait_ns;
     uint32_t job_worst_us;
@@ -948,7 +950,18 @@ int fw_create_from(fw_t *fw, fw_inst_t *pre)
         }
         fw->scratch = s;
     }
-    if (fw->c1)
+    if (fw->c1 && fw->c1->vt->abi >= 2 && fw->c1->vt->hook) {   /* (FM1VST's shim: run / wait into its table) */
+        volatile int h = -1;
+        CALL(fw, "rfm1_cpu2", h = fw->c1->vt->hook(fw->inst, fw->wasi));
+        if (fw->dead)
+            return -1;
+        if (h != 0) {   /* (a record not as FM1VST's docs/RFM1.md says: the module keeps its one-core answers) */
+            fprintf(stderr, "fwrt: %s: rfm1_cpu2's record is not usable: core 1 off\n", fw->id);
+            fw->c1->state = 0;
+            fw->c1->no_hook = 1;
+        }
+    }
+    if (fw->c1 && !fw->c1->no_hook)
         c1_start(fw);   /* (failing: core 1 off, the module runs its jobs itself) */
     return 0;
 }
@@ -1291,12 +1304,22 @@ static void run_ms(fw_t *fw)
         feed_ms(fw);
     if (fw->wasi->fs)   /* (between two calls: the file requests answered so far, into the module's memory) */
         fsvc_pump(fw->wasi->fs, fw->mem, fw->mem_size, ms);
-    CALL(fw, "rfm1_tick", vt->tick(fw->inst, ms));
-    if (ms == 0 || ms - fw->last_frame >= FW_FRAME_MS) {
-        fw->last_frame = ms;
-        CALL(fw, "rfm1_frame", vt->frame(fw->inst));
-    } else
-        CALL(fw, "rfm1_idle", vt->idle(fw->inst));
+    {
+        const uint64_t t0 = now_ns();
+        uint64_t t1;
+        CALL(fw, "rfm1_tick", vt->tick(fw->inst, ms));
+        t1 = now_ns();
+        fw->ns_tick += t1 - t0;
+        if (ms == 0 || ms - fw->last_frame >= FW_FRAME_MS) {
+            fw->last_frame = ms;
+            CALL(fw, "rfm1_frame", vt->frame(fw->inst));
+            fw->ns_frame += now_ns() - t1;
+            fw->n_frame++;
+        } else {
+            CALL(fw, "rfm1_idle", vt->idle(fw->inst));
+            fw->ns_tick += now_ns() - t1;
+        }
+    }
     if (ms % 50u == 0 && !fw->dead) {   /* (as rfm1_run: a firmware that rebooted or exited) */
         volatile uint32_t h = 0;
         CALL(fw, "rfm1_halted", h = vt->halted(fw->inst));
@@ -1370,8 +1393,11 @@ int fw_render_in(fw_t *fw, int16_t out[FW_BLOCK * 2], const int16_t *in)
         CALL(fw, "rfm1_audio_in", fw->obj->ain->audio_in(fw->inst, fw->ain_buf, FW_BLOCK));
         fw->ain_blocks++;
     }
-    if (!fw->dead)
+    if (!fw->dead) {
+        const uint64_t ta = now_ns();
         CALL(fw, "rfm1_audio", fw->obj->vt->audio(fw->inst, fw->scratch + S_AUDIO, FW_BLOCK));
+        fw->ns_audio += now_ns() - ta;
+    }
     if (fw->dead)
         memset(out, 0, FW_BLOCK * 4);
     else

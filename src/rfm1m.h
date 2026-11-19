@@ -76,12 +76,13 @@ typedef const rfm1m_ain_t *(*rfm1m_ain_fn)(void);
                                          * thread, several at once (each instance on one thread at a time) */
 typedef uint32_t (*rfm1m_caps_fn)(void);
 
-/* cpu2, core 1 (README "Threads"): a module that imports rfm1_cpu2_1.run / .wait and exports rfm1_c1_stack and
- * rfm1_c1_call gets RFM1M_CPU2_SYMBOL (fwglue.c RFM1M_CPU2). twin: a second instance of the module whose linear memory
+/* cpu2, core 1 (README "Threads"): a module that exports rfm1_c1_stack and rfm1_c1_call, and either imports
+ * rfm1_cpu2_1.run / .wait or exports rfm1_cpu2 (FM1VST's shim: no import, two table entries the host fills), gets
+ * RFM1M_CPU2_SYMBOL (fwglue.c RFM1M_CPU2). twin: a second instance of the module whose linear memory
  * is inst's (the same bytes; its own globals, so its own stack pointer, and its own table), its imports' instance
  * the one given; twin_free frees it (not the memory, which is inst's). stack: rfm1_c1_stack(top) on the twin (its
  * stack pointer and limits); call: rfm1_c1_call(fn, arg) on the twin (the job, through the module's table) */
-#define RFM1M_CPU2_ABI 1
+#define RFM1M_CPU2_ABI 2                /* 2: hook (an object of ABI 1 has none: its module imports run / wait) */
 #define RFM1M_CPU2_SYMBOL "rfm1m_cpu2"
 typedef struct {
     uint32_t abi;                       /* RFM1M_CPU2_ABI */
@@ -89,6 +90,10 @@ typedef struct {
     void (*twin_free)(void *twin);
     void (*stack)(void *twin, uint32_t top);
     void (*call)(void *twin, uint32_t fn, uint32_t arg);
+    /* a module that exports rfm1_cpu2 (NULL for one that imports rfm1_cpu2_1): its record's two table entries of inst
+     * made this host's rfm1_cpu2_1.run / .wait, over wasi (a call into the module: under the trap handler). 0, or -1
+     * (no record, or not as FM1VST's docs/RFM1.md says: the module keeps its one-core answers) */
+    int (*hook)(void *inst, struct Z_wasi_snapshot_preview1_instance_t *wasi);
 } rfm1m_cpu2_t;
 typedef const rfm1m_cpu2_t *(*rfm1m_cpu2_fn)(void);
 
