@@ -11,6 +11,9 @@
 #                     default ~/.config/remotefm14move/catalog-signing-key.pem; the files a release at the base URL holds)
 #   make site         build/site: the page (RemoteFM1's web/site for the Move, scripts/build_site.sh; part of make)
 #   make sim-run      the host on the simulator in the image, its page on http://localhost:7730/
+#   make wifisim      RemoteFM1 Wi-Fi's own simulator for linux/arm64 (build/sim/remotefm1-wifi_host, for
+#                     tests/fm1wifi_e2e.sh): its sources from RemoteFM1 (scripts/wifisim_src.sh: RFM1_WIFI_DIR, default
+#                     third_party/RemoteFM1 with its base submodule), compiled in the image
 #
 # The input firmwares are never in git: FIRMWARES names the .rfm1 files (default: RFM1Manager's builds beside this
 # repo). FM1VST (for the wasm3 reference, tools/rfm1_run at origin/rfm1-manager) is found beside it too.
@@ -23,7 +26,7 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim
 all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -72,6 +75,10 @@ package: all
 	COPYFILE_DISABLE=1 tar -C build/pkg -czf dist/remotefm1-module.tar.gz remotefm1
 	ls -l dist/remotefm1-module.tar.gz
 
+wifisim: image
+	scripts/wifisim_src.sh
+	$(DOCKER_RUN) make in-wifisim
+
 sim-run: all
 	docker run --rm -it -p 7730:7730 -v "$(abspath .)":/w -w /w $(IMAGE) tests/sim_run.sh
 
@@ -106,8 +113,8 @@ RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
 RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
-.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods
-in-all: in-tools in-fw in-testfw in-ref in-host in-fxmods
+.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim
+in-all: in-tools in-fw in-testfw in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT)
@@ -166,6 +173,18 @@ build/%/remotefm1-host: $(HOST_SRC) $(HOST_HDR) $(CS_SRC) $(MR_SRC) $(MR)/device
 	$(CC) $(HOST_CFLAGS) $(WARN) -DRFM14_PLAT_$(shell echo $* | tr a-z A-Z) $(if $(filter sim,$*),$(TEST_BUILD)) -o $@ $(HOST_SRC) \
 	    $(MR)/device/plat_$*.c $(MR_SRC) $(CS_SRC) $(RF_SRC) $(if $(filter sim,$*),$(RF_SIM_SRC)) build/obj/wasm-rt-impl.o \
 	    $(HOST_LIBS) $(if $(filter move,$*),-lrt)
+
+# RemoteFM1 Wi-Fi's simulator (make wifisim; tests/fm1wifi_e2e.sh): the flags its build.py --host gives it
+WS := build/wifisim-src
+in-wifisim: build/sim/remotefm1-wifi_host
+build/sim/remotefm1-wifi_host: $(shell find $(WS) -name '*.[ch]' 2>/dev/null)
+	mkdir -p build/obj/wifisim build/sim
+	$(CC) -O2 -ffp-contract=off -std=c99 -w -DPLAT_HOST -DFM1B_CPU2=1 -DFM1B_USB_HOST=1 -I$(WS)/fm1-base/device \
+	    -I$(WS)/fm1-base/include -I$(WS)/fm1-base/lib -I$(WS)/app-wifi -I$(WS)/app-wifi/build/gen -I$(WS)/app-wifi/src \
+	    -DRF_WIFI_O2=1 -I$(WS)/app-wifi/sa -c $(WS)/app-wifi/sa/sa_synth.c -o build/obj/wifisim/sa_synth.o
+	$(CC) -O2 -ffp-contract=off -std=c99 -w -DPLAT_HOST -DFM1B_CPU2=1 -DFM1B_USB_HOST=1 -DFM1B_BUILD=0x57494649u \
+	    -DFM1B_WIFI=1 -I$(WS)/fm1-base/device -I$(WS)/fm1-base/include -I$(WS)/fm1-base/lib -I$(WS)/app-wifi \
+	    -I$(WS)/app-wifi/build/gen -I$(WS)/app-wifi/src -o $@ $(WS)/fm1-base/host/plat_host.c build/obj/wifisim/sa_synth.o -lm
 
 build/move/remotefm1-heal: $(MR)/device/heal.c
 	mkdir -p build/move

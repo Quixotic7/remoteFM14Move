@@ -1,7 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* The FM-1 on the Move's USB-A port: an FM-1 running the RemoteFM1 firmware becomes a panel for the active slot, as
- * "Use my FM-1" does on remotefm1.com. libremotefm1's session (third_party/RemoteFM1 host/src) over Move Remote's
- * USB-A hooks (mr_core.h mr_set_usba_in, mr_usba_send, mr_set_usba_cap).
+/* The FM-1 as the Move's panel: an FM-1 running the RemoteFM1 firmware becomes a panel for the active slot, as
+ * "Use my FM-1" does on remotefm1.com, on the Move's USB-A port or over Wi-Fi. libremotefm1's session
+ * (third_party/RemoteFM1 host/src) with two links: Move Remote's USB-A hooks (mr_core.h mr_set_usba_in, mr_usba_send,
+ * mr_set_usba_cap) and a TCP connection to an FM-1 running RemoteFM1 Wi-Fi (RemoteFM1 docs/PROTOCOL.md section 10).
+ *
+ *   - Wi-Fi: "RFM1?" broadcast on UDP 7741 every 2 s (and to cfg.wifi_addr and the address remembered in
+ *     ROOT/fm1-wifi.txt) while no FM-1 is connected; the first that answers and is not busy with another host (or the
+ *     one asked for or remembered, busy or not) is connected to over TCP (the port its answer gives, 7740). One FM-1 at
+ *     a time; Wi-Fi is preferred to USB-A: a Wi-Fi FM-1 found while one on USB-A is linked takes over (the session
+ *     restarts on it), and the USB-A one is the panel again when Wi-Fi goes. Over TCP nothing is paced (a reliable
+ *     link at hundreds of KB/s: 20 frames a second, exact tiles) and the panel's events come as PANEL_EV. A connection
+ *     that fails, closes or answers nothing (no session within 6 s) is dropped and the search goes on; an address that
+ *     linked is remembered.
  *
  *   - Discovery: HELLO every 2 s while nothing answers; a "RemoteFM1" proto-2 HELLO_R starts a session (keepalive
  *     3000 ms). The link is slow (the Move's surface controller bridges USB-A MIDI into its SPI transfers: ~3 bytes a
@@ -24,10 +34,17 @@
 #define FM1LINK_CAP_DEFAULT 10       /* USB-A packets per SPI transfer: ~10.3 KB/s on the wire, the LEDs keep 10 */
 #define FM1LINK_WIRE_CAP 2048u       /* framed TILES bytes unacknowledged */
 
+#define FM1LINK_UDP_PORT 7741        /* RemoteFM1 Wi-Fi's discovery (RFM_NET_UDP_PORT) */
+#define FM1LINK_TCP_PORT 7740        /* .. and its session (RFM_NET_TCP_PORT) */
+
 typedef struct {
     uint32_t bps;                    /* 0: FM1LINK_BPS_DEFAULT */
     int usba_cap;                    /* 0: FM1LINK_CAP_DEFAULT */
     int off;                         /* 1: no link at all (USB-A stays Move Remote's) */
+    int wifi_off;                    /* 1: no Wi-Fi (USB-A only) */
+    const char *wifi_addr;           /* an FM-1 to ask and connect to, HOST[:PORT] (besides the broadcast), or NULL */
+    const char *root;                /* the RemoteFM1 folder: fm1-wifi.txt keeps the last address linked; NULL none */
+    int udp_port;                    /* 0: FM1LINK_UDP_PORT (the tests') */
 } fm1link_cfg_t;
 
 int fm1link_init(const fm1link_cfg_t *cfg);
@@ -36,7 +53,8 @@ int fm1link_init(const fm1link_cfg_t *cfg);
 void fm1link_tick(uint32_t now, int slot, fw_t *fw);
 /* 1 once after the link came or went (the engine tells the page and the Move) */
 int fm1link_changed(void);
-/* {"linked":..,"state":..,"name":..,"fw":..,"fps":..,"bps":..,"lost":..,...} into out: its length */
+/* {"linked":..,"link":"wifi"|"usb"|"","addr":..,"wifi":"off"|"searching"|"connecting"|"connected","state":..,
+ * "name":..,"fw":..,"fps":..,"bps":..,"lost":..,...} into out (one flat object): its length */
 int fm1link_json(char *out, int cap);
 int fm1link_linked(void);
 void fm1link_stop(uint32_t now);     /* SESSION 0 (the unit back to its own screen) */

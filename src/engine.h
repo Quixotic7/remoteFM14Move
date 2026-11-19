@@ -39,6 +39,9 @@ typedef struct {
     int fm1_off;
     uint32_t fm1_bps;
     int fm1_cap;
+    /* the FM-1 over Wi-Fi (fm1link.h): off; an address to ask (HOST[:PORT]) besides the broadcast, or NULL */
+    int fm1_wifi_off;
+    const char *fm1_addr;
 } engine_cfg_t;
 
 int engine_start(const engine_cfg_t *cfg);

@@ -170,6 +170,12 @@ make test
   screen and LEDs converge, the unit's keys and MIDI in play the slot, an encoder's change shown on the unit (~120 ms),
   a busy screen with the Move's own LEDs still written, nothing lost, a slot switch followed (a key held across it let go
   on the old slot), an unplug (nothing stuck) and a replug, no late block;
+- `tests/fm1wifi_e2e.sh` (needs `make wifisim`; skipped without it): an FM-1 over Wi-Fi (below) on the simulator:
+  RemoteFM1 Wi-Fi's own simulator (its firmware's app and TCP server on the image's loopback, its panel driven through
+  its standard input) beside the fake USB-A unit: USB-A links first, the Wi-Fi FM-1 is found by the broadcast and takes
+  over (the address its answer gave, not paced, the USB-A unit's session ends), frames acknowledged, its keys and
+  encoders play the slot (PANEL_EV), a connection it drops comes back, gone: the USB-A unit again (a held key let go),
+  its address remembered, and back on Wi-Fi when it returns;
 - `tests/fantasy_e2e.sh` (needs `make testcat-v`: Elasticat and Ripple from the site's catalog, signed with the test
   key): the page's `/api/files/audio` (an upload with spaces and brackets in its name; refused: not a WAV, .txt,
   ../, a hidden name, a slash, over 256 MB; a delete), the Move's catalog downloads both, Elasticat in slot 1 reads
@@ -217,6 +223,26 @@ as "Use my FM-1" does on remotefm1.com (src/fm1link.c, on the engine's thread; l
 - **On the Move's screen** (rfm1cs 0.5.4 `rfm_move_popup`, on the engine's thread with a redraw): "FM-1 linked" /
   "FM-1 lost", big, for a second, over any screen.
 - `--no-fm1` leaves USB-A to Move Remote as before.
+
+### Over Wi-Fi (RemoteFM1 Wi-Fi)
+
+An FM-1 running RemoteFM1's Wi-Fi build (`build.sh --wifi`, identity FM-1_729.., on the same network as the Move) is
+the same panel without the cable: libremotefm1's TCP link (RemoteFM1 docs/PROTOCOL.md section 10), in the same session
+as USB-A, one FM-1 at a time.
+
+- **Finding it:** "RFM1?" broadcast on UDP 7741 every 2 s while no FM-1 is connected, and sent to `--fm1-addr
+  HOST[:PORT]` and to the address last linked (`ROOT/fm1-wifi.txt`). The first that answers and has no other host is
+  connected to on the port its answer gives (7740); the one asked for or remembered is taken even when busy. No session
+  within 6 s, a refused or timed-out connection: dropped, and that address left alone for 30 s (the remembered one 4 s).
+- **Wi-Fi first:** a Wi-Fi FM-1 found while one on USB-A is linked takes over (the session restarts on it; the USB-A
+  unit's session ends by its keepalive); Wi-Fi gone, the USB-A one is the panel again.
+- **Not paced:** a reliable link at hundreds of KB/s (494 KB/s measured to the FM-1): exact tiles at up to 20 frames a
+  second, 2 in flight. The FM-1's panel events come as PANEL_EV in the same stream. A connection the FM-1 closes (a
+  new host replaced us, or it was switched off) is reconnected by the search.
+- **Status:** `fm1` gains `link` ("wifi" / "usb"), `addr`, `wifi` (off, searching, connecting, connected),
+  `wifi_name`, `wifi_connects`, `wifi_drops`, `wifi_answers`, `panel_ev`; the page's pill says "FM-1 · Wi-Fi" or
+  "FM-1 · USB-A" (the address in its tooltip). `--no-fm1-wifi`: USB-A only.
+- Putting the FM-1 on the network (its SSID and password) is RemoteFM1's `tools/wifi_probe.py setup` over USB for now.
 
 ## Fantasy CFWs (Elasticat, Ripple)
 
@@ -359,7 +385,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `tools/sign_index.py` | index.json -> index.json.sig (make catalog, make testcat; tools/bundle.py checks it) |
 | `tools/build_move_catalog.py`, `tools/catalog_fw.sh`, `tools/bundle.py`, `module/bundle.txt` | the Move catalog; the module's starter set |
 | `src/fx.c` | Schwung FX: the installed modules, their parameters, loading (with the crash probe), the calls |
-| `src/fm1link.c`, `src/fm1sim.c` | an FM-1 on USB-A (libremotefm1's session over Move Remote's USB-A hooks); the simulator's fake FM-1 (tests) |
+| `src/fm1link.c`, `src/fm1sim.c` | an FM-1 on USB-A or over Wi-Fi (libremotefm1's session over Move Remote's USB-A hooks and a TCP socket); the simulator's fake FM-1 (tests) |
 | `src/fsvc.c` | a Fantasy CFW's file API (rfm1_host_1): the sandbox, the requests, the pump between calls; served on the storage module's file thread |
 | `web/move/js/movefs.js`, `movefiles.js` | the page's file browser (the header's Files) and the settings sheet's Files section |
 | `src/files.c` | the file browser's rules (paths, links, what may change), the listing, a folder as a streamed zip |

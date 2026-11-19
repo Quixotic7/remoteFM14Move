@@ -2409,6 +2409,7 @@ int engine_start(const engine_cfg_t *cfg)
         fm1link_cfg_t lc;
         memset(&lc, 0, sizeof lc);
         lc.off = C.fm1_off, lc.bps = C.fm1_bps, lc.usba_cap = C.fm1_cap;
+        lc.wifi_off = C.fm1_wifi_off, lc.wifi_addr = C.fm1_addr, lc.root = C.root;
         if (fm1link_init(&lc) != 0)
             fprintf(stderr, "engine: the FM-1 link did not start\n");
     }
