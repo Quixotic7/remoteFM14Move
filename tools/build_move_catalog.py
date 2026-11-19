@@ -270,9 +270,27 @@ def main():
     index = dict(schema=1, generated=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                  catalog_generated=cat.get('generated'), source=args.catalog if '://' in args.catalog else 'file',
                  arch='linux-aarch64', firmwares=entries)
-    with open(os.path.join(staged, 'index.json'), 'w') as fh:
-        json.dump(index, fh, separators=(',', ':'), ensure_ascii=True)
-        fh.write('\n')
+    # nothing but the time stamps changed since the last build: keep its index byte for byte, so its sha256 (and the
+    # signature, Ed25519 being deterministic) stay and publish_move_catalog.py uploads nothing (RFM1Manager's request)
+    prev_bytes = None
+    try:
+        with open(os.path.join(out, 'index.json'), 'rb') as fh:
+            prev_bytes = fh.read()
+        prev = json.loads(prev_bytes)
+        strip = lambda d: {k: v for k, v in d.items() if k not in ('generated', 'catalog_generated')}
+        if strip(prev) != strip(json.loads(json.dumps(index))):
+            prev_bytes = None
+    except (OSError, ValueError):
+        prev_bytes = None
+    if prev_bytes is not None:
+        log('build_move_catalog: no firmware changed: the previous index.json kept (%s)' % prev.get('generated'))
+        with open(os.path.join(staged, 'index.json'), 'wb') as fh:
+            fh.write(prev_bytes)
+        index['generated'] = prev.get('generated')
+    else:
+        with open(os.path.join(staged, 'index.json'), 'w') as fh:
+            json.dump(index, fh, separators=(',', ':'), ensure_ascii=True)
+            fh.write('\n')
     if os.path.exists(out):   # (the previous build: this tool's own output, replaced whole)
         os.replace(out, out + '.prev')
     os.replace(staged, out)
