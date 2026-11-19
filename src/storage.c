@@ -554,6 +554,10 @@ static void run_job(st_job_t *j)
     case J_FX_OPEN:
         j->ptr = fx_open(j->obj, j->err, sizeof j->err);
         break;
+    case J_FX_STATE:
+        if (j->ptr && j->data)
+            fx_state_set(j->ptr, (const char *)j->data);
+        break;
     case J_FX_FREE:
         fx_close(j->ptr);
         st_job_free(j);

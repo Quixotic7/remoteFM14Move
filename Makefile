@@ -166,10 +166,12 @@ build/testkey/catalog_test_key.h:
 	mv $@.tmp $@
 
 # the test FX modules (the simulator's "installed Schwung modules"): Schwung's own arp, chord and freeverb (MIT, their
-# sources at the commit third_party/schwung-api names) and two of ours (crashfx: a crash in create; hogfx: CPU)
+# sources at the commit third_party/schwung-api names) and three of ours (crashfx: a crash in create; hogfx: CPU;
+# slowfx: 80 ms over its saved state)
 FXM := build/fxmods
 FXM_SO := $(FXM)/midi_fx/arp/dsp.so $(FXM)/midi_fx/chord/dsp.so $(FXM)/audio_fx/freeverb/freeverb.so \
-          $(FXM)/audio_fx/crashfx/crashfx.so $(FXM)/audio_fx/hogfx/hogfx.so
+          $(FXM)/audio_fx/crashfx/crashfx.so $(FXM)/audio_fx/hogfx/hogfx.so \
+          $(FXM)/audio_fx/slowfx/slowfx.so
 in-fxmods: $(FXM_SO)
 $(FXM)/midi_fx/%/dsp.so: tests/fxmods/midi_fx/%/dsp/*.c tests/fxmods/midi_fx/%/module.json
 	mkdir -p $(dir $@)

@@ -68,6 +68,8 @@ enum {
     J_FX_OPEN,            /* obj: the module (fx_mod_t), slot, index (kind), value (a generation): back with ptr (the
                            * fx_inst_t made, NULL with err) */
     J_FX_FREE,            /* ptr: an fx_inst_t closed (no result) */
+    J_FX_STATE,           /* J_FX_OPEN's fields + data: a project's saved state (text) set on the opened instance here,
+                           * off the engine thread (Schwung sets it on its loader thread too); back as the same job */
 };
 typedef struct st_job {
     int kind, slot, index, value, act;

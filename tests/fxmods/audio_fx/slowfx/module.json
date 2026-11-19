@@ -1,0 +1,3 @@
+{ "id": "slowfx", "name": "Slow State", "version": "0.0.1", "dsp": "slowfx.so",
+  "capabilities": { "component_type": "audio_fx", "chain_params": [
+    { "key": "amount", "name": "Amount", "type": "int", "min": 0, "max": 127, "default": 64 } ] } }

@@ -573,11 +573,26 @@ static void fx_opened(st_job_t *j)
         }
         return;
     }
-    x->opening = 0;
     if (!j->ptr) {
+        x->opening = 0;
         fx_refuse(kind, s, j->err[0] ? j->err : "could not load");
         return;
     }
+    if (j->kind == J_FX_OPEN && x->pend_state && !strcmp(fx_inst_mod(j->ptr)->name, x->pend_name)) {
+        /* a project's saved state: set on the storage thread before the instance comes in (a module can take
+         * milliseconds over it: here that would starve the ring) */
+        st_job_t *n = st_job_new(J_FX_STATE);
+        n->obj = j->obj, n->ptr = j->ptr, j->ptr = NULL;
+        n->slot = j->slot, n->index = j->index, n->value = j->value;
+        snprintf(n->id, sizeof n->id, "%s", j->id);
+        n->data = (uint8_t *)x->pend_state, n->len = (uint32_t)strlen(x->pend_state);
+        x->pend_state = NULL;
+        fprintf(stderr, "engine: %s: its saved state (%u bytes), set off the engine thread\n", x->pend_name, n->len);
+        fx_pend_clear(x);
+        st_post(n);
+        return;
+    }
+    x->opening = 0;
     fx_drop(kind, s);
     x->run = j->ptr;
     x->ns_mark = fx_ns(x->run), x->over = 0, x->last_track = 0;
@@ -1234,6 +1249,7 @@ static void do_results(void)
             cat_take(j->ptr);
             break;
         case J_FX_OPEN:
+        case J_FX_STATE:
             fx_opened(j);
             break;
         case R_PROJECT_LOADED:

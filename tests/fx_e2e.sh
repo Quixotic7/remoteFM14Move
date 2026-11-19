@@ -42,7 +42,7 @@ mixstate() { mix | sed -E 's/"(ver|cpu|run|busy|notes|err|sounding|active|fxopen
 
 echo "fx_e2e"
 start
-[ "$(field fx_mods)" = 5 ] && curl -s "$U/api/fx" | grep -q '"id":"arp"' && curl -s "$U/api/fx" | grep -q '"key":"room_size"' \
+[ "$(field fx_mods)" = 6 ] && curl -s "$U/api/fx" | grep -q '"id":"arp"' && curl -s "$U/api/fx" | grep -q '"key":"room_size"' \
     && ok "the installed modules listed: $(curl -s "$U/api/fx" | grep -o '"name":"[^"]*","abbrev' | sed 's/"name":"\([^"]*\)".*/\1/' | tr '\n' ' ')" \
     || bad "/api/fx: $(curl -s "$U/api/fx" | head -c 300)"
 
@@ -145,6 +145,8 @@ echo "  info  CPU: $(status | grep -o '"slots":\[[^]]*\]' | sed 's/"worst_us[^}]
 
 # ---- the FX setup and the modules' own state survive a project save and load (the autosave, then a restart)
 edit 19 3 64 >/dev/null; edit 21 0 2 >/dev/null; edit 21 32 40 >/dev/null   # arp: track 7, mode down; freeverb: room 40
+edit 20 5 3 >/dev/null   # Slow State (80 ms over its saved state) into audio FX 2
+wait_for 4 '[ "$(field afx1)" = slowfx ]' || bad "slowfx: afx1 '$(field afx1)'"
 wait_for 6 '[ -s "$ROOT/move/projects/move-project-01.fx.json" ] && grep -q Arpeggiator "$ROOT/move/projects/move-project-01.fx.json"' \
     && ok "the project autosaved, its modules' state beside it (move-project-01.fx.json: $(grep -o '"[ma][0-9]":{"name":"[^"]*"' "$ROOT/move/projects/move-project-01.fx.json" | sed 's/":{"name":"/ /;s/"//g' | tr '\n' ' '))" \
     || bad "no fx.json"
@@ -156,6 +158,8 @@ wait_for 8 '[ "$(field mfx0)" = arp ] && [ "$(field mfx1)" = chord ] && [ "$(fie
 after=$(mixstate)
 [ -n "$before" ] && [ "$before" = "$after" ] && ok "restarted: the same FX setup, mix and routing from the project (modules, values, filters, sends, levels)" \
     || { bad "the FX setup after a restart differs"; echo "    before: $before"; echo "    after:  $after"; }
+wait_for 4 '[ "$(field afx1)" = slowfx ]' && grep -q "Slow State: its saved state.*off the engine thread" "$T/host.log" \
+    && ok "Slow State came back with its saved state, set off the engine thread" || bad "slowfx after restart: afx1 '$(field afx1)'"
 [ "$(field mfx0)" = arp ] && [ "$(field afx0)" = freeverb ] && grep -q "Arpeggiator: its saved state" "$T/host.log" \
     && ok "the modules running again, the arp with its saved state (get_param / set_param \"state\")" \
     || bad "after restart: mfx0 '$(field mfx0)' afx0 '$(field afx0)'"
