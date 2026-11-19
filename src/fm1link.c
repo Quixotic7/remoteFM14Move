@@ -43,7 +43,9 @@ static int g_usb_link = -1;
 /* ------------------------------------------------------------------ Wi-Fi (TCP) state --- */
 #define W_PROBE_MS 2000u             /* "RFM1?" this often while no FM-1 is connected */
 #define W_CONNECT_MS 3000u           /* a TCP connect that takes longer is given up */
-#define W_SESSION_MS 6000u           /* connected, and no session on it this long: dropped (not a RemoteFM1 there?) */
+#define W_SESSION_MS 12000u          /* connected, and never a session on it this long: dropped (not a RemoteFM1?) */
+#define W_SILENT_MS 12000u           /* .. or nothing at all from it this long (TCP's own stalls are shorter: a
+                                      * session that restarts on a live connection keeps it, and the FM-1 its screen) */
 #define W_BAD_MS 30000u              /* an address that failed is not chosen again for this long (unless asked for) */
 #define W_BAD_KEPT_MS 4000u          /* .. the one remembered: sooner (it is the FM-1 coming back) */
 #define W_OUT_CAP (512u * 1024u)     /* bytes TCP has not taken yet (2 frames of 15 KB in flight: never near it) */
@@ -56,7 +58,8 @@ typedef struct {
 } wcand_t;
 static int w_on, w_state = W_OFF, w_udp = -1, w_tcp = -1, w_link = -1, w_failed;
 static uint16_t w_udp_port = FM1LINK_UDP_PORT;
-static uint32_t w_t_probe, w_t_state;
+static uint32_t w_t_probe, w_t_state, w_last_rx;
+static int w_was_active;
 static struct sockaddr_in w_fixed, w_kept, w_peer;   /* asked for (cfg.wifi_addr), remembered, connected to */
 static int w_has_fixed, w_has_kept;
 static char w_kept_path[512], w_peer_str[32], w_peer_name[24];
@@ -338,6 +341,8 @@ static void wifi_tick(uint32_t now)
                 break;
             }
             w_set(W_CONNECTED, now);
+            w_last_rx = now;
+            w_was_active = 0;
             w_connects++;
             fprintf(stderr, "fm1link: Wi-Fi connected to %s %s\n", w_peer_str, w_peer_name);
             if (w_link < 0)
@@ -363,6 +368,7 @@ static void wifi_tick(uint32_t now)
             const ssize_t n = recv(w_tcp, b, sizeof b, 0);
             if (n > 0) {
                 rfm_session_rx(S, w_link, b, (uint32_t)n, now);
+                w_last_rx = now;
                 continue;
             }
             if (n == 0) {
@@ -380,9 +386,11 @@ static void wifi_tick(uint32_t now)
             return;
         }
         if (rfm_session_frame_link(S) == w_link && rfm_session_state(S) == RFM_S_ACTIVE) {
-            w_t_state = now;                 /* (linked: the session's own timeouts watch it) */
+            w_was_active = 1;                /* (linked: the session's own timeouts watch it) */
             w_remember();
-        } else if (now - w_t_state >= W_SESSION_MS) {
+        } else if (now - w_last_rx >= W_SILENT_MS) {
+            w_close(now, "nothing from it", 1);
+        } else if (!w_was_active && now - w_t_state >= W_SESSION_MS) {
             w_close(now, "no session", 1);
         }
         break;

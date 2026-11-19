@@ -233,7 +233,8 @@ as USB-A, one FM-1 at a time.
 - **Finding it:** "RFM1?" broadcast on UDP 7741 every 2 s while no FM-1 is connected, and sent to `--fm1-addr
   HOST[:PORT]` and to the address last linked (`ROOT/fm1-wifi.txt`). The first that answers and has no other host is
   connected to on the port its answer gives (7740); the one asked for or remembered is taken even when busy. No session
-  within 6 s, a refused or timed-out connection: dropped, and that address left alone for 30 s (the remembered one 4 s).
+  within 12 s, nothing from it for 12 s, a refused or timed-out connection: dropped (a session restarting on a live
+  connection keeps it), and that address left alone for 30 s (the remembered one 4 s).
 - **Wi-Fi first:** a Wi-Fi FM-1 found while one on USB-A is linked takes over (the session restarts on it; the USB-A
   unit's session ends by its keepalive); Wi-Fi gone, the USB-A one is the panel again.
 - **Not paced:** a reliable link at hundreds of KB/s (494 KB/s measured to the FM-1): exact tiles at up to 20 frames a

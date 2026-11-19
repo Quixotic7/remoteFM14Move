@@ -108,6 +108,15 @@ info "busy screen for $((dt / 1000)) s: $(( ($(lf acks) - f0) * 1000 / dt )) fra
 [ "$(lf sessions)" = "$s0" ] && [ "$(lf lost)" = "$l0" ] && [ "$(lf linked)" = true ] \
     && ok "the session held through the busy screen (sessions $s0, lost $l0)" \
     || bad "the session restarted under a busy screen: sessions $s0 -> $(lf sessions), lost $l0 -> $(lf lost)"
+# a stall longer than the heartbeat (7 s: the session starts again) keeps the connection: no drop, no reconnect, so
+# the FM-1 never falls back to its own screens in between (before: the Move closed it 6 s after the session went)
+d0=$(lf wifi_drops); c0=$(lf wifi_connects)
+pan "stall 7000"
+sleep 9
+wait_for 8 '[ "$(lf linked)" = true ] && [ "$(lf link)" = wifi ]' \
+    && [ "$(lf wifi_drops)" = "$d0" ] && [ "$(lf wifi_connects)" = "$c0" ] \
+    && ok "a 7 s stall: linked again on the same connection (sessions $(lf sessions), drops $d0, connections $c0)" \
+    || bad "the long stall: drops $d0 -> $(lf wifi_drops), connections $c0 -> $(lf wifi_connects), $(lf state)"
 
 # ---- the FM-1 drops the connection (as a new host would replace it): back by itself
 d0=$(lf wifi_drops); s0=$(lf sessions)
