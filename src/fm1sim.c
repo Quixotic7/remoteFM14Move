@@ -197,7 +197,9 @@ int fm1sim_json(char *out, int cap)
     uint32_t seq = 0, led_pkts = 0, usba_pkts = 0, lost = 0, same = 0, i;
     rfm_fake_stats_t fs;
     rfm_leds_t want;
-    int sess = 0, exact, leds = 0, holding = 0;
+    int sess = 0, exact, leds = 0, holding = 0, plug = 0;
+    static uint16_t plug_px[240 * 240];   /* (the USB-A plug screen, made once) */
+    static int plug_made;
     if (!g_run)
         return snprintf(out, (size_t)cap, "{\"on\":0}");
     engine_view(&v, &seq);
@@ -213,15 +215,18 @@ int fm1sim_json(char *out, int cap)
         for (i = 0; i < 240u * 240u; i++)
             same += px[2 * i] == v.lcd[2 * i] && px[2 * i + 1] == v.lcd[2 * i + 1];
         leds = rfm_leds_equal(rfm_fake_leds(F), &want);
+        if (!plug_made)
+            fm1link_plug_screen(plug_px), plug_made = 1;
+        plug = !memcmp(px, plug_px, sizeof plug_px);
     }
     exact = same == 240u * 240u;
     pthread_mutex_unlock(&g_mu);
     return snprintf(out, (size_t)cap,
                     "{\"on\":1,\"plugged\":%d,\"plugs\":%u,\"session\":%d,\"screen_same\":%u,\"screen_pct\":%.1f,"
-                    "\"screen_exact\":%d,\"holding\":%d,\"leds_match\":%d,\"hellos\":%u,\"sessions\":%u,\"frames\":%u,"
+                    "\"screen_exact\":%d,\"plug\":%d,\"holding\":%d,\"leds_match\":%d,\"hellos\":%u,\"sessions\":%u,\"frames\":%u,"
                     "\"held_frames\":%u,\"decode_errs\":%u,\"keepalive_expired\":%u,\"leds\":%u,\"panel_updates\":%u,"
                     "\"led_pkts\":%u,\"usba_pkts\":%u,\"bridge_lost\":%u}",
-                    g_plugged, g_plugs, sess, same, same * 100.0 / (240.0 * 240.0), exact, holding, leds, fs.hellos,
+                    g_plugged, g_plugs, sess, same, same * 100.0 / (240.0 * 240.0), exact, plug, holding, leds, fs.hellos,
                     fs.sessions_started, fs.frames, fs.held_frames, fs.decode_errs, fs.keepalive_expired, fs.leds,
                     fs.panel_updates, led_pkts, usba_pkts, lost);
 }

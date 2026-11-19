@@ -4,6 +4,7 @@
 # (libremotefm1's fake unit, src/fm1sim.c) behind Move Remote's simulated USB-A, whose bridge loses what a burst from
 # the unit does not fit (plat_sim.c), driven through the page's test API (POST/GET /api/test/fm1).
 #   tests/fm1_e2e.sh [host options...]      (after make; e.g. --fm1-bps 9000 --fm1-cap 8 to try other rates)
+# (--fm1-usba-screen: the firmware's screen over USB-A, as before; the default plug screen: tests/fm1plug_e2e.sh)
 set -u
 cd "$(dirname "$0")/.."
 T=$(mktemp -d /tmp/rfm14fm1.XXXXXX)
@@ -34,7 +35,7 @@ wait_for() {   # wait_for SECONDS 'test'
 
 echo "fm1_e2e"
 build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" --firmwares build/fw --site build/site --fw felucca \
-    --test-api --fake-fm1 "$@" >>"$T/host.log" 2>&1 &
+    --test-api --fake-fm1 --fm1-usba-screen "$@" >>"$T/host.log" 2>&1 &
 HOST=$!
 wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
     || { bad "the host did not start"; cat "$T/host.log"; exit 1; }

@@ -45,9 +45,12 @@ typedef struct {
     const char *wifi_addr;           /* an FM-1 to ask and connect to, HOST[:PORT] (besides the broadcast), or NULL */
     const char *root;                /* the RemoteFM1 folder: fm1-wifi.txt keeps the last address linked; NULL none */
     int udp_port;                    /* 0: FM1LINK_UDP_PORT (the tests') */
+    int usba_screen;                 /* 1: the firmware's screen over USB-A too (default: a plug on black) */
 } fm1link_cfg_t;
 
 int fm1link_init(const fm1link_cfg_t *cfg);
+/* the screen the FM-1 shows while linked over USB-A (240 x 240, emu_hal_t.lcd's layout) */
+void fm1link_plug_screen(uint16_t *lcd);
 /* once a loop: USB-A in, the session, the active slot's screen and LEDs out. fw: the active slot's firmware (NULL:
  * none, a dark panel) */
 void fm1link_tick(uint32_t now, int slot, fw_t *fw);

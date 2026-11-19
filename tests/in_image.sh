@@ -35,6 +35,7 @@ tests/sim_e2e.sh || fail=1
 tests/fx_e2e.sh || fail=1
 tests/dl_e2e.sh || fail=1
 tests/fm1_e2e.sh || fail=1
+tests/fm1plug_e2e.sh || fail=1
 tests/fm1wifi_e2e.sh || fail=1
 tests/fantasy_e2e.sh || fail=1
 tests/ain_e2e.sh || fail=1

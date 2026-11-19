@@ -41,6 +41,7 @@ typedef struct {
     int fm1_cap;
     /* the FM-1 over Wi-Fi (fm1link.h): off; an address to ask (HOST[:PORT]) besides the broadcast, or NULL */
     int fm1_wifi_off;
+    int fm1_usba_screen;             /* --fm1-usba-screen: the firmware's screen over USB-A too */
     const char *fm1_addr;
 } engine_cfg_t;
 

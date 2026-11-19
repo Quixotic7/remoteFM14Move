@@ -24,6 +24,7 @@
  *     --no-fm1      no FM-1 link on USB-A (fm1link.c; USB-A stays Move Remote's)
  *     --fm1-bps     the FM-1's screen, TILES body bytes a second (default fm1link.h FM1LINK_BPS_DEFAULT)
  *     --fm1-cap     USB-A packets per SPI transfer (default FM1LINK_CAP_DEFAULT; the rest of a transfer is the LEDs')
+ *     --fm1-usba-screen the firmware's screen over USB-A too (default: the FM-1 shows a plug on black; USB-A is ~8 KB/s)
  *     --no-fm1-wifi no search for an FM-1 over Wi-Fi (RemoteFM1 Wi-Fi; fm1link.c: USB-A only)
  *     --fm1-addr    an FM-1 over Wi-Fi to ask and connect to, HOST[:PORT] (default: the broadcast on UDP 7741 and the
  *                   address last linked, ROOT/fm1-wifi.txt)
@@ -64,7 +65,7 @@ int main(int argc, char **argv)
     static char root[PATH_MAX], bundled[PATH_MAX], site[PATH_MAX], cap[4][PATH_MAX], index[PATH_MAX];
     const char *sim_dir = NULL, *capture = NULL, *fw = "felucca", *firmwares = NULL, *site_arg = NULL;
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
-    int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0, fm1_wifi_off = 0;
+    int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0, fm1_wifi_off = 0, fm1_usba_screen = 0;
     const char *fm1_addr = NULL;
     const char *sim_ain = NULL;
     long fm1_bps = 0;
@@ -120,6 +121,8 @@ int main(int argc, char **argv)
             fm1_cap = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-fm1-wifi"))
             fm1_wifi_off = 1;
+        else if (!strcmp(argv[i], "--fm1-usba-screen"))
+            fm1_usba_screen = 1;
         else if (!strcmp(argv[i], "--fm1-addr") && i + 1 < argc)
             fm1_addr = argv[++i];
         else if (!strcmp(argv[i], "--no-audio-in"))
@@ -146,7 +149,7 @@ int main(int argc, char **argv)
         } else {
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
-                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fake-fm1] "
+                            "[--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
                             "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -196,6 +199,7 @@ int main(int argc, char **argv)
         c.fm1_bps = (uint32_t)(fm1_bps > 0 ? fm1_bps : 0);
         c.fm1_cap = fm1_cap;
         c.fm1_wifi_off = fm1_wifi_off;
+        c.fm1_usba_screen = fm1_usba_screen;
         c.fm1_addr = fm1_addr;
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */

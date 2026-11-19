@@ -31,6 +31,7 @@ static uint32_t g_keys, g_btns;
 static int g_slot = -1;
 static fw_t *g_fw;
 static uint32_t g_writes, g_last_frame;
+static int g_usba_screen;   /* --fm1-usba-screen: the firmware's screen over USB-A too */
 static int g_dark;                   /* a dark panel was given (no firmware) */
 static uint16_t g_lcd[240 * 240];    /* the screen as the session wants it (emu_hal_t.lcd's layout: BE bytes) */
 static uint8_t g_levels[FW_NLEVELS + 1];
@@ -556,6 +557,7 @@ int fm1link_init(const fm1link_cfg_t *cfg)
     rfm_session_cb_t cb;
     if (cfg && cfg->off)
         return 0;
+    g_usba_screen = cfg && cfg->usba_screen;
     rfm_session_cfg_default(&sc);
     sc.host_name = "RemoteFM14Move";
     sc.transport = RFM_T_AUTO;           /* (USB-A: a SysEx link, slow_link; Wi-Fi: a TCP link, preferred) */
@@ -585,6 +587,28 @@ int fm1link_init(const fm1link_cfg_t *cfg)
     return 0;
 }
 
+/* USB-A (the Move's bridge, ~8 KB/s) can't carry the firmware's screen: the FM-1 shows a plug on black instead, sent
+ * once (black tiles go as fills: a couple of KB). Over Wi-Fi the firmware's own screen goes as before. */
+static int g_plug;   /* the plug screen is what the session has */
+static const char *const PLUG[16] = {
+    "................", ".....#....#.....", ".....#....#.....", ".....#....#.....",
+    "...##########...", "...##########...", "...##########...", "...##########...",
+    "....########....", ".....######.....", "......####......", ".......##.......",
+    ".......##.......", ".......##.......", ".......##.......", ".......##.......",
+};
+void fm1link_plug_screen(uint16_t *lcd)
+{
+    const uint16_t c = 0x5E5F, be = (uint16_t)(c >> 8 | c << 8);   /* a light cyan, RGB565 (big-endian bytes) */
+    const int sc = 6, x0 = (240 - 16 * sc) / 2, y0 = (240 - 16 * sc) / 2;
+    int x, y;
+    memset(lcd, 0, 240 * 240 * sizeof *lcd);
+    for (y = 0; y < 16 * sc; y++)
+        for (x = 0; x < 16 * sc; x++)
+            if (PLUG[y / sc][x / sc] == '#')
+                lcd[(y0 + y) * 240 + x0 + x] = be;
+}
+static int on_usba_frames(void) { return !g_usba_screen && !(w_link >= 0 && rfm_session_frame_link(S) == w_link); }
+
 void fm1link_tick(uint32_t now, int slot, fw_t *fw)
 {
     if (!g_on)
@@ -602,7 +626,17 @@ void fm1link_tick(uint32_t now, int slot, fw_t *fw)
     if (fw && !fw->dead) {
         const uint32_t w = fw_lcd_writes(fw);
         uint8_t lv[FW_NLEVELS + 1];
-        if ((w != g_writes || !g_writes) && now - g_last_frame >= FRAME_MS) {
+        if (on_usba_frames()) {
+            if (!g_plug) {
+                g_plug = 1;
+                fm1link_plug_screen(g_lcd);
+                rfm_session_set_frame(S, g_lcd);
+            }
+        } else if (g_plug) {   /* Wi-Fi took the frames: the firmware's screen again, at once */
+            g_plug = 0, g_writes = 0;
+            g_last_frame = now - FRAME_MS;
+        }
+        if (!g_plug && (w != g_writes || !g_writes) && now - g_last_frame >= FRAME_MS) {
             g_writes = w ? w : 1;
             g_last_frame = now;
             memcpy(g_lcd, fw_lcd(fw), sizeof g_lcd);
@@ -619,7 +653,7 @@ void fm1link_tick(uint32_t now, int slot, fw_t *fw)
         }
     } else if (!g_dark) {   /* nothing plays: a dark panel */
         rfm_leds_t l;
-        g_dark = 1;
+        g_dark = 1, g_plug = 0;
         memset(g_lcd, 0, sizeof g_lcd);
         rfm_session_set_frame(S, g_lcd);
         memset(&l, 0, sizeof l);
