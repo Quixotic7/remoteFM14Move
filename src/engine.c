@@ -43,6 +43,10 @@ static int g_started;
 /* ------------------------------------------------------------------ the ring and the audio thread's side --- */
 static mr_ring_t g_ring;                     /* stereo int16 frames: engine -> audio thread */
 static volatile uint32_t g_late, g_rt_blocks, g_rt_started;
+/* the output opens when the session starts (after --splash): until then the Move is still settling (Move Remote's
+ * mlockall pages in the whole process, the FX probes and loads, the firmwares' boot) and nothing can be played yet,
+ * so the audio thread gives silence and nothing counts as late */
+static volatile int g_out_open;
 static int16_t *g_cap_out, *g_cap_mix, *g_cap_raw;
 static volatile uint32_t g_cap_out_n;
 static uint32_t g_cap_mix_n, g_cap_raw_n, g_cap_max;
@@ -50,6 +54,8 @@ static uint32_t g_cap_mix_n, g_cap_raw_n, g_cap_max;
 int engine_audio(void *ctx, int16_t *out, int frames)
 {
     (void)ctx;
+    if (!__atomic_load_n(&g_out_open, __ATOMIC_ACQUIRE))
+        return 0;
     if (mr_ring_count(&g_ring) < (uint32_t)frames) {
         if (g_rt_started)
             g_late++;   /* the engine is late: this block is silence */
@@ -1934,6 +1940,7 @@ static void *engine_main(void *arg)
         if (!g_session_on && (int32_t)(now - g_session_at) >= 0) {
             rfm1cs_session_start(S, now);
             g_session_on = 1;
+            __atomic_store_n(&g_out_open, 1, __ATOMIC_RELEASE);
         }
         if (g_open_pending) {   /* (EV_OPEN came from inside a session call) */
             g_open_pending = 0;
@@ -2174,6 +2181,7 @@ int engine_start(const engine_cfg_t *cfg)
     if (!C.splash_ms) {
         rfm1cs_session_start(S, now_ms());   /* -> EV_OPEN: the socketpair, adopted by Move Remote's core */
         g_session_on = 1;
+        __atomic_store_n(&g_out_open, 1, __ATOMIC_RELEASE);
     }
     g_run = 1;
     if (pthread_create(&g_thr, NULL, engine_main, NULL) != 0)
