@@ -15,6 +15,10 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
   firmware picker. Its engine is the firmware running on the Move: the screen and LEDs live, the panel back, the
   sound out of the Move. See "The page" below.
 
+- **Schwung FX**: the MIDI FX and audio FX the user installed in Schwung (`/data/UserData/schwung/modules`) run inside
+  RemoteFM1: 3 MIDI FX in series on the sequencer's MIDI, 3 audio FX on send / return buses, set up from the Move's FX
+  setup (Session in the projects view) or the page's Mix & FX view. See "Schwung FX" below.
+
 Leave it with **Shift + touch the volume knob + click the jog wheel**: Move's own software starts again.
 
 ## Build
@@ -85,6 +89,12 @@ make test
   engine's mix sample for sample, and the first firmware's blocks equal an offline replay of its input log
   (`tools/fwrun --replay`); the page's files (every file the site refers to, their content types, no `..`), the
   firmware list, a firmware's skin and licences, `POST /api/load`;
+- `tests/fx_e2e.sh`: the slots and Schwung FX on the simulator, with Schwung's arp, chord and freeverb (and crashfx,
+  hogfx) built as the installed modules: the page's slot loads, switches and unloads (into the core), the Move's switch
+  followed; the arp turns a held chord into a stream on its track and passes other tracks through; a firmware's track
+  filter; a freeverb send changes the output; a crash at load and a CPU hog refused; the page's and the Move's FX setup
+  edits seen on the other side (the page, the Move's knobs and pages); 3 firmwares + 3 MIDI FX + 3 audio FX playing
+  with no late block; the FX setup and the modules' own state back after an autosave and a restart;
 - `tests/dl_e2e.sh`: the catalog against a local server (BusyBox httpd serving `build/testcat`, the Move catalog of
   AMB-1, ChoralRoot and Felucca): the bundled index, its fetch at start, Mute + a pad shows the index's thumbnail
   (the screen's 64 x 64, bit for bit), a jog press downloads (a damaged file refused, no network -1, then installed,
@@ -97,6 +107,36 @@ make test
   (AudioContext, Web MIDI, WebUSB, microphone), the panel and the live screen, a click on a drawn key sounds in the
   simulator, the picker loads ChoralRoot (and its skin shows), a load from outside the page is followed. Its
   screenshot: `docs/move-page.png`.
+
+## Schwung FX (phase 2b)
+
+`src/fx.c` (Schwung's own headers, third_party/schwung-api, MIT) lists the modules at `--fx-dir` (default
+`/data/UserData/schwung/modules`: `midi_fx/<id>/` with `dsp.so` and `audio_fx/<id>/` with `<id>.so`, or module.json's
+`dsp`), their parameters from module.json (`capabilities.chain_params`, else the `ui_hierarchy` root page: key, name,
+float / int / enum, min, max, default, options), and gives them to rfm1cs's FX setup (`rfm_move_fx_modules`) as 0..127
+values or word lists. Wet / dry parameters of an audio FX default to 100 % wet, 0 dry (a send's FX). The modules get a
+host_api_v1_t with sample_rate, frames_per_block, log, get_bpm, get_clock_status and get_beat_position (the
+sequencer's tempo and transport) and NULL everything else, with a tail of NULLs past the struct.
+
+- **MIDI FX:** the sequencer's MIDI (rfm1cs tags it with its track 1-16) runs through MIDI FX 1, 2, 3 in series; each
+  acts on the tracks in its filter (one track or All) and passes the others on; `tick` once a block, its notes taking
+  the slot's track (its one track, else the last it heard). Then each firmware's 16-track filter. Live pads and the page
+  play the active slot directly. On the engine thread, beside `rfm_move_seq_advance`.
+- **Audio FX:** each firmware's block, after its level and pan (a balance; 64 is the old mix bit for bit), goes to the
+  mix and, times its send, to the 3 buses; each bus is processed in place by its module (int16 stereo, 128 frames) and
+  added back; then the limiter as before. A bus whose sends are all 0 adds nothing: the output is bit for bit the one
+  without FX (tests/unit.c).
+- **Loading:** FX_LOAD from the core opens the module on the storage thread (dlopen, init, `create_instance`); the
+  engine swaps it in and sets the core's values. First, once per module, `remotefm1-host --fx-probe` loads it in a
+  child process: a module that crashes as it loads is refused (`rfm_move_fx_refused`: "Too busy" on the Move; the
+  page shows why) and the host keeps running. **A crash later, inside process_block or tick, still takes the host down**
+  (as any in-process plug-in would).
+- **CPU:** each module's time is measured (status `mfxN_cpu`, `afxN_cpu`, the page); one over `--fx-budget` (permille
+  of a core, default 200) two seconds running is refused the same way.
+- **State:** the core's project keeps the modules by name, their first 8 values, the filters, pans and sends (levels:
+  the library). Each module's own `get_param("state")` goes beside the project, `move/projects/move-project-NN.fx.json`,
+  written with each project save and given back (`set_param("state")`) when that project's modules load.
+- Modules are listed at start: one installed while RemoteFM1 runs shows after a restart.
 
 ## Package
 
@@ -132,6 +172,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/storage.c` | the RemoteFM1 folder, the storage thread (firmwares, states, the Move's settings, library and projects) and the network thread |
 | `src/catalog.c` | the catalog the browser lists (the index merged with the installed firmwares) and its downloads (wget, SHA-256, install) |
 | `tools/build_move_catalog.py`, `tools/catalog_fw.sh`, `tools/bundle.py`, `module/bundle.txt` | the Move catalog; the module's starter set |
+| `src/fx.c` | Schwung FX: the installed modules, their parameters, loading (with the crash probe), the calls |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
 | `src/mdns.c` | `remotefm1.local` |
@@ -178,7 +219,19 @@ site's own code. Underneath it is the host's API:
   (the .rfm1's own sections, kept beside the compiled firmware by `tools/build_fw.sh`), so a firmware's skin shows
   as on remotefm1.com.
 
-When the Move switches firmware itself (its projects view, another track), the page follows (`moved`). The page
+When the Move switches firmware itself (its projects view, another track), the page follows (`moved`).
+
+**Slots and Mix & FX** (web/move/js/moveslots.js, movemix.js, moveui.js, css/move.css; the design in docs and the
+shared design note): on a desktop the header's three slot chips replace the firmware picker (a live 48 x 48 mini
+screen, name, version, level bar; a tap plays that slot, the chevron or an empty chip opens "Load into slot n" /
+"Unload"); on a phone the iOS app's faceplate with a slot button top left and its menu. The Mix & FX view has the
+Move's FX setup pages (MIDI FX, Routing, Audio FX, Mixer) and follows the Move's page. Keys: ⌥1-3, ⌥M, Esc. The page's
+edits are ops on `/ws` (or `POST /api/edit`): FW_ACTIVE, FW_UNLOAD, MIX, ROUTE, FX_LOAD, FX_PARAM and the page; the
+engine writes them into rfm1cs's core state first (v0.4.0 has no call for that: its FX setup, mix and routing are
+public fields of `rfm_move_t`), then acts on the same action the core would give, so the Move's screens, the project
+and the page agree. The page shows what comes back: `{"type":"mix"}` JSON on `/ws` (also `GET /api/mix`), the modules
+(`GET /api/fx`), meters (binary 3) and the slots' mini screens (binary 4, at most 4 a second each, only when they
+changed). Screenshots: docs/move-page-slots.png, move-page-mixfx.png, move-page-phone.png, move-page-phone-mixfx.png. The page
 needs no secure context: no AudioWorklet, Web MIDI, WebUSB, microphone, IndexedDB saves or folder access.
 
 **On the Move the page shows:** the faceplate at the site's layouts, the themes and background image, firmware

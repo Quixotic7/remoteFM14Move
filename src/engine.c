@@ -121,6 +121,7 @@ typedef struct {
     uint64_t ns_mark;
     uint32_t cpu_permille, over;
     int peak;                  /* audio FX: its return's peak, this meter window */
+    int rpeak, rpeak_last;     /* .. this second's, the last second's (the status) */
     char err[120];             /* why the last load was refused ("" none) */
     char pend_name[RFM_MOVE_FX_NAME];   /* a project's saved module state, for when that module is loaded here */
     char *pend_state;
@@ -507,8 +508,10 @@ static void fx_pend_clear(fxs_t *x)
 static void fx_pend_apply(fxs_t *x)   /* a project's saved state for the module now running here */
 {
     const fx_mod_t *m = fx_inst_mod(x->run);
-    if (m && x->pend_state && !strcmp(m->name, x->pend_name))
+    if (m && x->pend_state && !strcmp(m->name, x->pend_name)) {
         fx_state_set(x->run, x->pend_state);
+        fprintf(stderr, "engine: %s: its saved state (%zu bytes)\n", m->name, strlen(x->pend_state));
+    }
     fx_pend_clear(x);
 }
 /* FX_LOAD (the core's, or the page's through it): open it on the storage thread; it comes in on the engine's */
@@ -1785,6 +1788,8 @@ static void render_block(uint32_t now)
             mix_add_ret(&g_mix, blk, FW_BLOCK);
             if ((p = peak16(blk, FW_BLOCK * 2)) > x->peak)
                 x->peak = p;
+            if (p > x->rpeak)
+                x->rpeak = p;
         }
     mix_out(&g_mix, out, FW_BLOCK);
     for (s = 0; s < FW_BLOCK * 2; s++) {
@@ -1919,12 +1924,16 @@ static void housekeeping(uint32_t now)
                             x->over = 0;
                     } else
                         x->cpu_permille = 0;
+                    x->rpeak_last = x->rpeak, x->rpeak = 0;
                     n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"%cfx%d\":\"%s\",\"%cfx%d_cpu\":%.1f,\"%cfx%d_busy\":%d",
                                   kind ? 'a' : 'm', k, md ? md->id : "", kind ? 'a' : 'm', k, x->cpu_permille / 10.0,
                                   kind ? 'a' : 'm', k, x->opening);
                 }
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fx_cpu\":%.1f,\"fx_mods\":%d", total / 10.0,
-                          g_fxlib ? g_fxlib->n[0] + g_fxlib->n[1] : 0);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fx_cpu\":%.1f,\"fx_mods\":%d,\"core_active\":%d,"
+                          "\"rpeak0\":%d,\"rpeak1\":%d,\"rpeak2\":%d,\"fx_page\":%d,\"fx_open\":%d", total / 10.0,
+                          g_fxlib ? g_fxlib->n[0] + g_fxlib->n[1] : 0, rfm_move_fw_active(&S->core),
+                          FX[1][0].rpeak_last, FX[1][1].rpeak_last, FX[1][2].rpeak_last, S->core.s.fx_page,
+                          S->core.fw.fx && S->core.seq.projects);
             g_mix_ver++;   /* (the page's CPU figures, once a second) */
         }
         for (s = 0; s < NSLOT; s++)   /* (flat, for scripts) */
@@ -2059,9 +2068,13 @@ static void *engine_main(void *arg)
             if (g != sig)
                 sig = g, g_mix_ver++;
         }
-        if (g_mix_ver != g_mix_made) {
-            g_mix_made = g_mix_ver;
-            mix_json();
+        {
+            static uint32_t last_mix;
+            if (g_mix_ver != g_mix_made && now - last_mix >= 50u) {   /* (at most 20 a second) */
+                last_mix = now;
+                g_mix_made = g_mix_ver;
+                mix_json();
+            }
         }
         if (g_save_all) {
             int s;

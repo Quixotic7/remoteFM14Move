@@ -200,6 +200,11 @@ From Schwung's docs:
 - State: get_param("state") and set_param("state") go into the states and projects.
 - CPU per module: measured in phase 0 (arp, chord, freeverb). Third-party ones vary, so the UI warns.
 - Phase: after phase 2 (the firmware slots), as its own phase 2b, before overtake.
+- **Built (2026-11-18, simulator only):** src/fx.c and the engine (README.md, "Schwung FX"), with the page's slot chips
+  and Mix & FX view. Differences from the plan: the audio FX run on the engine thread (no separate mix worker: the
+  engine already renders ahead of the audio thread), and a module's own state is kept beside the project
+  (move-project-NN.fx.json) since rfm1cs's project blob has room only for names and values. Not yet tried on a Move
+  with the user's real modules.
 
 ## Design source
 The session "RemoteFM1 Move Design" (local_05fd5546) designs firmware access and management: the on-Move menus and

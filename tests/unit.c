@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* Unit tests: the manifest reader (and the catalog index's arrays), SHA-256, the output stage (mix and limiter), the
- * mDNS answers. */
+ * mDNS answers, the FX stage (pan, the send buses, Schwung's freeverb and arp through fx.c: build/fxmods). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "engine_dsp.h"
+#include "fx.h"
 #include "mdns.h"
 #include "minijson.h"
 #include "sha256.h"
@@ -150,14 +151,145 @@ static void mdns(void)
     CHECK(n == 43 && out[2] == 0x84, "the announcement");
 }
 
-int main(void)
+/* a firmware's block, made up: a few sines */
+static void tone(int16_t *b, int blk, int seed)
 {
+    int i;
+    for (i = 0; i < 128; i++) {
+        const double t = (blk * 128 + i) / 44100.0;
+        b[2 * i] = (int16_t)(9000 * sin(2 * M_PI * (220 + 30 * seed) * t));
+        b[2 * i + 1] = (int16_t)(7000 * sin(2 * M_PI * (330 + 20 * seed) * t));
+    }
+}
+/* the engine's mix for n blocks: two slots (levels, pans), optionally a send bus through an audio FX, then the limiter */
+static void run_mix(int16_t *out, int nblk, int pan0, fx_inst_t *fx, int send)
+{
+    static mixer_t m;
+    static bus_t bus;
+    int16_t a[256], b[256], r[256];
+    int k;
+    memset(&m, 0, sizeof m);
+    for (k = 0; k < nblk; k++) {
+        mix_clear(&m, 128);
+        if (fx)
+            bus_clear(&bus, 128);
+        tone(a, k, 0), tone(b, k, 1);
+        mix_add_lp(&m, a, 128, 100, pan0);
+        mix_add_lp(&m, b, 128, 127, 64);
+        if (fx) {
+            bus_add(&bus, a, 128, 100, pan0, send);
+            bus_add(&bus, b, 128, 127, 64, send);
+            bus_out(&bus, r, 128);
+            fx_audio(fx, r, 128);
+            mix_add_ret(&m, r, 128);
+        }
+        mix_out(&m, out + 256 * k, 128);
+    }
+}
+static void fxstage(void)
+{
+    enum { N = 200 };
+    static int16_t plain[256 * N], old[256 * N], with[256 * N], sent[256 * N];
+    fx_lib_t *L = fx_scan("build/fxmods");
+    fx_inst_t *fv = NULL, *arp = NULL;
+    char err[300] = "";
+    int i, fvi = -1, arpi = -1, diff = 0;
+    {   /* pan 64 is mix_add exactly (the old mixer, bit for bit) */
+        static mixer_t m;
+        int16_t a[256], b[256];
+        int k;
+        memset(&m, 0, sizeof m);
+        for (k = 0; k < N; k++) {
+            mix_clear(&m, 128);
+            tone(a, k, 0), tone(b, k, 1);
+            mix_add(&m, a, 128, 100);
+            mix_add(&m, b, 128, 127);
+            mix_out(&m, old + 256 * k, 128);
+        }
+    }
+    run_mix(plain, N, 64, NULL, 0);
+    CHECK(!memcmp(plain, old, sizeof old), "pan 64 (centre): the mix is the old one, bit for bit");
+    {
+        float gl, gr;
+        pan_gains(127, 0, &gl, &gr);
+        CHECK(gl == 1.0f && gr == 0.0f, "pan 0: all left (%g %g)", gl, gr);
+        pan_gains(127, 127, &gl, &gr);
+        CHECK(gl == 0.0f && gr == 1.0f, "pan 127: all right (%g %g)", gl, gr);
+    }
+    for (i = 0; i < L->n[1]; i++)
+        if (!strcmp(L->mod[1][i].id, "freeverb"))
+            fvi = i;
+    for (i = 0; i < L->n[0]; i++)
+        if (!strcmp(L->mod[0][i].id, "arp"))
+            arpi = i;
+    CHECK(fvi >= 0 && arpi >= 0 && L->mod[1][fvi].np == 5 && L->mod[0][arpi].np == 4,
+          "build/fxmods: freeverb (5 params) and arp (4) listed from their module.json (%d MIDI, %d audio)", L->n[0], L->n[1]);
+    if (fvi < 0 || arpi < 0)
+        return;
+    {
+        const rfm_move_fx_module_t *c = &L->core[1][fvi];
+        int wet = -1, dry = -1;
+        for (i = 0; i < c->nparams; i++) {
+            if (!strcmp(L->mod[1][fvi].p[i].key, "wet"))
+                wet = i;
+            if (!strcmp(L->mod[1][fvi].p[i].key, "dry"))
+                dry = i;
+        }
+        CHECK(wet >= 0 && dry >= 0 && c->params[wet].dry_wet && c->params[wet].def == 127 && c->params[dry].def == 0,
+              "the core's view: freeverb's Wet defaults to 127 (100 %% wet for a send), Dry to 0");
+        fv = fx_open(&L->mod[1][fvi], err, sizeof err);
+        CHECK(fv != NULL, "freeverb opened (the probe in a child, dlopen, create_instance) %s", err);
+        if (!fv)
+            return;
+        for (i = 0; i < c->nparams && i < 8; i++)
+            fx_set(fv, i, c->params[i].def);
+    }
+    run_mix(with, N, 64, fv, 0);
+    CHECK(!memcmp(with, plain, sizeof plain), "freeverb on a bus with every send at 0: the output is bit for bit the one without FX");
+    run_mix(sent, N, 64, fv, 80);
+    for (i = 0; i < 256 * N; i++)
+        diff += sent[i] != plain[i];
+    CHECK(diff > 256 * N / 2, "sends at 80: freeverb's return changes the output (%d of %d samples)", diff, 256 * N);
+    fx_close(fv);
+    arp = fx_open(&L->mod[0][arpi], err, sizeof err);
+    CHECK(arp != NULL, "arp opened %s", err);
+    if (arp) {
+        const uint8_t on[3] = { 0x90, 60, 100 }, on2[3] = { 0x90, 64, 100 };
+        uint8_t o[FX_MAX_OUT][3];
+        int l[FX_MAX_OUT], k, notes = 0, st;
+        char state[4096];
+        fx_midi(arp, on, 3, o, l, FX_MAX_OUT);
+        fx_midi(arp, on2, 3, o, l, FX_MAX_OUT);
+        for (k = 0; k < 344; k++) {   /* one second */
+            const int m = fx_tick(arp, 128, o, l, FX_MAX_OUT);
+            for (i = 0; i < m; i++)
+                notes += (o[i][0] & 0xF0) == 0x90 && o[i][2];
+        }
+        CHECK(notes >= 6, "arp: a held chord, ticked for a second: %d notes", notes);
+        st = fx_state_get(arp, state, sizeof state);
+        CHECK(st > 0, "arp: its state (get_param \"state\"): %d bytes", st);
+        fx_close(arp);
+    }
+    {   /* a crash in create_instance: refused by the probe, this process unharmed */
+        for (i = 0; i < L->n[1]; i++)
+            if (!strcmp(L->mod[1][i].id, "crashfx")) {
+                fx_inst_t *x = fx_open(&L->mod[1][i], err, sizeof err);
+                CHECK(!x && strstr(err, "crashed"), "crashfx: refused, the host alive (%s)", err);
+            }
+    }
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c's crash probe runs this program) */
+        return fx_probe_main(atoi(argv[2]), argv[3], argv[4]);
     printf("unit\n");
     json();
     arrays();
     sha();
     dsp();
     mdns();
+    fxstage();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }

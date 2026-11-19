@@ -18,6 +18,11 @@ RemoteFM14Move itself is MPL-2.0 (LICENSE). What it is built from:
   each firmware's `.licenses.txt`), with its exact source at its `source_url`. A firmware object is a separate
   program loaded at run time; it is the .rfm1 file translated by wasm2c, with `fw/fwglue.c` (MPL-2.0) as its entry
   table.
+- **Schwung's plugin API** (third_party/schwung-api, https://github.com/charlesvestal/schwung at 7175f15, MIT,
+  Copyright (c) 2025-2026 Charles Vestal): `host/plugin_api_v1.h`, `audio_fx_api_v2.h`, `midi_fx_api_v1.h`, unchanged,
+  compiled into remotefm1-host (src/fx.c hosts the user's installed Schwung MIDI FX and audio FX through them). The
+  test modules `tests/fxmods/midi_fx/arp`, `chord` and `audio_fx/freeverb` are Schwung's own module sources at the same
+  commit (MIT), built only for the tests and never packaged; `crashfx` and `hogfx` are ours (MPL-2.0).
 - **RemoteFM1's web site** (third_party/RemoteFM1, https://github.com/Quixotic7/RemoteFM1, GPL-3.0-only): the page the
   Move serves (`site/` in the package, scripts/build_site.sh) is its `web/site`, with `web/move/site.patch` over it and
   `web/move/js/host.js` and `movehost.js` beside it (both GPL-3.0-only, so they can go upstream as they are). The
