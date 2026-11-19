@@ -37,8 +37,14 @@ image:
 # the inputs, copied in (the image sees only this folder): the .rfm1 files, FM1VST's rfm1_run and wasm3
 inputs:
 	mkdir -p build/in build/in-test build/ref
-	for f in $(FIRMWARES); do cp -p "$$f" build/in/; done
-	for f in $(TEST_FIRMWARES); do cp -p "$$f" build/in-test/; done
+	# (a file RFM1Manager no longer has, as it keeps only the newest: the copy already in build/ stands; the tests are
+	#  written for these exact versions)
+	for f in $(FIRMWARES); do if [ -f "$$f" ]; then cp -p "$$f" build/in/; \
+	    elif [ -f "build/in/$$(basename "$$f")" ]; then echo "inputs: $$f gone, build/in's copy kept"; \
+	    else echo "inputs: $$f missing" >&2; exit 1; fi; done
+	for f in $(TEST_FIRMWARES); do if [ -f "$$f" ]; then cp -p "$$f" build/in-test/; \
+	    elif [ -f "build/in-test/$$(basename "$$f")" ]; then echo "inputs: $$f gone, build/in-test's copy kept"; \
+	    else echo "inputs: $$f missing" >&2; exit 1; fi; done
 	if [ ! -f build/ref/.done ]; then git -C "$(FM1VST)" archive "$(FM1VST_REF)" tools/rfm1_run third_party/wasm3 \
 	    core-api | tar -x -C build/ref && git -C "$(FM1VST)" rev-parse "$(FM1VST_REF)" > build/ref/.done; fi
 
