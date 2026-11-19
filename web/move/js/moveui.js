@@ -228,9 +228,9 @@ function dragger(el, st, o, { axis, absolute, track, refresh }) {
     el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
   });
   el.addEventListener("keydown", (e) => {
-    delete el.dataset.ptr;
     const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
     if (!step && e.key !== "Home" && e.key !== "End") return;
+    delete el.dataset.ptr;
     e.preventDefault(); e.stopPropagation();
     const v = e.key === "Home" ? min : e.key === "End" ? max : st.value() + step * (e.shiftKey ? 10 : 1);
     st.put(v, true); st.release(refresh); refresh();
@@ -263,11 +263,11 @@ export function dial(ctx, o) {
   ctx.up(refresh); refresh();
   return el;
 }
-// a vertical fader: the handle stays inside its track
+// a vertical fader: no handle, the level is the coloured fill inside its track
 export function fader(ctx, o) {
   const st = holder(o), max = o.max ?? 127;
-  const fill = h("i"), knob = h("b");
-  const track = h("div", { class: "mv-fader-t" }, fill, knob);
+  const fill = h("i");
+  const track = h("div", { class: "mv-fader-t" }, fill);
   const val = h("span", { class: "mv-val mv-big" });
   const el = h("div", { class: "mv-fader", role: "slider", tabindex: 0, "aria-label": o.label, "aria-valuemin": 0, "aria-valuemax": max, "aria-orientation": "vertical", "data-ctl": o.key || null }, track, val);
   const refresh = () => {
@@ -276,7 +276,7 @@ export function fader(ctx, o) {
     el.style.setProperty("--f", v / max);
     val.textContent = o.fmt ? o.fmt(v) : String(v); aria(el, o, v, val.textContent); el.dataset.v = v;
   };
-  dragger(el, st, { ...o, pad: 11 }, { axis: "y", absolute: true, track, refresh });
+  dragger(el, st, { ...o, pad: 4 }, { axis: "y", absolute: true, track, refresh });
   ctx.up(refresh); refresh();
   return el;
 }

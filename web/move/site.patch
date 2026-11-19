@@ -11,6 +11,8 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
                  firmware the Move switches to by itself; the Move's slots and Mix & FX (js/moveslots.js mountMoveUi:
                  the header's slot chips in place of the firmware picker, the phone's slot button, the Mix & FX view)
   js/sheet.js    on the Move: the firmware page lists the Move's firmwares; no saves, FM-1, playing, recording sections
+  js/panel.js    a layout's buttons may name their legends' size (buttons.font; none of RemoteFM1's do): the Move's
+                 phone layout sets 13 px, OCT 15 px (js/moveslots.js), as RemoteFM1 for iOS draws them
 
 --- a/index.html
 +++ b/index.html
@@ -84,10 +86,13 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
    try {
      // an emulated firmware's package from where the Hub points now (a gone one: the Hub once more, then the snapshot's)
      if (eng === "emu" && !e.localBytes && e.emu && e.emu.pkg && emuHook && emuHook.fetchPackage) {
-@@ -324,9 +333,21 @@
-   if (sheet) sheet.render();
- }
- 
+@@ -321,12 +330,24 @@
+   toast(`${why} Playing a test engine instead.`, "bad");
+   setStatus("");
+   try { await player.load({ ...e, name: e.name }, "mock", null); } catch (err) { toast(String(err.message || err), "bad"); }
++  if (sheet) sheet.render();
++}
++
 +// the Move switched firmware itself (its projects view, another track): the page follows it, nothing is loaded
 +function followMove(id) {
 +  const e = id ? findEntry(id) : null;
@@ -97,9 +102,9 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
 +  controls.releaseLatches();
 +  if (e) { prefs.last = e.id; savePrefs(); }
 +  updateTitle();
-+  if (sheet) sheet.render();
-+}
-+
+   if (sheet) sheet.render();
+ }
+ 
  function updateTitle() {
 -  const e = state.entry;
 -  document.title = e ? `${nameOf(e, state.wantEngine)} · FM-1 Player` : "FM-1 Player";
@@ -423,3 +428,23 @@ site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The
 +/* ---- the page on an Ableton Move (RemoteFM14Move, js/host.js): nothing that needs the browser's audio, MIDI or USB */
 +[data-host="move"] #install-link, [data-host="move"] #vst-link, [data-host="move"] #ios-link, [data-host="move"] #android-link,
 +[data-host="move"] #fm1-btn, [data-host="move"] #rec, [data-host="move"] #ed-btn, [data-host="move"] #start-fm1 { display: none !important; }
+--- a/js/panel.js
++++ b/js/panel.js
+@@ -238,7 +238,7 @@
+     oct: { x: 16, y: 246, w: 148, h: 52, pad: 5, gap: 6, r: 14, br: 10, font: 13 },
+     display: { x: 172, y: 96, size: 202 },
+     kn: { row: true, x: 16, y: 316, w: 358, knob: 46, led: 10 },
+-    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },
++    buttons: { x: 21, y: 400, bw: 48, bh: 42, gap: 8 },   // (font: the legends' size in points; none: from the caps' height)
+     keybed: { x: 16, y: 530, w: 358, h: 272, keyW: 40 },
+   },
+   phoneLandscape: {
+@@ -505,7 +505,7 @@
+     const refW = (6 * bt.bw + 5 * bt.gap + 20) * m.sx;
+     L.btnWell = { x: m.x(bt.x) + (refW - wellW) / 2, y: m.y(bt.y), w: wellW, h: wellH, r: Math.round(bh * 0.34) + 6 * s };
+     for (let i = 0; i < 12; i++) L.btns.push({ b: i, x: L.btnWell.x + bp + (i % 6) * (bw + bg), y: L.btnWell.y + bp + ((i / 6) | 0) * (bh + bg), w: bw, h: bh,
+-      r: Math.round(bh * 0.24), font: Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
++      r: Math.round(bh * 0.24), font: bt.font ? bt.font * s : Math.max(10, Math.round(bh * 0.26)), drop: 4, row: (i / 6) | 0 });
+     // the display
+     const d = R.display, ds = d.size * s;
+     L.display = { x: m.x(d.x) + d.size * m.sx / 2 - ds / 2, y: m.y(d.y), size: ds };

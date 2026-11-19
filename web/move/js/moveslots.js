@@ -6,7 +6,7 @@
 //     host's ACTIVE op); its chevron, or a tap on an empty one, opens "Load into slot n" (the Move's firmwares, the
 //     ones on another slot marked "on 2") with "Unload slot n". A "Mix & FX" cap (⌥M) opens js/movemix.js's view.
 //   - phone (the iOS app's iPhone layout): the header's pill is the slot button (the playing slot's mini screen and
-//     name, three slot dots); a tap drops the slot menu over the dimmed faceplate: three 64 px rows, an empty slot as
+//     name, at most 150 px, cut with an ellipsis); a tap drops the slot menu over the dimmed faceplate: three 64 px rows, an empty slot as
 //     "Load into slot n", then "Mix & FX" and "Load into slot n" (the firmware list, with Unload).
 //   - keys: ⌥1 ⌥2 ⌥3 play a slot (an empty one: its load menu), ⌥M the Mix & FX view, Esc back to the faceplate
 //     (when nothing is latched: the panel's Esc lets latches go first).
@@ -14,6 +14,7 @@
 //   mountMoveUi({ player, controls, sheet, catalog, toast }) -> the UI (window.FM1MoveUi, for the e2e test)
 import { NSLOT, MoveStore, Minis, h, svg, IC, pct, openPop, closePop, popOpen, popItem } from "./moveui.js";
 import { MixView } from "./movemix.js";
+import { LAYOUTS } from "./panel.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -122,10 +123,8 @@ class SlotsUi {
     const key = `${act}|${s.on ? s.id : ""}`;
     if (this.slotBtn.dataset.key !== key) {
       this.slotBtn.dataset.key = key;
-      this.slotBtn.replaceChildren(h("span", { class: "mv-mini-w" }, this.minis.canvas(act)), h("span", { class: "mv-sb-n" }, s.on ? s.name : "No firmware"),
-        this.sbDots = h("span", { class: "mv-sb-dots", "aria-hidden": "true" }), svg(IC.chev));
+      this.slotBtn.replaceChildren(h("span", { class: "mv-mini-w" }, this.minis.canvas(act)), h("span", { class: "mv-sb-n" }, s.on ? s.name : "No firmware"), svg(IC.chev));
     }
-    this.sbDots.replaceChildren(...[0, 1, 2].map((i) => h("span", { class: `mv-dot ${st.slot(i).on ? "" : "hollow"} ${i === act ? "on" : ""}`, style: { "--c": st.colorOf(i) } })));
     this.slotBtn.setAttribute("aria-label", `Firmware slots: ${s.on ? s.name + " playing" : "none playing"}`);
   }
   toggleMenu(open = !this.menuEl) {
@@ -194,6 +193,10 @@ class SlotsUi {
 }
 
 export function mountMoveUi(o) {
+  // the phone's faceplate as RemoteFM1 for iOS draws it: Chakra Petch legends at 13 px, OCT at 15 px (js/panel.js
+  // LAYOUTS: buttons.font, oct.font; set before the page's first layout)
+  LAYOUTS.phonePortrait.buttons.font = 13;
+  LAYOUTS.phonePortrait.oct.font = 15;
   // the stylesheet (only on the Move: the site's own index.html stays RemoteFM1's)
   if (!document.querySelector('link[href="css/move.css"]')) document.head.append(h("link", { rel: "stylesheet", href: "css/move.css" }));
   const ui = new SlotsUi(o);

@@ -264,8 +264,8 @@ try {
   { const b = await box('.mv-strip[data-slot="0"] .mv-fader-t'); await drag(b.x + b.w / 2, b.y + b.h * 0.2, b.x + b.w / 2, b.y + b.h * 0.8); }
   const lv = (await mixNow()).slots[0].level;
   ok(lv > 5 && lv < 50, `the level fader dragged down: Felucca's level in the core ${lv}`);
-  const knob = await js(`(() => { const t = document.querySelector('.mv-strip[data-slot="0"] .mv-fader-t').getBoundingClientRect(), k = document.querySelector('.mv-strip[data-slot="0"] .mv-fader-t b').getBoundingClientRect(); return k.top >= t.top && k.bottom <= t.bottom; })()`);
-  ok(knob, "the fader's handle stays inside its track");
+  const knob = await js(`(() => { const t = document.querySelector('.mv-strip[data-slot="0"] .mv-fader-t'), f = t.querySelector("i").getBoundingClientRect(), r = t.getBoundingClientRect(); return !t.querySelector("b") && f.top >= r.top && f.bottom <= r.bottom && f.height > 0; })()`);
+  ok(knob, "the level fader: no handle, its coloured fill inside the track");
   await edit(18, 0 * 8 + 0, 33); await edit(18, 1 * 8 + 2, 70); await edit(18, 1 * 8 + 1, 40);
   ok(await until(`document.querySelector('[data-ctl="level-0"]').dataset.v === "33" && document.querySelector('[data-ctl="send-1-0"]').dataset.v === "70" && document.querySelector('[data-ctl="pan-1"]').dataset.v === "40"`, 5000, "the Move's mix edits"),
     `edits on the Move show in the Mixer (level ${await dv('[data-ctl="level-0"]')}, send ${await dv('[data-ctl="send-1-0"]')}, pan ${await dv('[data-ctl="pan-1"]')})`);
@@ -315,7 +315,16 @@ try {
   await cdp("Page.reload", { ignoreCache: false });
   ok(await until(`window.FM1MoveUi && document.getElementById("mv-slotbtn").offsetParent && FM1Site.current().info && FM1Site.current().info.id === "felucca" && document.querySelector("#mv-slotbtn canvas")`, 20000, "the phone page"),
     "the phone: the slot button in the header (the playing slot's screen and name)");
-  ok(await js(`!document.getElementById("mv-chips").offsetParent && document.getElementById("mv-slotbtn").getBoundingClientRect().left < 30`), "no chips on the phone; the slot button top left");
+  const sb = await js(`(() => { const b = document.getElementById("mv-slotbtn").getBoundingClientRect(), g = document.querySelector("#corner .grab-bar, #corner"), n = document.querySelector("#mv-slotbtn .mv-sb-n");
+    const gb = document.getElementById("corner").getBoundingClientRect();
+    return { chips: !!document.getElementById("mv-chips").offsetParent, left: b.left, right: b.right, w: b.width, dots: !!document.querySelector("#mv-slotbtn .mv-dot"),
+      handle: gb.left + gb.width / 2 - 20, ell: getComputedStyle(n).textOverflow }; })()`);
+  ok(!sb.chips && sb.left < 30 && sb.w <= 150 && !sb.dots && sb.right < sb.handle && sb.ell === "ellipsis",
+    `no chips on the phone; the slot button top left, ${Math.round(sb.w)} px (at most 150), no dots, ellipsis, clear of the centre handle (${Math.round(sb.right)} < ${Math.round(sb.handle)})`);
+  const plate = await js(`(() => { const L = FM1Device.L, oct = L.btns.find((b) => b.b === 13 || b.b === 12), fx = L.btns.find((b) => b.b === 0);
+    return { fx: fx.font, oct: oct.font, film: !!L.film, kind: FM1Device.kind }; })()`);
+  ok(plate.kind === "phonePortrait" && Math.abs(plate.fx - 13) < 1.5 && Math.abs(plate.oct - 15) < 1.5 && !plate.film,
+    `the phone faceplate as iOS draws it: legends ${plate.fx.toFixed(1)} px, OCT ${plate.oct.toFixed(1)} px, no red protector tab by KN1 (${plate.kind})`);
   await sleep(1500);
   await click("#mv-slotbtn");
   ok(await until(`document.querySelectorAll(".mv-ipmenu .mv-iprow").length === 3 && document.querySelector(".mv-ipmenu .mv-iprow.on") && document.querySelector(".mv-ipmenu .mv-iprow.empty")`, 3000, "the slot menu"),

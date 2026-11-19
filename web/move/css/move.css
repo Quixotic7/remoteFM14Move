@@ -85,10 +85,8 @@
   body.light-plate .mv-slotbtn { background: rgba(110,40,15,.18); }
   .mv-slotbtn[aria-expanded="true"] { background: var(--bezel); color: var(--text); }
   .mv-slotbtn .mv-mini-w { width: 28px; height: 28px; border-radius: 7px; border-width: 2px; }
-  .mv-sb-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
-  .mv-sb-dots { display: flex; gap: 4px; margin-left: 2px; }
-  .mv-sb-dots .mv-dot { width: 7px; height: 7px; }
-  .mv-sb-dots .mv-dot.on { box-shadow: 0 0 0 2px currentColor; }
+  .mv-slotbtn { max-width: 150px; }
+  .mv-sb-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 }
 .mv-dim { position: fixed; left: 0; right: 0; bottom: 0; top: var(--head-h); background: rgba(20,10,5,.5); z-index: 8; animation: mv-fade .2s ease-out; }
 @keyframes mv-fade { from { opacity: 0; } }
@@ -159,9 +157,10 @@
 .mv-fader:focus-visible .mv-fader-t { box-shadow: 0 0 0 2px var(--c); }
 .mv-dial[data-ptr]:focus-visible, .mv-bar[data-ptr]:focus-visible, .mv-fader[data-ptr]:focus-visible .mv-fader-t { box-shadow: none; }
 .mv-fader-t { flex: 1; width: 34px; border-radius: 17px; background: var(--well); position: relative; border: 1px solid var(--line); }
-.mv-fader-t i { position: absolute; left: 4px; right: 4px; bottom: 4px; height: calc(7px + var(--f) * (100% - 22px)); border-radius: 13px; background: var(--c); opacity: .85; }
-.mv-fader-t b { position: absolute; left: 3px; right: 3px; height: 14px; bottom: calc(4px + var(--f) * (100% - 22px)); border-radius: 7px; background: #F3EBDC; box-shadow: 0 2px 0 rgba(0,0,0,.4); }
-.mv-fader.drag .mv-fader-t b { background: #fff; box-shadow: 0 2px 0 rgba(0,0,0,.4), 0 0 10px var(--c); }
+/* (no handle: the level is the coloured fill, its top edge bright) */
+.mv-fader-t i { position: absolute; left: 4px; right: 4px; bottom: 4px; height: calc(var(--f) * (100% - 8px)); min-height: 0; border-radius: 13px; background: var(--c); opacity: .85;
+  box-shadow: inset 0 3px 0 rgba(255,255,255,.55); transition: height .08s linear; }
+.mv-fader.drag .mv-fader-t i { opacity: 1; box-shadow: inset 0 3px 0 #fff, 0 0 12px var(--c); }
 .mv-big { font-size: 14px; }
 /* the bar slider: light text, vertically centred, over a dim fill with a bright edge */
 .mv-bar {
