@@ -11,6 +11,10 @@
 #include "mdns.h"
 #include "minijson.h"
 #include "sha256.h"
+#include "catalog_key.h"
+#include "catalog_test_key.h"
+#include "catsig.h"
+#include "ed25519.h"
 
 static int g_fail, g_n;
 #define CHECK(c, ...)                                                                                               \
@@ -279,6 +283,146 @@ static void fxstage(void)
     }
 }
 
+/* ------------------------------------------------------------------ Ed25519 and the index's signature --- */
+static int unhex(const char *h, uint8_t *out, int cap)
+{
+    int n = 0;
+    while (h[0] && h[1] && n < cap) {
+        unsigned v;
+        sscanf(h, "%2x", &v);
+        out[n++] = (uint8_t)v;
+        h += 2;
+    }
+    return n;
+}
+
+static void ed25519(void)
+{
+    /* RFC 8032 7.1: TEST 1, 2, 3 and TEST SHA(abc) (whose message is SHA-512("abc"): ours, checked) */
+    static const char *V[4][3] = {
+        { "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+          "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b" },
+        { "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", "72",
+          "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00" },
+        { "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025", "af82",
+          "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a" },
+        { "ec172b93ad5e563bf4932c70e1245034c35467ef2efd4d64ebf819683467e2bf", NULL,
+          "dc2a4459e7369633a52b1bf277839a00201009a3efbf3ecb69bea2186c26b58909351fc9ac90b3ecfdfbc7c66431e0303dca179c138ac17ad9bef1177331a704" },
+    };
+    uint8_t pk[32], sig[64], msg[64], h[64], want[64];
+    sha512_t s;
+    int i, n;
+    sha512_init(&s);
+    sha512_update(&s, "abc", 3);
+    sha512_final(&s, h);
+    unhex("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+          want, 64);
+    CHECK(!memcmp(h, want, 64), "SHA-512 of abc");
+    {   /* 1,000,000 a's, fed in odd pieces (FIPS 180-2's vector) */
+        static uint8_t a[1001];
+        memset(a, 'a', sizeof a);
+        sha512_init(&s);
+        for (i = 0; i < 1000; i++)
+            sha512_update(&s, a, i % 2 ? 999 : 1001);
+        sha512_final(&s, h);
+        unhex("e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b",
+              want, 64);
+        CHECK(!memcmp(h, want, 64), "SHA-512 of a million a's, in uneven pieces");
+    }
+    for (i = 0; i < 4; i++) {
+        unhex(V[i][0], pk, 32);
+        unhex(V[i][2], sig, 64);
+        if (V[i][1])
+            n = unhex(V[i][1], msg, 64);
+        else {
+            sha512_init(&s);
+            sha512_update(&s, "abc", 3);
+            sha512_final(&s, msg);
+            n = 64;
+        }
+        CHECK(ed25519_verify(sig, msg, (size_t)n, pk) == 0, "RFC 8032 %s: verified", i < 3 ? (const char *[]){ "TEST 1", "TEST 2", "TEST 3" }[i] : "TEST SHA(abc)");
+        sig[5] ^= 1;
+        CHECK(ed25519_verify(sig, msg, (size_t)n, pk) != 0, "  .. one bit of R changed: refused");
+        sig[5] ^= 1;
+        sig[40] ^= 0x10;
+        CHECK(ed25519_verify(sig, msg, (size_t)n, pk) != 0, "  .. one bit of S changed: refused");
+        sig[40] ^= 0x10;
+        if (n) {
+            msg[0] ^= 0x80;
+            CHECK(ed25519_verify(sig, msg, (size_t)n, pk) != 0, "  .. another message: refused");
+            msg[0] ^= 0x80;
+        }
+        pk[3] ^= 4;
+        CHECK(ed25519_verify(sig, msg, (size_t)n, pk) != 0, "  .. another key: refused");
+        pk[3] ^= 4;
+    }
+    {   /* S + L (the same point, a non-canonical S): refused */
+        static const uint8_t L[32] = { 0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9,
+                                       0xde, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10 };
+        int c = 0, k;
+        unhex(V[0][0], pk, 32);
+        unhex(V[0][2], sig, 64);
+        for (k = 0; k < 32; k++) {
+            const int x = sig[32 + k] + L[k] + c;
+            sig[32 + k] = (uint8_t)x;
+            c = x >> 8;
+        }
+        CHECK(ed25519_verify(sig, msg, 0, pk) != 0, "S + L (malleated): refused (S < L required)");
+    }
+}
+
+static uint8_t *slurp(const char *p, size_t *n)
+{
+    FILE *f = fopen(p, "rb");
+    uint8_t *b = NULL;
+    long len;
+    if (!f)
+        return NULL;
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len >= 0 && (b = malloc((size_t)len + 1)) && fread(b, 1, (size_t)len, f) != (size_t)len) {
+        free(b);
+        b = NULL;
+    }
+    fclose(f);
+    *n = (size_t)len;
+    return b;
+}
+
+static void catsig(void)
+{
+    const uint8_t *const *keys;
+    const int nk = catsig_keys(&keys);
+    size_t n = 0, sn = 0;
+    uint8_t *idx = slurp("build/testcat/index.json", &n), *sig = slurp("build/testcat/index.json.sig", &sn);
+    char why[160] = "";
+    CHECK(nk == 2 && !memcmp(keys[0], CAT_SIGNING_KEY, 32) && !memcmp(keys[1], CAT_TEST_KEY, 32) &&
+              memcmp(CAT_SIGNING_KEY, CAT_TEST_KEY, 32),
+          "the test build trusts the release key and the test key (2 keys, not the same)");
+    if (!idx || !sig) {
+        CHECK(0, "no build/testcat/index.json(.sig): make testcat");
+        free(idx);
+        free(sig);
+        return;
+    }
+    CHECK(catsig_check(idx, n, sig, sn, why, sizeof why) == 0, "the test catalog's index: its signature good (%zu bytes)", n);
+    CHECK(catsig_check_key(CAT_SIGNING_KEY, idx, n, sig, sn, why, sizeof why) != 0,
+          "  .. and not by the release key (the tests never use it): %s", why);
+    idx[n / 2] ^= 1;
+    CHECK(catsig_check(idx, n, sig, sn, why, sizeof why) != 0 && strstr(why, "bad signature"),
+          "one bit of the index changed: refused (%s)", why);
+    idx[n / 2] ^= 1;
+    CHECK(catsig_check(idx, n - 1, sig, sn, why, sizeof why) != 0, "the index one byte short: refused");
+    CHECK(catsig_check(idx, n, NULL, 0, why, sizeof why) != 0 && strstr(why, "no signature"), "no .sig: refused (%s)", why);
+    CHECK(catsig_check(idx, n, (const uint8_t *)"AAAA", 4, why, sizeof why) != 0 && strstr(why, "damaged"),
+          "a .sig that is not 64 bytes: refused (%s)", why);
+    sig[10] = sig[10] == 'A' ? 'B' : 'A';
+    CHECK(catsig_check(idx, n, sig, sn, why, sizeof why) != 0, "a .sig changed: refused (%s)", why);
+    free(idx);
+    free(sig);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c's crash probe runs this program) */
@@ -290,6 +434,8 @@ int main(int argc, char **argv)
     dsp();
     mdns();
     fxstage();
+    ed25519();
+    catsig();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }

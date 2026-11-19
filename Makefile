@@ -6,8 +6,9 @@
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1" (with the starter firmwares of
 #                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there)
-#   make catalog      dist/move-catalog: every published .rfm1 compiled for the Move, with its index.json
-#                     (tools/build_move_catalog.py; the files a release at the catalog's base URL holds)
+#   make catalog      dist/move-catalog: every published .rfm1 compiled for the Move, with its index.json and
+#                     index.json.sig (tools/build_move_catalog.py, tools/sign_index.py with CATALOG_SIGNING_KEY,
+#                     default ~/.config/remotefm14move/catalog-signing-key.pem; the files a release at the base URL holds)
 #   make site         build/site: the page (RemoteFM1's web/site for the Move, scripts/build_site.sh; part of make)
 #   make sim-run      the host on the simulator in the image, its page on http://localhost:7730/
 #
@@ -45,10 +46,14 @@ test: all testcat
 	tests/test.sh
 
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
+# signed with the catalog's key (CATALOG_SIGNING_KEY; its public half must be src/catalog_key.h's)
+CATALOG_SIGNING_KEY ?= $(HOME)/.config/remotefm14move/catalog-signing-key.pem
 catalog: all
 	python3 tools/build_move_catalog.py --out dist/move-catalog
+	python3 tools/sign_index.py --key "$(CATALOG_SIGNING_KEY)" --expect src/catalog_key.h dist/move-catalog/index.json
 testcat: all
 	python3 tools/build_move_catalog.py --only amb,choralroot,felucca --out build/testcat --jobs 3
+	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat/index.json
 
 package: all
 	$(DOCKER_RUN) make in-package
@@ -82,7 +87,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/storage.c src/catalog.c src/sha256.c src/web.c src/mdns.c src/minijson.c \
-            src/fx.c
+            src/fx.c src/https.c src/catsig.c src/ed25519.c
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods
@@ -131,20 +136,34 @@ SW := third_party/schwung-api
 HOST_CFLAGS = $(CFLAGS) $(W2C_DEFS) -I$(W2C_RT) -Ibuild/gen -Isrc $(CS_INC) -I$(MR)/device -I$(SW) -DMR_PLAT_MAIN=mr_plat_main
 HOST_LIBS = -rdynamic -ldl -lm -lpthread
 
+# the simulator's host is the tests' (RFM14_TEST_BUILD: it also trusts build/testkey's catalog key, takes --ca-dir);
+# the Move's trusts only src/catalog_key.h's (tests/in_image.sh checks)
+TEST_BUILD = -DRFM14_TEST_BUILD -Ibuild/testkey
 build/%/remotefm1-host: $(HOST_SRC) $(HOST_HDR) $(CS_SRC) $(MR_SRC) $(MR)/device/plat_sim.c $(MR)/device/plat_move.c \
-                        build/obj/wasm-rt-impl.o
+                        build/obj/wasm-rt-impl.o build/testkey/catalog_test_key.h
 	mkdir -p build/$*
-	$(CC) $(HOST_CFLAGS) $(WARN) -DRFM14_PLAT_$(shell echo $* | tr a-z A-Z) -o $@ $(HOST_SRC) \
+	$(CC) $(HOST_CFLAGS) $(WARN) -DRFM14_PLAT_$(shell echo $* | tr a-z A-Z) $(if $(filter sim,$*),$(TEST_BUILD)) -o $@ $(HOST_SRC) \
 	    $(MR)/device/plat_$*.c $(MR_SRC) $(CS_SRC) build/obj/wasm-rt-impl.o $(HOST_LIBS) $(if $(filter move,$*),-lrt)
 
 build/move/remotefm1-heal: $(MR)/device/heal.c
 	mkdir -p build/move
 	$(CC) -O2 $(WARN) -static -DHEAL_HOST='"remotefm1-host"' $< -o $@
 
-build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h
+build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h src/catsig.c \
+                  src/ed25519.c src/catsig.h src/ed25519.h src/catalog_key.h build/testkey/catalog_test_key.h
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT -rdynamic -o $@ tests/unit.c src/minijson.c src/mdns.c \
-	    src/sha256.c src/fx.c -lm -lpthread -ldl
+	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT $(TEST_BUILD) -rdynamic -o $@ tests/unit.c src/minijson.c \
+	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c -lm -lpthread -ldl
+
+# the tests' catalog signing key (never the real one: that is on the owner's Mac only, outside the repo): made once
+# under build/, its public half a header for the test build
+build/testkey/catalog_test_key.h:
+	mkdir -p build/testkey
+	[ -f build/testkey/test-key.pem ] || (umask 077; openssl genpkey -algorithm ed25519 -out build/testkey/test-key.pem)
+	{ echo '/* the tests catalog key (Makefile; build/testkey/test-key.pem): RFM14_TEST_BUILD only */'; \
+	  echo 'static const uint8_t CAT_TEST_KEY[32] = {'; \
+	  openssl pkey -in build/testkey/test-key.pem -pubout -outform DER | tail -c 32 | xxd -i; echo '};'; } > $@.tmp
+	mv $@.tmp $@
 
 # the test FX modules (the simulator's "installed Schwung modules"): Schwung's own arp, chord and freeverb (MIT, their
 # sources at the commit third_party/schwung-api names) and two of ours (crashfx: a crash in create; hogfx: CPU)

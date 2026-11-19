@@ -1211,6 +1211,13 @@ static void do_results(void)
         case R_INDEX:
             g_index_busy = 0;
             g_next_index_ms = now_ms() + (j->ok ? INDEX_EVERY_MS : INDEX_RETRY_MS);
+#ifdef RFM14_TEST_BUILD
+            {   /* (tests/dl_e2e.sh: the index fetched again this often, success or not) */
+                const char *t = getenv("RFM14_TEST_INDEX_MS");
+                if (t && atoi(t) > 0)
+                    g_next_index_ms = now_ms() + (uint32_t)atoi(t);
+            }
+#endif
             if (j->ok) {
                 g_dl.index_ok++;
                 g_index_err[0] = 0;

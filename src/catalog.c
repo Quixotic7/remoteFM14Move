@@ -5,28 +5,23 @@
 
 #include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
 
+#include "catsig.h"
+#include "https.h"
 #include "minijson.h"
 #include "sha256.h"
 
-extern char **environ;
-
-#define STALL_MS 30000u
+#define INDEX_MAX (8u << 20)   /* index.json's size cap */
+#define SIG_MAX 1024u
 
 static char g_bundled[ST_PATH];
 static char g_url[512];
-static volatile pid_t g_child;
 static volatile int g_cancel;
 
 void cat_config(const char *bundled_index, const char *base_url)
@@ -220,18 +215,36 @@ bad:
     return 0;   /* (listed, not downloadable) */
 }
 
-/* an index file read: its entries (malloc'd), how many (-1: not an index); generated into gen */
-static int read_index(const char *path, cat_ent_t **out, char *gen, int gcap, uint32_t *hash)
+/* an index file read, its signature (sig: its .sig file) checked (catsig.h): its entries (malloc'd), how many (-1:
+ * not a signed index; why, when not NULL); generated into gen */
+static int read_index(const char *path, const char *sig, cat_ent_t **out, char *gen, int gcap, uint32_t *hash,
+                      char *why, int wcap)
 {
-    size_t n = 0;
-    char *b = (char *)st_read(path, &n);
+    size_t n = 0, sn = 0;
+    char *b = (char *)st_read(path, &n), w[160];
+    uint8_t *sb;
     const char *it, *o;
     long schema = 0;
     int k = 0, cap = 0;
     cat_ent_t *e = NULL;
     *out = NULL;
-    if (!b)
+    if (!b) {
+        if (why)
+            snprintf(why, (size_t)wcap, "cannot read %s", path);
         return -1;
+    }
+    sb = st_read(sig, &sn);
+    if (catsig_check((const uint8_t *)b, n, sn ? sb : NULL, sn, w, sizeof w) != 0) {
+        fprintf(stderr, "catalog: %s refused: %s\n", path, w);
+        if (why)
+            snprintf(why, (size_t)wcap, "%s", w);
+        free(sb);
+        free(b);
+        return -1;
+    }
+    free(sb);
+    if (why)
+        snprintf(why, (size_t)wcap, "not a Move catalog (schema 1)");
     if (mj_int(b, "schema", &schema) || schema != 1 || !(it = mj_find(b, "firmwares")) || *it != '[') {
         free(b);
         return -1;
@@ -399,9 +412,12 @@ cat_t *cat_build(const char *keep)
     {
         cat_ent_t *a = NULL, *b = NULL;
         int na, nb;
+        char sig[ST_PATH + 8];
         st_path(p, sizeof p, "catalog/index.json");
-        na = read_index(p, &a, gen_root, sizeof gen_root, &h_root);
-        nb = g_bundled[0] ? read_index(g_bundled, &b, gen_b, sizeof gen_b, &h_b) : -1;
+        st_path(sig, sizeof sig, "catalog/index.json.sig");
+        na = read_index(p, sig, &a, gen_root, sizeof gen_root, &h_root, NULL, 0);
+        snprintf(sig, sizeof sig, "%s.sig", g_bundled);
+        nb = g_bundled[0] ? read_index(g_bundled, sig, &b, gen_b, sizeof gen_b, &h_b, NULL, 0) : -1;
         if (na >= 0 && (nb < 0 || strcmp(gen_root, gen_b) >= 0)) {
             idx = a, ni = na, c->from = 2, c->index_hash = h_root;
             snprintf(c->generated, sizeof c->generated, "%s", gen_root);
@@ -479,128 +495,79 @@ cat_t *cat_build(const char *keep)
     return c;
 }
 
-/* ------------------------------------------------------------------ wget --- */
-static uint64_t now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
-}
-
+/* ------------------------------------------------------------------ downloads --- */
 void cat_cancel(void)
 {
-    const pid_t p = g_child;
     g_cancel = 1;
-    if (p > 0)
-        kill(p, SIGTERM);
 }
 
-/* url -> out with wget (posix_spawn: no copy of this process's locked memory, unlike fork). progress as the file grows.
- * Only -q and -O: BusyBox 1.35's wget crashes on -T (Debian's build, checked), so the timeout is ours: no byte for
- * STALL_MS and the child is stopped. 0 ok; -1 err */
-static int wget_(const char *url, const char *out, uint64_t done, uint64_t total, void (*progress)(void *, int),
-                 void *ctx, char *err, int cap)
+typedef struct {
+    uint64_t done, total;
+    void (*progress)(void *, int);
+    void *ctx;
+    int last;
+} prog_t;
+
+static void on_bytes(void *ctx, uint64_t got, uint64_t len)
 {
-    char cmd[256], *argv[16], *tok, *save = NULL;
-    const char *env = getenv("RFM14_WGET");
-    char q_opt[] = "-q", o_opt[] = "-O";
-    posix_spawn_file_actions_t fa;
-    pid_t pid;
-    int argc = 0, st = 0, rc, last_pct = -1;
-    uint64_t grew = now_ms(), last_size = 0;
-    snprintf(cmd, sizeof cmd, "%s", env && *env ? env : "wget");
-    for (tok = strtok_r(cmd, " ", &save); tok && argc < 9; tok = strtok_r(NULL, " ", &save))
-        argv[argc++] = tok;
-    argv[argc++] = q_opt;
-    argv[argc++] = o_opt;
-    argv[argc++] = (char *)out;
-    argv[argc++] = (char *)url;
-    argv[argc] = NULL;
-    unlink(out);
-    posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    rc = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ);
-    posix_spawn_file_actions_destroy(&fa);
-    if (rc != 0) {
-        snprintf(err, (size_t)cap, "cannot run %s: %s", argv[0], strerror(rc));
-        return -1;
-    }
-    g_child = pid;
-    for (;;) {
-        struct stat sb;
-        const pid_t w = waitpid(pid, &st, WNOHANG);
-        if (w == pid)
-            break;
-        if (w < 0 && errno != EINTR) {   /* (someone reaped it: judge by the file) */
-            st = 0;
-            break;
-        }
-        if (g_cancel)
-            kill(pid, SIGTERM);
-        if (stat(out, &sb) == 0 && (uint64_t)sb.st_size != last_size) {
-            last_size = (uint64_t)sb.st_size;
-            grew = now_ms();
-            if (progress && total) {
-                int pct = (int)((done + last_size) * 99u / total);
-                pct = pct < 1 ? 1 : pct > 99 ? 99 : pct;
-                if (pct != last_pct)
-                    progress(ctx, last_pct = pct);
-            }
-        } else if (now_ms() - grew > STALL_MS) {   /* nothing for a while: no network, a server gone */
-            kill(pid, SIGTERM);
-            grew = now_ms();
-        }
-        usleep(100000);
-    }
-    g_child = 0;
-    if (g_cancel) {
-        snprintf(err, (size_t)cap, "cancelled");
-        return -1;
-    }
-    if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
-        if (WIFSIGNALED(st))
-            snprintf(err, (size_t)cap, "%s: wget stopped (signal %d)", url, WTERMSIG(st));
-        else
-            snprintf(err, (size_t)cap, "%s: wget failed (exit %d)", url, WEXITSTATUS(st));
-        return -1;
-    }
-    return 0;
+    prog_t *p = ctx;
+    int pct;
+    (void)len;
+    if (!p->progress || !p->total)
+        return;
+    pct = (int)((p->done + got) * 99u / p->total);
+    pct = pct < 1 ? 1 : pct > 99 ? 99 : pct;
+    if (pct != p->last)
+        p->progress(p->ctx, p->last = pct);
+}
+
+/* url -> out (https.h; plain http:// only when the base URL is: one the owner set, as the default is https).
+ * 0 ok; -1 err */
+static int fetch(const char *base, const char *url, const char *out, uint64_t max, prog_t *p, char *err, int cap)
+{
+    return https_get(url, out, max, !strncmp(base, "http://", 7), p ? on_bytes : NULL, p, &g_cancel, err, cap);
 }
 
 int cat_fetch_index(uint32_t old_hash, int *changed, char *err, int cap)
 {
-    char base[512], url[640], part[ST_PATH], path[ST_PATH], gen[40];
+    char base[512], url[640], part[ST_PATH], spart[ST_PATH], path[ST_PATH], spath[ST_PATH], gen[40], why[160];
     cat_ent_t *e = NULL;
     uint32_t h = 0;
     int n, i;
     *changed = 0;
     g_cancel = 0;
     cat_base_url(base, sizeof base);
-    snprintf(url, sizeof url, "%s/index.json", base);
     st_path(path, sizeof path, "catalog");
     st_mkdirs(path);
     st_path(part, sizeof part, "catalog/index.json.part");
+    st_path(spart, sizeof spart, "catalog/index.json.sig.part");
     st_path(path, sizeof path, "catalog/index.json");
-    if (wget_(url, part, 0, 0, NULL, NULL, err, cap) != 0) {
-        unlink(part);
-        return -1;
-    }
-    n = read_index(part, &e, gen, sizeof gen, &h);
+    st_path(spath, sizeof spath, "catalog/index.json.sig");
+    snprintf(url, sizeof url, "%s/index.json", base);
+    if (fetch(base, url, part, INDEX_MAX, NULL, err, cap) != 0)
+        goto fail;
+    snprintf(url, sizeof url, "%s/index.json.sig", base);
+    if (fetch(base, url, spart, SIG_MAX, NULL, err, cap) != 0)
+        goto fail;
+    n = read_index(part, spart, &e, gen, sizeof gen, &h, why, sizeof why);
     for (i = 0; i < n; i++)
         free(e[i].files);
     free(e);
-    if (n < 0) {
-        snprintf(err, (size_t)cap, "%s is not a Move catalog (schema 1)", url);
-        unlink(part);
-        return -1;
+    if (n < 0) {   /* (unsigned, badly signed, or not an index: not kept) */
+        snprintf(err, (size_t)cap, "%s/index.json refused: %s", base, why);
+        goto fail;
     }
-    if (rename(part, path) != 0) {
+    /* the signature first: a crash between the two leaves a pair that does not match, refused, the bundled used */
+    if (rename(spart, spath) != 0 || rename(part, path) != 0) {
         snprintf(err, (size_t)cap, "cannot write %s: %s", path, strerror(errno));
-        unlink(part);
-        return -1;
+        goto fail;
     }
     *changed = h != old_hash;
     return 0;
+fail:
+    unlink(part);
+    unlink(spart);
+    return -1;
 }
 
 int cat_download(const char *id, const char *files, uint64_t total, void (*progress)(void *ctx, int pct), void *ctx,
@@ -631,8 +598,11 @@ int cat_download(const char *id, const char *files, uint64_t total, void (*progr
         snprintf(names[n++], sizeof names[0], "%s", name);
         snprintf(url, sizeof url, "%s/%s", base, name);
         snprintf(part, sizeof part, "%s/%s.part", dl, name);
-        if (wget_(url, part, done, total, progress, ctx, err, cap) != 0)
-            goto out;
+        {
+            prog_t pr = { done, total, progress, ctx, -1 };
+            if (fetch(base, url, part, size, &pr, err, cap) != 0)
+                goto out;
+        }
         if (sha256_file(part, got, &have) != 0) {
             snprintf(err, (size_t)cap, "%s: cannot read the download", name);
             goto out;

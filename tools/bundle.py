@@ -7,13 +7,16 @@
 With dist/move-catalog/index.json there (make catalog):
     - firmwares/ holds the files of each firmware module/bundle.txt names (as the catalog has them: the .rfm1m, its
       manifest, licence texts and skin), instead of the build's own (build/fw);
-    - catalog/index.json is the catalog's index: the Move's browser lists the whole catalog offline (what exists; a
-      download needs Wi-Fi);
+    - catalog/index.json is the catalog's index, with its signature catalog/index.json.sig (make catalog signs it; it
+      must check against src/catalog_key.h's key, else the package is refused): the Move's browser lists the whole
+      catalog offline (what exists; a download needs Wi-Fi);
     - FIRMWARES.md lists the bundled ones (licence, exact source, the .rfm1's SHA-256).
 Without it the module keeps build/fw's firmwares and has no index (the browser lists what is installed)."""
 import json, os, shutil, sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, 'tools'))
+import sign_index  # noqa: E402
 
 
 def main():
@@ -31,6 +34,9 @@ def main():
     if not os.path.exists(ipath):
         print('bundle: no %s (make catalog): the module keeps build/fw\'s firmwares, no catalog index' % ipath)
         return
+    if not sign_index.check(ipath, sign_index.header_key(os.path.join(REPO, 'src', 'catalog_key.h'))):
+        sys.exit('bundle: %s.sig is missing or not a good signature by src/catalog_key.h\'s key: refused '
+                 '(make catalog signs it)' % ipath)
     index = json.load(open(ipath))
     by_id = {f['id']: f for f in index['firmwares']}
     want = [l.strip() for l in open(lst) if l.strip() and not l.startswith('#')]
@@ -40,6 +46,7 @@ def main():
     os.makedirs(fw)
     os.makedirs(os.path.join(pkg, 'catalog'), exist_ok=True)
     shutil.copyfile(ipath, os.path.join(pkg, 'catalog', 'index.json'))
+    shutil.copyfile(ipath + '.sig', os.path.join(pkg, 'catalog', 'index.json.sig'))
     rows, size = [], 0
     for i in want:
         f = by_id.get(i)
@@ -66,7 +73,7 @@ def main():
         for f in rows:
             o.write('| %s | %s | %s | %s | %s |\n' % (f['name'], f['version'], f['license'], f['source_url'],
                                                       f['rfm1']['sha256']))
-    print('bundle: %d firmwares (%.1f MB) and the catalog index (%d firmwares) into %s'
+    print('bundle: %d firmwares (%.1f MB) and the signed catalog index (%d firmwares) into %s'
           % (len(rows), size / 1e6, len(index['firmwares']), pkg))
 
 

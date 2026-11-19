@@ -14,6 +14,11 @@ RemoteFM14Move itself is MPL-2.0 (LICENSE). What it is built from:
 - **wasm2c's runtime** (wabt 1.0.32, https://github.com/WebAssembly/wabt, Apache-2.0): `wasm-rt-impl.c` and the
   headers, built into remotefm1-host; the package carries Debian's copyright file for wabt as
   `licenses/wabt-wasm2c-runtime.txt`.
+- **TweetNaCl** (https://tweetnacl.cr.yp.to/, 20140427, public domain; D. J. Bernstein, W. Janssen, T. Lange,
+  P. Schwabe, S. Smetsers, B. van Gastel): the Ed25519 field and group arithmetic in `src/ed25519.c` (verification
+  only, adapted), which checks the catalog index's signature.
+- **OpenSSL 3** (https://www.openssl.org/, Apache-2.0): not shipped. remotefm1-host opens the system's own
+  `libssl.so.3` / `libcrypto.so.3` at run time (dlopen) for the catalog's HTTPS downloads.
 - **The firmwares** (firmwares/*.rfm1m in the package): each is its own work under its own licence (FIRMWARES.md,
   each firmware's `.licenses.txt`), with its exact source at its `source_url`. A firmware object is a separate
   program loaded at run time; it is the .rfm1 file translated by wasm2c, with `fw/fwglue.c` (MPL-2.0) as its entry

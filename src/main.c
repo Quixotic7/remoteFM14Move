@@ -14,6 +14,7 @@
  *     --site        the page's files (scripts/build_site.sh; default: site/ beside this program)
  *     --catalog-index   the catalog's snapshot (default: catalog/index.json beside this program)
  *     --catalog-url     the catalog's base URL when the root's catalog-url file names none (default: catalog.h's)
+ *     --ca-dir      (tests; RFM14_TEST_BUILD only) the CA certificates' directory instead of /etc/ssl/certs
  *     --log-cap     stderr's file is moved to <log>.1 past this many bytes (default 1 MB; -1 never)
  *     --fx-dir      the Schwung modules hosted as MIDI FX and audio FX (midi_fx/, audio_fx/; default
  *                   /data/UserData/schwung/modules on the Move, none on the simulator)
@@ -33,6 +34,7 @@
 
 #include "engine.h"
 #include "fx.h"
+#include "https.h"
 #include "mdns.h"
 #include "mr_core.h"
 #include "web.h"
@@ -79,6 +81,10 @@ int main(int argc, char **argv)
             index_arg = argv[++i];
         else if (!strcmp(argv[i], "--catalog-url") && i + 1 < argc)
             url = argv[++i];
+#ifdef RFM14_TEST_BUILD
+        else if (!strcmp(argv[i], "--ca-dir") && i + 1 < argc)
+            https_ca_dir(argv[++i]);
+#endif
         else if (!strcmp(argv[i], "--log-cap") && i + 1 < argc)
             log_cap = atol(argv[++i]);
         else if (!strcmp(argv[i], "--splash") && i + 1 < argc)

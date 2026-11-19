@@ -5,12 +5,17 @@
 # catalog's base URL; loads while another firmware plays; the firmwares' log lines.
 #   tests/dl_e2e.sh       (after make and the test catalog: build/testcat, tools/build_move_catalog.py --only
 #                          amb,choralroot,felucca; build/testfw/choralroot-0.40.*, an older ChoralRoot to update)
-# The servers are BusyBox httpd on 127.0.0.1 (the catalog; a copy whose AMB-1 object is damaged). Downloads go through
-# BusyBox wget (phase A, as on the Move) and Debian's GNU wget (phase B): the same flags (-q -T -O), the same exit codes.
+# Downloads go through the host's own client (src/https.c): plain http (phase A: a base URL the owner set) from BusyBox
+# httpd on 127.0.0.1 (the catalog; a copy whose AMB-1 object is damaged); HTTPS through the image's OpenSSL 3 (phases B,
+# F) from `openssl s_server` with a test CA (the host's --ca-dir, a test-build option): cat.test redirects every file to
+# objects.test (another name, its own certificate), wrong.test reaches objects.test's server (a name its certificate
+# lacks), and a self-signed cat.test (a CA the host does not trust). The names are 127.0.0.1 in the container's
+# /etc/hosts. Every index is signed (build/testkey's test key, tools/sign_index.py); phases F and G refuse an index with
+# no signature, a bad one, or a changed index, over the network and as the bundled snapshot.
 set -u
 cd "$(dirname "$0")/.."
 T=$(mktemp -d /tmp/rfm14dl.XXXXXX)
-ROOT=$T/root; SIM=$T/sim; PORT=17731; GOOD=18080; BAD=18081
+ROOT=$T/root; SIM=$T/sim; PORT=17731; GOOD=18080; BAD=18081; RED=18443; OBJ=18444; SELF=18445
 mkdir -p "$SIM" "$T/bundled"
 fail=0; checks=0
 ok() { checks=$((checks + 1)); echo "  ok    $*"; }
@@ -22,9 +27,10 @@ cmd() { printf '%s\n' "$@" > "$SIM/mr-cmd"; }
 press() { cmd "$1 127"; sleep 0.12; cmd "$1 0"; sleep 0.15; }
 wait_for() { _n=$(( $1 * 10 )); shift; while [ $_n -gt 0 ]; do eval "$1" && return 0; sleep 0.1; _n=$((_n - 1)); done; return 1; }
 LOG=$T/host.log
-start() {   # start [VAR=value ...]: the host, with those in its environment (XARGS: more arguments)
+INDEX=build/testcat/index.json
+start() {   # start [VAR=value ...]: the host, with those in its environment (XARGS: more arguments; INDEX: the snapshot)
     env "$@" build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" --firmwares "$T/bundled" \
-        --site build/site --catalog-index build/testcat/index.json --fw felucca ${XARGS:-} >>"$LOG" 2>&1 &
+        --site build/site --catalog-index "$INDEX" --ca-dir "$T/tls/cadir" --fw felucca ${XARGS:-} >>"$LOG" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' &&
         wait_for 5 '[ "$(field session)" = 2 ]'
@@ -36,7 +42,8 @@ back() { press "cc 51"; press "cc 51"; press "cc 51"; press "cc 51"; }
 U="http://127.0.0.1:$PORT"
 post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "$1" "$U/api/load"; }
 files() { ls "$ROOT/firmwares" | grep "^$1-" | tr '\n' ' '; }
-phase() { case "${PHASES:-ABCDE}" in *$1*) return 0;; esac; return 1; }   # (PHASES=AD: only those)
+phase() { case "${PHASES:-ABCDEFGH}" in *$1*) return 0;; esac; return 1; }   # (PHASES=AD: only those)
+raw() { status | grep -o "\"$1\":\"[^\"]*\"" | cut -d'"' -f4; }   # (a string field with commas in it)
 
 echo "dl_e2e"
 for f in build/fw/felucca-1.8.2.* build/testfw/choralroot-0.40.*; do cp "$f" "$T/bundled/"; done
@@ -46,18 +53,57 @@ CR=$(cd build/testcat && ls choralroot-*.rfm1m); CR=${CR%.rfm1m}
 # the servers: the catalog, and a copy with one byte of AMB-1's object changed (its SHA-256 no longer the index's)
 mkdir -p "$T/badcat"; cp build/testcat/* "$T/badcat/"
 printf 'X' | dd of="$T/badcat/$AMB.rfm1m" bs=1 seek=4096 conv=notrunc 2>/dev/null
+[ -f build/testcat/index.json.sig ] || { echo "  FAIL  build/testcat/index.json is not signed (make testcat)"; exit 1; }
 busybox httpd -f -p 127.0.0.1:$GOOD -h build/testcat & S1=$!
 busybox httpd -f -p 127.0.0.1:$BAD -h "$T/badcat" & S2=$!
-sleep 0.3
+# HTTPS: a test CA (the host trusts only it: --ca-dir), certificates for cat.test and objects.test, a self-signed one
+grep -q " cat.test" /etc/hosts || echo "127.0.0.1 cat.test objects.test wrong.test" >> /etc/hosts
+X=$T/tls; mkdir -p "$X/cadir"
+cert() {   # cert NAME [self]: NAME.pem / NAME.key, signed by the test CA (or by itself)
+    if [ "${2:-}" = self ]; then
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$X/$1-self.key" -out "$X/$1-self.pem" \
+            -days 2 -subj "/CN=$1" -addext "subjectAltName=DNS:$1" 2>/dev/null
+    else
+        openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$X/$1.key" -out "$X/$1.csr" \
+            -subj "/CN=$1" 2>/dev/null
+        printf 'subjectAltName=DNS:%s\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n' "$1" > "$X/$1.ext"
+        openssl x509 -req -in "$X/$1.csr" -CA "$X/ca.pem" -CAkey "$X/ca.key" -CAcreateserial -out "$X/$1.pem" -days 2 \
+            -extfile "$X/$1.ext" 2>/dev/null
+    fi
+}
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$X/ca.key" -out "$X/ca.pem" -days 2 \
+    -subj /CN=RemoteFM1-test-CA -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign 2>/dev/null
+cp "$X/ca.pem" "$X/cadir/$(openssl x509 -hash -noout -in "$X/ca.pem").0"
+cert cat.test; cert objects.test; cert cat.test self
+# objects.test's files: good/ (the catalog), nosig/ (no index.json.sig), badsig/ (another index's signature), tampered/
+# (one byte of the index changed, the signature the original's); cat.test redirects each file to objects.test
+SRV=$T/srv; mkdir -p "$SRV/good" "$SRV/nosig" "$SRV/badsig" "$SRV/tampered" "$T/red"
+cp build/testcat/* "$SRV/good/"; cp build/testcat/* "$SRV/nosig/"; rm -f "$SRV/nosig/index.json.sig"
+cp build/testcat/* "$SRV/badsig/"; cp build/testcat/* "$SRV/tampered/"
+sed 's/"generated":"/"generated":"9/' build/testcat/index.json > "$SRV/badsig/index.json"   # (later: it would win)
+sed 's/A generative ambient/A generative AMBIENT/' build/testcat/index.json > "$SRV/tampered/index.json"
+cmp -s "$SRV/tampered/index.json" build/testcat/index.json && echo "  info  the tampered index is not changed"
+for f in "$SRV"/*/*; do
+    rel=${f#$SRV/}; mkdir -p "$T/red/$(dirname "$rel")"
+    printf 'HTTP/1.0 302 Found\r\nLocation: https://objects.test:%s/%s\r\nContent-Length: 0\r\n\r\n' $OBJ "$rel" > "$T/red/$rel"
+done
+# (s_server -WWW answers 200 for a missing file: cat.test says 404 for nosig's .sig itself; downgrade/ redirects to http)
+printf 'HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n' > "$T/red/nosig/index.json.sig"
+mkdir -p "$T/red/downgrade"
+printf 'HTTP/1.0 302 Found\r\nLocation: http://127.0.0.1:%s/index.json\r\nContent-Length: 0\r\n\r\n' $GOOD > "$T/red/downgrade/index.json"
+(cd "$T/red" && exec openssl s_server -quiet -HTTP -accept $RED -cert "$X/cat.test.pem" -key "$X/cat.test.key") >/dev/null 2>&1 & S3=$!
+(cd "$SRV" && exec openssl s_server -quiet -WWW -accept $OBJ -cert "$X/objects.test.pem" -key "$X/objects.test.key") >/dev/null 2>&1 & S4=$!
+(cd "$SRV" && exec openssl s_server -quiet -WWW -accept $SELF -cert "$X/cat.test-self.pem" -key "$X/cat.test-self.key") >/dev/null 2>&1 & S5=$!
+sleep 0.5
 
-# ---------------------------------------------------------------- phase A: BusyBox wget
+# ---------------------------------------------------------------- phase A: plain http (a base URL the owner set)
 if phase A; then
 mkdir -p "$ROOT"; url "http://127.0.0.1:$BAD"
-start RFM14_WGET="busybox wget" || { bad "the host did not start"; tail -20 "$LOG"; exit 1; }
+start || { bad "the host did not start"; tail -20 "$LOG"; exit 1; }
 [ "$(field cat_n)" = 3 ] && [ "$(field cat_installed)" = 2 ] && [ "$(field cat_from)" = 1 ] \
     && ok "the catalog: 3 firmwares from the bundled index ($(field cat_gen)), 2 installed (Felucca, ChoralRoot 0.40)" \
     || bad "the catalog: $(field cat_n) / $(field cat_installed) / from $(field cat_from)"
-wait_for 8 '[ "$(field index_ok)" = 1 ]' && ok "the index fetched at start (busybox wget), the same as the bundled one: no new list" \
+wait_for 8 '[ "$(field index_ok)" = 1 ]' && ok "the index (and its signature) fetched at start over plain http (the owner's catalog-url), the same as the bundled one: no new list" \
     || bad "the index at start: ok $(field index_ok), failed $(field index_failed): $(field index_err)"
 # Mute: the catalog; A-Z: AMB-1 (not here), ChoralRoot (an update), Felucca; the first pad selects AMB-1
 view; press "cc 88"; press "note 92"
@@ -101,15 +147,16 @@ stop
 [ "$RC" = 0 ] && ok "phase A: the host left cleanly" || bad "phase A: exit $RC"
 fi
 
-# ---------------------------------------------------------------- phase B: Debian's GNU wget; an update
+# ---------------------------------------------------------------- phase B: HTTPS, a redirect to another host; an update
 if phase B; then
+url "https://cat.test:$RED/good"
 start
 [ "$(post '{"slot":0,"id":"choralroot"}')" = 202 ] && wait_for 10 '[ "$(field id0)" = choralroot ]' && [ "$(field ver0)" = 0.40 ] \
     && ok "slot 1: ChoralRoot 0.40" || bad "slot 1 is '$(field id0)' $(field ver0)"
 b0=$(field boot0); sleep 2.6   # (its flash saved)
 view; press "cc 88"; press "note 93"; press "cc 3"
 wait_for 15 '[ "$(field dl_ok)" = 1 ]' && [ -f "$ROOT/firmwares/$CR.rfm1m" ] && [ -f "$ROOT/firmwares/choralroot-0.40.rfm1m" ] \
-    && ok "the update (GNU wget): $CR installed beside 0.40, which slot 1 still runs" \
+    && ok "the update over HTTPS (cat.test redirecting each file to objects.test): $CR installed beside 0.40, which slot 1 still runs" \
     || bad "the update: ok $(field dl_ok), state $(field dl_state), err '$(field dl_err)', files '$(files choralroot)'"
 [ "$(field ver0)" = 0.40 ] && [ "$(field boot0)" = "$b0" ] && ok "slot 1 kept playing 0.40 through the update (not restarted)" \
     || bad "slot 1: $(field ver0), boot $b0 -> $(field boot0)"
@@ -123,6 +170,84 @@ grep -q "slot 1: ChoralRoot ${CR#choralroot-} (its saved flash)" "$LOG" && ok "w
     || bad "the new version did not start from the saved flash"
 wait_for 5 '[ ! -f "$ROOT/firmwares/choralroot-0.40.rfm1m" ] && [ ! -f "$ROOT/firmwares/choralroot-0.40.json" ]' \
     && ok "0.40's files removed once no slot runs it: $(files choralroot)" || bad "0.40 is still there: $(files choralroot)"
+grep -q "https: the system's OpenSSL 3, CA certificates from $T/tls/cadir" "$LOG" && [ -f "$ROOT/catalog/index.json.sig" ] \
+    && cmp -s "$ROOT/catalog/index.json" build/testcat/index.json \
+    && ok "the index came over HTTPS too (the image's libssl.so.3, dlopen'd; the test CA) and was kept with its signature" \
+    || bad "phase B's index: ok $(field index_ok), err '$(raw index_err)'"
+stop
+fi
+
+# ---------------------------------------------------------------- phase F: refused over HTTPS: certificates, signatures
+# each case: a new root (no index of its own), the base URL set, the index fetched again every second
+# (RFM14_TEST_INDEX_MS, test build only); the case's error, nothing kept, the bundled index still the one used
+if phase F; then
+LOG=$T/host-f.log; ROOT=$T/root-f; mkdir -p "$ROOT"; url "http://127.0.0.1:1"
+start RFM14_TEST_INDEX_MS=700 || { bad "phase F: the host did not start"; tail -20 "$LOG"; }
+refused() {   # refused BASE WHAT GREP: the index from BASE refused with GREP in its error
+    n=$(field index_failed); want=$3; url "$1"
+    if wait_for 10 '[ "$(field index_failed)" -gt "$n" ] && [ "$(raw index_err)" != "" ]' \
+        && wait_for 3 'raw index_err | grep -q "$want"' && [ ! -f "$ROOT/catalog/index.json" ] && [ ! -f "$ROOT/catalog/index.json.sig" ] \
+        && [ -z "$(ls "$ROOT/catalog" 2>/dev/null)" ] && [ "$(field cat_from)" = 1 ] && [ "$(field cat_n)" = 3 ]; then
+        ok "$2: refused, nothing kept, the bundled index still used ($(raw index_err | cut -c1-110))"
+    else bad "$2: failed $(field index_failed), from $(field cat_from), err '$(raw index_err)', catalog/: $(ls "$ROOT/catalog" 2>/dev/null)"; fi
+}
+refused "https://wrong.test:$OBJ/good" "a host name the certificate does not name (wrong.test, objects.test's certificate)" "hostname mismatch"
+refused "https://cat.test:$SELF/good" "an untrusted certificate (cat.test, self-signed)" "certificate is refused"
+refused "https://cat.test:$RED/nosig" "an index with no signature (index.json.sig: 404)" "index.json.sig: HTTP 404"
+refused "https://cat.test:$RED/badsig" "an index with another index's signature" "bad signature"
+refused "https://cat.test:$RED/tampered" "an index changed after it was signed (one word)" "bad signature"
+refused "https://cat.test:$RED/downgrade" "a redirect from https to plain http" "from https to plain http"
+# a download from a host whose certificate is wrong: refused, nothing installed
+url "https://wrong.test:$OBJ/good"
+view; press "cc 88"; press "note 92"; press "cc 3"
+wait_for 15 '[ "$(field dl_state)" = 3 ]' && raw dl_err | grep -q "hostname mismatch" && [ -z "$(files amb)" ] \
+    && [ -z "$(ls "$ROOT/firmwares/.dl" 2>/dev/null)" ] \
+    && ok "a firmware download from wrong.test: refused (the certificate's host name), nothing installed, nothing left" \
+    || bad "the download from wrong.test: state $(field dl_state), err '$(raw dl_err)', files '$(files amb)'"
+back
+# then the good one: fetched, kept with its signature
+n=$(field index_ok); url "https://cat.test:$RED/good"
+wait_for 10 '[ "$(field index_ok)" -gt "$n" ]' && cmp -s "$ROOT/catalog/index.json" build/testcat/index.json \
+    && cmp -s "$ROOT/catalog/index.json.sig" build/testcat/index.json.sig \
+    && ok "then the signed index over HTTPS: kept, with its signature" || bad "the good index: ok $(field index_ok), err '$(raw index_err)'"
+stop
+# a kept index whose signature no longer checks (changed on disk): not used at the next start
+sed -e 's/A generative ambient/A generative AMBIENT/' -e 's/"generated":"/"generated":"9/' build/testcat/index.json > "$ROOT/catalog/index.json"
+start
+[ "$(field cat_from)" = 1 ] && grep -q "catalog/index.json refused: a bad signature" "$LOG" \
+    && ok "a kept index changed on disk (and dated later): refused at start, the bundled one used" \
+    || bad "the changed kept index: from $(field cat_from)"
+stop
+fi
+
+# ---------------------------------------------------------------- phase G: the bundled snapshot is checked the same way
+if phase G; then
+LOG=$T/host-g.log; ROOT=$T/root-g; mkdir -p "$ROOT" "$T/snap"; url "http://127.0.0.1:1"
+cp build/testcat/index.json "$T/snap/index.json"
+INDEX=$T/snap/index.json start
+[ "$(field cat_from)" = 0 ] && [ "$(field cat_n)" = 2 ] \
+    && ok "a bundled snapshot with no signature: not used (only the 2 installed firmwares listed)" \
+    || bad "the unsigned snapshot: from $(field cat_from), $(field cat_n) listed"
+stop
+cp "$SRV/badsig/index.json" "$T/snap/index.json"; cp build/testcat/index.json.sig "$T/snap/index.json.sig"
+INDEX=$T/snap/index.json start
+[ "$(field cat_from)" = 0 ] && ok "a bundled snapshot whose signature is not its own: not used" \
+    || bad "the badly signed snapshot: from $(field cat_from)"
+stop
+fi
+
+# ---------------------------------------------------------------- phase H: no libssl on the system
+if phase H; then
+LOG=$T/host-h.log; ROOT=$T/root-h; mkdir -p "$ROOT"; url "https://cat.test:$RED/good"
+start RFM14_TEST_LIBSSL=libssl-missing.so.3
+wait_for 10 '[ "$(field index_failed)" -ge 1 ]' && raw index_err | grep -q "no TLS on this system" \
+    && [ "$(field cat_from)" = 1 ] && [ "$(field id0)" = felucca ] && [ "$(field boot0)" -ge 1 ] \
+    && ok "no libssl.so.3: the index fetch says so ($(raw index_err | cut -c1-80)..), the bundled index and Felucca as before" \
+    || bad "no libssl: failed $(field index_failed), err '$(raw index_err)', from $(field cat_from), slot 1 '$(field id0)'"
+view; press "cc 88"; press "note 92"; press "cc 3"
+wait_for 10 '[ "$(field dl_state)" = 3 ]' && raw dl_err | grep -q "no TLS on this system" && [ -z "$(files amb)" ] \
+    && ok "  .. and a download: refused with the same reason, nothing installed" || bad "no libssl, a download: $(field dl_state) '$(raw dl_err)'"
+back
 stop
 fi
 
@@ -179,7 +304,7 @@ stop
     || bad "the log's cap: $(ls -l "$LOG"* 2>/dev/null | awk '{print $5}' | tr '\n' ' ')"
 fi
 
-kill $S1 $S2 2>/dev/null
+kill $S1 $S2 $S3 $S4 $S5 2>/dev/null
 echo "dl_e2e: $checks checks, $fail failed"
 [ $fail = 0 ] || { echo "---- host log"; tail -40 "$T/host.log"; }
 mv "$T" "$T.done" 2>/dev/null

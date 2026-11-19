@@ -4,16 +4,18 @@
  * The catalog is the Move catalog's index.json (tools/build_move_catalog.py: every published .rfm1 of RemoteFM1's
  * catalog, compiled for the Move) merged with what is installed in the root's firmwares/:
  *   - the index: <root>/catalog/index.json (the last one downloaded) or the module's bundled snapshot, whichever was
- *     generated later; none: only the installed firmwares are listed;
+ *     generated later, each used only with a good signature beside it (index.json.sig: Ed25519 by the catalog's
+ *     signing key, catsig.h); none: only the installed firmwares are listed;
  *   - each entry: the catalog's id, name, version, categories, description and thumbnail, and the version installed
  *     (or none); an installed firmware the index does not list is an entry of its own. A-Z by name.
  *
- * Downloads (the storage module's network thread, never the engine's or the audio thread): BusyBox wget (or any wget
- * with -q -O, e.g. Debian's: RFM14_WGET names another command; the timeout is the thread's own) fetches <base>/index.json and a firmware's files
- * from the base URL: <root>/catalog-url's first line, else --catalog-url, else CAT_URL_DEFAULT. Each file goes to
- * firmwares/.dl/<name>.part, its size and SHA-256 are checked against the index, then every file is renamed into
- * firmwares/, the manifest (.json) last: a firmware is listed only once all of it is there. An update leaves the older
- * version's files until no slot runs it (cat_build's sweep).
+ * Downloads (the storage module's network thread, never the engine's or the audio thread): https.c (HTTPS through the
+ * system's OpenSSL 3, certificates and host names verified) fetches <base>/index.json, <base>/index.json.sig and a
+ * firmware's files from the base URL: <root>/catalog-url's first line, else --catalog-url, else CAT_URL_DEFAULT
+ * (https). Plain http:// only when the owner's base URL says so (https.h). The index is kept only when its signature
+ * is good. Each file goes to firmwares/.dl/<name>.part, its size and SHA-256 are checked against the (signed) index,
+ * then every file is renamed into firmwares/, the manifest (.json) last: a firmware is listed only once all of it is
+ * there. An update leaves the older version's files until no slot runs it (cat_build's sweep).
  *
  * THREADS: cat_build, cat_fetch_index, cat_download on the network (or main, at start) thread; the engine owns a
  * cat_t once it has it (and frees it with cat_free). */
@@ -71,7 +73,7 @@ int cat_fetch_index(uint32_t old_hash, int *changed, char *err, int cap);
  * 0 installed; -1 not (err; nothing installed, the .part files gone) */
 int cat_download(const char *id, const char *files, uint64_t total, void (*progress)(void *ctx, int pct), void *ctx,
                  char *err, int cap);
-/* a download under way is stopped (the wget child killed): any thread */
+/* a download under way is stopped: any thread */
 void cat_cancel(void);
 /* base64 (up to its end or a '"') -> at most cap bytes: how many, -1 damaged */
 int cat_b64(const char *in, uint8_t *out, int cap);
