@@ -8,8 +8,10 @@
  * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only.
  * RFM1M_AIN1: the module exports rfm1_audio_in (ain1): rfm1m_ain() too (src/rfm1m.h). Without it the object is what it
  * always was. RFM1M_MT: built against tools/w2c_mt.sh's header (rfm1m_caps says RFM1M_CAP_MT). RFM1M_CPU2: the
- * module imports rfm1_cpu2_1 (CPU2I in RFM1M_INST_ARGS) and exports rfm1_c1_stack / rfm1_c1_call: rfm1m_cpu2() too. */
+ * module exports rfm1_c1_stack / rfm1_c1_call and imports rfm1_cpu2_1 (CPU2I in RFM1M_INST_ARGS) or, with
+ * RFM1M_CPU2_REC, exports rfm1_cpu2 (FM1VST's docs/RFM1.md "cpu2": no import): rfm1m_cpu2() too. */
 #include <stdlib.h>
+#include <string.h>
 
 #include "wasm-rt.h"
 #include "../src/rfm1m.h"
@@ -193,6 +195,40 @@ static void c1_twin_free(void *t)
 }
 static void c1_stack(void *t, uint32_t top) { X(rfm1_c1_stack)((INST *)t, top); }
 static void c1_call(void *t, uint32_t fn, uint32_t arg) { X(rfm1_c1_call)((INST *)t, fn, arg); }
+#ifdef RFM1M_CPU2_REC
+/* FM1VST's shim (docs/RFM1.md "cpu2"): rfm1_cpu2() -> {u16 version 1, u16 size, u32 run, u32 wait}, two indices into
+ * the module's table whose entries are its one-core answers; inst's two entries become this host's run and wait (the
+ * functions an importing module gets: fwrt.c), over wasi as their instance. The twin's table stays the module's: a job
+ * that asks for core 1 runs its part itself */
+extern u32 X(rfm1_cpu2)(INST *);
+extern wasm_rt_funcref_table_t *X(__indirect_function_table)(INST *);
+u32 Z_rfm1_cpu2_1Z_run(struct Z_rfm1_cpu2_1_instance_t *, u32, u32);
+u32 Z_rfm1_cpu2_1Z_wait(struct Z_rfm1_cpu2_1_instance_t *);
+static int c1_hook(void *i, struct Z_wasi_snapshot_preview1_instance_t *wasi)
+{
+    wasm_rt_memory_t *m = X(memory)(I);
+    wasm_rt_funcref_table_t *t = X(__indirect_function_table)(I);
+    const u32 r = X(rfm1_cpu2)(I);
+    uint16_t ver, size;
+    u32 run, wait;
+    if (!t || !r || (uint64_t)r + 12u > m->size)
+        return -1;
+    memcpy(&ver, m->data + r, 2);
+    memcpy(&size, m->data + r + 2, 2);
+    memcpy(&run, m->data + r + 4, 4);
+    memcpy(&wait, m->data + r + 8, 4);
+    if (ver != 1 || size < 12 || run >= t->size || wait >= t->size || run == wait || !t->data[run].func ||
+        !t->data[wait].func ||
+        t->data[run].func_type != wasm_rt_register_func_type(2, 1, WASM_RT_I32, WASM_RT_I32, WASM_RT_I32) ||
+        t->data[wait].func_type != wasm_rt_register_func_type(0, 1, WASM_RT_I32))
+        return -1;
+    t->data[run].func = (wasm_rt_function_ptr_t)Z_rfm1_cpu2_1Z_run;
+    t->data[run].module_instance = CPU2I;
+    t->data[wait].func = (wasm_rt_function_ptr_t)Z_rfm1_cpu2_1Z_wait;
+    t->data[wait].module_instance = CPU2I;
+    return 0;
+}
+#endif
 __attribute__((visibility("default"))) const rfm1m_cpu2_t *rfm1m_cpu2(void);
 const rfm1m_cpu2_t *rfm1m_cpu2(void)
 {
@@ -202,6 +238,9 @@ const rfm1m_cpu2_t *rfm1m_cpu2(void)
         t.twin_free = c1_twin_free;
         t.stack = c1_stack;
         t.call = c1_call;
+#ifdef RFM1M_CPU2_REC
+        t.hook = c1_hook;
+#endif
         t.abi = RFM1M_CPU2_ABI;
     }
     return &t;

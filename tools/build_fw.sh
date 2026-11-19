@@ -38,12 +38,19 @@ ARGS=$(printf '%s' "$PROTO" | sed -e 's/^[^,)]*//' -e 's/);$//' \
     -e 's/struct Z_rfm1_cpu2_1_instance_t\*/CPU2I/g' | tr -d ' ')
 case "$ARGS" in *[!,A-Z0-9]*) echo "build_fw: $ID imports a module this host does not give: $PROTO" >&2; exit 1;; esac
 # cpu2 (README "Threads"): a module that imports rfm1_cpu2_1 must export rfm1_c1_stack and rfm1_c1_call (fwglue.c
-# RFM1M_CPU2: the host's core-1 thread runs its jobs on a twin instance)
+# RFM1M_CPU2: the host's core-1 thread runs its jobs on a twin instance). One that exports rfm1_cpu2 (FM1VST's shim,
+# its docs/RFM1.md "cpu2": no import) and the two: RFM1M_CPU2_REC too (its table's run / wait entries are this host's);
+# one that exports them in part runs as any module (its jobs inline)
 CPU2=""
+C1X=0
+grep -q "Z_${ID}Z_rfm1_c1_stack(" "$W/$ID.h" && grep -q "Z_${ID}Z_rfm1_c1_call(" "$W/$ID.h" && C1X=1
 case "$ARGS" in *CPU2I*)
-    grep -q "Z_${ID}Z_rfm1_c1_stack(" "$W/$ID.h" && grep -q "Z_${ID}Z_rfm1_c1_call(" "$W/$ID.h" \
-        || { echo "build_fw: $ID imports rfm1_cpu2_1 but does not export rfm1_c1_stack and rfm1_c1_call" >&2; exit 1; }
+    [ $C1X = 1 ] || { echo "build_fw: $ID imports rfm1_cpu2_1 but does not export rfm1_c1_stack and rfm1_c1_call" >&2; exit 1; }
     CPU2="-DRFM1M_CPU2";;
+*)
+    if [ $C1X = 1 ] && grep -q "Z_${ID}Z_rfm1_cpu2(" "$W/$ID.h" && grep -q "Z_${ID}Z___indirect_function_table(" "$W/$ID.h"; then
+        CPU2="-DRFM1M_CPU2 -DRFM1M_CPU2_REC"
+    fi;;
 esac
 # ain1 (VIRTUAL-CARTS.md 8): a module that exports rfm1_audio_in gets rfm1m_ain() (fwglue.c RFM1M_AIN1); others none
 AIN=""

@@ -202,7 +202,11 @@ make test
   one lock, the same PCM; the host with three slots on their threads (Felucca, the core-1 fixture with core 1 on, FIZZ's
   old object or ChoralRoot) and a phrase on track 1: each slot's blocks equal that firmware replayed offline alone on
   one thread (core 1 off) from the host's log of its input, bit for bit; the mix is what the audio thread played;
-  `--threads 0` too. `tests/threads_bench.sh [SECONDS]` (not in make test) prints the render split, serial vs threads.
+  `--threads 0` too. `tests/threads_bench.sh [SECONDS]` (not in make test) prints the render split, serial vs threads
+  vs threads without core 1 (`BENCH_DIRS`, `BENCH_CH`, `BENCH_NOTES`).
+- `tests/cpu2fw_e2e.sh` (when FIZZ's and ChoralRoot's cpu2 builds are among the inputs): the host with both, chords on
+  each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
+  `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
 
 ## An FM-1 on the Move's USB-A
 
@@ -428,10 +432,19 @@ ChoralRoot's stub core), so a host cannot split them by itself. This host offers
   answers -2 (the module's fallback renders it) and core 1 stays off for that instance. A memory the twin shares never
   grows (`memory.grow` answers -1; .rfm1 memories are fixed anyway). Hosts without cpu2 (wasm3 on iOS / Android, the
   web) give imports that answer 0: the module runs every job itself, as today.
-- **What a firmware build needs:** FM1VST's `core-glue/common/rfm1_shim.c` exporting `rfm1_c1_stack` and
-  `rfm1_c1_call` and declaring the two imports, and the firmware's core-1 back end calling them (FIZZ: a
-  `fz_c1_backend_t` whose run / wait are the imports; ChoralRoot: its `fm1_cpu1_run` / `fm1_cpu1_wait` in the emulator
-  build). Nothing else changes; with core 1 off the samples are the same.
+- **Without an import (FM1VST's shim, its docs/RFM1.md "cpu2"):** RFM1-FORMAT.md refuses a module that imports
+  anything but WASI, so a firmware's published .rfm1 cannot import `rfm1_cpu2_1`. FM1VST's `fm1_add_rfm1(... WANTS
+  cpu2)` exports `rfm1_c1_stack`, `rfm1_c1_call` and `rfm1_cpu2() -> ptr`: a record `{u16 version 1, u16 size, u32 run,
+  u32 wait}` naming two entries of the module's function table that its `rfm1_cpu2_run` / `rfm1_cpu2_wait` call
+  through, as built the one-core answers (run 0). `tools/build_fw.sh` builds such a module with `RFM1M_CPU2_REC`:
+  after `_initialize` the host puts its own run and wait (the functions an importing module gets) into those two
+  entries of the instance (fwglue.c `c1_hook`, `rfm1m_cpu2_t.hook`, `RFM1M_CPU2_ABI` 2); the twin's table stays the
+  module's. Every other host runs the same file as before. A record not as described: core 1 off, the module runs
+  its jobs itself.
+- **What a firmware build needs:** that shim (`WANTS cpu2`) and its core-1 back end calling FM1VST's
+  `core-glue/common/rfm1_cpu2.h` (ChoralRoot from 0.42 + ad53bc26: `cr_cpu1.h`; FIZZ 0.13.0: RemoteFM1's
+  `tools/rfm1/fizz/fizz_unit.c`, the voices' split of FIZZ's firmware). Nothing else changes; with core 1 off the
+  samples are the same (`tests/cpu2fw_e2e.sh`).
 - `tools/build_fw.sh` builds such a module with the twin's glue (`rfm1m_cpu2`); `rfm1info --check` allows the two
   imports. `tests/cpu2fix/` is a test firmware written this way (16 voices, half on core 1, a scratch array on the
   stack): 22.9x real time with core 1 off, 43.5x with it (the simulator), the same PCM. `--no-cpu2` (or
