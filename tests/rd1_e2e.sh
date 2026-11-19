@@ -17,15 +17,17 @@ bad() { checks=$((checks + 1)); fail=$((fail + 1)); echo "  FAIL  $*"; }
 echo "rd1_e2e"
 CR=$(ls build/fw-dev/choralroot-*.rfm1m 2>/dev/null | sort -V | tail -1)
 if [ -z "$CR" ] || ! nm -D "$CR" | grep -q rfm1m_rd1; then echo "  skip  no rd1 build of ChoralRoot in build/fw-dev"; exit 0; fi
-# the development build over the catalog's own <id>-<version> (README "Development builds"): the module's firmwares/
-# with the catalog's ChoralRoot of that version (dist/move-catalog, when there), its firmwares-dev/ with ours
+# the development build over the catalog's ChoralRoot (README "Development builds"): the module's firmwares/ with the
+# catalog's (dist/move-catalog, when there), its firmwares-dev/ with ours: the same <id>-<version> replaced, or a
+# newer one ("0.42-r2" over "0.42": the older swept at the start)
 FWS=$T/fws; DEV=$T/dev; mkdir -p "$FWS" "$DEV"
 cp "${CR%.rfm1m}".* "$DEV/"
 FZ=$(ls build/fw-dev/fizz-*.rfm1m 2>/dev/null | sort -V | tail -1)
 [ -n "$FZ" ] && cp "${FZ%.rfm1m}".* "$DEV/"
 cp build/fw/felucca-1.8.2.* "$FWS/"
-CAT=dist/move-catalog/$(basename "${CR%.rfm1m}")
-if [ -f "$CAT.rfm1m" ]; then cp "$CAT".* "$FWS/"; else CAT=""; fi
+CAT=$(ls dist/move-catalog/choralroot-[0-9]*.rfm1m 2>/dev/null | sort -V | tail -1)
+CAT=${CAT%.rfm1m}
+if [ -n "$CAT" ]; then cp "$CAT".* "$FWS/"; fi
 sha_of() { sed -n 's/^ *"sha256": "\([0-9a-f]*\)".*/\1/p' "$1" | head -1; }
 SIM=$T/sim; R=$T/root; mkdir -p "$SIM" "$R"
 echo "http://127.0.0.1:1" > "$R/catalog-url"
@@ -48,9 +50,13 @@ HOST=$!
 wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
     && wait_for 10 '[ "$(field session)" = 2 ] && grep -q "drew=1" "$SIM/mr-state"' || { bad "the host did not start"; tail -20 "$T/host.log"; exit 1; }
 want=$(sha_of "${CR%.rfm1m}.json"); got=$(sha_of "$R/firmwares/$(basename "${CR%.rfm1m}").json")
-[ -n "$want" ] && [ "$got" = "$want" ] \
-    && ok "the development build installed$([ -n "$CAT" ] && echo " over the catalog's same version, $(sha_of "$CAT.json" | cut -c1-12)") ($(echo "$want" | cut -c1-12))" \
-    || bad "the installed $(basename "$CR"): '$got', not the development build's $want"
+if [ -z "$CAT" ]; then how=""
+elif [ "$(basename "$CAT")" = "$(basename "${CR%.rfm1m}")" ]; then how=" over the catalog's same version ($(sha_of "$CAT.json" | cut -c1-12))"
+elif [ ! -f "$R/firmwares/$(basename "$CAT").json" ]; then how=", newer than the catalog's $(basename "$CAT") (swept)"
+else how=" BESIDE $(basename "$CAT") (not swept)"; fi
+[ -n "$want" ] && [ "$got" = "$want" ] && [ "${how#* BESIDE}" = "$how" ] \
+    && ok "the development build $(basename "${CR%.rfm1m}") installed$how ($(echo "$want" | cut -c1-12))" \
+    || bad "the installed $(basename "$CR"): '$got', not the development build's $want$how"
 sleep 2.5   # (the firmware's splash and the session's own popups gone)
 mkdir -p build/test-out
 shot; cp "$SIM/mr-screen.pbm" build/test-out/rd1_before.pbm
