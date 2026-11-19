@@ -197,9 +197,9 @@ export function openPop(anchor, build, { width = 280, onClose, cls = "" } = {}) 
   return { el, refill: fill };
 }
 let popWired = false;   // (the listeners that close it: added with the first menu)
-export const popItem = ({ label, sub, dot, on, onclick, disabled, cls = "", id }) =>
+export const popItem = ({ label, sub, dot, thumb, on, onclick, disabled, cls = "", id }) =>
   h("button", { class: `mv-pop-item ${on ? "on" : ""} ${cls}`, role: "menuitem", disabled, onclick, "data-id": id },
-    dot ? h("span", { class: "mv-dot", style: { "--c": dot } }) : null, h("span", { class: "mv-pop-l" }, label), sub ? h("span", { class: "mv-val mv-mut" }, sub) : null);
+    thumb || (dot ? h("span", { class: "mv-dot", style: { "--c": dot } }) : null), h("span", { class: "mv-pop-l" }, label), sub ? h("span", { class: "mv-val mv-mut" }, sub) : null);
 
 // ---- the controls. ctx: { up(fn) } (re-run on every mix); o: { get() -> 0..127, set(v), max?, min?, color?, fmt?(v) }
 // A control's own value while it is dragged (and 600 ms after), else the Move's.

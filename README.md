@@ -552,6 +552,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/fm1link.c`, `src/fm1sim.c` | an FM-1 on USB-A or over Wi-Fi (libremotefm1's session over Move Remote's USB-A hooks and a TCP socket); the simulator's fake FM-1 (tests) |
 | `src/fsvc.c` | a Fantasy CFW's file API (rfm1_host_1): the sandbox, the requests, the pump between calls; served on the storage module's file thread |
 | `web/move/js/movefs.js`, `movefiles.js` | the page's file browser (the header's Files) and the settings sheet's Files section |
+| `web/move/js/movebrowse.js`, `fw-browser.js`, `css/fw-browser.css` | the page's firmware browser (Browse all): RemoteFM1's browser (a copy of its web/site file) over `/api/catalog` |
 | `src/files.c` | the file browser's rules (paths, links, what may change), the listing, a folder as a streamed zip |
 | `src/wav.c`, `tests/ainchk.c` | a WAV read as 44.1 kHz stereo (`--sim-audio-in`, `fwrun --audio-in`); the input tests' WAV and take checks |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
@@ -623,6 +624,29 @@ changed). Screenshots: docs/move-page-slots.png, move-page-fxpages.png, move-pag
 move-page-phone-mixfx.png, move-page-phone-fxpages.png. The page
 needs no secure context: no AudioWorklet, Web MIDI, WebUSB, microphone, IndexedDB saves or folder access. Besides
 the ops above, `/ws` carries MIDI (in: a frame that starts with 32; out: binary 5; the Editor, below).
+
+**The firmware browser** (js/movebrowse.js over js/fw-browser.js, css/fw-browser.css: RemoteFM1's browser, the iOS
+app's firmware tiles; `fw-browser.js` and `.css` are copies of RemoteFM1's web/site files, kept the same): a slot's
+load menu shows each firmware's thumbnail and "Browse all", which opens the Move's whole catalog as a grid of tiles
+for that slot (the slot can be changed in its head; a dialog on a desktop, the whole screen on a phone).
+
+- **The data:** `GET /api/catalog` (engine_catalog): every entry of the catalog as the Move's own browser lists it
+  (the index's and the installed ones): `id`, `name`, `version` (the index's), `installed` ("" none), `description`,
+  `categories`, `virtual`, `indexed` (downloadable), `bytes`, `thumb` (64 x 64, 1 bit, base64), and `favorites`: the
+  Move's library's favourites in order (set with the Move's Sample button; the page shows them, it does not change
+  them).
+- **The thumbnail:** RemoteFM1FW's catalog image (its catalog/catalog.json `image`, from raw.githubusercontent.com,
+  as the iOS app shows them) when the device showing the page reaches GitHub, else the Move's own 1-bit thumbnail,
+  drawn crisp (pixelated, the theme's text colour on the bezel's), else the name on a colour of its own. Drawn as the
+  tiles come into view; each image once a page.
+- **The filters** (the owner's, as on the Move): Favourites or All (All by itself when there are none, the choice
+  kept), Installed (its updates counted) / Not installed, one category at a time or Fantasy CFW, a search; kept in the
+  browser's localStorage.
+- **A tap:** an installed one loads into the slot and plays it; one not installed, or with a newer version in the
+  index (UPDATE), is downloaded by the Move (`POST /api/download {id}`: engine_download, rfm1cs's FW_DOWNLOAD as a jog
+  press in the Move's catalog does it; its progress is the status's `dl_*`, a ring on the tile), then loaded.
+  Screenshots: docs/move-page-browser.png, move-page-browser-all.png (dist/move-catalog's firmwares),
+  move-page-phone-browser.png.
 
 **The Editor** (the header's Editor button, as on remotefm1.com: RemoteFM1's editor-panel.js, behind ON_MOVE):
 

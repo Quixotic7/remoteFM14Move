@@ -19,6 +19,14 @@
 //     the page; the tab follows the Move's FX page and sets it;
 //   - the Editor (Felucca's, from fixtures for remotefm1.com and its author's site): a SysEx request from the editor in
 //     its sandbox reaches the firmware on the Move, the reply reaches the editor (live page, then the hosted copy);
+//   - the firmware browser (js/movebrowse.js over RemoteFM1's js/fw-browser.js): the load menus' thumbnails; Browse all
+//     shows the Move's whole catalog (GET /api/catalog) as tiles: RemoteFM1FW's catalog image where it has one (served
+//     by the test), else the Move's own 64 x 64 1-bit thumbnail (pixelated); the filters (Favourites or All, All by
+//     itself with none; Installed with its updates / Not installed; one category); a tap on AMB-1 (not installed)
+//     downloads it on the Move (POST /api/download, from build/testcat served in the container) and loads it into the
+//     slot; dist/move-catalog's ~118 firmwares as tiles: drawn as they come into view (lazily), all once scrolled;
+//     on the phone the whole screen, names never cut off (move-page-browser.png, move-page-browser-all.png,
+//     move-page-phone-browser.png);
 //   - Files (js/movefiles.js, js/movefs.js): the sheet's Add samples puts a WAV into the Move's audio/; the header's
 //     Files button's browser: the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder
 //     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
@@ -27,7 +35,9 @@
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
 //     move-page-phone.png (the slot menu open), move-page-phone-mixfx.png and move-page-phone-fxpages.png,
 //     move-page-editor.png (the Editor), move-page-files.png (the file browser).
-//   node tests/page_e2e.mjs [--shot=docs/move-page.png] [--port=N]          (after make; needs Docker and Chromium)
+//   node tests/page_e2e.mjs [--shot=docs/move-page.png] [--port=N] [--live-images] [--shots-also=DIR]
+//   (after make; needs Docker and Chromium. --live-images: RemoteFM1FW's real catalog images from GitHub, not the
+//   test's; --shots-also: the browser's screenshots copied there too)
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,6 +48,8 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : d; };
 const SHOT = arg("shot", join(ROOT, "docs/move-page.png"));
 const DOCS = join(ROOT, "docs");
+const LIVE_IMAGES = process.argv.includes("--live-images"), ALSO = arg("shots-also", null);
+const BIG = join(ROOT, "dist/move-catalog/index.json");
 const CHROMIUM = process.env.CHROMIUM || "/Applications/Chromium.app/Contents/MacOS/Chromium";
 const IMAGE = process.env.IMAGE || "rfm14move-build";
 const PORT = +arg("port", 17800 + Math.floor(Math.random() * 100)), DEBUG = 9300 + Math.floor(Math.random() * 600);
@@ -52,7 +64,10 @@ for (const f of ["build/sim/remotefm1-host", "build/site/index.html"])
 
 // ---- the host on the simulator, in the image
 const cid = execFileSync("docker", ["run", "-d", "--rm", "-p", `127.0.0.1:${PORT}:7730`, "-v", `${ROOT}:/w`, "-w", "/w", IMAGE, "sh", "-c",
-  "mkdir -p /tmp/s && exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --catalog-url http://127.0.0.1:1 --fx-dir build/fxmods" +
+  // (the test catalog, build/testcat, served in the container: the page's download of AMB-1 comes from it)
+  (existsSync(join(ROOT, "build/testcat/index.json")) ? "busybox httpd -p 127.0.0.1:18090 -h build/testcat && " : "") +
+  "mkdir -p /tmp/s && exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --catalog-url " +
+  (existsSync(join(ROOT, "build/testcat/index.json")) ? "http://127.0.0.1:18090" : "http://127.0.0.1:1") + " --fx-dir build/fxmods" +
   (existsSync(join(ROOT, "build/testcat/index.json")) ? " --catalog-index build/testcat/index.json" : "")],
   { encoding: "utf8" }).trim();
 const tmp = mkdtempSync(join(tmpdir(), "rfm14-page-")), profile = join(tmp, "profile");
@@ -106,7 +121,11 @@ const key = async (code, { alt = false, keyName, vk } = {}) => {
 };
 const altDigit = (n) => key(`Digit${n}`, { alt: true, keyName: ["¡", "™", "£"][n - 1], vk: 48 + n });
 const esc = () => key("Escape", { keyName: "Escape", vk: 27 });
-const shot = async (file) => { const r = await cdp("Page.captureScreenshot", { format: "png" }); writeFileSync(file, Buffer.from(r.result.data, "base64")); console.log(`  shot  ${file}`); };
+const shot = async (file) => {
+  const r = await cdp("Page.captureScreenshot", { format: "png" }), b = Buffer.from(r.result.data, "base64");
+  writeFileSync(file, b); console.log(`  shot  ${file}`);
+  if (ALSO && /browser/.test(file)) writeFileSync(join(ALSO, file.split("/").pop().replace("move-page-", "firmware-browser-move-")), b);
+};
 const active = async () => { const st = await status(); return st ? st.active : -1; };
 const dv = (sel) => js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return e ? e.dataset.v : null; })()`);
 
@@ -160,8 +179,13 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     // (a hosted copy carries its own shim's tag, which must not load in the sandbox: it is dropped)
     "https://remotefm1.com/managers/felucca/": ["text/html; charset=utf-8", EDITOR.replace("%SHIM%", `<script src="../fm1-shim.js" data-manager="felucca"></script>`)],
   };
+  // RemoteFM1FW's catalog (the browser's thumbnails): an image for AMB-1 only (an SVG stands in for its PNG)
+  const RFW = "https://raw.githubusercontent.com/Quixotic7/RemoteFM1FW/main/catalog/";
+  FIX[RFW + "catalog.json"] = ["application/json", JSON.stringify({ schema: 1, firmwares: { amb: { image: "images/amb.svg", category: "Synth" } } })];
+  FIX[RFW + "images/amb.svg"] = ["image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a6fdb"/><stop offset="1" stop-color="#f2b134"/></linearGradient></defs><rect width="64" height="64" fill="url(#g)"/><circle cx="22" cy="26" r="9" fill="#fff" opacity=".8"/><circle cx="42" cy="38" r="13" fill="#fff" opacity=".45"/></svg>`];
   const fetched = [];
-  await cdp("Fetch.enable", { patterns: [{ urlPattern: "https://remotefm1.com/*" }, { urlPattern: "https://editor.test/*" }] });
+  await cdp("Fetch.enable", { patterns: [{ urlPattern: "https://remotefm1.com/*" }, { urlPattern: "https://editor.test/*" },
+    ...(LIVE_IMAGES ? [] : [{ urlPattern: "https://raw.githubusercontent.com/*" }])] });
   await cdp("Runtime.enable"); await cdp("Page.enable"); await cdp("Network.enable"); await cdp("Log.enable");
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   // what the page asks the browser for (none of it may be used on the Move: no secure context, no audio here)
@@ -305,6 +329,85 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await altDigit(1);
   await untilApi(async () => (await active()) === 0, 5000);
   await until(`document.getElementById("fw-name").textContent === "Felucca"`, 5000, "Felucca");
+
+  // ---- the firmware browser (js/movebrowse.js): the Move's catalog as tiles, the filters, a download that loads
+  if (existsSync(join(ROOT, "build/testcat/index.json"))) {
+    const cat = await api("catalog");
+    const byId = Object.fromEntries((cat.firmwares || []).map((f) => [f.id, f]));
+    ok(cat.firmwares.length === 3 && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.41" && byId.choralroot.version === "0.42"
+      && cat.firmwares.every((f) => f.thumb && f.thumb.length === 684) && Array.isArray(cat.favorites),
+      `GET /api/catalog: the index's 3 (AMB-1 not installed, ChoralRoot 0.41 here, 0.42 in the index), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length})`);
+    await altDigit(3);
+    ok(await until(`document.querySelector(".mv-pop .mv-pop-item[data-id='choralroot'] .mv-th img") && document.querySelector(".mv-pop [data-browse='2']")`, 5000, "the menu's thumbnails"),
+      "slot 3's load menu: each row with its thumbnail, and Browse all");
+    await click(".mv-pop [data-browse='2']");
+    ok(await until(`!document.getElementById("mv-browse").hidden && document.querySelectorAll("#mv-browse .fb-tile").length === 3`, 5000, "the browser"),
+      "Browse all: the firmware browser for slot 3, a tile per firmware of the Move's catalog (3)");
+    ok(await until(`document.querySelectorAll("#mv-browse .fb-art img.in").length === 3`, 8000, "the thumbnails"), "every tile's thumbnail drawn");
+    const th = await js(`(() => { const t = (id) => document.querySelector('#mv-browse .fb-tile[data-id="' + id + '"]'), im = (id) => t(id).querySelector(".fb-art img.in");
+      return { amb: im("amb").src.slice(0, 90), ambRich: !im("amb").classList.contains("fb-bits"), bits: ["choralroot", "felucca"].every((id) => im(id).classList.contains("fb-bits") && im(id).naturalWidth === 64),
+        px: getComputedStyle(im("felucca")).imageRendering, up: !!t("choralroot").querySelector(".fb-up"), get: !!t("amb").querySelector(".fb-get"),
+        slot: document.querySelector("#mv-browse .mv-br-slot.on").dataset.slot, favOff: document.querySelector('#mv-browse .fb-chip[data-v="fav"]').disabled }; })()`);
+    ok(th.ambRich && (LIVE_IMAGES || (/amb\.svg/.test(th.amb) && th.bits && /pixelated|crisp/.test(th.px))),
+      `AMB-1: RemoteFM1FW's catalog image; ChoralRoot and Felucca: the Move's 1-bit thumbnails, 64 x 64, ${th.px}`);
+    ok(th.up && th.get && th.slot === "2", "marks: UPDATE on ChoralRoot (0.41 here, 0.42 in the index), a download arrow on AMB-1; the head says slot 3");
+    ok(th.favOff, "no favourites on the Move: the Favourites chip is off, All shows");
+    const tiles = () => js(`[...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).join(",")`);
+    await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="out"]');
+    ok(await tiles() === "amb", "Not installed: AMB-1 only");
+    await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="in"]');
+    const inst = await js(`({ ids: [...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).sort().join(","), n: document.querySelector('#mv-browse .fb-chip[data-v="in"] .fb-n').textContent })`);
+    ok(inst.ids === "choralroot,felucca" && /1 update/.test(inst.n), `Installed: ChoralRoot and Felucca, "${inst.n}"`);
+    await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="any"]');
+    const catChip = await js(`[...document.querySelectorAll('#mv-browse .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v).find((c) => c !== "All")`);
+    await click(`#mv-browse .fb-chips[aria-label="Category"] .fb-chip[data-v="${catChip}"]`);
+    const inCat = (await tiles()).split(",").filter(Boolean), wantCat = cat.firmwares.filter((f) => f.categories.includes(catChip)).map((f) => f.id);
+    ok(inCat.length === wantCat.length && inCat.every((x) => wantCat.includes(x)) && await js(`document.querySelectorAll('#mv-browse .fb-chips[aria-label="Category"] .fb-chip.on').length === 1`),
+      `one category at a time: ${catChip} (${inCat.join(", ")})`);
+    await click('#mv-browse .fb-chips[aria-label="Category"] .fb-chip[data-v="All"]');
+    await sleep(500);
+    await shot(join(DOCS, "move-page-browser.png"));
+    // a tap on AMB-1 (not installed): the Move downloads it, then it loads into slot 3
+    await click('#mv-browse .fb-main[data-id="amb"]');
+    const ring = await until(`document.querySelector('#mv-browse .fb-tile[data-id="amb"].busy .fb-ring') || document.getElementById("mv-browse").hidden`, 5000, "the download");
+    ok(ring, "a tap on AMB-1: its tile shows the download's ring");
+    ok(await untilApi(async () => { const st = await status(); return st && st.dl_ok > 0 && st.dl_id === "amb"; }, 60000), "the Move downloaded AMB-1 (its status: dl_ok)");
+    ok(await untilApi(async () => (await slotId(2)) === "amb", 30000), `then it loads into slot 3 (${await slotId(2)})`);
+    ok(await until(`document.getElementById("mv-browse").hidden && document.querySelector('.mv-chip[data-slot="2"]:not(.empty)') && /AMB/.test(document.querySelector('.mv-chip[data-slot="2"] .mv-nm').textContent)`, 10000, "chip 3"),
+      "the browser closed; chip 3 names AMB-1");
+    ok((await api("catalog")).firmwares.find((f) => f.id === "amb").installed === "1.3.2", "the catalog says AMB-1 1.3.2 is installed");
+    // the whole Move catalog (dist/move-catalog, when built): the tiles drawn as they come into view, all once scrolled
+    if (existsSync(BIG)) {
+      const big = JSON.parse(readFileSync(BIG, "utf8")).firmwares;
+      const here = new Set(["felucca", "choralroot", "amb"]);
+      const rows = big.map((f) => ({ id: f.id, name: f.name, version: f.version, installed: here.has(f.id) ? (f.id === "choralroot" ? "0.41" : f.version) : "",
+        description: f.description, categories: f.categories, virtual: !!f.virtual, indexed: true, thumb: f.thumb || "" }));
+      await js(`(() => { const b = FM1MoveUi.browse; b.load = async () => b.cat; b.cat = { generated: "dist/move-catalog", from: 2, firmwares: ${JSON.stringify(rows)}, favorites: ${JSON.stringify(rows.slice(4, 9).map((r) => r.id))} };
+        b.fb.filters.scope = "fav"; b.fb.filters.inst = "any"; b.fb.filters.cat = "All"; b.open(0); return true; })()`);
+      ok(await until(`document.querySelectorAll("#mv-browse .fb-tile").length === 5`, 5000, "Favourites"), "with favourites (the Move's, five here): Favourites shows those five");
+      await click('#mv-browse .fb-chip[data-v="all"]');
+      const N = rows.length, withThumb = rows.filter((r) => r.thumb).length;
+      ok(await until(`document.querySelectorAll("#mv-browse .fb-tile").length === ${N}`, 5000, "all"), `All: ${N} tiles (dist/move-catalog)`);
+      await sleep(LIVE_IMAGES ? 3000 : 800);
+      const first = await js(`document.querySelectorAll("#mv-browse .fb-art[data-painted]").length`);
+      ok(first > 0 && first < N, `lazily: ${first} of ${N} thumbnails drawn before scrolling`);
+      await shot(join(DOCS, "move-page-browser-all.png"));
+      for (let y = 0; y < 30; y++) { await js(`(() => { const b = document.querySelector("#mv-browse .mv-br-body"); b.scrollTop += b.clientHeight * 0.8; return true; })()`); await sleep(120); }
+      ok(await until(`document.querySelectorAll("#mv-browse .fb-art img.in").length >= ${withThumb}`, 15000, "every thumbnail"),
+        `scrolled through: every one of the ${withThumb} thumbnails drawn (${await js(`document.querySelectorAll("#mv-browse .fb-art img.in").length`)})`);
+      await js(`(() => { const b = FM1MoveUi.browse; delete b.load; b.fb.filters.scope = "all"; b.fb.keep(); b.close(); b.load(); return true; })()`);
+    }
+    if (await js(`!document.getElementById("mv-browse").hidden`)) {
+      await esc();
+      ok(await until(`document.getElementById("mv-browse").hidden`, 3000, "closed"), "Esc closes the browser");
+    }
+    // (back as it was: slot 3 empty, slot 1 playing)
+    await edit(17, 2, 0);
+    await untilApi(async () => (await slotId(2)) === null, 10000);
+    await altDigit(1);
+    await untilApi(async () => (await active()) === 0, 5000);
+    await until(`document.getElementById("fw-name").textContent === "Felucca"`, 5000, "Felucca");
+  }
 
   // ---- Mix & FX (rfm1cs 0.5.0): ⌥M; FX setup (one layer: the chain) and the Mixer follow the Move's and set it
   await edit(22, 3, 0);
@@ -547,6 +650,26 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await edit(18, 1 * 8, 100);
   await click(".mv-close");
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "close"), "the sheet's close button goes back to the faceplate");
+
+  // ---- the firmware browser on the phone: from the slot menu's load page, the whole screen, nothing cut off
+  if (existsSync(join(ROOT, "build/testcat/index.json"))) {
+    await click("#mv-slotbtn");
+    await until(`document.querySelector('.mv-ipmenu .mv-iprow.empty[data-slot="2"]')`, 3000, "the slot menu");
+    await click('.mv-ipmenu .mv-iprow.empty[data-slot="2"]');
+    ok(await until(`document.querySelector(".mv-ipmenu .mv-ip-list .mv-th") && document.querySelector('.mv-ipmenu [data-browse="2"]')`, 3000, "the load page"),
+      "the phone's load page: thumbnails on its rows, and Browse all");
+    await click('.mv-ipmenu [data-browse="2"]');
+    ok(await until(`!document.getElementById("mv-browse").hidden && document.querySelectorAll("#mv-browse .fb-art img.in").length >= 3`, 8000, "the phone browser"), "Browse all: the browser, its thumbnails drawn");
+    await sleep(LIVE_IMAGES ? 2500 : 500);
+    const ph = await js(`(() => { const b = document.getElementById("mv-browse").getBoundingClientRect();
+      return { w: b.width, x: b.left, h: b.height, sw: document.documentElement.scrollWidth, cols: getComputedStyle(document.querySelector("#mv-browse .fb-grid")).gridTemplateColumns.split(" ").length,
+        cut: [...document.querySelectorAll("#mv-browse .fb-name, #mv-browse .fb-ver, #mv-browse .fb-chip, #mv-browse .mv-br-slot")].filter((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.textContent) }; })()`);
+    ok(ph.w >= 389 && ph.x <= 1 && ph.h >= 800 && ph.sw <= 390, `the phone: the whole screen (${Math.round(ph.w)} x ${Math.round(ph.h)}), no sideways scroll`);
+    ok(ph.cols >= 3 && !ph.cut.length, `${ph.cols} tiles a row; names, versions, chips whole, never cut off (${ph.cut.join(", ") || "none cut"})`);
+    await shot(join(DOCS, "move-page-phone-browser.png"));
+    await esc();
+    ok(await until(`document.getElementById("mv-browse").hidden`, 3000, "closed"), "Esc closes it");
+  }
 
   // ---- FM-1 Wi-Fi (js/movewifi.js) on the phone: the settings sheet's button opens it; with no FM-1 on USB-A it says
   // setup needs it there; with an FM-1 (the host's answer stood in for: a canned /api/fm1/wifi) the networks with

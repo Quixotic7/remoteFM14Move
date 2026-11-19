@@ -8,6 +8,8 @@
 //   - phone (the iOS app's iPhone layout): the header's pill is the slot button (the playing slot's mini screen and
 //     name, at most 150 px, cut with an ellipsis); a tap drops the slot menu over the dimmed faceplate: three 64 px rows, an empty slot as
 //     "Load into slot n", then "Mix & FX" and "Load into slot n" (the firmware list, with Unload).
+//   - the load menus' rows carry each firmware's thumbnail; their "Browse all" opens the firmware browser for that slot
+//     (js/movebrowse.js: the Move's whole catalog as tiles, downloads, the filters)
 //   - keys: ⌥1 ⌥2 ⌥3 play a slot (an empty one: its load menu), ⌥M the Mix & FX view, Esc back to the faceplate
 //     (when nothing is latched: the panel's Esc lets latches go first).
 // The faceplate follows the playing slot by itself (movehost.js "moved": main.js followMove).
@@ -17,6 +19,7 @@ import { MixView } from "./movemix.js";
 import { LAYOUTS } from "./panel.js";
 import { mountMoveFiles } from "./movefiles.js";
 import { mountMoveWifi } from "./movewifi.js";
+import { mountMoveBrowse } from "./movebrowse.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -29,6 +32,7 @@ class SlotsUi {
     this.menuEl = null; this.menuSub = null;    // the phone's slot menu; its firmware list for a slot (or null)
     this.buildHeader();
     this.view = new MixView({ store: this.store, minis: this.minis, ui: this, phone: this.phone });
+    this.browse = mountMoveBrowse({ store: this.store, toast: (t, k) => this.store.toast(t, k) });
     this.store.on((what) => { if (what !== "meters") this.render(); else this.meters(); });
     this.phone.addEventListener("change", () => { this.closeMenus(); this.render(); });
     this.keys();
@@ -123,7 +127,7 @@ class SlotsUi {
     const st = this.store, fws = st.firmwares();
     const rows = fws.map((f) => {
       const k = st.where(f);
-      return popItem({ label: f.name, id: f.id, dot: st.fwColor(f), sub: k >= 0 ? (k === slot ? "here" : `on ${k + 1}`) : f.version, on: k === slot,
+      return popItem({ label: f.name, id: f.id, dot: st.fwColor(f), thumb: this.browse.thumb(f.id, f.name), sub: k >= 0 ? (k === slot ? "here" : `on ${k + 1}`) : f.version, on: k === slot,
         onclick: () => { done(); if (k !== slot) st.load(slot, f, true); else st.activate(slot); } });
     });
     if (!fws.length) rows.push(h("p", { class: "mv-pop-note" }, "No firmwares installed on this Move."));
@@ -135,7 +139,7 @@ class SlotsUi {
       ...this.loadRows(slot, () => closePop()),
       h("div", { class: "mv-pop-foot" },
         h("button", { class: "mv-pill", disabled: !this.store.slot(slot).on, "data-unload": slot, onclick: () => { closePop(); this.store.unload(slot); } }, `Unload slot ${slot + 1}`),
-        h("button", { class: "mv-pill", onclick: () => closePop() }, "Close")),
+        h("button", { class: "mv-pill mv-browse-btn", "data-browse": slot, title: "Every firmware of the Move's catalog: thumbnails, filters, downloads", onclick: () => { closePop(); this.browse.open(slot); } }, "Browse all")),
     ], { width: 280, cls: "mv-loadmenu", onClose: () => { this.pop = null; } });
   }
 
@@ -166,7 +170,8 @@ class SlotsUi {
         h("div", { class: "mv-ip-head" }, h("button", { class: "mv-iconbtn", "aria-label": "Back", onclick: () => { this.menuSub = null; this.fillMenu(); } }, svg(IC.back, 16)),
           h("span", { class: "mv-h" }, `Load into slot ${slot + 1}`)),
         h("div", { class: "mv-ip-list" }, ...this.loadRows(slot, () => this.closeMenus())),
-        h("div", { class: "mv-ip-foot" }, h("button", { class: "mv-pill", disabled: !st.slot(slot).on, "data-unload": slot, onclick: () => { this.closeMenus(); st.unload(slot); } }, `Unload slot ${slot + 1}`)));
+        h("div", { class: "mv-ip-foot" }, h("button", { class: "mv-pill", disabled: !st.slot(slot).on, "data-unload": slot, onclick: () => { this.closeMenus(); st.unload(slot); } }, `Unload slot ${slot + 1}`),
+          h("button", { class: "mv-pill mv-browse-btn", "data-browse": slot, onclick: () => { this.closeMenus(); this.browse.open(slot); } }, "Browse all")));
       return;
     }
     const rows = [0, 1, 2].map((i) => {
@@ -207,6 +212,7 @@ class SlotsUi {
         if (e.code === "KeyM") { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) this.view.toggle(); return; }
       }
       if (e.code === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (this.browse.isOpen) { e.preventDefault(); e.stopImmediatePropagation(); this.browse.close(); return; }
         if (popOpen() || this.menuEl) { e.preventDefault(); e.stopImmediatePropagation(); this.closeMenus(); return; }
         if (this.view.isOpen && !(this.o.controls && this.o.controls.anyLatched())) { e.preventDefault(); e.stopImmediatePropagation(); this.view.close(); }
       }

@@ -1,6 +1,7 @@
 RemoteFM14Move's changes to RemoteFM1's web/site (third_party/RemoteFM1, pinned), for the page the Ableton Move serves.
 SPDX-License-Identifier: GPL-3.0-only (RemoteFM1's site, changed). Applied by scripts/build_site.sh (patch -p1 in the
-copy of web/site), with web/move/js/*.js (host.js, movehost.js, moveui.js, moveslots.js, movemix.js) and
+copy of web/site), with web/move/js/*.js (host.js, movehost.js, moveui.js, moveslots.js, movemix.js, movebrowse.js, and
+fw-browser.js: a copy of RemoteFM1's own, newer than the pinned site) and
 web/move/css/move.css added beside it. Everything is behind one flag,
 js/host.js ON_MOVE (index.html's <meta name="fm1-host" content="web|move">: the build sets "move"), so with "web" the
 site is exactly RemoteFM1's: the patch can go upstream as it is (README.md, "The page").

@@ -251,6 +251,22 @@ static void api_load(client_t *c, const char *body)
     json_reply(c, "202 Accepted", "{\"ok\":true}");
 }
 
+/* POST /api/download {"id"}: a catalog firmware downloaded, checked and installed (engine_download: as the Move's
+ * own catalog does it; the status's dl_* follow it) */
+static void api_download(client_t *c, const char *body)
+{
+    char id[64];
+    if (!body || mj_string(body, "id", id, sizeof id)) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want {id}\"}");
+        return;
+    }
+    if (engine_download(id) != 0) {
+        json_reply(c, "409 Conflict", "{\"ok\":false,\"error\":\"a bad id, or a download already asked for\"}");
+        return;
+    }
+    json_reply(c, "202 Accepted", "{\"ok\":true}");
+}
+
 /* POST /api/edit {"op": 16..24, "a": n, "b": n}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as the
  * WebSocket's ops; POST /api/test/midi {"track": 0..16 (0: as the pads played live), "b0", "b1", "b2"}: tests only (--test-api) */
 static void api_edit(client_t *c, const char *body, int test)
@@ -1012,6 +1028,8 @@ static void request(client_t *c, const char *body)
             api_load(c, body);
         else if (!strcmp(path, "/api/edit"))
             api_edit(c, body, 0);
+        else if (!strcmp(path, "/api/download"))
+            api_download(c, body);
         else if (!strcmp(path, "/api/test/midi"))
             api_edit(c, body, 1);
         else if (!strncmp(path, "/api/fs/", 8))
@@ -1080,6 +1098,10 @@ static void request(client_t *c, const char *body)
     } else if (!strcmp(path, "/api/firmwares")) {
         char *j = engine_firmwares();
         json_reply(c, "200 OK", j ? j : "{\"firmwares\":[]}");
+        free(j);
+    } else if (!strcmp(path, "/api/catalog")) {
+        char *j = engine_catalog();
+        json_reply(c, "200 OK", j ? j : "{\"firmwares\":[],\"favorites\":[]}");
         free(j);
     } else if (!strncmp(path, "/api/fw/", 8))
         api_fw_file(c, path + 8);

@@ -104,6 +104,13 @@ int engine_status(char *out, int cap);
  * built_by, description and categories (the catalog's), skin: the skin's files ([] none; web.c /api/fw/), licenses),
  * made whenever they change: a malloc'd copy (the caller frees it), or NULL */
 char *engine_firmwares(void);
+/* the page's firmware browser: the whole catalog, {"generated", "from", "firmwares":[...], "favorites":[ids]} (each:
+ * id, name, version, installed ("" none), description, virtual, indexed (downloadable), bytes, thumb (64 x 64, 1 bit,
+ * base64, "" none), categories; favorites: the Move's library's, in order), a malloc'd copy, or NULL */
+char *engine_catalog(void);
+/* the page's download of a catalog firmware: rfm1cs's FW_DOWNLOAD on the engine's thread, as a jog press in the
+ * Move's catalog (its progress: the status's dl_*). 0 queued; -1 a bad id or one already queued */
+int engine_download(const char *id);
 /* the page's firmware pick: firmware id into slot 0..2, done on the engine's thread as rfm1cs's FW_LOAD (the storage
  * worker opens it, the slot boots it, the Move is told). 0 queued; -1 an unknown id or slot, or the queue is full */
 int engine_load(int slot, const char *id, int activate);   /* activate: then make that slot the active one */

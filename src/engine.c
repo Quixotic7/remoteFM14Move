@@ -250,6 +250,10 @@ static struct { int op, a, b; } g_pin[256];
 static int g_npin;
 static char g_status[12288];
 static char *g_fw_json;                      /* engine_firmwares: made whenever the installed ones change */
+static char *g_cat_json;                     /* engine_catalog: the whole catalog, made with g_fw_json ("{...,"
+                                              * "\"firmwares\":[...]": the favourites go after it) */
+static char g_fav_json[RFM_MOVE_FW_LIB_MAX * (RFM_MOVE_FW_ID_MAX + 3) + 4] = "[]";   /* the library's favourites */
+static char g_wdl[RFM_MOVE_FW_ID_MAX];       /* the page's download (engine_download), "" none */
 static char (*g_web_ids)[RFM_MOVE_FW_ID_MAX];   /* the installed ids (engine_load's check) */
 static int g_web_n;
 static struct { int slot, activate; char id[RFM_MOVE_FW_ID_MAX]; } g_wload[8];   /* the page's loads (engine_load) */
@@ -280,6 +284,7 @@ static int has_file(const char *json_path, const char *suffix)
 /* the page's firmware list (engine_firmwares): each installed firmware's manifest fields, its file's stem (base: the
  * page asks for its skin and licences by it, web.c /api/fw/), the catalog's description and categories (rfm1cs's),
  * whether it has a skin */
+static void cat_json(void);
 static void fw_json(void)
 {
     static const char *CATS[] = { "Synth", "Groovebox", "Chords", "Drums", "Other" };
@@ -342,6 +347,88 @@ static void fw_json(void)
     free(g_web_ids);
     g_web_ids = ids;
     g_web_n = g_nfw;
+    pthread_mutex_unlock(&g_vmu);
+    cat_json();
+}
+
+/* base64 of n bytes into out (4 * ((n + 2) / 3) + 1 bytes) */
+static void b64(const uint8_t *in, int n, char *out)
+{
+    static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int i, o = 0;
+    for (i = 0; i < n; i += 3) {
+        const uint32_t v = (uint32_t)in[i] << 16 | (i + 1 < n ? (uint32_t)in[i + 1] << 8 : 0) | (i + 2 < n ? in[i + 2] : 0);
+        out[o++] = A[v >> 18 & 63], out[o++] = A[v >> 12 & 63];
+        out[o++] = i + 1 < n ? A[v >> 6 & 63] : '=';
+        out[o++] = i + 2 < n ? A[v & 63] : '=';
+    }
+    out[o] = 0;
+}
+
+/* the page's firmware browser (engine_catalog): every entry of the catalog (the index's and the installed ones), as
+ * the Move's own browser lists them: id, name, version, the version installed ("" none), the description, the
+ * categories, a Fantasy CFW, downloadable (in the index) and its bytes, the thumbnail (64 x 64, 1 bit, base64) */
+static void cat_json(void)
+{
+    static const char *CATS[] = { "Synth", "Groovebox", "Chords", "Drums", "Other" };
+    const int ne = g_cat ? g_cat->n : 0;
+    size_t cap = 512 + (size_t)ne * (CAT_DESC * 2 + 1024), n = 0;
+    char *o = malloc(cap), th[4 * ((RFM_MOVE_FW_THUMB_BYTES + 2) / 3) + 1];
+    int i, k;
+    if (!o)
+        return;
+    n += (size_t)snprintf(o + n, cap - n, "{\"generated\":\"%s\",\"from\":%d,\"firmwares\":[", g_cat ? g_cat->generated : "",
+                          g_cat ? g_cat->from : 0);
+    for (i = 0; i < ne; i++) {
+        const cat_ent_t *e = &g_cat->e[i];
+        char name[100], desc[CAT_DESC * 2];
+        int first = 1;
+        mj_escape(e->name, name, sizeof name);
+        mj_escape(e->desc, desc, sizeof desc);
+        if (e->has_thumb)
+            b64(e->thumb, RFM_MOVE_FW_THUMB_BYTES, th);
+        else
+            th[0] = 0;
+        n += (size_t)snprintf(o + n, cap - n,
+                              "%s{\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"installed\":\"%s\",\"description\":\"%s\","
+                              "\"virtual\":%s,\"indexed\":%s,\"bytes\":%llu,\"thumb\":\"%s\",\"categories\":[",
+                              i ? "," : "", e->id, name, e->version, e->installed, desc, e->virt ? "true" : "false",
+                              e->indexed && e->files ? "true" : "false", (unsigned long long)e->bytes, th);
+        for (k = 0; k < 5; k++)
+            if (e->cats >> k & 1) {
+                n += (size_t)snprintf(o + n, cap - n, "%s\"%s\"", first ? "" : ",", CATS[k]);
+                first = 0;
+            }
+        n += (size_t)snprintf(o + n, cap - n, "]}");
+        if (n >= cap - 16)
+            break;
+    }
+    snprintf(o + n, cap - n, "]");
+    pthread_mutex_lock(&g_vmu);
+    free(g_cat_json);
+    g_cat_json = o;
+    pthread_mutex_unlock(&g_vmu);
+}
+
+/* the library's favourites in their order (the Move's Favorites), as a JSON array of ids: into g_fav_json when they
+ * changed (the engine's thread: the core's library is its) */
+static void fav_json(void)
+{
+    const rfm_move_t *m = &S->core;
+    char t[sizeof g_fav_json];
+    int k, n = 0;
+    n += snprintf(t + n, sizeof t - (size_t)n, "[");
+    for (k = 0; k < m->fw.nfav && k < RFM_MOVE_FW_LIB_MAX; k++) {
+        const unsigned r = m->fw.fav[k];
+        if (r < m->fw.nrec && m->fw.rec[r].id[0])
+            n += snprintf(t + n, sizeof t - (size_t)n, "%s\"%.*s\"", n > 1 ? "," : "", RFM_MOVE_FW_ID_MAX - 1, m->fw.rec[r].id);
+        if (n >= (int)sizeof t - RFM_MOVE_FW_ID_MAX - 4)
+            break;
+    }
+    snprintf(t + n, sizeof t - (size_t)n, "]");
+    pthread_mutex_lock(&g_vmu);
+    if (strcmp(t, g_fav_json))
+        memcpy(g_fav_json, t, sizeof t);
     pthread_mutex_unlock(&g_vmu);
 }
 
@@ -1493,6 +1580,7 @@ static void view_info(void)
         }
     }
     if (n < (int)sizeof tmp - 64) {   /* the FM-1 on USB-A (fm1link.c) */
+        fav_json();
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
         n += fm1link_json(tmp + n, (int)sizeof tmp - n);
         if (n > (int)sizeof tmp - 2)
@@ -1891,6 +1979,41 @@ char *engine_firmwares(void)
     char *r;
     pthread_mutex_lock(&g_vmu);
     r = g_fw_json ? strdup(g_fw_json) : NULL;
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
+char *engine_catalog(void)
+{
+    char *r = NULL;
+    pthread_mutex_lock(&g_vmu);
+    if (g_cat_json) {
+        const size_t a = strlen(g_cat_json), b = strlen(g_fav_json);
+        if ((r = malloc(a + b + 20))) {
+            memcpy(r, g_cat_json, a);
+            memcpy(r + a, ",\"favorites\":", 13);
+            memcpy(r + a + 13, g_fav_json, b);
+            memcpy(r + a + 13 + b, "}", 2);
+        }
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
+int engine_download(const char *id)
+{
+    size_t i, n = id ? strlen(id) : 0;
+    int r = -1;
+    if (!n || n >= RFM_MOVE_FW_ID_MAX)
+        return -1;
+    for (i = 0; i < n; i++)
+        if (!((id[i] >= 'a' && id[i] <= 'z') || (id[i] >= '0' && id[i] <= '9') || id[i] == '_' || id[i] == '-'))
+            return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (!g_wdl[0]) {
+        memcpy(g_wdl, id, n + 1);
+        r = 0;
+    }
     pthread_mutex_unlock(&g_vmu);
     return r;
 }
@@ -2727,6 +2850,13 @@ static void *engine_main(void *arg)
                 snprintf(d->id, sizeof d->id, "%s", g_wload[i].id);
             }
             g_nwload = 0;
+            if (g_wdl[0] && g_ndefer < (int)(sizeof g_defer / sizeof g_defer[0])) {   /* the page's download: FW_DOWNLOAD */
+                defer_t *d = &g_defer[g_ndefer++];
+                memset(d, 0, sizeof *d);
+                d->a.kind = RFM_MOVE_ACT_FW_DOWNLOAD;
+                snprintf(d->id, sizeof d->id, "%s", g_wdl);
+                g_wdl[0] = 0;
+            }
             pthread_mutex_unlock(&g_vmu);
             {   /* tests: sequencer MIDI from outside (engine_test_midi) */
                 struct { uint8_t track, b[3]; } tm[32];
