@@ -1,11 +1,11 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
-# ChoralRoot's own takeover, "CHORDS" (tk1: FM1VST docs/RFM1-TAKEOVER.md; ChoralRoot's firmware/src/cr_move.c), in the
+# ChoralRoot's own takeover, "ChoralRoot" (tk1: FM1VST docs/RFM1-TAKEOVER.md; ChoralRoot's firmware/src/cr_move.c), in the
 # build image after make with a tk1 build of ChoralRoot among the development builds (make DEV_FIRMWARES=
 # .../choralroot-<v>.rfm1, FM1VST's core-glue/choralroot: build/fw-dev). Skipped when there is none (no fixture is kept
 # in git: the .rfm1 is 1.6 MB; tkdemo, tests/tk_e2e.sh, is the takeover's own fixture). The host on the simulator, the
-# screen reader on (tests/fake_tts.c): CHORDS in slot 1, its record read (claims 0x5F); Track 1 opens it (said
-# "Chords"), its home screen (the header bar, the 16-step strip); the pads its colours (the Keys layout, the chord keys,
+# screen reader on (tests/fake_tts.c): ChoralRoot in slot 1, its record read (claims 0x5F); Track 1 opens it (said
+# "ChoralRoot, takeover"), its home screen (the header bar, the 16-step strip); the pads its colours (the Keys layout, the chord keys,
 # the memories); MIN + m7 + D: the pads lit, "Chord D minor seven" said; memory 6 tapped with them held: saved (white,
 # then cyan; "Memory 6, D minor seven"); a step tapped: the chord in it (the strip); Menu held: the picker (its pads),
 # Scale picked; a knob touched: its full-screen popup; volume touched + Back: FM-1 mode, Track 1: back as it was left.
@@ -43,7 +43,7 @@ mode() { field move_mode; }
 mark() { M=$(wc -l < "$SAID" 2>/dev/null || echo 0); }
 said() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | grep -E -q "$1"; }
 last() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | tr '\n' '|' | cut -c1-200; }
-# CHORDS's home view: the header bar (row 0 lit across) and the 16-step strip (each box's top edge: 16 x 7 on row 52)
+# the takeover's home view: the header bar (row 0 lit across) and the 16-step strip (each box's top edge: 16 x 7 on row 52)
 home() { [ "$(lit 0 0)" = 128 ] && [ "$(lit 52 52)" = 112 ]; }
 M=0
 FAKE_TTS_SHM=/rfm14-crtk-$$ FAKE_TTS_LOG=$SAID build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" \
@@ -52,20 +52,20 @@ FAKE_TTS_SHM=/rfm14-crtk-$$ FAKE_TTS_LOG=$SAID build/sim/remotefm1-host --root "
 HOST=$!
 wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
     && wait_for 15 '[ "$(field session)" = 2 ] && grep -q "drew=1" "$SIM/mr-state"' || { bad "the host did not start"; tail -20 "$T/host.log"; exit 1; }
-wait_for 10 '[ "$(sfield 0 tk)" = 95 ]' && [ "$(sfield 0 tk_name)" = CHORDS ] && [ "$(mode)" = 0 ] \
-    && ok "$(basename "$CR") in slot 1: its record read (claims 0x5F, \"CHORDS\"), FM-1 mode" \
+wait_for 10 '[ "$(sfield 0 tk)" = 95 ]' && [ "$(sfield 0 tk_name)" = ChoralRoot ] && [ "$(mode)" = 0 ] \
+    && ok "$(basename "$CR") in slot 1: its record read (claims 0x5F, \"ChoralRoot\"), FM-1 mode" \
     || bad "ChoralRoot's takeover: claims '$(sfield 0 tk)' name '$(sfield 0 tk_name)' mode '$(mode)'"
 sleep 2.5   # (the firmware's splash and the session's own popups gone)
 mkdir -p build/test-out
-# ---- Track 1: CHORDS
+# ---- Track 1: the takeover
 mark; press 43
 wait_for 4 '[ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ]' && ok "Track 1: the takeover (mode 4, slot 1 shown)" \
     || bad "Track 1: mode '$(mode)' shown '$(field tk_shown)'"
-wait_for 3 'said "^Chords"' && ok "entering said: \"$(last)\"" || bad "entering: said '$(last)'"
+wait_for 3 'said "^ChoralRoot"' && ok "entering said: \"$(last)\"" || bad "entering: said '$(last)'"
 sleep 1.6   # (its name popup gone)
 shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_home.pbm
-home && ok "the Move's screen is CHORDS's home view (the header bar, the 16 steps)" \
-    || bad "not CHORDS's home: row 0 $(lit 0 0), row 52 $(lit 52 52) lit (build/test-out/crtk_home.pbm)"
+home && ok "the Move's screen is the takeover's home view (the header bar, the 16 steps)" \
+    || bad "not the takeover's home: row 0 $(lit 0 0), row 52 $(lit 52 52) lit (build/test-out/crtk_home.pbm)"
 [ "$(padrgb 0)" = ffd228 ] && [ "$(padrgb 1)" = 515151 ] && [ "$(padrgb 25)" = 361047 ] && [ "$(padrgb 17)" = 472100 ] \
     && [ "$(padrgb 21)" = 031e22 ] && ok "the pads: Keys (C yellow, D grey), MIN violet, m7 orange, memory 6 empty (dim)" \
     || bad "the pads: C '$(padrgb 0)' D '$(padrgb 1)' MIN '$(padrgb 25)' m7 '$(padrgb 17)' memory 6 '$(padrgb 21)'"
@@ -105,7 +105,7 @@ wait_for 4 '[ "$(mode)" = 0 ] && [ "$(field tk_shown)" = -1 ]' && ok "volume tou
     || bad "volume + Back: mode '$(mode)' shown '$(field tk_shown)'"
 press 43
 wait_for 4 '[ "$(mode)" = 4 ]' && wait_for 3 '[ "$(padrgb 8)" = ffd228 ] && [ "$(padrgb 21)" = 13abbf ]' \
-    && ok "Track 1 again: CHORDS as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
+    && ok "Track 1 again: the takeover as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 rm -f "/dev/shm/rfm14-crtk-$$"
