@@ -131,8 +131,8 @@ RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
 RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
 HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
-.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix
-in-all: in-tools in-fw in-testfw in-cpu2fix in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
+.PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix in-tkdemo
+in-all: in-tools in-fw in-testfw in-cpu2fix in-tkdemo in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk build/tools/fake-tts \
           build/tools/rtpmidi-peer
 in-fw: $(FW_OUT)
@@ -141,6 +141,11 @@ in-testfw: $(FW_TEST_OUT) $(FW_DEV_OUT)
 in-cpu2fix: build/cpu2fix/cpu2fix-1.0.rfm1m
 build/cpu2fix/cpu2fix-1.0.rfm1m: tests/cpu2fix/cpu2fix-1.0.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/cpu2fix build/w2c >/dev/null
+# the takeover's test firmware (tests/tkdemo: FM1VST's tools/rfm1/tkdemo, wants tk1; its .rfm1 kept in git, GPL-3.0-only
+# like FM1VST), for tests/tk_e2e.sh
+in-tkdemo: build/tkdemo/tkdemo-1.0.rfm1m
+build/tkdemo/tkdemo-1.0.rfm1m: tests/tkdemo/tkdemo-1.0.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
+	tools/build_fw.sh $< build/tkdemo build/w2c >/dev/null
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
 
