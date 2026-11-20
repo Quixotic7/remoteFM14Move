@@ -3,9 +3,9 @@
 # Schwung's screen reader (src/announce.c, README "Screen reader") on the simulator, in the build image: the host with
 # the screen reader on and tests/fake_tts.c as Schwung's speech program (the same shared memory; it logs each text it is
 # asked to speak and answers with a tone): entering the tool, mode switches, a knob's value (Control mode's CC; the
-# volume), the firmware view, a firmware selected and loaded from the Move, the slot played switched, the words mixed
-# into the output, leaving (the exit gesture); the user's settings never restated otherwise. Then with Schwung's
-# setting off (screen_reader_state.txt 0): no sidecar, nothing said.
+# volume), the firmware view, a firmware selected and loaded from the Move, the slot played switched (from the page;
+# Back + Track: each said once), the words mixed into the output, leaving (the exit gesture); the user's settings
+# never restated otherwise. Then with Schwung's setting off (screen_reader_state.txt 0): no sidecar, nothing said.
 #   tests/speech_e2e.sh      (after make)
 set -u
 cd "$(dirname "$0")/.."
@@ -28,6 +28,7 @@ wait_for() { _n=$(( $1 * 10 )); shift; while [ $_n -gt 0 ]; do eval "$1" && retu
 # a line said since mark (the log's line count when it was taken) matching an extended regexp
 mark() { M=$(wc -l < "$SAID" 2>/dev/null || echo 0); }
 said() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | grep -E -q "$1"; }
+count() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | grep -c "$1"; }
 last() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | tr '\n' '|' | cut -c1-200; }
 LOG=$T/host.log
 
@@ -74,7 +75,11 @@ mark; press "cc 43"; sleep 0.5; press "cc 51"
 wait_for 3 'said "FM-1 mode"' && ok "Track 1 in the view, Back: \"$(last)\"" || bad "back to the mode: said '$(last)'"
 sleep 0.4
 mark; curl -s -o /dev/null -X POST --data '{"op":16,"a":1,"b":0}' "$U/api/edit"
-wait_for 3 'said "^Playing, Slot 2, ChoralRoot"' && ok "the slot played switched: \"$(last)\"" || bad "slot switch: said '$(last)'"
+wait_for 3 'said "^Playing, Slot 2, ChoralRoot"' && sleep 0.8 && [ "$(count Playing)" = 1 ] \
+    && ok "the page switched the slot played: \"$(last)\", once" || bad "the page's slot switch: said '$(last)'"
+mark; cmd "cc 51 127"; sleep 0.15; press "cc 43"; cmd "cc 51 0"   # Back held + Track 1: slot 1 played
+wait_for 3 'said "Playing, Slot 1, Felucca"' && sleep 0.8 && [ "$(count Playing)" = 1 ] \
+    && ok "Back + Track 1 switched the slot played: \"$(last)\", once" || bad "Back + Track 1: said '$(last)'"
 mx=$(field tts_mixed)
 [ "${mx:-0}" -gt 1000 ] && [ "$(field tts_on)" = 1 ] && ok "the words mixed into the Move's output ($mx frames; $(field tts_said) utterances)" \
     || bad "mixed: '$mx' frames, tts_on '$(field tts_on)'"

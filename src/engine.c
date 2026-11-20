@@ -1953,6 +1953,10 @@ static void page_edit(int op, int a, int b)
         if (a < 0 || a >= NSLOT || !SL[a].on || a == m->fw.active)
             return;
         rfm_move_fw_set_active(m, a);
+#ifdef RFM_MOVE_HAS_SPEECH   /* (the page's switch: the core draws no popup for it, so it says nothing; without
+                              * rfm1cs's words, speak_watch says it) */
+        say_slot(ANN_EVENT, "Playing", a);
+#endif
         break;
     case ENG_OP_UNLOAD: {
         rfm_move_act_t act;

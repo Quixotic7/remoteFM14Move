@@ -558,12 +558,16 @@ What is said (Schwung's conventions: "label: value", views named as they open, d
 - loading, loaded or failed, downloading, installed or failed, states saved / loaded / deleted, the FM-1 linked or
   lost, and leaving (asked for at the exit gesture; Move Remote stops the audio a moment later, so it is cut short).
 
-These come from rfm1cs's public state (`speak_watch` in engine.c) and from the host's own events: rfm1cs-abletonmove
-0.5.9 has no words of its own. Held-button labels, the sequencer, menus' values and FX parameters need them from
-rfm1cs (a speech action; when it has one, the host's watcher steps back). `tests/speech_e2e.sh`: the host with
+Who says what: rfm1cs-abletonmove 0.6.0+ says what the Move's screen shows (`RFM_MOVE_ACT_SAY`, turned on with
+`rfm_move_set_speech` once the user's screen reader is on): its views, popups (knobs, readouts, the volume, held-button
+labels, host popups such as "FM-1 linked"), menus, the browser, FX setup, the sequencer. The host says only what the
+core never draws: entering, loads and downloads, states, a slot switch made from the page (the core shows no popup for
+`rfm_move_fw_set_active`), leaving. Built against an rfm1cs without `RFM_MOVE_HAS_SPEECH` (0.5.x), the host guesses the
+words from the core's public state instead (`speak_watch` in engine.c). `tests/speech_e2e.sh`: the host with
 `tests/fake_tts.c` as the sidecar (the same segment; it logs each text and answers with a tone): entering, the modes,
 a Control knob, the volume, a knob touched, the firmware view, a firmware selected and loaded from the Move, the slot
-switched, the words mixed into the output, the exit gesture, the settings never changed; with the setting off, nothing.
+switched from the page and with Back + Track (each said once), the words mixed into the output, the exit gesture, the
+settings never changed; with the setting off, nothing.
 
 ## A rebuild of the same version
 
