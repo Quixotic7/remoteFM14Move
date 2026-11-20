@@ -175,6 +175,11 @@ typedef struct {
     int frames_ms;
     uint32_t sp_nframe;
     uint32_t c1_cpu;                     /* core 1's jobs, permille of a core over the last second */
+    /* tk1, the takeover (FM1VST docs/RFM1-TAKEOVER.md): what rfm1cs was last told from its record (tk_poll) */
+    int tk_known;                        /* rfm_move_set_takeover was called for this firmware */
+    uint32_t tk_claims, tk_scr, tk_led, tk_say;
+    char tk_name[16];
+    uint32_t tk_in, tk_states;           /* TK_INPUT / TK_STATE actions given to it (the status: tests) */
 } slot_t;
 
 static slot_t SL[NSLOT];
@@ -917,6 +922,16 @@ static void on_action(const rfm1cs_event_t *ev)
         if (fw && a->value)
             fw_in(fw, FWI_ENC, a->index, a->value, 0, 0);
         break;
+    case RFM_MOVE_ACT_TK_INPUT:   /* (rfm1cs 0.7.0) a claimed control of the slot's takeover: rfm1_tk_input, in time
+                                   * order with its ticks (the record read after its block: tk_poll) */
+        if (a->slot < NSLOT && SL[a->slot].on && ++SL[a->slot].tk_in)
+            fw_in(&SL[a->slot].fw, FWI_TK_INPUT, 0, 0,
+                  (uint32_t)a->pkt[0] | (uint32_t)a->pkt[1] << 8 | (uint32_t)a->pkt[2] << 16 | (uint32_t)a->pkt[3] << 24, 0);
+        break;
+    case RFM_MOVE_ACT_TK_STATE:   /* .. shown with these claims (down 1) or gone: rfm1_tk_state */
+        if (a->slot < NSLOT && SL[a->slot].on && ++SL[a->slot].tk_states)
+            fw_in(&SL[a->slot].fw, FWI_TK_STATE, a->down ? 1 : 0, a->down ? a->tk_claims : 0, a->tk_flags, 0);
+        break;
     case RFM_MOVE_ACT_MASTER: {   /* the volume knob: the master of every firmware */
         int s;
         g_master = a->value < 0 ? 0 : a->value > 1023 ? 1023 : a->value;
@@ -1178,12 +1193,80 @@ static void raw_flush(void)   /* the test capture of the first instance: its blo
 }
 
 static void run_ids_sync(void);
+
+/* ------------------------------------------------------------------ the takeover (tk1) --- */
+/* FM1VST docs/RFM1-TAKEOVER.md section 6, rfm1cs 0.7.0 (README "Takeover"): each slot's record (fw_tk) read after
+ * every block it rendered (its frames, its rfm1_tk_input calls) and on its boot; what moved goes to rfm1cs: the
+ * claims and name (rfm_move_set_takeover), the screen (scr_seq), the LEDs (led_seq), the words (say_seq). The core
+ * sends back TK_INPUT and TK_STATE (on_action: queued to the slot's firmware). A firmware gone or replaced: claims 0
+ * first (the core keeps a slot's takeover until told) */
+static void tk_clear(int s)
+{
+    if (!SL[s].tk_known)
+        return;
+    SL[s].tk_known = 0;
+    rfm_move_set_takeover(&S->core, s, 0, NULL);
+    rfm1cs_session_redraw(S, now_ms());
+    rfm1cs_session_flush_leds(S);
+}
+
+static void tk_poll(int s, int fresh)
+{
+    slot_t *sl = &SL[s];
+    const uint8_t *r = sl->on ? fw_tk(&sl->fw) : NULL;
+    uint32_t claims, scr, led, say;
+    char name[16];
+    int redraw = 0, leds = 0;
+    if (!r) {   /* (no tk1, or the firmware died) */
+        tk_clear(s);
+        return;
+    }
+    memcpy(&claims, r + FW_TK_CLAIMS, 4);
+    memcpy(&scr, r + FW_TK_SCR_SEQ, 4);
+    memcpy(&led, r + FW_TK_LED_SEQ, 4);
+    memcpy(&say, r + FW_TK_SAY_SEQ, 4);
+    memcpy(name, r + FW_TK_NAME, sizeof name);
+    name[sizeof name - 1] = 0;
+    claims &= RFM_MOVE_TK_ALL;
+    if (fresh || !sl->tk_known || claims != sl->tk_claims || strcmp(name, sl->tk_name)) {
+        sl->tk_known = 1;
+        sl->tk_claims = claims;
+        memcpy(sl->tk_name, name, sizeof name);
+        rfm_move_set_takeover(&S->core, s, claims, name);
+        redraw = leds = 1;
+    }
+    if (fresh || scr != sl->tk_scr) {
+        sl->tk_scr = scr;
+        rfm_move_tk_screen(&S->core, s, r + FW_TK_SCREEN);
+        redraw |= rfm_move_tk_shown(&S->core) == s;
+    }
+    if (fresh || led != sl->tk_led) {
+        sl->tk_led = led;
+        rfm_move_tk_leds(&S->core, s, (const uint8_t(*)[3])(r + FW_TK_LED));
+        leds |= rfm_move_tk_shown(&S->core) == s;
+    }
+    if (fresh)
+        sl->tk_say = say;   /* (words from before: not said) */
+    else if (say != sl->tk_say) {
+        char w[129];
+        sl->tk_say = say;
+        memcpy(w, r + FW_TK_SAY, 128);
+        w[128] = 0;
+        rfm_move_tk_say(&S->core, s, w, r[FW_TK_SAY_FLAGS] & 1);   /* (only while shown and words are open) */
+    }
+    if (redraw)
+        rfm1cs_session_redraw(S, now_ms());
+    if (leds)
+        rfm1cs_session_flush_leds(S);
+}
+
 static void slot_unload(int s, int save)
 {
     fw_inst_t *pre;
     int i;
     if (!SL[s].on)
         return;
+    tk_clear(s);   /* (its takeover closed first: the firmware gets its releases and rfm1_tk_state(0) queued) */
     if (save)
         slot_save(s, 1);
     if (g_raw_fw == &SL[s].fw)
@@ -1466,6 +1549,9 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n)
     sl->c1_job_ns = sl->c1_wait_ns = 0;
     if (g_master >= 0)
         fw_in_now(&sl->fw, FWI_MASTER, 0, g_master, 0);
+    sl->tk_known = 0;
+    sl->tk_in = sl->tk_states = 0;
+    tk_poll(s, 1);   /* (tk1: its takeover's claims and name to rfm1cs, or none) */
     fprintf(stderr, "engine: slot %d: %s %s (%s flash)\n", s + 1, sl->fw.name, sl->fw.version,
             flash && n ? "its saved" : "a fresh");
     run_ids_sync();
@@ -2813,6 +2899,9 @@ static void render_block(uint32_t now)
             mask |= 1 << s;
         }
         render_slots(mask, ain);
+        for (s = 0; s < NSLOT; s++)   /* tk1: each record after the block (its frames, its rfm1_tk_input calls) */
+            if (mask >> s & 1)
+                tk_poll(s, 0);
         for (s = 0; s < NSLOT; s++) {   /* the mix, in slot order */
             slot_t *sl = &SL[s];
             const int16_t *sb = RT[s].blk;
@@ -2975,9 +3064,19 @@ static void housekeeping(uint32_t now)
         g_peak_acc = 0;
         n = snprintf(tmp, sizeof tmp, "{\"blocks\":%u,\"late\":%u,\"rt_blocks\":%u,\"ring\":%u,\"limited\":%u,"
                      "\"peak\":%d,\"session\":%d,\"mode\":%d,\"inputs\":%u,\"led_writes\":%u,\"screens\":%u,"
-                     "\"active\":%d,\"master\":%d,\"slots\":[",
+                     "\"active\":%d,\"master\":%d,\"move_mode\":%d,\"tk_shown\":%d,",
                      g_blocks, g_late, g_rt_blocks, mr_ring_count(&g_ring), g_mix.limited, g_peak, S->st.state,
-                     S->st.mode, S->st.inputs, S->st.led_writes, S->st.screens, g_active, g_master);
+                     S->st.mode, S->st.inputs, S->st.led_writes, S->st.screens, g_active, g_master,
+                     rfm_move_mode(&S->core), rfm_move_tk_shown(&S->core));
+        if (C.test_api) {   /* (tests: the pads' colours as last written to the Move, 6 hex digits each) */
+            int p;
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"move_pads\":\"");
+            for (p = 0; p < RFM_MOVE_NPADS; p++)
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%02x%02x%02x", S->core.sent[p][0], S->core.sent[p][1],
+                              S->core.sent[p][2]);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\",");
+        }
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"slots\":[");
         for (s = 0; s < NSLOT; s++) {
             slot_t *sl = &SL[s];
             if (sl->on) {
@@ -3034,6 +3133,11 @@ static void housekeeping(uint32_t now)
                 if (fw_has_ain(&sl->fw))   /* ain1: the state told, its latency, the blocks fed, the last block's peak */
                     n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ain\":%u,\"ain_lat\":%u,\"ain_blocks\":%u,"
                                   "\"ain_peak\":%d", sl->fw.ain_state, sl->fw.ain_lat, sl->fw.ain_blocks, sl->fw.ain_peak);
+                if (sl->tk_known) {   /* tk1: the takeover's claims (0: none now), its name, what the core gave it */
+                    mj_escape(sl->tk_name, esc[0], sizeof esc[0]);
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tk\":%u,\"tk_name\":\"%s\",\"tk_in\":%u,"
+                                  "\"tk_states\":%u", sl->tk_claims, esc[0], sl->tk_in, sl->tk_states);
+                }
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "}");
             } else
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%snull", s ? "," : "");
