@@ -18,7 +18,7 @@ ls build/fw/*.rfm1m >/dev/null 2>&1 || { echo "package: no compiled firmwares in
 [ -d build/pkg ] && mv build/pkg "build/pkg.old.$(date +%s)"
 P=build/pkg/remotefm1
 mkdir -p "$P/firmwares" "$P/licenses" dist
-cp module/module.json module/standalone build/move/remotefm1-host build/move/remotefm1-heal LICENSE \
+cp module/module.json module/help.json module/standalone build/move/remotefm1-host build/move/remotefm1-heal LICENSE \
     THIRD_PARTY_LICENSES.md "$P/"
 cp /usr/share/doc/wabt/copyright "$P/licenses/wabt-wasm2c-runtime.txt"
 cp /usr/share/common-licenses/Apache-2.0 "$P/licenses/Apache-2.0.txt"

@@ -13,7 +13,7 @@ which AI coding tools were used. Before opening it, run the catalog checks Move 
 `tests/host/test_taxonomy.sh`, `test_module_categories.sh`, `test_release_version_agreement.sh` and
 `test_host_channels_mirror_stable.sh`.
 
-Open it only after v0.1.0 is released and `release.json` is on `main` (Schwung Manager fetches it for the version and
+Open it only after v0.1.1 (with help.json) is released and `release.json` is on `main` (Schwung Manager fetches it for the version and
 the download).
 
 ```sh
@@ -51,7 +51,7 @@ gh pr create --repo charlesvestal/schwung --base main --head Quixotic7:add-remot
 > It is a standalone tool that runs FM-1 firmwares (RemoteFM1's `.rfm1` files) on the Move itself, as native code
 > (wasm2c), played from the Move's own pads, knobs, buttons and sequencer.
 >
-> - **Firmwares:** a signed catalog of 118, each checked against the `.rfm1`'s own sound, bit for bit. 39 come in the
+> - **Firmwares:** a signed catalog of 118. 39 come in the
 >   package; the rest download over Wi-Fi from a browser on the Move or on the page. Each keeps its own licence; the
 >   package's `FIRMWARES.md` lists the bundled ones with their exact sources.
 > - **Three slots** at once, each on its own thread and core.
@@ -66,13 +66,18 @@ gh pr create --repo charlesvestal/schwung --base main --head Quixotic7:add-remot
 > - `component_type`: `tool`, `subcategory`: `performance`.
 > - `min_host_version`: `1.6.0`: the first release with top-level `"standalone": true`. Its real-time helper goes
 >   through `schwung-heal`, as Move Remote's does.
-> - `asset_name`: `remotefm1-module.tar.gz`, from the v0.1.0 release, with `release.json` on `main`. It installs today
+> - `asset_name`: `remotefm1-module.tar.gz`, from the v0.1.1 release, with `release.json` on `main`. It installs today
 >   through Install Custom Module > From GitHub URL.
 >
 > Checks run locally: `tests/host/test_taxonomy.sh`, `test_module_categories.sh`, `test_release_version_agreement.sh`
 > and `test_host_channels_mirror_stable.sh`.
 >
-> On-device testing on Schwung (version), by hand: (the owner's list).
+> Tested daily on a Move with Schwung 1.9.3: Install from GitHub, launch from Tools and exit back to Move, three
+> firmware slots, catalog downloads and updates, Schwung MIDI and audio FX, the page at remotefm1.local:7730, and an
+> FM-1 as the panel over USB-A and Wi-Fi.
+>
+> It ships a `help.json` (on-device help: modes, the firmware view, FX & Mix, MIDI, the sequencer, leaving).
+> Screen-reader support is not there yet.
 >
 > Written with Claude Code.
 
