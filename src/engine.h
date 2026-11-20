@@ -52,6 +52,8 @@ typedef struct {
     int fm1_wifi_off;
     int fm1_usba_screen;             /* --fm1-usba-screen: the firmware's screen over USB-A too */
     const char *fm1_addr;
+    int midi_out;                    /* --midi-out: the active slot's MIDI out to Out (midiout.h), the real-time bytes
+                                      * as midiout's cfg says */
 } engine_cfg_t;
 
 int engine_start(const engine_cfg_t *cfg);
@@ -129,5 +131,7 @@ enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOA
 char *engine_fx_modules(void);
 /* tests (engine_cfg_t.test_api): a sequencer MIDI message on track 1..16, as rfm_move_seq_advance gives it. 0 queued */
 int engine_test_midi(int track, int b0, int b1, int b2);
+/* tests: whole messages for Out (midiout_send), sent from the engine's next block. 0 queued, -1 no room or no test API */
+int engine_test_midiout(const uint8_t *msgs, int n);
 
 #endif

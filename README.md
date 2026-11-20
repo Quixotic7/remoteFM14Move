@@ -230,6 +230,10 @@ make test
 - `tests/cpu2fw_e2e.sh` (when FIZZ's and ChoralRoot's cpu2 builds are among the inputs): the host with both, chords on
   each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
   `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
+- `tests/midiout_e2e.sh` (Out, below): `tests/rtpmidi_peer.c` as a Mac finds "RemoteFM1 Move" by mDNS, invites both
+  ports, syncs the clock; the messages sent from the engine's block (`/api/test/midiout`) arrive as sent (a 1500-byte
+  SysEx in two segments), F8 does not; RS, BY; with the fake FM-1 linked on USB-A Out skips it, a plain device there
+  gets Out's note.
 
 ## An FM-1 on the Move's USB-A
 
@@ -292,6 +296,26 @@ as USB-A, one FM-1 at a time.
     pages, bad passwords refused, a failed join explained, a join with the password arriving whole and in no log or
     file, networks kept and forgotten, then RemoteFM1 Wi-Fi's simulator at the joined address linked over TCP.
   - Without the Move: RemoteFM1's `tools/wifi_probe.py setup` (or `scan`) over USB from a computer.
+
+## MIDI out ("Out")
+
+`src/midiout.c` (midiout.h): whole messages the engine's block hands it (`midiout_send`; a firmware's packets through
+`midiout_send_pkts`) go through a lock-free ring to the engine's loop (`midiout_poll`), and from there to:
+
+- **Network MIDI:** an RTP-MIDI session (RFC 6295, Apple's session protocol), "RemoteFM1 Move" on UDP 5004 (control)
+  and 5005 (data), advertised by mDNS as `_apple-midi._udp` (src/mdns.c: PTR, SRV, TXT beside `remotefm1.local`). On
+  the Mac: Audio MIDI Setup > Window > Show MIDI Studio > Network: "RemoteFM1 Move" under Directory, Connect. Over the
+  USB-C link (172.16.254.x) and Wi-Fi alike. A session the Mac opens (IN, OK on both ports, CK answered, RS counted,
+  BY); up to 4 peers; no journal; the Mac's own MIDI to the Move ignored. `--rtp-port N`, `--no-rtp` (the simulator:
+  none unless `--rtp-port`).
+- **USB-A:** Move Remote's `mr_usba_send`, the FM-1 link's own path. The surface controller bridges USB-A as one
+  cable, so a device or a cable behind it (a hub) can't be picked: while an FM-1 running RemoteFM1 is there (linked
+  over USB-A, or it answered HELLO in the last 5 s) Out skips USB-A and the link's traffic is untouched; any other
+  device gets Out. `--no-fm1`: USB-A stays Move Remote's, Out skips it.
+- Real-time bytes (F8, FA..FC, FE, FF) are dropped unless `--midi-out-clock`.
+- `--midi-out`: the active slot's MIDI out to Out, until the routing names who goes there.
+- `/api/status` `"midiout"`: `rtp_peers`, `rtp_sent` (messages), `rtp_packets`, `usba` (off, on, fm1), `usba_out_sent`,
+  `usba_skipped`, `filtered`, `dropped` (the ring or USB-A's queue full, damaged), `peers` (their names).
 
 ## Fantasy CFWs (Elasticat, Ripple)
 
@@ -632,7 +656,8 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/wav.c`, `tests/ainchk.c` | a WAV read as 44.1 kHz stereo (`--sim-audio-in`, `fwrun --audio-in`); the input tests' WAV and take checks |
 | `src/web.c` | the page on :7730: the site's files, the API, the WebSocket (src/web.h) |
 | `web/move/`, `scripts/build_site.sh` | the page: RemoteFM1's web/site with `site.patch` and `js/host.js`, `js/movehost.js` -> `build/site` |
-| `src/mdns.c` | `remotefm1.local` |
+| `src/mdns.c` | `remotefm1.local`, and the RTP-MIDI session's `_apple-midi._udp` |
+| `src/midiout.c`, `tests/rtpmidi_peer.c` | Out: RTP-MIDI and USB-A ("MIDI out"); the tests' AppleMIDI initiator |
 | `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table; cpu2's twin) |
 | `tools/w2c_mt.sh` | wasm2c's runtime per thread ("Threads"): the host's copy and the header firmware objects are built against |
 | `tests/cpu2fix/` | the core-1 test firmware (C, its `build.sh` with Emscripten, the `.rfm1` kept in git) |

@@ -165,11 +165,154 @@ size_t mdns_announce(const char *name, const uint8_t addr[4], uint8_t *out, size
     return put_a(out, cap, 12, name, addr, 1);
 }
 
+/* ------------------------------------------------------------------ a DNS-SD service --- */
+#define SD_ENUM "_services._dns-sd._udp.local"
+
+/* a record's head (name, type, class with the cache-flush bit, TTL, rdlength to come): where its data starts, 0 no room */
+static size_t rr_head(uint8_t *out, size_t cap, size_t at, const char *name, int type, int flush)
+{
+    if (!(at = put_name(out, cap, at, name)) || at + 10 > cap)
+        return 0;
+    out[at++] = 0, out[at++] = (uint8_t)type;
+    out[at++] = (uint8_t)(flush ? 0x80 : 0), out[at++] = 1;
+    out[at++] = 0, out[at++] = 0, out[at++] = 0, out[at++] = TTL;
+    return at + 2;
+}
+static size_t rr_end(uint8_t *out, size_t rd, size_t at)
+{
+    if (!at)
+        return 0;
+    out[rd - 2] = (uint8_t)((at - rd) >> 8), out[rd - 1] = (uint8_t)(at - rd);
+    return at;
+}
+static size_t put_ptr(uint8_t *out, size_t cap, size_t at, const char *owner, const char *to)
+{
+    const size_t rd = at ? rr_head(out, cap, at, owner, 12, 0) : 0;   /* (shared: no cache flush) */
+    return rd ? rr_end(out, rd, put_name(out, cap, rd, to)) : 0;
+}
+static size_t put_srv(uint8_t *out, size_t cap, size_t at, const char *full, int port, const char *host, int flush)
+{
+    const size_t rd = at ? rr_head(out, cap, at, full, 33, flush) : 0;
+    if (!rd || rd + 6 > cap)
+        return 0;
+    memset(out + rd, 0, 4);   /* priority, weight */
+    out[rd + 4] = (uint8_t)(port >> 8), out[rd + 5] = (uint8_t)port;
+    return rr_end(out, rd, put_name(out, cap, rd + 6, host));
+}
+static size_t put_txt(uint8_t *out, size_t cap, size_t at, const char *full, int flush)
+{
+    const size_t rd = at ? rr_head(out, cap, at, full, 16, flush) : 0;
+    if (!rd || rd + 1 > cap)
+        return 0;
+    out[rd] = 0;   /* one empty string */
+    return rr_end(out, rd, rd + 1);
+}
+
+enum { W_PTR = 1, W_ENUM = 2, W_SRV = 4, W_TXT = 8 };
+
+/* the records asked for (w), and their additionals, after a header at out[0..12) (and a legacy question) at at */
+static size_t svc_records(const mdns_svc_t *svc, const char *name, const uint8_t addr[4], int w, int flush,
+                          uint8_t *out, size_t cap, size_t at)
+{
+    char full[256];
+    unsigned an = 0, ar = 0;
+    snprintf(full, sizeof full, "%s.%s", svc->instance, svc->type);
+    if (w & W_ENUM)
+        at = put_ptr(out, cap, at, SD_ENUM, svc->type), an++;
+    if (w & W_PTR)
+        at = put_ptr(out, cap, at, svc->type, full), an++;
+    if (w & W_SRV)
+        at = put_srv(out, cap, at, full, svc->port, name, flush), an++;
+    if (w & W_TXT)
+        at = put_txt(out, cap, at, full, flush), an++;
+    if ((w & W_PTR) && !(w & W_SRV))   /* (a browser: the rest it will ask for, at once) */
+        at = put_srv(out, cap, at, full, svc->port, name, flush), ar++;
+    if ((w & W_PTR) && !(w & W_TXT))
+        at = put_txt(out, cap, at, full, flush), ar++;
+    if (w & (W_PTR | W_SRV))
+        at = at ? put_a(out, cap, at, name, addr, flush) : 0, ar++;
+    if (!at)
+        return 0;
+    out[6] = (uint8_t)(an >> 8), out[7] = (uint8_t)an;
+    out[10] = (uint8_t)(ar >> 8), out[11] = (uint8_t)ar;
+    return at;
+}
+
+size_t mdns_answer_svc(const uint8_t *q, size_t n, const mdns_svc_t *svc, const char *name, const uint8_t addr[4],
+                       int from_port, uint8_t *out, size_t cap, int *unicast)
+{
+    char full[256];
+    size_t at = 12, qend;
+    unsigned qd, i;
+    int w = 0, qu = 0;
+    const int legacy = from_port != 5353;
+    if (n < 12 || (q[2] & 0x80) || (q[2] & 0x78) || cap < 12)
+        return 0;
+    snprintf(full, sizeof full, "%s.%s", svc->instance, svc->type);
+    qd = (unsigned)q[4] << 8 | q[5];
+    for (i = 0; i < qd && i < 16; i++) {
+        char qn[256];
+        unsigned type, cls;
+        int hit = 0;
+        if (read_name(q, n, &at, qn, sizeof qn) || at + 4 > n)
+            return 0;
+        type = (unsigned)q[at] << 8 | q[at + 1];
+        cls = (unsigned)q[at + 2] << 8 | q[at + 3];
+        at += 4;
+        if ((cls & 0x7FFF) != 1 && (cls & 0x7FFF) != 255)
+            continue;
+        if (!strcasecmp(qn, svc->type) && (type == 12 || type == 255))
+            w |= W_PTR, hit = 1;
+        if (!strcasecmp(qn, SD_ENUM) && (type == 12 || type == 255))
+            w |= W_ENUM, hit = 1;
+        if (!strcasecmp(qn, full) && (type == 33 || type == 16 || type == 255)) {
+            w |= type == 33 ? W_SRV : type == 16 ? W_TXT : W_SRV | W_TXT;
+            hit = 1;
+        }
+        if (hit)
+            qu |= (cls & 0x8000) != 0;
+    }
+    if (!w)
+        return 0;
+    qend = at;
+    *unicast = legacy || qu;
+    memset(out, 0, 12);
+    out[2] = 0x84;
+    at = 12;
+    if (legacy) {   /* a plain resolver: its id, and its questions back */
+        out[0] = q[0], out[1] = q[1];
+        if (qend > cap)
+            return 0;
+        memcpy(out + 12, q + 12, qend - 12);
+        out[4] = q[4], out[5] = q[5];
+        at = qend;
+    }
+    return svc_records(svc, name, addr, w, !legacy, out, cap, at);
+}
+
+size_t mdns_announce_svc(const mdns_svc_t *svc, const char *name, const uint8_t addr[4], uint8_t *out, size_t cap)
+{
+    if (cap < 12)
+        return 0;
+    memset(out, 0, 12);
+    out[2] = 0x84;
+    return svc_records(svc, name, addr, W_ENUM | W_PTR | W_SRV | W_TXT, 1, out, cap, 12);
+}
+
 /* ------------------------------------------------------------------ the responder --- */
 static int g_fd = -1;
 static pthread_t g_thr;
 static volatile int g_run;
 static char g_name[128];
+static char g_svc_inst[64], g_svc_type[96];
+static mdns_svc_t g_svc;   /* (port 0: none) */
+
+void mdns_service(const char *instance, const char *type, int port)
+{
+    snprintf(g_svc_inst, sizeof g_svc_inst, "%s", instance);
+    snprintf(g_svc_type, sizeof g_svc_type, "%s", type);
+    g_svc.instance = g_svc_inst, g_svc.type = g_svc_type, g_svc.port = port;
+}
 
 /* the IPv4 address of interface ifindex (0: the first that is up and not loopback) */
 static int if_addr(unsigned ifindex, uint8_t out[4])
@@ -208,15 +351,43 @@ static void join_all(int fd)
     freeifaddrs(ifa);
 }
 
-static void send_to(const uint8_t *b, size_t n, const struct sockaddr_in *to)
+/* to the group: out of the interface whose address is addr (the one the question came in on; the USB-C link and
+ * Wi-Fi are both multicast), else to an address */
+static void send_to(const uint8_t *b, size_t n, const struct sockaddr_in *to, const uint8_t addr[4])
 {
+    if (addr) {
+        struct in_addr ia;
+        memcpy(&ia, addr, 4);
+        setsockopt(g_fd, IPPROTO_IP, IP_MULTICAST_IF, &ia, sizeof ia);
+    }
     sendto(g_fd, b, n, 0, (const struct sockaddr *)to, sizeof *to);
+}
+
+/* hello: the name (and the service) on every interface that is up */
+static void announce_all(const struct sockaddr_in *group)
+{
+    struct ifaddrs *ifa, *i;
+    if (getifaddrs(&ifa) != 0)
+        return;
+    for (i = ifa; i; i = i->ifa_next) {
+        uint8_t a[4], out[1024];
+        size_t n;
+        if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || (i->ifa_flags & IFF_LOOPBACK) ||
+            !(i->ifa_flags & IFF_UP) || !(i->ifa_flags & IFF_MULTICAST))
+            continue;
+        memcpy(a, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, 4);
+        if ((n = mdns_announce(g_name, a, out, sizeof out)))
+            send_to(out, n, group, a);
+        if (g_svc.port && (n = mdns_announce_svc(&g_svc, g_name, a, out, sizeof out)))
+            send_to(out, n, group, a);
+    }
+    freeifaddrs(ifa);
 }
 
 static void *mdns_main(void *arg)
 {
     struct sockaddr_in group;
-    int rejoin = 0;
+    int rejoin = 0, hellos = 1;
     (void)arg;
 #ifdef __linux__
     pthread_setname_np(pthread_self(), "rfm1-mdns");
@@ -225,14 +396,9 @@ static void *mdns_main(void *arg)
     group.sin_family = AF_INET;
     group.sin_port = htons(5353);
     group.sin_addr.s_addr = inet_addr("224.0.0.251");
-    {   /* hello: the name, on every interface we can reach */
-        uint8_t a[4], out[512];
-        size_t n;
-        if (if_addr(0, a) && (n = mdns_announce(g_name, a, out, sizeof out)))
-            send_to(out, n, &group);
-    }
+    announce_all(&group);   /* (and again a second later: RFC 6762 8.3 asks for two) */
     while (g_run) {
-        uint8_t q[1500], out[512];
+        uint8_t q[1500], out[1024];
         struct sockaddr_in from;
         char cbuf[256];
         struct iovec iov = { q, sizeof q };
@@ -244,6 +410,8 @@ static void *mdns_main(void *arg)
         size_t n;
         uint8_t a[4];
         if (poll(&pf, 1, 200) <= 0) {
+            if (hellos < 2 && rejoin == 4)
+                announce_all(&group), hellos++;
             if (++rejoin >= 50) {   /* every ~10 s: interfaces come and go (USB, Wi-Fi) */
                 rejoin = 0;
                 join_all(g_fd);
@@ -271,7 +439,10 @@ static void *mdns_main(void *arg)
             continue;
         n = mdns_answer(q, (size_t)r, g_name, a, ntohs(from.sin_port), out, sizeof out, &unicast);
         if (n)
-            send_to(out, n, unicast ? &from : &group);
+            send_to(out, n, unicast ? &from : &group, unicast ? NULL : a);
+        if (g_svc.port &&
+            (n = mdns_answer_svc(q, (size_t)r, &g_svc, g_name, a, ntohs(from.sin_port), out, sizeof out, &unicast)))
+            send_to(out, n, unicast ? &from : &group, unicast ? NULL : a);
     }
     return NULL;
 }
@@ -309,7 +480,10 @@ int mdns_start(const char *name)
         g_fd = -1;
         return -1;
     }
-    fprintf(stderr, "mdns: answering for %s\n", g_name);
+    if (g_svc.port)
+        fprintf(stderr, "mdns: answering for %s and \"%s\" (%s, port %d)\n", g_name, g_svc.instance, g_svc.type, g_svc.port);
+    else
+        fprintf(stderr, "mdns: answering for %s\n", g_name);
     return 0;
 }
 

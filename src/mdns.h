@@ -15,6 +15,20 @@ size_t mdns_answer(const uint8_t *q, size_t n, const char *name, const uint8_t a
 /* an unsolicited announcement of name -> addr */
 size_t mdns_announce(const char *name, const uint8_t addr[4], uint8_t *out, size_t cap);
 
+/* A DNS-SD service (RFC 6763) beside the name: PTR <type> -> <instance>.<type>, SRV (port, the name as its target),
+ * an empty TXT, the name's A record as additional; _services._dns-sd._udp.local -> <type>. (midiout.h: "RemoteFM1
+ * Move", "_apple-midi._udp.local", 5004.) The instance may have spaces, not dots */
+typedef struct {
+    const char *instance, *type;
+    int port;
+} mdns_svc_t;
+/* the answer to q for the service (as mdns_answer; 0: not a question for it) */
+size_t mdns_answer_svc(const uint8_t *q, size_t n, const mdns_svc_t *svc, const char *name, const uint8_t addr[4],
+                       int from_port, uint8_t *out, size_t cap, int *unicast);
+size_t mdns_announce_svc(const mdns_svc_t *svc, const char *name, const uint8_t addr[4], uint8_t *out, size_t cap);
+/* the service answered and announced too (one; before mdns_start) */
+void mdns_service(const char *instance, const char *type, int port);
+
 int mdns_start(const char *name);   /* the responder's thread; 0, or -1 (no socket: said, and carried on without) */
 void mdns_stop(void);
 

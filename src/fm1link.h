@@ -60,6 +60,8 @@ int fm1link_changed(void);
  * "name":..,"fw":..,"fps":..,"bps":..,"lost":..,...} into out (one flat object): its length */
 int fm1link_json(char *out, int cap);
 int fm1link_linked(void);
+/* 1 while an FM-1 running RemoteFM1 is on USB-A (linked there, or it answered lately): Out (midiout.h) skips USB-A */
+int fm1link_usba_busy(uint32_t now);
 void fm1link_stop(uint32_t now);     /* SESSION 0 (the unit back to its own screen) */
 
 /* The FM-1's Wi-Fi set up from the page (web.c /api/fm1/wifi*; RemoteFM1 docs/PROTOCOL.md section 10 WIFI): with an

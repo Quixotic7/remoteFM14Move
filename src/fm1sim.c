@@ -9,8 +9,10 @@
  * (key a vel|0, press a p, btn a 1|0, enc a detents, master b, trs a note b vel (a note on the unit's 5-pin jack),
  * plug a 0|1 (1: a fresh unit plugged in), wifi a 0|1 b PORT (a fresh unit plugged in, RemoteFM1 Wi-Fi when a: its
  * WIFI answers, the networks around FM1SIM_WIFI_NETS, joined it says 127.0.0.1:PORT; the tests' password
- * FM1SIM_WIFI_PASS)) and GET /api/test/fm1: how the unit stands (its session, its screen
- * against the active slot's, its LEDs against the slot's, its counters, the bridge's). */
+ * FM1SIM_WIFI_PASS), plain a 0|1 (1: a plain MIDI device in its place, not RemoteFM1: it answers nothing)) and
+ * GET /api/test/fm1: how the unit stands (its session, its screen
+ * against the active slot's, its LEDs against the slot's, its counters, the bridge's; dev_msgs, dev_last: the channel
+ * messages the Move sent on USB-A, whoever is plugged in: Out's, midiout.h). */
 #define _GNU_SOURCE
 #include "fm1sim.h"
 
@@ -36,7 +38,9 @@ static int g_wifi, g_wifi_port;      /* the next fresh unit: RemoteFM1 Wi-Fi (fa
                          "A neighbour's network with a long name:-80:1:3;Another neighbour's long network:-84:1:9;" \
                          "Yet another network nearby, far:-88:1:13"
 #define FM1SIM_WIFI_PASS "test-pass-1234"   /* (fake credentials: tests/fm1wifisetup_e2e.sh) */
-static int g_plugged;
+static int g_plugged, g_plain;
+static uint32_t g_dev_msgs;
+static uint8_t g_dev_last[3];
 static uint32_t g_plugs;
 /* the unit's MIDI out -> USB-MIDI packets (whole SysEx, 3 bytes a packet) */
 static struct { uint8_t b[3]; int n, sx; } P;
@@ -122,6 +126,13 @@ static void *sim_main(void *arg)
         int n, i, k = 0;
         pthread_mutex_lock(&g_mu);
         n = mr_sim_usba_dev_recv(pk, 4096);   /* the Move's cable 2 -> the unit */
+        for (i = 0; i < n && g_plugged; i++)   /* (the channel messages: Out's) */
+            if ((pk[i][0] & 0x0F) >= 0x8 && (pk[i][0] & 0x0F) <= 0xE) {
+                g_dev_msgs++;
+                memcpy(g_dev_last, pk[i] + 1, 3);
+            }
+        if (g_plain)
+            n = 0;
         if (n > 0 && g_plugged && F) {
             static const int LEN[16] = { 0, 0, 2, 3, 3, 1, 2, 3, 3, 3, 3, 3, 2, 2, 3, 1 };
             for (i = 0; i < n; i++) {
@@ -130,7 +141,7 @@ static void *sim_main(void *arg)
             }
             rfm_fake_rx_sx(F, buf, (uint32_t)k, now);
         }
-        if (g_plugged && F) {
+        if (g_plugged && F && !g_plain) {
             uint32_t got;
             rfm_fake_poll(F, now);
             while ((got = rfm_fake_take_sx(F, buf, sizeof buf)) > 0) {   /* the unit -> the bridge, at once */
@@ -185,6 +196,16 @@ int fm1sim_cmd(const char *op, long a, long b)
         }
         g_plugged = a != 0;
         mr_sim_usba_plug(g_plugged);
+    } else if (!strcmp(op, "plain")) {   /* a plain MIDI device on USB-A (a: 1), or a fresh unit again (0) */
+        if (!a && g_plain) {
+            rfm_fake_free(F);
+            F = fresh();
+            memset(&P, 0, sizeof P);
+            g_plugs++;
+        }
+        g_plain = a != 0;
+        g_plugged = 1;
+        mr_sim_usba_plug(1);
     } else if (!strcmp(op, "wifi")) {   /* a fresh unit plugged in: RemoteFM1 Wi-Fi (a) or not */
         g_wifi = a != 0;
         g_wifi_port = b > 0 && b < 65536 ? (int)b : 7740;
@@ -260,8 +281,10 @@ int fm1sim_json(char *out, int cap)
                     "\"screen_exact\":%d,\"plug\":%d,\"holding\":%d,\"leds_match\":%d,\"hellos\":%u,\"sessions\":%u,\"frames\":%u,"
                     "\"held_frames\":%u,\"decode_errs\":%u,\"keepalive_expired\":%u,\"leds\":%u,\"panel_updates\":%u,"
                     "\"led_pkts\":%u,\"usba_pkts\":%u,\"bridge_lost\":%u,\"wifi\":%d,\"wifi_state\":%d,\"wifi_ssid\":\"%s\","
-                    "\"wifi_kept\":%d,\"wifi_pass_ok\":%d,\"wifi_reqs\":%u,\"wifi_sets\":%u,\"wifi_scans\":%u}",
+                    "\"wifi_kept\":%d,\"wifi_pass_ok\":%d,\"wifi_reqs\":%u,\"wifi_sets\":%u,\"wifi_scans\":%u,"
+                    "\"plain\":%d,\"dev_msgs\":%u,\"dev_last\":\"%02x%02x%02x\"}",
                     g_plugged, g_plugs, sess, same, same * 100.0 / (240.0 * 240.0), exact, plug, holding, leds, fs.hellos,
                     fs.sessions_started, fs.frames, fs.held_frames, fs.decode_errs, fs.keepalive_expired, fs.leds,
-                    fs.panel_updates, led_pkts, usba_pkts, lost, g_wifi, wst, wesc, wkept, wpass, wreqs, wsets, wscans);
+                    fs.panel_updates, led_pkts, usba_pkts, lost, g_wifi, wst, wesc, wkept, wpass, wreqs, wsets, wscans,
+                    g_plain, g_dev_msgs, g_dev_last[0], g_dev_last[1], g_dev_last[2]);
 }

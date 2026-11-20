@@ -1032,6 +1032,22 @@ static void request(client_t *c, const char *body)
             api_download(c, body);
         else if (!strcmp(path, "/api/test/midi"))
             api_edit(c, body, 1);
+        else if (!strcmp(path, "/api/test/midiout")) {   /* (--test-api) {"hex": whole messages}: Out from the block */
+            char hx[16384];
+            uint8_t m[sizeof hx / 2];
+            size_t k = 0;
+            unsigned v;
+            if (!body || mj_string(body, "hex", hx, sizeof hx)) {
+                json_reply(c, "400 Bad Request", "{\"ok\":false}");
+                return;
+            }
+            while (hx[2 * k] && hx[2 * k + 1] && sscanf(hx + 2 * k, "%2x", &v) == 1)
+                m[k++] = (uint8_t)v;
+            if (!k || engine_test_midiout(m, (int)k) != 0)
+                json_reply(c, "403 Forbidden", "{\"ok\":false}");
+            else
+                json_reply(c, "202 Accepted", "{\"ok\":true}");
+        }
         else if (!strncmp(path, "/api/fs/", 8))
             api_fs_post(c, path + 8, query);
         else if (!strncmp(path, "/api/fm1/wifi/", 14))

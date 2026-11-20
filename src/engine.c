@@ -27,6 +27,7 @@
 #include "catalog.h"
 #include "engine_dsp.h"
 #include "fm1link.h"
+#include "midiout.h"
 #include "announce.h"
 #include "fsvc.h"
 #include "fwrt.h"
@@ -223,6 +224,11 @@ static char *g_fx_json;
 static int g_peak_win;
 static struct { uint8_t track, b[3]; } g_tmidi[32];
 static int g_ntmidi;
+/* tests: messages for Out (engine_test_midiout), sent from the next block; and the active slot's packets as messages
+ * (--midi-out) */
+static uint8_t g_tmo[8192];
+static int g_ntmo;
+static midiout_asm_t g_mo_asm;
 
 static rfm1cs_session_t *S;
 static int g_sock = -1;
@@ -2058,6 +2064,21 @@ int engine_test_midi(int track, int b0, int b1, int b2)
     return r;
 }
 
+int engine_test_midiout(const uint8_t *msgs, int n)
+{
+    int r = -1;
+    if (!C.test_api || n <= 0)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (g_ntmo + n <= (int)sizeof g_tmo) {
+        memcpy(g_tmo + g_ntmo, msgs, (size_t)n);
+        g_ntmo += n;
+        r = 0;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+
 int engine_view(engine_view_t *v, uint32_t *seq)
 {
     int r = 0;
@@ -2691,6 +2712,17 @@ static void render_block(uint32_t now)
             sends |= 1 << k;
         }
     ain = ain_take(now);
+    if (C.test_api) {   /* (tests: Out's messages from the block, as a firmware's would go) */
+        static uint8_t m[sizeof g_tmo];
+        int mn;
+        pthread_mutex_lock(&g_vmu);   /* (the engine's own mutex, held only to copy) */
+        mn = g_ntmo;
+        memcpy(m, g_tmo, (size_t)mn);
+        g_ntmo = 0;
+        pthread_mutex_unlock(&g_vmu);
+        if (mn)
+            midiout_send(m, mn);
+    }
     {   /* the slots that sound: ain1's state first (between calls, as before), then their blocks, at once */
         int mask = 0;
         for (s = 0; s < NSLOT; s++) {
@@ -2741,6 +2773,8 @@ static void render_block(uint32_t now)
                 }
                 if (n)
                     midi_to_page(pk, n);
+                if (n && C.midi_out)   /* (Out: midiout.h; until the routing names who goes there) */
+                    midiout_send_pkts(&g_mo_asm, pk, n);
             }
         }
         do_deferred();   /* (what the active slot's clock made the sequencer do: after every slot's block is mixed) */
@@ -2999,6 +3033,8 @@ static void housekeeping(uint32_t now)
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tts_on\":%d,\"tts_said\":%u,\"tts_acked\":%u,"
                           "\"tts_mixed\":%u", on, said, acked, mixed);
         }
+        if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
+            n += midiout_json(tmp + n, (int)sizeof tmp - n);
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
         if (n < (int)sizeof tmp)
             n += fm1link_json(tmp + n, (int)sizeof tmp - n);
@@ -3121,6 +3157,7 @@ static void *engine_main(void *arg)
         }
         /* the FM-1 on USB-A (fm1link.c): its panel and MIDI in, the active slot's screen and LEDs out */
         fm1link_tick(now, g_active, SL[g_active].on ? &SL[g_active].fw : NULL);
+        midiout_poll(now);   /* (Out: on this thread, as USB-A's other sender) */
         if (fm1link_changed()) {
             static int was_linked;
             const int linked = fm1link_linked();

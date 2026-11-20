@@ -1180,3 +1180,20 @@ void fm1link_stop(uint32_t now)
             tcp_flush();            /* (over Wi-Fi: it goes now; the socket closes with the process) */
     }
 }
+
+/* Out (midiout.h) leaves USB-A alone while this says so: the session linked over USB-A, or a RemoteFM1 unit there
+ * answered lately (a HELLO_R or a WIFI_R within WS_SEEN_MS: discovery, a session starting, the Wi-Fi set up). A unit
+ * linked over Wi-Fi but still plugged into USB-A goes quiet there (no HELLO while linked) and gets Out after that */
+int fm1link_usba_busy(uint32_t now)
+{
+    const rfm_hello_t *hl;
+    uint32_t age = 0;
+    if (!g_on || g_usb_link < 0)
+        return 0;
+    if (g_linked && rfm_session_frame_link(S) == g_usb_link)
+        return 1;
+    if (ws_t_seen && now - ws_t_seen < WS_SEEN_MS)
+        return 1;
+    hl = rfm_session_link_hello(S, g_usb_link, now, &age);
+    return hl && age < WS_SEEN_MS;
+}

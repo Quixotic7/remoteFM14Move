@@ -44,6 +44,10 @@
  *                   Schwung setting has it on; the simulator: off unless on
  *     --tts-sidecar Schwung's speech program (default /data/UserData/schwung/schwung-tts; tests: tests/fake_tts.c)
  *     --tts-shm     its shared memory (default /schwung-tts)   --tts-config  Schwung's config folder (the setting, tts.json)
+ *     --rtp-port N  network MIDI (midiout.h: RTP-MIDI "RemoteFM1 Move", control N, data N + 1; default 5004, the
+ *                   simulator: none unless given)   --no-rtp  none
+ *     --midi-out    the active slot's MIDI out to Out (USB-A and network MIDI; until the routing says who goes there)
+ *     --midi-out-clock   Out sends the real-time bytes too (F8 clock, start, stop ...; default: dropped)
  *     --fake-fm1    (the simulator) a fake FM-1 on the simulated USB-A (fm1sim.c; the tests' /api/test/fm1)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
@@ -66,6 +70,7 @@
 #include "fx.h"
 #include "https.h"
 #include "mdns.h"
+#include "midiout.h"
 #include "mr_core.h"
 #include "wav.h"
 #include "web.h"
@@ -83,7 +88,7 @@ int main(int argc, char **argv)
     const char *index_arg = NULL, *url = NULL, *fx_dir = NULL;
     int frame_active = 0, frame_bg = 0;
     int fx_budget = 0, test_api = 0, fm1_off = 0, fm1_cap = 0, fake_fm1 = 0, no_ain = 0, fm1_wifi_off = 0, fm1_usba_screen = 0;
-    int threads = 1, cpu2 = 1, rt_threads = 1;
+    int threads = 1, cpu2 = 1, rt_threads = 1, midi_out = 0, midi_clock = 0;
     char heal[PATH_MAX];
     const char *fm1_addr = NULL;
     const char *sim_ain = NULL;
@@ -100,11 +105,12 @@ int main(int argc, char **argv)
     ann.mode = -1;   /* (the simulator: no Schwung) */
 #endif
 #ifdef RFM14_PLAT_SIM
-    int mdns = 0, splash = 0;
+    int mdns = 0, splash = 0, rtp_port = -1;
     const char *tmp = getenv("TMPDIR");
     snprintf(root, sizeof root, "%s/remotefm1-sim", tmp && *tmp ? tmp : "/tmp");
 #else
     int mdns = 1, splash = 3000;   /* the address on the Move's screen before the controls take it */
+    int rtp_port = MIDIOUT_RTP_PORT;
     snprintf(root, sizeof root, "/data/UserData/RemoteFM1");
     fx_dir = "/data/UserData/schwung/modules";
 #endif
@@ -175,6 +181,14 @@ int main(int argc, char **argv)
             ann.shm = argv[++i];
         else if (!strcmp(argv[i], "--tts-config") && i + 1 < argc)
             ann.config_dir = argv[++i];
+        else if (!strcmp(argv[i], "--rtp-port") && i + 1 < argc)
+            rtp_port = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--no-rtp"))
+            rtp_port = -1;
+        else if (!strcmp(argv[i], "--midi-out"))
+            midi_out = 1;
+        else if (!strcmp(argv[i], "--midi-out-clock"))
+            midi_clock = 1;
         else if (!strcmp(argv[i], "--fake-fm1"))
             fake_fm1 = 1;
         else if (!strcmp(argv[i], "--test-api"))
@@ -196,6 +210,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
                             "[--dev-firmwares DIR] [--frame-ms A[,B]] [--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
+                            "[--rtp-port N] [--no-rtp] [--midi-out] [--midi-out-clock] "
                             "[--screen-reader on|off|auto] [--tts-sidecar PATH] [--tts-shm NAME] [--tts-config DIR] "
                             "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
@@ -261,6 +276,7 @@ int main(int argc, char **argv)
         c.fm1_usba_screen = fm1_usba_screen;
         c.fm1_addr = fm1_addr;
         c.serial = !threads;
+        c.midi_out = midi_out;
         fw_cpu2_enable(cpu2);
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */
@@ -283,6 +299,16 @@ int main(int argc, char **argv)
             c.capture_seconds = (uint32_t)(cap_s > 0 ? cap_s : 60);
         }
         fprintf(stderr, "remotefm1-host %s: root %s\n", VERSION, root);
+        {   /* Out (midiout.h): before the engine, whose block sends to it; its service named for mDNS */
+            midiout_cfg_t mo;
+            memset(&mo, 0, sizeof mo);
+            mo.rtp_port = rtp_port > 0 && rtp_port < 65535 ? rtp_port : -1;
+            mo.usba = !fm1_off;
+            mo.usba_busy = fm1link_usba_busy;
+            mo.realtime = midi_clock;
+            if (midiout_start(&mo) != 0)
+                fprintf(stderr, "remotefm1-host: no MIDI out\n");
+        }
         ann_start(&ann);   /* (before the engine: its sidecar spawned while the process is small, no real-time threads) */
         signal(SIGPIPE, SIG_IGN);
         if (engine_start(&c) != 0) {
@@ -342,6 +368,7 @@ int main(int argc, char **argv)
     web_stop();
     mdns_stop();
     engine_stop();
+    midiout_stop();
     ann_stop();
     fprintf(stderr, "remotefm1-host: done\n");
     return rc;

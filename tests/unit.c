@@ -161,6 +161,31 @@ static void mdns(void)
     }
     n = mdns_announce("remotefm1.local", addr, out, sizeof out);
     CHECK(n == 43 && out[2] == 0x84, "the announcement");
+    {   /* DNS-SD: a browse for _apple-midi._udp.local (PTR), multicast; the PTR, then SRV, TXT and A as additional */
+        static const uint8_t qp[] = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 11, '_', 'a', 'p', 'p', 'l', 'e', '-', 'm', 'i',
+                                      'd', 'i', 4, '_', 'u', 'd', 'p', 5, 'l', 'o', 'c', 'a', 'l', 0, 0, 12, 0, 1 };
+        const mdns_svc_t sv = { "RemoteFM1 Move", "_apple-midi._udp.local", 5004 };
+        static const uint8_t inst[] = { 14, 'R', 'e', 'm', 'o', 't', 'e', 'F', 'M', '1', ' ', 'M', 'o', 'v', 'e' };
+        size_t at;
+        n = mdns_answer_svc(qp, sizeof qp, &sv, "remotefm1.local", addr, 5353, out, sizeof out, &uni);
+        at = 12 + 24 + 10;   /* (the PTR's data: the instance's labels) */
+        CHECK(n > 0 && uni == 0 && out[7] == 1 && out[11] == 3 && out[12 + 24 + 1] == 12 && out[12 + 24 + 2] == 0 &&
+                  !memcmp(out + at, inst, sizeof inst) && !memcmp(out + n - 4, addr, 4),
+              "DNS-SD: a browse for _apple-midi._udp: the PTR to \"RemoteFM1 Move\", SRV, TXT and A additional (%zu bytes)", n);
+        {   /* the SRV right after the PTR: port 5004, the target remotefm1.local */
+            const size_t srv = at + sizeof inst + 24, rd = srv + sizeof inst + 24 + 10;
+            CHECK(n > rd + 6 && out[srv + sizeof inst + 24 + 1] == 33 && out[rd + 4] == 5004 >> 8 && out[rd + 5] == (5004 & 0xFF) &&
+                      out[rd + 6] == 9 && !memcmp(out + rd + 7, "remotefm1", 9),
+                  "DNS-SD: the SRV gives port 5004 on remotefm1.local");
+        }
+        n = mdns_answer_svc(qp, sizeof qp, &sv, "remotefm1.local", addr, 50000, out, sizeof out, &uni);
+        CHECK(n > sizeof qp && uni == 1 && out[5] == 1 && !memcmp(out + 12, qp + 12, sizeof qp - 12),
+              "DNS-SD: a plain resolver's browse: unicast, its question back");
+        n = mdns_answer_svc(q, sizeof q, &sv, "remotefm1.local", addr, 5353, out, sizeof out, &uni);
+        CHECK(n == 0, "DNS-SD: an A query is not the service's");
+        n = mdns_announce_svc(&sv, "remotefm1.local", addr, out, sizeof out);
+        CHECK(n > 0 && out[7] == 4 && out[11] == 1, "DNS-SD: the announcement (enum, PTR, SRV, TXT; A)");
+    }
 }
 
 /* a firmware's block, made up: a few sines */

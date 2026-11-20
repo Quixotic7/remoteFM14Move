@@ -7,7 +7,7 @@
 # Move's audio input for them (ain1: tests/ain_e2e.sh), the page's file browser (tests/files_e2e.sh),
 # latch per slot (tests/latch_e2e.sh), the slots' render threads and core 1 (tests/threads_e2e.sh; FIZZ's and
 # ChoralRoot's cpu2 builds when among the inputs: tests/cpu2fw_e2e.sh), readouts (an rd1 ChoralRoot among
-# them: tests/rd1_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh).
+# them: tests/rd1_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh), Out: network MIDI and USB-A (tests/midiout_e2e.sh).
 cd "$(dirname "$0")/.."
 fail=0
 build/tools/unit || fail=1
@@ -49,4 +49,5 @@ tests/threads_e2e.sh || fail=1
 tests/cpu2fw_e2e.sh || fail=1
 tests/rd1_e2e.sh || fail=1
 tests/speech_e2e.sh || fail=1
+tests/midiout_e2e.sh || fail=1
 exit $fail
