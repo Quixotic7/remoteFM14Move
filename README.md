@@ -1,11 +1,12 @@
 # RemoteFM14Move
 
 FM-1 firmwares (`.rfm1`) running on the Ableton Move itself, played from the Move's own pads, knobs and buttons.
-A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteFM1**. Phase 1 of [PLAN.md](PLAN.md).
+A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteFM1**, version **0.1.0**
+([CHANGES.md](CHANGES.md)). Phase 1 of [PLAN.md](PLAN.md).
 
 - **The firmwares** run as native code: each `.rfm1` is translated by wasm2c and compiled for the Move
   (`<id>-<version>.rfm1m`), with the same sound as the `.rfm1` in wasm3, bit for bit (tested).
-- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.5, in-process: FM-1
+- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.9, in-process: FM-1
   mode on the pads and knobs, MIDI, Control and the sequencer, and the projects view (Shift + step 1, or Track 1 held +
   step 1) with three firmware slots, their levels and their states.
 - **The hardware** is [Move Remote](https://github.com/Quixotic7/abletonmoveremote)'s device code, in-process: the SPI
@@ -26,6 +27,28 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
   setup (Session in the projects view) or the page's Mix & FX view. See "Schwung FX" below.
 
 Leave it with **Shift + touch the volume knob + click the jog wheel**: Move's own software starts again.
+
+## Install
+
+You need a Move with [Schwung](https://schwung.dev) **1.6.0 or later** installed.
+
+**From Schwung Manager** (on a computer on the same Wi-Fi as the Move):
+
+1. Open [http://move.local:7700](http://move.local:7700) and go to **Modules**.
+2. Open **Install Custom Module**. Under **From GitHub URL**, enter `Quixotic7/remoteFM14Move` and press
+   **Install from GitHub**.
+
+Or download `remotefm1-module.tar.gz` from the
+[v0.1.0 release](https://github.com/Quixotic7/remoteFM14Move/releases/tag/v0.1.0) and use **From Tarball**.
+Schwung Manager reads [release.json](release.json) on `main` for the version and the download, so the same page
+shows an update when there is a new release.
+
+**Start it:** on the Move, open Schwung's Tools menu (**Shift + Step 13**, or **Shift + touch Volume + Step 13**,
+depending on your Schwung shortcut setting), choose **RemoteFM1** and press the jog wheel. Move's own software stops;
+the first start copies the bundled firmwares into the RemoteFM1 folder (~45 MB) before any sound. The page is
+`http://remotefm1.local:7730/`. **Leave it** with Shift + touch the volume knob + click the jog wheel.
+
+Releasing: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Build
 

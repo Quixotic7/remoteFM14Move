@@ -5,7 +5,8 @@
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1" (with the starter firmwares of
-#                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there)
+#                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there; first
+#                     version-check: src/main.c, module/module.json and release.json name the same version)
 #   make catalog      dist/move-catalog: every published .rfm1 compiled for the Move, with its index.json and
 #                     index.json.sig (tools/build_move_catalog.py, tools/sign_index.py with CATALOG_SIGNING_KEY,
 #                     default ~/.config/remotefm14move/catalog-signing-key.pem; the files a release at the base URL holds)
@@ -74,7 +75,16 @@ testcat-v: all
 	python3 tools/build_move_catalog.py --only elasticat,ripple --out build/testcat-v --jobs 2
 	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat-v/index.json
 
-package: all
+# the release's version: src/main.c's VERSION; module/module.json and release.json must say the same (make package)
+VERSION := $(shell sed -n 's/^\#define VERSION "\(.*\)"/\1/p' src/main.c)
+.PHONY: version-check
+version-check:
+	@python3 -c 'import json,sys; v=sys.argv[1]; m=json.load(open("module/module.json"))["version"]; \
+	    r=json.load(open("release.json"))["version"]; \
+	    sys.exit(0 if v==m==r else "version: src/main.c %s, module/module.json %s, release.json %s" % (v,m,r))' "$(VERSION)"
+	@echo "version $(VERSION)"
+
+package: version-check all
 	$(DOCKER_RUN) make in-package
 	python3 tools/bundle.py build/pkg/remotefm1
 	mkdir -p dist
