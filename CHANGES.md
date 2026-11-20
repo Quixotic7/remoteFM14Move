@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- **Takeover (tk1).** A firmware made for the Move can bring its own Move interface (FM1VST docs/RFM1-TAKEOVER.md,
+  rfm1cs-abletonmove 0.7.0): Track 1 in FM-1 mode opens it, the firmware draws the screen and the LEDs of the parts
+  it claims and gets their input; volume touched + Back always leaves it. Firmwares without it are unchanged.
+  (`rfm1m_tk1` in `fwglue.c`, `fw_tk*` in fwrt, the record read after every block; `tests/tk_e2e.sh` with tkdemo.)
+
 ## 0.1.2
 
 - **Screen reader.** RemoteFM1 speaks what the Move shows: the mode, the firmware view and its slots, the firmware

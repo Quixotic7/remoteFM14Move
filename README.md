@@ -230,6 +230,11 @@ make test
 - `tests/cpu2fw_e2e.sh` (when FIZZ's and ChoralRoot's cpu2 builds are among the inputs): the host with both, chords on
   each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
   `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
+- `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
+  takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
+  Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume
+  touched + Back: FM-1 mode, Back + Track 2 / Track 1 leaves and reopens it, Felucca ignores Track 1, unloading or
+  replacing tkdemo clears it (build/test-out/tk_*.pbm).
 - `tests/midiout_e2e.sh` (Out, below): `tests/rtpmidi_peer.c` as a Mac finds "RemoteFM1 Move" by mDNS, invites both
   ports, syncs the clock; the messages sent from the engine's block (`/api/test/midiout`) arrive as sent (a 1500-byte
   SysEx in two segments), F8 does not; RS, BY; with the fake FM-1 linked on USB-A Out skips it, a plain device there
@@ -551,6 +556,30 @@ what the new slot said while behind. The page: `/api/info`'s `"readout"` (seq, c
 value). `tests/rd1_e2e.sh`: ChoralRoot's K1 (Move knob 5) turned: "Voicing" "+1" on the page and the popup on the
 Move's screen (build/test-out/rd1_k1.pbm); PRESETS: the sound's name; a slot switch: none.
 
+## Takeover (tk1)
+
+A firmware built with FM1VST's `WANTS tk1` brings its own Move interface beside FM-1 mode (FM1VST
+docs/RFM1-TAKEOVER.md; rfm1cs-abletonmove 0.7.0, its README "Takeover"): it draws the Move's 128 x 64 screen and the
+LEDs of the parts it **claims** (screen, pads, steps, knobs, jog, volume, buttons, Track buttons) and gets their raw
+input. **Track 1** in FM-1 mode opens it ("<name>, takeover" shown and said), Track 1 again (when the firmware leaves
+the Track buttons alone) goes back; **volume touched + Back** always leaves it. Unclaimed parts keep their meaning
+(Track 2..4 the modes, Back + Track n the slots). A slot switch leaves it; the slot comes back as it was left.
+
+The module exports `rfm1_tk`, `rfm1_tk_input` and `rfm1_tk_state`; `tools/build_fw.sh` builds such a module with
+`RFM1M_TK1` (fwglue.c `rfm1m_tk1`). After `rfm1_init`, fwrt asks for the record once (`fw_boot`: version 1, size at
+least 1468, in memory, a printable name; else no takeover). The engine reads each slot's record after every block it
+rendered (its frames and its `rfm1_tk_input` calls) and on its boot, and tells rfm1cs what moved: the claims and name
+(`rfm_move_set_takeover`), the screen (`scr_seq`: `rfm_move_tk_screen`), the LEDs (`led_seq`: `rfm_move_tk_leds`),
+the words (`say_seq`: `rfm_move_tk_say`, interrupting when `say_flags` bit 0). The core's `TK_INPUT` and `TK_STATE`
+actions go to the slot's `rfm1_tk_input` / `rfm1_tk_state` as queued inputs (`FWI_TK_INPUT`, `FWI_TK_STATE`: in time
+order with its ticks, logged for `fwrun --replay`). A firmware unloaded or replaced: claims 0 first (the core keeps a
+slot's takeover until told). The other slots keep running; MIDI routing is unchanged. `/api/status`: `move_mode`
+(4 the takeover), `tk_shown` (the slot, -1 none), each slot's `tk` (claims), `tk_name`, `tk_in`, `tk_states`; with
+`--test-api`, `move_pads` (the pads' colours as last sent).
+
+`tests/tk_e2e.sh` runs tkdemo (`tests/tkdemo/tkdemo-1.0.rfm1`: FM1VST's `tools/rfm1/tkdemo`, GPL-3.0-only, kept in git
+like `tests/cpu2fix`, built into `build/tkdemo` by `make`).
+
 ## Screen reader
 
 RemoteFM1 speaks with Schwung's screen reader (Global Settings > Screen Reader: on, before RemoteFM1 is launched; its
@@ -678,9 +707,10 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `fw/fwglue.c`, `tools/build_fw.sh` | `.rfm1` -> `.rfm1m` (wasm2c, then a shared object with one entry table; cpu2's twin) |
 | `tools/w2c_mt.sh` | wasm2c's runtime per thread ("Threads"): the host's copy and the header firmware objects are built against |
 | `tests/cpu2fix/` | the core-1 test firmware (C, its `build.sh` with Emscripten, the `.rfm1` kept in git) |
+| `tests/tkdemo/` | the takeover's test firmware (FM1VST's tkdemo, `wants: tk1`; the `.rfm1` kept in git) |
 | `tools/rfm1info.c`, `tools/fwrun.c` | an `.rfm1`'s manifest and checks; a compiled firmware run offline (rfm1_run's run, or a replay) |
 | `third_party/abletonmoveremote` | Move Remote, branch `in-process` (its embedding hooks: the audio source, the input sink, USB-A) |
-| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove, tag `v0.5.5` (f6144bc) |
+| `third_party/rfm1cs-abletonmove` | rfm1cs-abletonmove 0.7.0 (9851ff9, branch `takeover`) |
 | `third_party/RemoteFM1` | RemoteFM1 at 32d03d6, branch `slow-link` (its `web/site`: the page; libremotefm1 for the FM-1 on USB-A) |
 | `docker/Dockerfile` | the build and test image (debian bookworm, the Move's toolchain, wabt 1.0.32) |
 
