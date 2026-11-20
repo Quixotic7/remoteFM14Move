@@ -23,10 +23,13 @@
 //     shows the Move's whole catalog (GET /api/catalog) as tiles: RemoteFM1FW's catalog image where it has one (served
 //     by the test), else the Move's own 64 x 64 1-bit thumbnail (pixelated); the filters (Favourites or All, All by
 //     itself with none; Installed with its updates / Not installed; one category); a tap on AMB-1 (not installed)
-//     downloads it on the Move (POST /api/download, from build/testcat served in the container) and loads it into the
+//     downloads it on the Move (POST /api/download, from build/testcat-page served in the container: build/testcat's
+//     three and build/testcat-v's two Fantasy CFWs in one index, signed with the test key) and loads it into the
 //     slot; dist/move-catalog's ~118 firmwares as tiles: drawn as they come into view (lazily), all once scrolled;
 //     on the phone the whole screen, names never cut off (move-page-browser.png, move-page-browser-all.png,
-//     move-page-phone-browser.png);
+//     move-page-phone-browser.png); the settings sheet's Firmware page is the same browser over the whole catalog: the
+//     thumbnails of firmwares not installed, ChoralRoot's UPDATE, Fantasy CFW, a tap on Ripple downloads it and loads
+//     it into the playing slot (move-page-sheet-browser.png, move-page-phone-sheet-browser.png);
 //   - Files (js/movefiles.js, js/movefs.js): the sheet's Add samples puts a WAV into the Move's audio/; the header's
 //     Files button's browser: the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder
 //     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
@@ -39,7 +42,7 @@
 //   (after make; needs Docker and Chromium. --live-images: RemoteFM1FW's real catalog images from GitHub, not the
 //   test's; --shots-also: the browser's screenshots copied there too)
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,13 +65,27 @@ if (!existsSync(CHROMIUM)) { console.log(`page_e2e: skipped (no Chromium at ${CH
 for (const f of ["build/sim/remotefm1-host", "build/site/index.html"])
   if (!existsSync(join(ROOT, f))) { console.error(`page_e2e: ${f} is missing: run make`); process.exit(1); }
 
+// ---- the page's test catalog: build/testcat (AMB-1, ChoralRoot 0.42, Felucca) and build/testcat-v (Elasticat, Ripple:
+// Fantasy CFWs) in one index, signed with the test key (tools/sign_index.py), as build/testcat-page
+function pageCatalog() {
+  const a = join(ROOT, "build/testcat"), b = join(ROOT, "build/testcat-v"), out = join(ROOT, "build/testcat-page");
+  if (!existsSync(join(a, "index.json")) || !existsSync(join(b, "index.json")) || !existsSync(join(ROOT, "build/testkey/test-key.pem"))) return null;
+  mkdirSync(out, { recursive: true });
+  const ia = JSON.parse(readFileSync(join(a, "index.json"), "utf8")), ib = JSON.parse(readFileSync(join(b, "index.json"), "utf8"));
+  for (const [dir, ix] of [[a, ia], [b, ib]]) for (const f of ix.firmwares) for (const x of f.files) copyFileSync(join(dir, x.name), join(out, x.name));
+  writeFileSync(join(out, "index.json"), JSON.stringify({ ...ia, firmwares: [...ia.firmwares, ...ib.firmwares] }, null, 1) + "\n");
+  execFileSync("python3", [join(ROOT, "tools/sign_index.py"), "--key", join(ROOT, "build/testkey/test-key.pem"), join(out, "index.json")], { stdio: "ignore" });
+  return "build/testcat-page";
+}
+const TC = pageCatalog();
+
 // ---- the host on the simulator, in the image
 const cid = execFileSync("docker", ["run", "-d", "--rm", "-p", `127.0.0.1:${PORT}:7730`, "-v", `${ROOT}:/w`, "-w", "/w", IMAGE, "sh", "-c",
-  // (the test catalog, build/testcat, served in the container: the page's download of AMB-1 comes from it)
-  (existsSync(join(ROOT, "build/testcat/index.json")) ? "busybox httpd -p 127.0.0.1:18090 -h build/testcat && " : "") +
+  // (the test catalog, build/testcat-page, served in the container: the page's downloads come from it)
+  (TC ? `busybox httpd -p 127.0.0.1:18090 -h ${TC} && ` : "") +
   "mkdir -p /tmp/s && exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --catalog-url " +
-  (existsSync(join(ROOT, "build/testcat/index.json")) ? "http://127.0.0.1:18090" : "http://127.0.0.1:1") + " --fx-dir build/fxmods" +
-  (existsSync(join(ROOT, "build/testcat/index.json")) ? " --catalog-index build/testcat/index.json" : "")],
+  (TC ? "http://127.0.0.1:18090" : "http://127.0.0.1:1") + " --fx-dir build/fxmods" +
+  (TC ? ` --catalog-index ${TC}/index.json` : "")],
   { encoding: "utf8" }).trim();
 const tmp = mkdtempSync(join(tmpdir(), "rfm14-page-")), profile = join(tmp, "profile");
 let chrome = null;
@@ -331,19 +348,19 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await until(`document.getElementById("fw-name").textContent === "Felucca"`, 5000, "Felucca");
 
   // ---- the firmware browser (js/movebrowse.js): the Move's catalog as tiles, the filters, a download that loads
-  if (existsSync(join(ROOT, "build/testcat/index.json"))) {
+  if (TC) {
     const cat = await api("catalog");
     const byId = Object.fromEntries((cat.firmwares || []).map((f) => [f.id, f]));
-    ok(cat.firmwares.length === 3 && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.41" && byId.choralroot.version === "0.42"
+    ok(cat.firmwares.length === 5 && byId.ripple && byId.ripple.virtual && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.41" && byId.choralroot.version === "0.42"
       && cat.firmwares.every((f) => f.thumb && f.thumb.length === 684) && Array.isArray(cat.favorites),
-      `GET /api/catalog: the index's 3 (AMB-1 not installed, ChoralRoot 0.41 here, 0.42 in the index), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length})`);
+      `GET /api/catalog: the index's 5 (AMB-1 and the Fantasy CFWs not installed, ChoralRoot 0.41 here, 0.42 in the index), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length})`);
     await altDigit(3);
     ok(await until(`document.querySelector(".mv-pop .mv-pop-item[data-id='choralroot'] .mv-th img") && document.querySelector(".mv-pop [data-browse='2']")`, 5000, "the menu's thumbnails"),
       "slot 3's load menu: each row with its thumbnail, and Browse all");
     await click(".mv-pop [data-browse='2']");
-    ok(await until(`!document.getElementById("mv-browse").hidden && document.querySelectorAll("#mv-browse .fb-tile").length === 3`, 5000, "the browser"),
-      "Browse all: the firmware browser for slot 3, a tile per firmware of the Move's catalog (3)");
-    ok(await until(`document.querySelectorAll("#mv-browse .fb-art img.in").length === 3`, 8000, "the thumbnails"), "every tile's thumbnail drawn");
+    ok(await until(`!document.getElementById("mv-browse").hidden && document.querySelectorAll("#mv-browse .fb-tile").length === 5`, 5000, "the browser"),
+      "Browse all: the firmware browser for slot 3, a tile per firmware of the Move's catalog (5)");
+    ok(await until(`document.querySelectorAll("#mv-browse .fb-art img.in").length === 5`, 8000, "the thumbnails"), "every tile's thumbnail drawn");
     const th = await js(`(() => { const t = (id) => document.querySelector('#mv-browse .fb-tile[data-id="' + id + '"]'), im = (id) => t(id).querySelector(".fb-art img.in");
       return { amb: im("amb").src.slice(0, 90), ambRich: !im("amb").classList.contains("fb-bits"), bits: ["choralroot", "felucca"].every((id) => im(id).classList.contains("fb-bits") && im(id).naturalWidth === 64),
         px: getComputedStyle(im("felucca")).imageRendering, up: !!t("choralroot").querySelector(".fb-up"), get: !!t("amb").querySelector(".fb-get"),
@@ -354,7 +371,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     ok(th.favOff, "no favourites on the Move: the Favourites chip is off, All shows");
     const tiles = () => js(`[...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).join(",")`);
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="out"]');
-    ok(await tiles() === "amb", "Not installed: AMB-1 only");
+    ok((await tiles()).split(",").sort().join(",") === "amb,elasticat,ripple", "Not installed: AMB-1, Elasticat, Ripple");
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="in"]');
     const inst = await js(`({ ids: [...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).sort().join(","), n: document.querySelector('#mv-browse .fb-chip[data-v="in"] .fb-n').textContent })`);
     ok(inst.ids === "choralroot,felucca" && /1 update/.test(inst.n), `Installed: ChoralRoot and Felucca, "${inst.n}"`);
@@ -376,6 +393,34 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     ok(await until(`document.getElementById("mv-browse").hidden && document.querySelector('.mv-chip[data-slot="2"]:not(.empty)') && /AMB/.test(document.querySelector('.mv-chip[data-slot="2"] .mv-nm').textContent)`, 10000, "chip 3"),
       "the browser closed; chip 3 names AMB-1");
     ok((await api("catalog")).firmwares.find((f) => f.id === "amb").installed === "1.3.2", "the catalog says AMB-1 1.3.2 is installed");
+    // the settings sheet's Firmware page: the same browser, for the playing slot (here slot 3, AMB-1): a tap on Ripple
+    // (not installed) downloads it and loads it there
+    await altDigit(3);
+    await untilApi(async () => (await active()) === 2, 5000);
+    await js(`(FM1MoveUi.o.sheet.open("firmware"), true)`);
+    ok(await until(`document.querySelector(".sheet.open") && document.querySelectorAll(".sheet .fb-tile").length === 5 && document.querySelectorAll(".sheet .fb-art img.in").length === 5`, 8000, "the sheet's browser"),
+      "the settings sheet's Firmware page: the Move's whole catalog as tiles (5), every thumbnail drawn");
+    const sh = await js(`(() => { const t = (id) => document.querySelector('.sheet .fb-tile[data-id="' + id + '"]');
+      return { get: ["elasticat", "ripple"].every((id) => t(id).querySelector(".fb-get") && t(id).querySelector(".fb-art img.in")), up: !!t("choralroot").querySelector(".fb-up"),
+        fan: ["elasticat", "ripple"].every((id) => t(id).querySelector(".fb-fan-tag")), cur: t("amb").classList.contains("current"),
+        into: document.querySelector(".sheet .mv-sh-into").textContent, big: !!document.getElementById("mv-sh-big"),
+        chips: [...document.querySelectorAll('.sheet .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v) }; })()`);
+    ok(sh.get && sh.fan, "the firmwares not installed (Elasticat, Ripple): their thumbnails, the download mark, FANTASY");
+    ok(sh.up && sh.cur && /slot 3/.test(sh.into) && sh.big, `ChoralRoot's UPDATE; AMB-1 (playing in slot 3) outlined; "${sh.into}"; Bigger view`);
+    ok(sh.chips.includes("Fantasy CFW"), "the Fantasy CFW filter");
+    await sleep(500);   // (the sheet slides in)
+    await click('.sheet .fb-chip[data-v="Fantasy CFW"]');
+    ok((await js(`[...document.querySelectorAll(".sheet .fb-tile")].map((t) => t.dataset.id).sort().join(",")`)) === "elasticat,ripple", "Fantasy CFW: Elasticat and Ripple");
+    await sleep(400);
+    await shot(join(DOCS, "move-page-sheet-browser.png"));
+    await click('.sheet .fb-main[data-id="ripple"]');
+    ok(await until(`document.querySelector('.sheet .fb-tile[data-id="ripple"].busy .fb-ring') || !document.querySelector(".sheet.open")`, 5000, "the ring"),
+      "a tap on Ripple: the download's ring on its tile");
+    ok(await untilApi(async () => (await slotId(2)) === "ripple", 60000), `the Move downloads Ripple and loads it into slot 3, the playing one (${await slotId(2)})`);
+    ok(await until(`!document.querySelector(".sheet.open")`, 5000, "the sheet closed"), "the sheet closes");
+    await click('.sheet .fb-chip[data-v="All"]').catch(() => {});
+    await js(`(() => { localStorage.removeItem("move.fwbrowser.sheet"); return true; })()`);
+
     // the whole Move catalog (dist/move-catalog, when built): the tiles drawn as they come into view, all once scrolled
     if (existsSync(BIG)) {
       const big = JSON.parse(readFileSync(BIG, "utf8")).firmwares;
@@ -652,7 +697,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "close"), "the sheet's close button goes back to the faceplate");
 
   // ---- the firmware browser on the phone: from the slot menu's load page, the whole screen, nothing cut off
-  if (existsSync(join(ROOT, "build/testcat/index.json"))) {
+  if (TC) {
     await click("#mv-slotbtn");
     await until(`document.querySelector('.mv-ipmenu .mv-iprow.empty[data-slot="2"]')`, 3000, "the slot menu");
     await click('.mv-ipmenu .mv-iprow.empty[data-slot="2"]');
@@ -669,6 +714,16 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     await shot(join(DOCS, "move-page-phone-browser.png"));
     await esc();
     ok(await until(`document.getElementById("mv-browse").hidden`, 3000, "closed"), "Esc closes it");
+    // the settings sheet's Firmware page on the phone: the whole catalog, nothing cut off
+    await js(`(FM1MoveUi.o.sheet.open("firmware"), true)`);
+    ok(await until(`document.querySelector(".sheet.open") && document.querySelectorAll(".sheet .fb-art img.in").length >= 5`, 8000, "the phone's sheet"),
+      "the phone's settings sheet: Firmware, the catalog's tiles drawn");
+    await sleep(LIVE_IMAGES ? 2500 : 600);
+    const psh = await js(`({ sw: document.documentElement.scrollWidth, cut: [...document.querySelectorAll(".sheet .fb-name, .sheet .fb-ver, .sheet .fb-chip, .sheet .mv-sh-into")].filter((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.textContent) })`);
+    ok(psh.sw <= 390 && !psh.cut.length, `no sideways scroll; names, versions, chips whole (${psh.cut.join(", ") || "none cut"})`);
+    await shot(join(DOCS, "move-page-phone-sheet-browser.png"));
+    await js(`(FM1MoveUi.o.sheet.close(), true)`);
+    await until(`!document.querySelector(".sheet.open")`, 3000, "the sheet closed");
   }
 
   // ---- FM-1 Wi-Fi (js/movewifi.js) on the phone: the settings sheet's button opens it; with no FM-1 on USB-A it says

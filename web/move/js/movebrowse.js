@@ -13,27 +13,17 @@
 //   - a tap: an installed one loads into the slot (and plays it); one not installed, or with an update, is downloaded
 //     by the Move (POST /api/download: the Move's own catalog download, its progress the status's dl_*) and then
 //     loaded. Esc or the scrim closes it.
-//   mountMoveBrowse({ store, toast }) -> { open(slot), close(), isOpen, rows: thumbs for the load menus, entries() }
+//   - the settings sheet's Firmware page is the same browser (sheetPage, from site.patch's sheet.js): the whole
+//     catalog for the slot that plays; "Bigger view" opens the dialog
+//   An update: installed, and the index has another version or another build of the same version (the host's
+//   cat_updates: a rebuild's installed version reads "<version> old").
+//   mountMoveBrowse({ store, toast }) -> { open(slot), close(), isOpen, sheetPage(closeSheet), thumb(id, name) }
 import { h, svg, IC } from "./moveui.js";
 import { moveCatalog } from "./movehost.js";
 import { FwBrowser, catalogImages, thumbBits, bitsUrl, standIn } from "./fw-browser.js";
 
 const CATS = ["All", "Synth", "Groovebox", "Chords", "Drums", "Other"];
 const DL_MS = 5 * 60 * 1000;
-// a.b.c (numbers, then the rest as text): a > b
-export function newer(a, b) {
-  const pa = String(a || "").split(/[.+-]/), pb = String(b || "").split(/[.+-]/);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? "", y = pb[i] ?? "", nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
-    if (nx && ny) { if (+x !== +y) return +x > +y; continue; }
-    if (x === y) continue;
-    if (!x) return !/^(beta|alpha|rc|dev)/i.test(y);   // (1.0 > 1.0-beta)
-    if (!y) return /^(beta|alpha|rc|dev)/i.test(x) ? false : true;
-    if (nx !== ny) return nx;
-    return x > y;
-  }
-  return false;
-}
 
 class MoveBrowse {
   constructor({ store, toast }) {
@@ -43,13 +33,8 @@ class MoveBrowse {
     this.dl = null;                     // { id, name, slot, pct }
     this.images = new Map();
     if (!document.querySelector('link[href="css/fw-browser.css"]')) document.head.append(h("link", { rel: "stylesheet", href: "css/fw-browser.css" }));
-    this.fb = new FwBrowser({
-      key: "move.fwbrowser", favourites: true, install: true, fantasy: true, categories: CATS,
-      items: () => this.items(), onPick: (f) => this.pick(f),
-      label: (f) => (f.installed === "" ? `A tap downloads it to the Move, then loads it into slot ${this.slot + 1}`
-        : f.update ? `A tap updates it on the Move to ${f.version}, then loads it into slot ${this.slot + 1}` : `A tap loads it into slot ${this.slot + 1}`),
-      empty: "No firmware matches", none: "The Move's catalog is empty: no index, and nothing installed.",
-    });
+    this.views = [];
+    this.fb = this.view(() => this.slot, () => this.close(), "move.fwbrowser");
     this.slotSeg = h("div", { class: "mv-br-slots", role: "radiogroup", "aria-label": "Into slot" });
     this.title = h("b", {}, "Firmware");
     this.foot = h("div", { class: "mv-br-foot" });
@@ -60,9 +45,41 @@ class MoveBrowse {
       h("div", { class: "mv-br-body" }, this.fb.el), this.foot);
     this.el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(); } });
     document.body.append(this.scrim, this.el);
-    store.on((what) => { if (what === "mix" && this.isOpen) { const k = this.mixKey(); if (k !== this.lastMix) { this.lastMix = k; this.fb.refresh(); this.head(); } } });
+    store.on((what) => { if (what === "mix") { const k = this.mixKey(); if (k !== this.lastMix) { this.lastMix = k; this.refresh(); if (this.isOpen) this.head(); } } });
     catalogImages().then((m) => { this.images = m; });
     this.load();
+  }
+  // a browser over the catalog: slot() the slot a tap loads into, done() closes what it is in
+  view(slot, done, key) {
+    const fb = new FwBrowser({
+      key, favourites: true, install: true, fantasy: true, categories: CATS,
+      items: () => this.items(slot()), onPick: (f) => this.pick(f, slot(), done),
+      label: (f) => (f.installed === "" ? `A tap downloads it to the Move, then loads it into slot ${slot() + 1}`
+        : f.update ? `A tap updates it on the Move to ${f.version}, then loads it into slot ${slot() + 1}` : `A tap loads it into slot ${slot() + 1}`),
+      empty: "No firmware matches", none: "The Move's catalog is empty: no index, and nothing installed.",
+    });
+    this.views.push(fb);
+    return fb;
+  }
+  refresh() { for (const v of this.views) if (v.el.isConnected) v.refresh(); }
+  // the settings sheet's Firmware page (site.patch's sheet.js moveFirmwarePage): the catalog for the slot that plays
+  sheetPage(closeSheet) {
+    this.sheetClose = closeSheet;
+    if (!this.sheet) {
+      const fb = this.view(() => this.store.active, () => this.sheetClose && this.sheetClose(), "move.fwbrowser.sheet");
+      const into = h("span", { class: "mv-sh-into" });
+      const big = h("button", { class: "mv-pill mv-browse-btn", id: "mv-sh-big", title: "The browser as a big window, for any slot",
+        onclick: () => { const s = this.store.active; if (this.sheetClose) this.sheetClose(); this.open(s); } }, "Bigger view");
+      const note = h("p", { class: "note mv-sh-note" });
+      this.sheet = { fb, into, note, el: [h("div", { class: "mv-sh-head" }, into, big), fb.el, note] };
+    }
+    const sh = this.sheet, st = this.store, s = st.slot(st.active);
+    sh.into.replaceChildren(h("i", { style: { background: st.colorOf(st.active) } }), `A tap loads into slot ${st.active + 1}`,
+      h("span", { class: "mv-mut" }, s.on ? ` (${s.name} plays there)` : " (empty)"));
+    sh.note.textContent = `${this.footText()}. A firmware not on the Move, or with an update, is downloaded by the Move first.`;
+    sh.fb.refresh();
+    if (!(Date.now() - (this.loadedAt || 0) < 3000)) { this.loadedAt = Date.now(); this.load(); }   // (the sheet renders often)
+    return sh.el;
   }
   mixKey() { const st = this.store; return JSON.stringify([st.active, st.slots.map((s) => [s.on, s.id]), st.pending.map((p) => p && p.id)]); }
 
@@ -77,18 +94,19 @@ class MoveBrowse {
       this.cat = { firmwares: this.store.firmwares().map((f) => ({ id: f.id, name: f.name, version: f.version, installed: f.version, categories: f.categories,
         description: "", virtual: !!(f.rfm1 && f.rfm1.virtual), indexed: false, thumb: "" })), favorites: [] };
     }
-    if (this.isOpen) { this.fb.refresh(); this.head(); }
+    const key = JSON.stringify(this.cat);
+    if (key !== this.catKey) { this.catKey = key; this.refresh(); if (this.isOpen) this.head(); }
     return this.cat;
   }
   entry(id) { return (this.cat.firmwares || []).find((f) => f.id === id) || null; }
-  items() {
-    const st = this.store, favs = new Set(this.cat.favorites || []), tgt = st.slot(this.slot);
+  items(slot = this.slot) {
+    const st = this.store, favs = new Set(this.cat.favorites || []), tgt = st.slot(slot);
     return (this.cat.firmwares || []).map((f) => {
       const k = st.slots.findIndex((s) => s.on && s.id === f.id), busy = this.dl && this.dl.id === f.id ? this.dl.pct : null;
       return { id: f.id, name: f.name || f.id, version: f.version, installed: f.installed || "", categories: f.categories || [], desc: f.description,
         fantasy: !!f.virtual, fav: favs.has(f.id), thumb: f.thumb || null, busy,
-        update: !!(f.installed && f.indexed && newer(f.version, f.installed)),
-        current: !!(tgt.on && tgt.id === f.id), note: k >= 0 && k !== this.slot ? `on ${k + 1}` : null };
+        update: !!(f.installed && f.indexed && f.installed !== f.version),
+        current: !!(tgt.on && tgt.id === f.id), note: k >= 0 && k !== slot ? `on ${k + 1}` : null };
     });
   }
   head() {
@@ -99,9 +117,12 @@ class MoveBrowse {
         style: { "--c": this.store.colorOf(i) }, title: s.on ? `Slot ${i + 1}: ${s.name}` : `Slot ${i + 1}: empty`,
         onclick: () => { this.slot = i; this.head(); this.fb.refresh(); } }, h("i"), `Slot ${i + 1}`);
     }));
+    this.foot.textContent = this.footText();
+  }
+  footText() {
     const n = (this.cat.firmwares || []).length, inst = (this.cat.firmwares || []).filter((f) => f.installed).length;
     const gen = this.cat.generated ? this.cat.generated.slice(0, 10) : "";
-    this.foot.textContent = this.old ? `${n} firmwares on this Move (this host has no catalog for the page)`
+    return this.old ? `${n} firmwares on this Move (this host has no catalog for the page)`
       : `${n} firmwares, ${inst} on this Move · the Move's catalog${gen ? ` of ${gen}` : ""}${this.cat.from === 0 ? " (no index: only what is installed)" : ""} · thumbnails from RemoteFM1FW's catalog, else the Move's own`;
   }
 
@@ -117,24 +138,24 @@ class MoveBrowse {
   close() { if (!this.isOpen) return false; this.isOpen = false; this.el.hidden = this.scrim.hidden = true; return true; }
 
   // ---- a tap
-  async pick(f) {
-    const st = this.store, slot = this.slot;
+  async pick(f, slot = this.slot, done = () => this.close()) {
+    const st = this.store;
     if (this.dl) { this.toast(`${this.dl.name} is still downloading`, ""); return; }
     if (f.installed && !f.update) {
       const here = st.slot(slot);
-      this.close();
+      done();
       if (here.on && here.id === f.id) st.activate(slot);
       else st.load(slot, { id: f.id, name: f.name }, true);
       return;
     }
-    await this.download(f, slot);
+    await this.download(f, slot, done);
   }
   // the Move downloads it (its own catalog's download: signed index, SHA-256s), then it loads into the slot
-  async download(f, slot) {
+  async download(f, slot, done = () => this.close()) {
     const st0 = await getStatus();
     const before = st0 ? st0.dl_failed | 0 : 0;
     this.dl = { id: f.id, name: f.name, slot, pct: 0 };
-    this.fb.refresh();
+    this.refresh();
     this.toast(`${f.update ? "Updating" : "Downloading"} ${f.name} ${f.version} on the Move…`, "");
     let ok = false, why = "";
     try {
@@ -144,7 +165,7 @@ class MoveBrowse {
       while (Date.now() - t0 < DL_MS) {
         await sleep(400);
         const s = await getStatus();
-        if (s && s.dl_id === f.id && s.dl_state === 1 && this.dl) { const p = s.dl_pct | 0; if (p !== this.dl.pct) { this.dl.pct = p; this.fb.refresh(); } }
+        if (s && s.dl_id === f.id && s.dl_state === 1 && this.dl) { const p = s.dl_pct | 0; if (p !== this.dl.pct) { this.dl.pct = p; this.refresh(); } }
         if (s && (s.dl_failed | 0) > before) { why = s.dl_err || "it failed"; break; }
         if (s && s.dl_id === f.id && s.dl_state === 2) {
           await this.load();
@@ -155,7 +176,7 @@ class MoveBrowse {
       if (!ok && !why) why = "it took too long";
     } catch (e) { why = e.message || String(e); }
     this.dl = null;
-    if (!ok) { await this.load(); this.fb.refresh(); this.toast(`The Move could not download ${f.name}: ${why}`, "bad"); return; }
+    if (!ok) { await this.load(); this.refresh(); this.toast(`The Move could not download ${f.name}: ${why}`, "bad"); return; }
     // the page's list of the Move's firmwares (the slot menus, the settings sheet) takes it in, then it loads
     try {
       const c = await moveCatalog();
@@ -163,9 +184,9 @@ class MoveBrowse {
       list.splice(0, list.length, ...c.firmwares);
       this.store.catalog.categories = c.categories;
     } catch (_) { /* (the load below still goes by id) */ }
-    this.fb.refresh();
+    this.refresh();
     this.toast(`${f.name} ${f.version} is on the Move: loading it into slot ${slot + 1}`, "");
-    this.close();
+    done();
     await sleep(300);
     this.store.load(slot, { id: f.id, name: f.name }, true);
   }

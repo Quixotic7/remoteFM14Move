@@ -638,7 +638,9 @@ the ops above, `/ws` carries MIDI (in: a frame that starts with 32; out: binary 
 **The firmware browser** (js/movebrowse.js over js/fw-browser.js, css/fw-browser.css: RemoteFM1's browser, the iOS
 app's firmware tiles; `fw-browser.js` and `.css` are copies of RemoteFM1's web/site files, kept the same): a slot's
 load menu shows each firmware's thumbnail and "Browse all", which opens the Move's whole catalog as a grid of tiles
-for that slot (the slot can be changed in its head; a dialog on a desktop, the whole screen on a phone).
+for that slot (the slot can be changed in its head; a dialog on a desktop, the whole screen on a phone). The settings
+sheet's Firmware page is the same browser (site.patch's sheet.js `moveFirmwarePage` -> `movebrowse.js sheetPage`):
+the whole catalog, a tap loads into the slot that plays (or downloads first), "Bigger view" opens the dialog.
 
 - **The data:** `GET /api/catalog` (engine_catalog): every entry of the catalog as the Move's own browser lists it
   (the index's and the installed ones): `id`, `name`, `version` (the index's), `installed` ("" none), `description`,
@@ -653,10 +655,11 @@ for that slot (the slot can be changed in its head; a dialog on a desktop, the w
   kept), Installed (its updates counted) / Not installed, one category at a time or Fantasy CFW, a search; kept in the
   browser's localStorage.
 - **A tap:** an installed one loads into the slot and plays it; one not installed, or with a newer version in the
-  index (UPDATE), is downloaded by the Move (`POST /api/download {id}`: engine_download, rfm1cs's FW_DOWNLOAD as a jog
+  index or another build of the same version (UPDATE; the host's `cat_updates`, an installed rebuild reading
+  "<version> old"), is downloaded by the Move (`POST /api/download {id}`: engine_download, rfm1cs's FW_DOWNLOAD as a jog
   press in the Move's catalog does it; its progress is the status's `dl_*`, a ring on the tile), then loaded.
   Screenshots: docs/move-page-browser.png, move-page-browser-all.png (dist/move-catalog's firmwares),
-  move-page-phone-browser.png.
+  move-page-phone-browser.png, move-page-sheet-browser.png, move-page-phone-sheet-browser.png.
 
 **The Editor** (the header's Editor button, as on remotefm1.com: RemoteFM1's editor-panel.js, behind ON_MOVE):
 
