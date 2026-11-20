@@ -13,7 +13,7 @@ which AI coding tools were used. Before opening it, run the catalog checks Move 
 `tests/host/test_taxonomy.sh`, `test_module_categories.sh`, `test_release_version_agreement.sh` and
 `test_host_channels_mirror_stable.sh`.
 
-Open it only after v0.1.1 (with help.json) is released and `release.json` is on `main` (Schwung Manager fetches it for the version and
+Open it only after v0.1.2 (help.json, the screen reader) is released and `release.json` is on `main` (Schwung Manager fetches it for the version and
 the download).
 
 ```sh
@@ -76,8 +76,9 @@ gh pr create --repo charlesvestal/schwung --base main --head Quixotic7:add-remot
 > firmware slots, catalog downloads and updates, Schwung MIDI and audio FX, the page at remotefm1.local:7730, and an
 > FM-1 as the panel over USB-A and Wi-Fi.
 >
-> It ships a `help.json` (on-device help: modes, the firmware view, FX & Mix, MIDI, the sequencer, leaving).
-> Screen-reader support is not there yet.
+> It ships a `help.json` (on-device help: modes, the firmware view, FX & Mix, MIDI, the sequencer, leaving) and, from
+> 0.1.2, screen-reader support: with Global Settings > Screen Reader on, it starts Schwung's `schwung-tts` itself (a
+> standalone tool has no shim) through `tts_shm.h`, with the user's settings, and mixes the speech into its output.
 >
 > Written with Claude Code.
 
@@ -103,5 +104,6 @@ A photo of the Move's own screen with a firmware running would show the on-devic
   (`audio_fx_api_v2.h`, `midi_fx_api_v1.h`) are in Schwung since January 2026, well before 1.6.0 (September 2026).
   Nothing here records which Schwung versions RemoteFM1 was tried on; fill the PR's on-device line.
 - Schwung's `CONTRIBUTING.md` asks new modules for a `help.json` (on-device help) and screen-reader support. Move
-  Remote was merged without them; RemoteFM1 has neither.
+  Remote was merged without them; RemoteFM1 has help.json since 0.1.1 and the screen reader from 0.1.2 (README
+  "Screen reader"; open the PR after 0.1.2 is released and tried on the Move with the screen reader on).
 - The on-device test list in the PR text.

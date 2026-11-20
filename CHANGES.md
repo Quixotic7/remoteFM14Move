@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- **Screen reader.** With Schwung's screen reader on (Global Settings > Screen Reader), RemoteFM1 speaks: the mode,
+  the firmware view and its slots, the firmware selected, loads and downloads, the slot played, knob names and values
+  (a firmware's readouts, Control mode's CCs, the volume), latch, the FM-1 linked, and leaving. It uses Schwung's own
+  speech program and the user's voice settings. The on-device help has an Accessibility page.
+
 ## 0.1.1
 
 - **On-device help.** RemoteFM1 now ships Schwung's `help.json`: Global Settings > System > Help > Modules > RemoteFM1 explains the modes, the firmware view (load, download, update, switch slots, states), FX & Mix, MIDI and Control, the sequencer, an FM-1 as the panel, and how to leave.

@@ -121,7 +121,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c f
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/wav.c src/fsvc.c src/storage.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
-            src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c
+            src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
 RF := third_party/RemoteFM1
@@ -132,7 +132,7 @@ HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix
 in-all: in-tools in-fw in-testfw in-cpu2fix in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
-in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk
+in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk build/tools/fake-tts
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT) $(FW_DEV_OUT)
 # the core-1 test firmware (tests/cpu2fix: its .rfm1 kept in git, made on the Mac by its build.sh), for tests/threads_e2e.sh
@@ -145,6 +145,11 @@ in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1
 build/tools/ainchk: tests/ainchk.c src/wav.c src/wav.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -o $@ tests/ainchk.c src/wav.c -lm
+
+# Schwung's speech program as the tests have it (tests/speech_e2e.sh): the same shared memory, a log of what it is asked
+build/tools/fake-tts: tests/fake_tts.c
+	mkdir -p build/tools
+	$(CC) $(CFLAGS) $(WARN) -o $@ $< -lrt -lm
 
 build/tools/rfm1info: tools/rfm1info.c src/minijson.c src/minijson.h
 	mkdir -p build/tools

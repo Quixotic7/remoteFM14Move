@@ -40,6 +40,10 @@
  *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV, looped (wav.h), in place of its 440 Hz tone
  *     --no-audio-in no input for the Fantasy CFWs with ain1 (Move Remote's own input path stays as it was)
  *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV (wav.h), looped, in place of its 440 Hz tone
+ *     --screen-reader on|off|auto   Schwung's screen reader (announce.h): auto (the Move's default) when the user's
+ *                   Schwung setting has it on; the simulator: off unless on
+ *     --tts-sidecar Schwung's speech program (default /data/UserData/schwung/schwung-tts; tests: tests/fake_tts.c)
+ *     --tts-shm     its shared memory (default /schwung-tts)   --tts-config  Schwung's config folder (the setting, tts.json)
  *     --fake-fm1    (the simulator) a fake FM-1 on the simulated USB-A (fm1sim.c; the tests' /api/test/fm1)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
@@ -52,6 +56,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "announce.h"
 #include "engine.h"
 #include "fwrt.h"
 #include "fm1link.h"
@@ -87,8 +92,13 @@ int main(int argc, char **argv)
     char *pargv[4];
     int pargc = 0, i, port = 7730, lead = 5, cap_s = 0, rc;
     static char banner_title[32], banner_name[64];
+    ann_cfg_t ann;
     if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c: a module loaded here first, in a child) */
         return fx_probe_main(atoi(argv[2]), argv[3], argv[4]);
+    memset(&ann, 0, sizeof ann);
+#ifdef RFM14_PLAT_SIM
+    ann.mode = -1;   /* (the simulator: no Schwung) */
+#endif
 #ifdef RFM14_PLAT_SIM
     int mdns = 0, splash = 0;
     const char *tmp = getenv("TMPDIR");
@@ -156,6 +166,15 @@ int main(int argc, char **argv)
             no_ain = 1;
         else if (!strcmp(argv[i], "--sim-audio-in") && i + 1 < argc)
             sim_ain = argv[++i];
+        else if (!strcmp(argv[i], "--screen-reader") && i + 1 < argc) {
+            const char *v = argv[++i];
+            ann.mode = !strcmp(v, "on") ? 1 : !strcmp(v, "off") ? -1 : 0;
+        } else if (!strcmp(argv[i], "--tts-sidecar") && i + 1 < argc)
+            ann.sidecar = argv[++i];
+        else if (!strcmp(argv[i], "--tts-shm") && i + 1 < argc)
+            ann.shm = argv[++i];
+        else if (!strcmp(argv[i], "--tts-config") && i + 1 < argc)
+            ann.config_dir = argv[++i];
         else if (!strcmp(argv[i], "--fake-fm1"))
             fake_fm1 = 1;
         else if (!strcmp(argv[i], "--test-api"))
@@ -177,6 +196,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "usage: remotefm1-host [--root DIR] [--port N] [--no-mdns] [--splash MS] [--lead N] [--fw ID] "
                             "[--firmwares DIR] [--site DIR] [--catalog-index FILE] [--catalog-url URL] [--log-cap BYTES] "
                             "[--dev-firmwares DIR] [--frame-ms A[,B]] [--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
+                            "[--screen-reader on|off|auto] [--tts-sidecar PATH] [--tts-shm NAME] [--tts-config DIR] "
                             "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
@@ -263,8 +283,10 @@ int main(int argc, char **argv)
             c.capture_seconds = (uint32_t)(cap_s > 0 ? cap_s : 60);
         }
         fprintf(stderr, "remotefm1-host %s: root %s\n", VERSION, root);
+        ann_start(&ann);   /* (before the engine: its sidecar spawned while the process is small, no real-time threads) */
         signal(SIGPIPE, SIG_IGN);
         if (engine_start(&c) != 0) {
+            ann_stop();
             fprintf(stderr, "remotefm1-host: the engine did not start\n");
             return 1;
         }
@@ -320,6 +342,7 @@ int main(int argc, char **argv)
     web_stop();
     mdns_stop();
     engine_stop();
+    ann_stop();
     fprintf(stderr, "remotefm1-host: done\n");
     return rc;
 }

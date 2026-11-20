@@ -27,6 +27,7 @@
 #include "catalog.h"
 #include "engine_dsp.h"
 #include "fm1link.h"
+#include "announce.h"
 #include "fsvc.h"
 #include "fwrt.h"
 #include "fx.h"
@@ -60,9 +61,16 @@ static int16_t *g_cap_out, *g_cap_mix, *g_cap_raw;
 static volatile uint32_t g_cap_out_n;
 static uint32_t g_cap_mix_n, g_cap_raw_n, g_cap_max;
 
+static int engine_audio_fw(int16_t *out, int frames);
 int engine_audio(void *ctx, int16_t *out, int frames)
 {
     (void)ctx;
+    /* Schwung's screen reader over the firmwares (announce.h; nothing when it is off) */
+    return ann_mix(out, frames, engine_audio_fw(out, frames));
+}
+
+static int engine_audio_fw(int16_t *out, int frames)
+{
     if (!__atomic_load_n(&g_out_open, __ATOMIC_ACQUIRE))
         return 0;
     if (mr_ring_count(&g_ring) < (uint32_t)frames) {
@@ -856,6 +864,9 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_MASTER: {   /* the volume knob: the master of every firmware */
         int s;
         g_master = a->value < 0 ? 0 : a->value > 1023 ? 1023 : a->value;
+#ifndef RFM_MOVE_HAS_SPEECH   /* (else rfm1cs says its volume popup) */
+        ann_say(ANN_VALUE, "Volume %d%%", (g_master * 100 + 511) / 1023);
+#endif
         for (s = 0; s < NSLOT; s++)
             if (SL[s].on)
                 fw_in(&SL[s].fw, FWI_MASTER, 0, g_master, 0, 0);
@@ -960,6 +971,12 @@ static void on_action(const rfm1cs_event_t *ev)
             snprintf(d->id, sizeof d->id, "%.*s", a->data ? (int)a->len : 0, a->data ? (const char *)a->data : "");
         }
         break;
+#ifdef RFM_MOVE_HAS_SPEECH
+    case RFM_MOVE_ACT_SAY:   /* (rfm1cs's words for what the Move's screen shows: the screen reader) */
+        if (a->data && a->len)
+            ann_say(a->index == RFM_MOVE_SAY_EVENT ? ANN_EVENT : ANN_VALUE, "%.*s", (int)a->len, (const char *)a->data);
+        break;
+#endif
     default:   /* CLICK, AUDIO_REC (no metronome or Sample loop yet) */
         break;
     }
@@ -997,6 +1014,8 @@ static void on_event(void *ctx, const rfm1cs_event_t *ev)
                 ev->reason);
         if (ev->type == RFM1CS_EV_BYE || ev->reason == RFM1CS_WHY_SHUTDOWN)
             g_save_all = 1;
+        if (ev->type == RFM1CS_EV_BYE)   /* (best effort: Move Remote stops the audio a moment later) */
+            ann_now("Leaving RemoteFM1");
         break;
     default:
         break;
@@ -1111,6 +1130,171 @@ static void slot_unload(int s, int save)
 
 /* rd1: the active firmware's last readout, for the page (engine thread only; seq 0: none since the slot came up) */
 static fw_readout_t g_rd;
+/* ------------------------------------------------------------------ the screen reader (announce.h) --- */
+/* a firmware's name as the Move shows it (the catalog's list), else its id */
+static const char *fw_name(const char *id)
+{
+    const rfm_move_fw_state_t *f = &S->core.fw;
+    int i;
+    for (i = 0; f->list && i < f->n; i++)
+        if (f->list[i].id && !strcmp(f->list[i].id, id))
+            return f->list[i].name && f->list[i].name[0] ? f->list[i].name : id;
+    return id;
+}
+
+static void say_slot(int kind, const char *before, int s)
+{
+    ann_say(kind, "%s%sSlot %d, %s", before ? before : "", before ? ", " : "", s + 1,
+            SL[s].on ? fw_name(SL[s].fw.id) : "empty");
+}
+
+/* What the Move's screen shows, told from the core's public state (rfm1cs-abletonmove 0.5.9 has no words of its own
+ * for a screen reader): the mode, the projects view's track (the firmware slots, Projects), FX setup's page, the
+ * firmware selected (with the catalog's state; its description when the jog turns to it), the lists and filters, the
+ * slot played, latch, a knob touched in FM-1 mode (its name, as the firmware labels it), Control mode's CCs and MIDI
+ * mode's octave, channel and layout. The host's own events (loads, downloads, states, readouts, the volume, the FM-1
+ * linked, leaving) are said where they happen. */
+static void speak_watch(void)
+{
+    static const char *const MODE[4] = { "FM-1 mode", "MIDI mode", "Control mode", "Sequencer mode" };
+    static const char *const FXPG[4] = { "MIDI FX", "Routing", "Audio FX", "Mixer" };
+    static const char *const CAT[5] = { "Synth", "Groovebox", "Chords", "Drums", "Other" };
+    static const int ROLE[7] = { 0, 1, 3, 4, 5, 6, 2 };   /* encoder (SELECT ALGO K1..K4 PRESETS) -> its label's role */
+    static struct {
+        int init, view, active, cat, scope, filt, states, sel, jog, latch, touched, bank, oct, ch, layout;
+        uint8_t cc[RFM_MOVE_NKNOBS];
+    } W;
+    const rfm_move_t *m;
+    const rfm_move_fw_state_t *f;
+    int view, k, fwtrack;
+    if (!ann_on() || !g_session_on)
+        return;
+    m = &S->core;
+    f = &m->fw;
+    view = !m->seq.projects ? m->s.mode : f->fx ? 100 + (m->s.fx_page & 3) : 10 + f->track;
+    fwtrack = view >= 10 && view < 13;
+    if (!W.init) {   /* entering: the tool, the mode, the slot played */
+        W.init = 1;
+        ann_say(ANN_EVENT, "RemoteFM1");
+        W.view = -1;
+        W.active = g_active;
+        W.latch = m->latch, W.touched = m->touched;
+        W.oct = m->s.octave, W.ch = m->s.channel, W.layout = m->s.layout;
+        W.bank = m->s.bank & (RFM_MOVE_NBANKS - 1);
+        memcpy(W.cc, m->cc_val[W.bank], sizeof W.cc);
+        if (view < 10)
+            say_slot(ANN_EVENT, MODE[view & 3], g_active);
+#ifdef RFM_MOVE_HAS_SPEECH
+        rfm_move_set_speech(&S->core, 1);
+#endif
+    }
+#ifdef RFM_MOVE_HAS_SPEECH
+    return;   /* (rfm1cs says the rest: its screens in its own words; the host says its own events) */
+#endif
+    if (view != W.view) {
+        const int was = W.view;
+        W.view = view;
+        if (was != -1 || view >= 10) {
+            if (view < 10)
+                ann_say(ANN_EVENT, "%s", MODE[view & 3]);
+            else if (view >= 100)
+                ann_say(ANN_EVENT, "%s%s", was >= 100 ? "" : "FX setup, ", FXPG[view - 100]);
+            else if (view == 13)
+                ann_say(ANN_EVENT, "Projects");
+            else
+                say_slot(ANN_EVENT, was >= 10 && was < 13 ? NULL : "Firmwares", view - 10);
+        }
+        W.cat = f->catalog, W.scope = m->s.fw_scope, W.filt = m->s.fw_filter, W.states = f->states;
+        W.sel = f->sel, W.jog = f->jog;
+    }
+    if (g_active != W.active) {   /* (Back + Track, Down, the page) */
+        W.active = g_active;
+        if (!fwtrack)
+            say_slot(ANN_EVENT, "Playing", g_active);
+    }
+    if (fwtrack) {
+        if (f->catalog != W.cat || m->s.fw_scope != W.scope) {
+            W.cat = f->catalog, W.scope = m->s.fw_scope;
+            ann_say(ANN_EVENT, "%s", f->catalog ? "Catalog" : m->s.fw_scope ? "All firmwares" : "Favorites");
+        }
+        if (m->s.fw_filter != W.filt) {
+            int st = 0;
+            W.filt = m->s.fw_filter;
+            for (k = 3; k <= 16 && !st; k++)
+                if (W.filt >> (k - 1) & 1)
+                    st = k;
+            if (!st)
+                ann_say(ANN_EVENT, "No filter");
+            else if (st <= 7)
+                ann_say(ANN_EVENT, "Filter %s", CAT[st - 3]);
+            else if (st <= 15)
+                ann_say(ANN_EVENT, "Filter %s", f->tag[st - 8][0] ? f->tag[st - 8] : "tag");
+            else
+                ann_say(ANN_EVENT, "Filter Fantasy");
+        }
+        if (f->states != W.states) {
+            W.states = f->states;
+            if (f->states)
+                ann_say(ANN_EVENT, "States");
+            else
+                say_slot(ANN_EVENT, NULL, view - 10);
+        }
+        if (f->sel != W.sel) {   /* (a pad, the banks: the latest selection wins) */
+            W.sel = f->sel, W.jog = f->jog;
+            if (f->sel >= 0 && f->list && f->sel < f->n) {
+                const rfm_move_fw_t *e = &f->list[f->sel];
+                const int inst = e->installed && e->installed[0];
+                ann_say(ANN_VALUE, "%s%s", e->name ? e->name : e->id,
+                        !f->catalog ? "" : !inst ? ", not installed"
+                        : e->version && strcmp(e->installed, e->version) ? ", update ready" : ", installed");
+            }
+        }
+        if (f->jog != W.jog) {   /* (the jog: the description) */
+            if (!W.jog && f->jog && f->sel >= 0 && f->list && f->sel < f->n && f->list[f->sel].desc)
+                ann_say(ANN_VALUE, "%.250s", f->list[f->sel].desc);
+            W.jog = f->jog;
+        }
+    }
+    if (m->latch != W.latch) {
+        W.latch = m->latch;
+        ann_say(ANN_EVENT, "Latch %s", m->latch ? "on" : "off");
+    }
+    if (m->touched != W.touched) {   /* FM-1 mode: a knob touched, its name (its value: the firmware's readout) */
+        W.touched = m->touched;
+        if (view == RFM_MOVE_MODE_FM1 && m->touched >= 0 && m->touched < RFM_MOVE_NKNOBS) {
+            const int e = rfm_move_knob_enc(m->touched);
+            if (e >= 0 && e < 7) {
+                const int r = ROLE[e];
+                ann_say(ANN_VALUE, "%s", m->lbl_has[r] && m->lbl[r][0] ? m->lbl[r] : m->label[e][0] ? m->label[e]
+                        : rfm_move_enc_name(e));
+            }
+        }
+    }
+    if (view == RFM_MOVE_MODE_CONTROL) {   /* Control mode: the bank, each knob's CC and value */
+        const int b = m->s.bank & (RFM_MOVE_NBANKS - 1);
+        if (b != W.bank) {
+            W.bank = b;
+            memcpy(W.cc, m->cc_val[b], sizeof W.cc);
+            ann_say(ANN_VALUE, "Bank %d", b + 1);
+        }
+        for (k = 0; k < RFM_MOVE_NKNOBS; k++)
+            if (m->cc_val[b][k] != W.cc[k]) {
+                W.cc[k] = m->cc_val[b][k];
+                ann_say(ANN_VALUE, "CC %d: %d", m->s.cc[b][k], W.cc[k]);
+            }
+    } else
+        W.bank = -1;
+    if (view == RFM_MOVE_MODE_MIDI || view == RFM_MOVE_MODE_CONTROL) {   /* MIDI's octave, channel and layout */
+        if (m->s.octave != W.oct)
+            ann_say(ANN_VALUE, "Octave %d", m->s.octave);
+        if (m->s.channel != W.ch)
+            ann_say(ANN_VALUE, "Channel %d", m->s.channel + 1);
+        if (m->s.layout != W.layout)
+            ann_say(ANN_VALUE, "%s layout", rfm_move_layout_name(m->s.layout));
+    }
+    W.oct = m->s.octave, W.ch = m->s.channel, W.layout = m->s.layout;
+}
+
 static void active_changed(void)
 {
     int k;
@@ -1286,6 +1470,7 @@ static void do_deferred(void)
                 break;
             }
             rfm_move_fw_progress(&S->core, id, 10);
+            ann_say(ANN_EVENT, "Loading %s", fw_name(id));
             {   /* a slot running it (another version: an update) saves its flash first; the storage thread writes
                  * it before it reads it back for this load (one queue, in order) */
                 int o;
@@ -1306,6 +1491,7 @@ static void do_deferred(void)
         case RFM_MOVE_ACT_FW_UNLOAD:
             slot_unload(s, 1);
             slots_tell();
+            ann_say(ANN_EVENT, "Slot %d emptied", s + 1);
             if (s == g_active)
                 active_changed();
             break;
@@ -1341,6 +1527,7 @@ static void do_deferred(void)
             }
             g_dl_busy = 1;
             g_dl.state = 1;
+            ann_say(ANN_EVENT, "Downloading %s", fw_name(id));
             fprintf(stderr, "engine: download: %s %s (%llu bytes)\n", id, g_cat->e[e].version,
                     (unsigned long long)g_cat->e[e].bytes);
             break;
@@ -1393,11 +1580,13 @@ static void do_results(void)
         case J_FW_OPEN:
             if (!j->ptr) {
                 fprintf(stderr, "engine: %s: %s\n", j->id, j->err);
+                ann_say(ANN_EVENT, "%s did not load", fw_name(j->id));
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
                 load_failed(j->id);
                 break;
             }
             if (slot_boot(s, j->ptr, j->data, j->len) != 0) {
+                ann_say(ANN_EVENT, "%s did not start", fw_name(j->id));
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
                 slots_tell();
                 load_failed(j->id);
@@ -1407,6 +1596,7 @@ static void do_results(void)
             }
             slots_tell();
             rfm_move_fw_progress(&S->core, j->id, 100);
+            ann_say(ANN_EVENT, "%s loaded, slot %d", fw_name(j->id), s + 1);
             states_scan(s);
             if (g_activate == s) {   /* (the page's chip: load into slot n, then play it) */
                 g_activate = -1;
@@ -1421,11 +1611,14 @@ static void do_results(void)
         case J_STATE_SCAN:
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id))
                 rfm_move_fw_states(&S->core, s, j->used);
+            if (j->kind != J_STATE_SCAN)
+                ann_say(ANN_EVENT, "State %d %s", j->index + 1, j->kind == J_STATE_SAVE ? "saved" : "deleted");
             break;
         case J_STATE_LOAD:
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->data && j->ptr) {
                 slot_unload(s, 0);   /* (the state replaces what was there: its flash.bin follows on the next save) */
                 if (slot_boot(s, j->ptr, j->data, j->len) == 0) {
+                    ann_say(ANN_EVENT, "State %d loaded", j->index + 1);
                     SL[s].dirty = 1, SL[s].dirty_ms = now_ms();
                     if (s == g_active)
                         active_changed();
@@ -1448,8 +1641,10 @@ static void do_results(void)
                 g_dl.state = 2, g_dl.pct = 100, g_dl.ok++;
                 fprintf(stderr, "engine: download: %s %s installed\n", j->id, e >= 0 ? g_cat->e[e].installed : "?");
                 rfm_move_fw_progress(&S->core, j->id, 100);
+                ann_say(ANN_EVENT, "%s installed", fw_name(j->id));
             } else {
                 g_dl.state = 3, g_dl.failed++;
+                ann_say(ANN_EVENT, "%s: the download failed", fw_name(j->id));
                 snprintf(g_dl.err, sizeof g_dl.err, "%s", j->err);
                 fprintf(stderr, "engine: download: %s failed: %s\n", j->id, j->err);
                 rfm_move_fw_progress(&S->core, j->id, RFM_MOVE_FW_FAILED);
@@ -2133,6 +2328,12 @@ static void publish(uint32_t now)
         fw_readout_t r;
         if (fw_readout(fw, &r, 1)) {
             rfm_move_readout(&S->core, r.control, r.kind, r.title, r.value, r.frac, r.flags, r.ms);
+#ifndef RFM_MOVE_HAS_SPEECH   /* (else rfm1cs says it, with its popup) */
+            if (r.title[0] && r.value[0])   /* (Schwung's "label: value") */
+                ann_say(ANN_VALUE, "%s: %s", r.title, r.value);
+            else
+                ann_say(ANN_VALUE, "%s", r.title[0] ? r.title : r.value);
+#endif
             g_rd = r;
             rfm1cs_session_redraw(S, now);
             view_info();
@@ -2787,6 +2988,13 @@ static void housekeeping(uint32_t now)
                       g_cat ? g_cat->n : 0, g_cat ? g_cat->nfw : 0, g_cat ? g_cat->from : 0, g_cat ? g_cat->generated : "",
                       g_dl.id, g_dl.state, g_dl.pct, g_dl.ok, g_dl.failed, esc[0], g_dl.index_ok, g_dl.index_failed,
                       esc[1]);
+        {   /* the screen reader (announce.h): on, utterances sent, the sidecar's answers, frames mixed */
+            int on;
+            uint32_t said, acked, mixed;
+            ann_stats(&on, &said, &acked, &mixed);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tts_on\":%d,\"tts_said\":%u,\"tts_acked\":%u,"
+                          "\"tts_mixed\":%u", on, said, acked, mixed);
+        }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
         if (n < (int)sizeof tmp)
             n += fm1link_json(tmp + n, (int)sizeof tmp - n);
@@ -2917,6 +3125,9 @@ static void *engine_main(void *arg)
             if (linked != was_linked) {   /* (rfm1cs 0.5.4: the Move's own screen says so, as the page does) */
                 was_linked = linked;
                 rfm_move_popup(&S->core, linked ? "FM-1 linked" : "FM-1 lost");
+#ifndef RFM_MOVE_HAS_SPEECH   /* (else rfm1cs says its popup) */
+                ann_say(ANN_EVENT, "%s", linked ? "FM-1 linked" : "FM-1 lost");
+#endif
                 rfm1cs_session_redraw(S, now);
             }
         }
@@ -2926,6 +3137,8 @@ static void *engine_main(void *arg)
             render_block(now_ms());
         publish(now);
         do_deferred();
+        speak_watch();
+        ann_tick(now);
         housekeeping(now);
         view_live(now);
         {   /* (the Move's FX setup opened, closed or on another page: no action says so) */

@@ -527,6 +527,44 @@ what the new slot said while behind. The page: `/api/info`'s `"readout"` (seq, c
 value). `tests/rd1_e2e.sh`: ChoralRoot's K1 (Move knob 5) turned: "Voicing" "+1" on the page and the popup on the
 Move's screen (build/test-out/rd1_k1.pbm); PRESETS: the sound's name; a slot switch: none.
 
+## Screen reader
+
+RemoteFM1 speaks with Schwung's screen reader (Global Settings > Screen Reader: on, before RemoteFM1 is launched; its
+engine, speed, pitch, volume and Speak Delay are the user's). Schwung's own modules call `host_send_screenreader`, which
+the shim hands to `schwung-tts`, Schwung's speech program, and mixes into Move's audio. A standalone tool has neither:
+Move's software (the shim with it) is stopped while it runs. So `src/announce.c` does the shim's part through the same
+contract, Schwung's `src/host/tts_shm.h` (version 1, restated field for field):
+
+- it maps `/schwung-tts` (the shim's segment, left in `/dev/shm`; created 0666 when missing), starts
+  `/data/UserData/schwung/schwung-tts` as its child (the sidecar leaves when its parent does, as with the shim);
+- the sidecar loads the user's settings (`config/screen_reader_state.txt`, `config/tts.json`) and publishes them; the
+  host only restates them with each text, so nothing is changed or saved;
+- each utterance goes into the request block (a seqlock) and cuts the one playing; the ring (44.1 kHz stereo) is mixed
+  over the firmwares in `engine_audio` (the audio thread; lock-free, as the shim's `tts_client.c`).
+
+Only when the user's screen reader is on (`screen_reader_state.txt` says 1 at the start: Schwung's settings cannot
+change while the tool runs) and the sidecar says so; otherwise no process, no segment, nothing mixed. Options:
+`--screen-reader on|off|auto` (the Move: auto; the simulator: off), `--tts-sidecar`, `--tts-shm`, `--tts-config`.
+
+What is said (Schwung's conventions: "label: value", views named as they open, debounced as the shim does with
+`tts.json`'s `debounce_ms`, 300 ms by default; a value replaces the value before it, events are joined):
+
+- entering ("RemoteFM1. FM-1 mode, Slot 1, Felucca"), the mode on a Track tap, the projects view (the firmware slots,
+  Projects, FX setup and its pages), the firmware selected (with "not installed" / "update ready" / "installed" in the
+  catalog; its description when the jog turns to it), Favorites / All / Catalog, the filter, States, latch, the slot
+  played ("Playing, Slot 2, ChoralRoot");
+- a knob touched in FM-1 mode (its name, as the firmware labels it), a readout (rd1: "Voicing: +1"), the volume,
+  Control mode's bank and CCs ("CC 16: 66"), MIDI mode's octave, channel and layout;
+- loading, loaded or failed, downloading, installed or failed, states saved / loaded / deleted, the FM-1 linked or
+  lost, and leaving (asked for at the exit gesture; Move Remote stops the audio a moment later, so it is cut short).
+
+These come from rfm1cs's public state (`speak_watch` in engine.c) and from the host's own events: rfm1cs-abletonmove
+0.5.9 has no words of its own. Held-button labels, the sequencer, menus' values and FX parameters need them from
+rfm1cs (a speech action; when it has one, the host's watcher steps back). `tests/speech_e2e.sh`: the host with
+`tests/fake_tts.c` as the sidecar (the same segment; it logs each text and answers with a tone): entering, the modes,
+a Control knob, the volume, a knob touched, the firmware view, a firmware selected and loaded from the Move, the slot
+switched, the words mixed into the output, the exit gesture, the settings never changed; with the setting off, nothing.
+
 ## A rebuild of the same version
 
 A catalog entry whose version is the installed one but whose .rfm1 is another (the index's `rfm1.sha256` is not the
