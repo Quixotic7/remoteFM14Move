@@ -80,12 +80,13 @@ def main():
     for fw in index.get("firmwares", []):
         for f in fw.get("files", []):
             want[f["name"]] = f["sha256"]
+    have = release_assets(a.repo, a.tag)
     for name, sha in want.items():              # the directory must match its own index before anything goes up
-        p = os.path.join(a.dir, name)
+        p = os.path.join(a.dir, name)           # (a file the release already holds byte for byte needs no local
+        if not os.path.isfile(p) and have and have.get(name, (None,))[0] == sha:   # copy: a partial catalog)
+            continue
         if not os.path.isfile(p) or sha256(p) != sha:
             raise SystemExit(f"{p}: missing or not the index's sha256 (rebuild with make catalog)")
-
-    have = release_assets(a.repo, a.tag)
     if have is None:
         if not a.create:
             raise SystemExit(f"no release {a.tag} on {a.repo} (--create makes it)")
