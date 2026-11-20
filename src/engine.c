@@ -228,7 +228,10 @@ static int g_ntmidi;
  * (--midi-out) */
 static uint8_t g_tmo[8192];
 static int g_ntmo;
-static midiout_asm_t g_mo_asm;
+static midiout_asm_t g_mo_asm[NSLOT];   /* (one each: a slot's SysEx put together on its own) */
+/* (rfm1cs 0.6.6) each slot's MIDI routes, from RFM_MOVE_ACT_ROUTE: bit t its MIDI out to slot t too, RFM_MOVE_MROUTE_OUT
+ * to Out (midiout.h); engine thread only */
+static uint8_t g_mroute[NSLOT];
 
 static rfm1cs_session_t *S;
 static int g_sock = -1;
@@ -614,6 +617,32 @@ static void chain_midi(int from, int track, int live, const uint8_t *b, int n, u
             slot_midi(s, b, n, frame);
 }
 
+/* (rfm1cs 0.6.6) a slot's MIDI out (fw_midi_out's packets) where the Routing page sends it: its channel messages into
+ * each routed slot (from the start of that slot's next block: a slot before it has played this one), everything to
+ * Out (midiout.h: its real-time bytes filtered there). The core never sets a cycle, and nothing routed is routed on:
+ * a target's own MIDI out is its own */
+static void route_out(int s, const uint32_t *pk, int n)
+{
+    const int r = g_mroute[s];
+    int i, t;
+    if (!n || !r)
+        return;
+    if (r & RFM_MOVE_MROUTE_OUT)
+        midiout_send_pkts(&g_mo_asm[s], pk, n);
+    if (!(r & ((1 << NSLOT) - 1)))
+        return;
+    for (i = 0; i < n; i++) {
+        const uint8_t st = (uint8_t)(pk[i] >> 8);
+        const uint8_t m[3] = { st, (uint8_t)(pk[i] >> 16 & 0x7F), (uint8_t)(pk[i] >> 24 & 0x7F) };
+        const int len = (st & 0xE0) == 0xC0 ? 2 : 3;   /* (program change, channel pressure: 2 bytes) */
+        if (st < 0x80 || st >= 0xF0 || (pk[i] & 0x0F) < 0x8 || (pk[i] & 0x0F) > 0xE)
+            continue;   /* (channel messages only: CIN 8..E) */
+        for (t = 0; t < NSLOT; t++)
+            if (t != s && (r >> t & 1) && SL[t].on)
+                slot_midi(t, m, len, 0);
+    }
+}
+
 static void route_midi(const rfm_move_act_t *a)
 {
     if (!a->n)
@@ -926,6 +955,23 @@ static void on_action(const rfm1cs_event_t *ev)
         int s;
         for (s = 0; s < NSLOT; s++)
             SL[s].filt = a->filt[s];
+        for (s = 0; s < NSLOT; s++) {   /* (0.6.6) the MIDI routes: a route gone, its notes let go (All Notes Off) */
+            const int gone = g_mroute[s] & ~a->mroute[s];
+            int t, c;
+            for (t = 0; t <= NSLOT; t++) {
+                const int bit = t < NSLOT ? 1 << t : RFM_MOVE_MROUTE_OUT;
+                if (!(gone & bit) || (t < NSLOT && !SL[t].on))
+                    continue;
+                for (c = 0; c < 16; c++) {
+                    const uint8_t m[3] = { (uint8_t)(0xB0 | c), 123, 0 };
+                    if (t < NSLOT)
+                        slot_midi(t, m, 3, 0);
+                    else
+                        midiout_send(m, 3);
+                }
+            }
+            g_mroute[s] = a->mroute[s];
+        }
         for (s = 0; s < RFM_MOVE_FX_SLOTS; s++) {
             fxs_t *x = &FX[RFM_MOVE_FX_MIDI][s];
             if (x->filt != a->filt[3 + s] && x->run)
@@ -1999,6 +2045,9 @@ static void page_edit(int op, int a, int b)
         rfm_move_route_set(m, ff, mf);
         break;
     }
+    case ENG_OP_MROUTE:
+        (void)rfm_move_midi_route_set(m, a, b);   /* (its ROUTE act brings the masks here) */
+        break;
     case ENG_OP_FXLOAD:
         if ((a & 3) >= RFM_MOVE_FX_SLOTS)
             return;
@@ -2758,6 +2807,11 @@ static void render_block(uint32_t now)
                 if (p > sl->pk_acc)
                     sl->pk_acc = p;
             }
+            if (s != g_active && sl->on && g_mroute[s]) {   /* (0.6.6) a slot not played: its MIDI out where it's routed */
+                uint32_t pk[64];
+                const int n = fw_midi_out(&sl->fw, pk, 64);
+                route_out(s, pk, n);
+            }
             if (s == g_active && sl->on) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page */
                 uint32_t pk[64];
                 const int n = fw_midi_out(&sl->fw, pk, 64);
@@ -2773,8 +2827,9 @@ static void render_block(uint32_t now)
                 }
                 if (n)
                     midi_to_page(pk, n);
-                if (n && C.midi_out)   /* (Out: midiout.h; until the routing names who goes there) */
-                    midiout_send_pkts(&g_mo_asm, pk, n);
+                if (n && C.midi_out && !(g_mroute[s] & RFM_MOVE_MROUTE_OUT))   /* (--midi-out: the slot played to Out) */
+                    midiout_send_pkts(&g_mo_asm[s], pk, n);
+                route_out(s, pk, n);
             }
         }
         do_deferred();   /* (what the active slot's clock made the sequencer do: after every slot's block is mixed) */
@@ -3033,6 +3088,8 @@ static void housekeeping(uint32_t now)
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tts_on\":%d,\"tts_said\":%u,\"tts_acked\":%u,"
                           "\"tts_mixed\":%u", on, said, acked, mixed);
         }
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"mroute\":[%d,%d,%d]", g_mroute[0], g_mroute[1],
+                      g_mroute[2]);   /* (rfm1cs 0.6.6: each slot's MIDI routes, as the engine forwards them) */
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
             n += midiout_json(tmp + n, (int)sizeof tmp - n);
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");

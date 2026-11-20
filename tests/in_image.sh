@@ -50,4 +50,5 @@ tests/cpu2fw_e2e.sh || fail=1
 tests/rd1_e2e.sh || fail=1
 tests/speech_e2e.sh || fail=1
 tests/midiout_e2e.sh || fail=1
+tests/mroute_e2e.sh || fail=1
 exit $fail
