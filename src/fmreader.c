@@ -346,6 +346,16 @@ void fmr_tick(uint32_t now, int active, uint32_t serial, int speech)
     say_queued(0);
 }
 
+void fmr_where(void)
+{
+    static const uint8_t WHERE[] = { 0xF0, 0x7D, 0x53, 0x52, 0x03, 0xF7 };
+    if (g_cur < 0 || !g_heard || !g_send)
+        return;
+    g_where_ms = 0;
+    if (g_send(g_cur, WHERE, sizeof WHERE) == 0)
+        fprintf(stderr, "fm1-reader: slot %d: WHERE (the jog touched)\n", g_cur + 1);
+}
+
 int fmr_filter(int s, const uint32_t *pk, int n, uint32_t *out)
 {
     static const int8_t LEN[8] = { 0, 0, 0, 0, 3, 1, 2, 3 };

@@ -87,6 +87,14 @@ static int g_fw_cut, g_fw_keep;
 static uint32_t g_fw_first, g_fw_ms;
 static uint32_t g_keep_ms;     /* a KEEP utterance sent then (0 none): heard whole */
 static uint32_t g_pub_ms, g_mix_seen, g_mix_ms;   /* the last utterance sent; the audio last seen moving */
+/* (rfm1cs 0.6.12: RemoteFM1's own Speech mode, Off / On / Jog) */
+static int g_user_on;          /* Schwung's own setting: on (RemoteFM1's default mode then On) */
+static int g_open;             /* words may be said now (ann_set_open: the core's rfm_move_speech_open) */
+static volatile int g_hush;    /* speech closed: the audio thread drops the ring until the next utterance */
+/* the sidecar's screen_reader_state.txt as it was: a request with "enabled" makes the sidecar save it on (Schwung's
+ * tts_engine_*.c, set_enabled), so it is put back once the sidecar has acted on it, and again at the end */
+static char g_state_path[512], g_state_was[16];
+static int g_state_had, g_state_restore;
 
 static uint32_t mono_ms(void)
 {
@@ -127,12 +135,12 @@ static int user_setting(const char *dir, uint32_t *debounce)
 {
     char path[512], buf[8192];
     const char *v;
+    int on;
     snprintf(path, sizeof path, "%s/../shadow_config.json", dir);
     if (read_file(path, buf, sizeof buf) <= 0 || !(v = jkey(buf, "screen_reader_enabled")))
         return -1;
-    if (strncmp(v, "true", 4) && *v != '1')
-        return 0;
-    memset(&g_user, 0, sizeof g_user);
+    on = !strncmp(v, "true", 4) || *v == '1';
+    memset(&g_user, 0, sizeof g_user);   /* (read when it is off too: RemoteFM1's own Speech mode may speak) */
     g_user.enabled = 1;
     g_user.engine = (v = jkey(buf, "screen_reader_engine")) && !strncmp(v, "\"flite\"", 7) ? 1 : 0;
     g_user.volume = (v = jkey(buf, "screen_reader_volume")) ? atoi(v) : 70;
@@ -145,7 +153,7 @@ static int user_setting(const char *dir, uint32_t *debounce)
         *debounce = (uint32_t)(d < 0 ? 0 : d > 1000 ? 1000 : d);
     }
     g_user_set = 1;
-    return 1;
+    return on;
 }
 
 int ann_start(const ann_cfg_t *cfg)
@@ -159,14 +167,14 @@ int ann_start(const ann_cfg_t *cfg)
     int fd;
     if (mode < 0)
         return 0;
-    if (mode == 0) {   /* the user's setting: Schwung's Global Settings > Screen Reader */
+    snprintf(g_state_path, sizeof g_state_path, "%s/screen_reader_state.txt", dir);
+    g_state_had = read_file(g_state_path, g_state_was, sizeof g_state_was) >= 0;
+    if (mode == 0) {   /* the user's setting (Schwung's Global Settings > Screen Reader): RemoteFM1's default mode */
         const int u = user_setting(dir, &g_debounce);
-        snprintf(path, sizeof path, "%s/screen_reader_state.txt", dir);
-        if (u == 0 || (u < 0 && (read_file(path, buf, sizeof buf) < 1 || buf[0] != '1'))) {
-            fprintf(stderr, "screen reader: off (Schwung's setting)\n");
-            return 0;
-        }
-    }
+        g_user_on = u > 0 || (u < 0 && g_state_had && g_state_was[0] == '1');
+        fprintf(stderr, "screen reader: Schwung's setting %s (RemoteFM1's Speech mode decides)\n", g_user_on ? "on" : "off");
+    } else
+        g_user_on = 1;   /* (--screen-reader on: as if Schwung's were on) */
     snprintf(path, sizeof path, "%s/tts.json", dir);
     if (!g_user_set && read_file(path, buf, sizeof buf) > 0) {   /* the shim's debounce, the user's "Speak Delay" */
         const char *p = strstr(buf, "\"debounce_ms\"");
@@ -235,6 +243,22 @@ int ann_start(const ann_cfg_t *cfg)
     return 1;
 }
 
+/* the state file as it was before the sidecar saved it on (it saves it before it acts on the request) */
+static void state_restore(void)
+{
+    FILE *f;
+    if (!g_state_restore)
+        return;
+    g_state_restore = 0;
+    if (!g_state_had) {
+        unlink(g_state_path);
+    } else if ((f = fopen(g_state_path, "w"))) {
+        fputs(g_state_was, f);
+        fclose(f);
+    }
+    fprintf(stderr, "screen reader: Schwung's screen_reader_state.txt put back as it was\n");
+}
+
 static void off(const char *why)
 {
     fprintf(stderr, "screen reader: off: %s\n", why);
@@ -260,6 +284,7 @@ static void publish(const char *text)
     g_said++;
     g_pub_ms = mono_ms();
     g_keep_ms = 0;
+    __atomic_store_n(&g_hush, 0, __ATOMIC_RELEASE);   /* (the ring's old audio: dropped until the sidecar answers) */
 }
 
 /* the speech still playing: sent and its audio not come yet (the sidecar's start), or its audio moving */
@@ -295,6 +320,27 @@ int ann_on(void)
     return g_on;
 }
 
+int ann_user_on(void)
+{
+    return g_user_on;
+}
+
+void ann_set_open(int open)
+{
+    open = open ? 1 : 0;
+    if (open == g_open)
+        return;
+    g_open = open;
+    if (open || !g_on)
+        return;
+    /* closed (Jog let go, Off chosen): what is pending dropped, what is playing cut off. The sidecar has no stop (an
+     * empty text is not spoken and does not cancel: tts_engine_*.c speak), so the audio thread drops its ring */
+    g_ev[0] = g_val[0] = g_fw[0] = 0;
+    g_fw_cut = g_fw_keep = 0;
+    g_keep_ms = g_pub_ms = g_mix_ms = 0;
+    __atomic_store_n(&g_hush, 1, __ATOMIC_RELEASE);
+}
+
 static void add(int kind, const char *t)
 {
     const uint32_t now = mono_ms();
@@ -324,7 +370,7 @@ void ann_say(int kind, const char *fmt, ...)
 {
     char t[VAL_MAX];
     va_list ap;
-    if (!g_on)
+    if (!g_on || !g_open)
         return;
     va_start(ap, fmt);
     vsnprintf(t, sizeof t, fmt, ap);
@@ -332,9 +378,18 @@ void ann_say(int kind, const char *fmt, ...)
     add(kind, t);
 }
 
+void ann_core(int kind, const char *text, int len)
+{
+    char t[VAL_MAX];
+    if (!g_on || len <= 0)
+        return;
+    snprintf(t, sizeof t, "%.*s", len, text);
+    add(kind, t);
+}
+
 void ann_now(const char *text)
 {
-    if (!g_on)
+    if (!g_on || !g_open)
         return;
     add(ANN_EVENT, text);
     if (g_ready)
@@ -367,21 +422,23 @@ void ann_tick(uint32_t now_unused)
         g_seen_state = s;
         g_want = g_shm->state;   /* (restated as they are: nothing of the user's is changed or saved) */
         if (g_user_set) {        /* Schwung 1.9: the user's own settings, as the shim would pass them */
-            g_want.enabled = 1;
             g_want.engine = g_user.engine, g_want.volume = g_user.volume;
             g_want.speed = g_user.speed, g_want.pitch = g_user.pitch;
         }
+        /* enabled always: RemoteFM1's Speech mode says when words come (the sidecar's own setting may be off). The
+         * sidecar then saves its state file on: put back after the first request (state_restore) */
+        g_state_restore = !g_want.enabled;
+        g_want.enabled = 1;
         g_count = g_shm->speak_count;
         __atomic_store_n(&g_speak, g_count, __ATOMIC_RELEASE);
         g_ready = 1;
-        if (!g_want.enabled) {
-            off("the sidecar has the screen reader off");
-            return;
-        }
-        fprintf(stderr, "screen reader: ready: %s, volume %d, speed %.2f, pitch %.0f\n",
-                g_want.engine == 1 ? "Flite" : "eSpeak", g_want.volume, g_want.speed, g_want.pitch);
+        fprintf(stderr, "screen reader: ready: %s, volume %d, speed %.2f, pitch %.0f%s\n",
+                g_want.engine == 1 ? "Flite" : "eSpeak", g_want.volume, g_want.speed, g_want.pitch,
+                g_state_restore ? " (the sidecar's own setting off)" : "");
         __atomic_store_n(&g_mix_on, 1, __ATOMIC_RELEASE);
     }
+    if (g_state_restore && g_said && __atomic_load_n(&g_shm->speak_ack, __ATOMIC_ACQUIRE) == g_count)
+        state_restore();   /* (the sidecar acted on our first request: it saved its state then) */
     if (g_fw[0] && now - g_fw_ms >= ANN_FW_GAP_MS && !kept(now) &&
         (g_fw_cut || !playing(now) || now - g_fw_first >= QUEUE_MAX_MS)) {   /* a firmware's own words */
         char t[EV_MAX + VAL_MAX + FW_MAX + 8];
@@ -403,7 +460,7 @@ void ann_tick(uint32_t now_unused)
 void ann_fw(int flags, const char *text)
 {
     const uint32_t now = mono_ms();
-    if (!g_on || !text || !text[0])
+    if (!g_on || !g_open || !text || !text[0])
         return;
     if (flags & ANN_FW_NOW || !g_fw[0]) {   /* (NOW: what of the firmware's was pending is cut off too) */
         snprintf(g_fw, sizeof g_fw, "%s", text);
@@ -457,6 +514,10 @@ int ann_mix(int16_t *out, int frames, int have)
     uint32_t r, n, i;
     if (!__atomic_load_n(&g_mix_on, __ATOMIC_ACQUIRE) || frames <= 0)
         return have;
+    if (__atomic_load_n(&g_hush, __ATOMIC_ACQUIRE)) {   /* (speech closed: what the sidecar still pushes, dropped) */
+        __atomic_store_n(&g_shm->audio_read, __atomic_load_n(&g_shm->audio_write, __ATOMIC_ACQUIRE), __ATOMIC_RELEASE);
+        return have;
+    }
     n = ring_avail(&r);
     if (!n)
         return have;
@@ -492,6 +553,7 @@ void ann_stop(void)
         }
         g_pid = -1;
     }
+    state_restore();
     if (g_shm)
         munmap(g_shm, sizeof(tts_shm_t));   /* (the segment stays: it is the shim's when Move is back) */
     g_shm = NULL;

@@ -68,7 +68,8 @@ sleep 1.5
 mark; build/tools/wsprobe $PORT 2500 > "$T/ws.txt" 2>&1 &
 WS=$!
 sleep 0.5; cmd "note 4 127"; sleep 0.3; turn 75; sleep 0.3; cmd "note 4 0"; sleep 1   # knob 5 (the FM-1's K1)
-if wait_for 3 'said "zz"' && ! said "^[A-Za-z0-9 ]+: [-+]?[0-9]"; then ok "K1 turned: the firmware's words only: \"$(last)\""
+# (the firmware's SAY after a turn comes up to ~5 s late at times, with the next HELLO's round: 3 s failed ~1 run in 3)
+if wait_for 8 'said "zz"' && ! said "^[A-Za-z0-9 ]+: [-+]?[0-9]"; then ok "K1 turned: the firmware's words only: \"$(last)\""
 else bad "K1 turned: said '$(last)' (the core's readout too, or no SAY)"; fi
 wait $WS
 mo=$(grep "midi out" "$T/ws.txt" | sed 's/.*bytes://')

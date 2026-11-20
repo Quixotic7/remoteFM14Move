@@ -3,9 +3,12 @@
  * memory (tts_shm.h version 1, as src/announce.c restates it), the same hand-off, but no engine. It publishes its
  * settings (on, or FAKE_TTS_ENABLED=0), writes each text it is asked to speak to FAKE_TTS_LOG (a line each), and
  * answers each with a quarter second of a 440 Hz tone in the ring, as the real one pushes speech. A request that
- * changes the settings it published is logged as "SETTINGS CHANGED" (RemoteFM1 must only restate them). It leaves
- * when its parent does, or on SIGTERM.
- *   FAKE_TTS_SHM (default /schwung-tts)  FAKE_TTS_LOG (default stderr)  FAKE_TTS_ENABLED (default 1) */
+ * changes the settings it published is logged as "SETTINGS CHANGED" (RemoteFM1 must only restate them). "enabled" as
+ * the real one has it (Schwung's tts_engine_*.c): off, nothing is spoken (the request still answered); a request that
+ * turns it on saves FAKE_TTS_STATE ("1"), as the real one saves screen_reader_state.txt (logged "ENABLED n", not
+ * "SETTINGS CHANGED"). It leaves when its parent does, or on SIGTERM.
+ *   FAKE_TTS_SHM (default /schwung-tts)  FAKE_TTS_LOG (default stderr)  FAKE_TTS_ENABLED (default 1)
+ *   FAKE_TTS_STATE (default none: not saved) */
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <math.h>
@@ -85,13 +88,23 @@ int main(void)
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             if (__atomic_load_n(&shm->req_seq, __ATOMIC_RELAXED) == s0) {
                 last_seq = s0;
+                if (want.enabled != st.enabled) {   /* (the real one: tts_set_enabled, its state file saved) */
+                    const char *sp = getenv("FAKE_TTS_STATE");
+                    FILE *sf;
+                    st.enabled = want.enabled;
+                    if (sp && (sf = fopen(sp, "w")))
+                        fprintf(sf, "%d\n", st.enabled ? 1 : 0), fclose(sf);
+                    fprintf(lg, "ENABLED %d\n", st.enabled);
+                }
                 if (memcmp(&want, &st, sizeof st))
                     fprintf(lg, "SETTINGS CHANGED enabled=%d volume=%d engine=%d speed=%.2f pitch=%.1f\n",
                             want.enabled, want.volume, want.engine, want.speed, want.pitch);
                 if (count != last_speak) {
                     last_speak = count;
-                    fprintf(lg, "%s\n", text);
-                    tone_left = 11025;   /* (a quarter second: the words) */
+                    if (st.enabled && text[0]) {   /* (the real one: off or empty, not spoken) */
+                        fprintf(lg, "%s\n", text);
+                        tone_left = 11025;   /* (a quarter second: the words) */
+                    }
                     shm->discard_until = shm->audio_write;
                     __atomic_store_n(&shm->speak_ack, last_speak, __ATOMIC_RELEASE);
                 }

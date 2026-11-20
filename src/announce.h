@@ -12,8 +12,11 @@
  *     publishes them. We only ever restate those settings, so nothing the user chose is changed or saved;
  *   - the ring mixed into the Move's output (engine_audio, the real-time thread), over the firmwares.
  *
- * Only when the user's screen reader is on (Schwung's Global Settings > Screen Reader): screen_reader_state.txt
- * says 1 (read at the start: Schwung's settings cannot change while the tool runs), and the sidecar agrees.
+ * The sidecar runs whenever it is there (not --screen-reader off); RemoteFM1's own Speech mode (rfm1cs 0.6.12, Global
+ * Settings: Off / On / Jog) says when words come (ann_set_open). Schwung's setting (Global Settings > Screen Reader:
+ * shadow_config.json, else screen_reader_state.txt, read at the start) only picks that mode's default (ann_user_on).
+ * Every request says "enabled", even when the sidecar's own setting is off; the sidecar then saves its
+ * screen_reader_state.txt on, so the file is put back as it was once it has acted (and again at ann_stop).
  *
  * Words are debounced as the shim does (tts.json's debounce_ms, 300 ms by default): a value (a knob's readout, a
  * list's selection) replaces the value before it; an event (a mode, a view, a slot, a firmware loaded) is kept and
@@ -27,7 +30,8 @@
 #include <stdint.h>
 
 typedef struct {
-    int mode;                 /* -1 off, 0 the user's setting (screen_reader_state.txt), 1 on (tests) */
+    int mode;                 /* -1 off (no sidecar), 0 the sidecar, Schwung's setting the default mode, 1 the sidecar,
+                               * the default mode On (tests) */
     const char *sidecar;      /* NULL: /data/UserData/schwung/schwung-tts */
     const char *shm;          /* NULL: "/schwung-tts" (the sidecar's own name for it) */
     const char *config_dir;   /* NULL: /data/UserData/schwung/config (screen_reader_state.txt, tts.json) */
@@ -37,17 +41,22 @@ enum { ANN_VALUE = 0, ANN_EVENT = 1 };
 
 int ann_start(const ann_cfg_t *cfg);   /* 1: speaking (the sidecar started), 0 off */
 void ann_stop(void);                   /* the last request delivered (up to 0.4 s), the sidecar stopped */
-int ann_on(void);                      /* 1 while words can be spoken (the cheap test before making them) */
-/* words to speak: ANN_VALUE replaces the pending value, ANN_EVENT is joined to the pending events */
+int ann_on(void);                      /* 1 while the sidecar runs (words can be spoken when open) */
+int ann_user_on(void);                 /* Schwung's own screen reader setting on (or --screen-reader on) */
+/* words may be said now (rfm_move_speech_open). Closing drops what is pending and cuts off what is playing */
+void ann_set_open(int open);
+/* the host's own words, only while open: ANN_VALUE replaces the pending value, ANN_EVENT is joined to the pending events */
 void ann_say(int kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-void ann_now(const char *text);        /* now, with what is pending, no debounce (leaving) */
+/* the core's words (RFM_MOVE_ACT_SAY): the core gates them on its mode itself, and says its mode's change in any mode */
+void ann_core(int kind, const char *text, int len);
+void ann_now(const char *text);        /* now, with what is pending, no debounce (leaving); only while open */
 /* a firmware's own words (the screen reader protocol's SAY, fmreader.h), flags ANN_FW_*: NOW cuts off what is being said
  * (said at once, what of the firmware's was pending dropped); without it, queued: said once the speech playing has
  * ended (the sidecar cuts an utterance with the next one). KEEP: heard whole, nothing said after it until it has played.
  * A burst (a new page's lines, within ANN_FW_GAP_MS) is one utterance, after the host's own words pending */
 enum { ANN_FW_NOW = 1, ANN_FW_KEEP = 2 };
 #define ANN_FW_GAP_MS 30
-void ann_fw(int flags, const char *text);
+void ann_fw(int flags, const char *text);   /* (only while open) */
 void ann_tick(uint32_t now_ms);        /* the debounce: speaks what has been quiet long enough */
 /* the audio thread: the sidecar's audio mixed into out (frames stereo int16). have: frames the engine gave (0: none,
  * out is not written yet). The frames out holds now */

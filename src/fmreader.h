@@ -3,7 +3,8 @@
  * firmware that has it (fm1-base's announce.c) says what its screen shows, in its own words, through Schwung's
  * screen reader (announce.h).
  *
- *   - While speech is on and the active slot runs a firmware: HELLO (F0 7D 53 52 01 01 F7) into it every 2 s; BYE
+ *   - While speech is on (RemoteFM1's Speech mode open, or Jog: listened to while the jog is not touched, its SAYs
+ *     dropped by ann_fw) and the active slot runs a firmware: HELLO (F0 7D 53 52 01 01 F7) into it every 2 s; BYE
  *     (.. 02 F7) to a slot that stops being the active one, or when speech goes off. A slot that answers (HELLO: its
  *     name, 0, its words file's link) supports it; one that has not after 3 s does not (asked three times, as the
  *     page in fm1-reader asks a port). Known per slot until another firmware boots there.
@@ -31,6 +32,8 @@ void fmr_tick(uint32_t now, int active, uint32_t serial, int speech);
 /* slot's MIDI out packets (USB-MIDI, as fw_midi_out gives them): the protocol's frames taken out (and acted on), the
  * rest into out (room for n + 1: a packet held from the call before). The packets left */
 int fmr_filter(int slot, const uint32_t *pk, int n, uint32_t *out);
+/* WHERE to the slot listened to, once it has answered: its screen said again (Jog speech: the jog touched) */
+void fmr_where(void);
 /* the active firmware speaks for itself now (it answered, speech on): the core's words for its knobs step back */
 int fmr_speaks(void);
 /* the status: ,"fmr_slot":..,"fmr_name":..,"fmr_words":..,"fmr_said":.. (appended JSON fields); the length */

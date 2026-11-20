@@ -40,8 +40,9 @@
  *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV, looped (wav.h), in place of its 440 Hz tone
  *     --no-audio-in no input for the Fantasy CFWs with ain1 (Move Remote's own input path stays as it was)
  *     --sim-audio-in F.wav   (the simulator) the Move's input: the WAV (wav.h), looped, in place of its 440 Hz tone
- *     --screen-reader on|off|auto   Schwung's screen reader (announce.h): auto (the Move's default) when the user's
- *                   Schwung setting has it on; the simulator: off unless on
+ *     --screen-reader on|off|auto   Schwung's screen reader (announce.h): auto (the Move's default): its sidecar runs,
+ *                   RemoteFM1's Speech mode (Global Settings) says when, Schwung's setting its default; on: the
+ *                   default On; off: no sidecar at all; the simulator: off unless on or auto
  *     --tts-sidecar Schwung's speech program (default /data/UserData/schwung/schwung-tts; tests: tests/fake_tts.c)
  *     --tts-shm     its shared memory (default /schwung-tts)   --tts-config  Schwung's config folder (the setting, tts.json)
  *     --rtp-port N  network MIDI (midiout.h: RTP-MIDI "RemoteFM1 Move", control N, data N + 1; default 5004, the

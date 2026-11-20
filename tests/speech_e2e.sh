@@ -5,7 +5,8 @@
 # asked to speak and answers with a tone): entering the tool, mode switches, a knob's value (Control mode's CC; the
 # volume), the firmware view, a firmware selected and loaded from the Move, the slot played switched (from the page;
 # Back + Track: each said once), the words mixed into the output, leaving (the exit gesture); the user's settings
-# never restated otherwise. Then with Schwung's setting off (screen_reader_state.txt 0): no sidecar, nothing said.
+# never restated otherwise. Then with Schwung's setting off (screen_reader_state.txt 0): the default Speech mode Off
+# (rfm1cs 0.6.12), nothing said.
 #   tests/speech_e2e.sh      (after make)
 set -u
 cd "$(dirname "$0")/.."
@@ -92,16 +93,20 @@ grep -q "SETTINGS CHANGED" "$SAID" && bad "the host changed the user's settings:
     || ok "the user's speech settings only restated, never changed"
 wait $HOST 2>/dev/null
 
-# Schwung's setting off: no sidecar, nothing said
+# Schwung's setting off (rfm1cs 0.6.12: the default Speech mode Off, a fresh root: none chosen): the sidecar runs,
+# nothing said (tests/speechmode_e2e.sh: the modes)
 echo 0 > "$CFG/screen_reader_state.txt"
 SAID2=$T/said-off.log
-FAKE_TTS_SHM=/rfm14-speech-$$ FAKE_TTS_LOG=$SAID2 build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" \
+mkdir -p "$T/root-off"; echo "http://127.0.0.1:1" > "$T/root-off/catalog-url"
+FAKE_TTS_SHM=/rfm14-speech-$$ FAKE_TTS_LOG=$SAID2 build/sim/remotefm1-host --root "$T/root-off" --port $PORT --sim-dir "$SIM" \
     --firmwares build/fw --site build/site --fw felucca --no-fm1 --screen-reader auto --tts-sidecar build/tools/fake-tts \
     --tts-shm /rfm14-speech-$$ --tts-config "$CFG" >>"$T/host-off.log" 2>&1 &
 HOST=$!
 wait_for 10 '[ "$(field session)" = 2 ]'; sleep 1; press "cc 42"; sleep 0.6
-[ ! -e "$SAID2" ] && grep -q "screen reader: off (Schwung's setting)" "$T/host-off.log" && [ "$(field tts_on)" = 0 ] \
-    && ok "Schwung's screen reader off: no sidecar, nothing said" || bad "off: $(head -2 "$SAID2" 2>/dev/null); tts_on $(field tts_on)"
+[ "$(grep -v -c '^UP enabled=' "$SAID2" 2>/dev/null)" = 0 ] && grep -q "screen reader: Schwung's setting off" "$T/host-off.log" \
+    && [ "$(field speech_mode)" = 0 ] && [ "$(field speech_open)" = 0 ] \
+    && ok "Schwung's screen reader off: the default Speech mode Off, nothing said" \
+    || bad "off: $(head -3 "$SAID2" 2>/dev/null | tr '\n' '|'); speech_mode $(field speech_mode)"
 cmd quit; wait $HOST
 
 # Schwung 1.9's setting: shadow_config.json beside config/ says on (no screen_reader_state.txt): the host starts the

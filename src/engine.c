@@ -877,6 +877,25 @@ static void fx_state_take(const char *text)   /* a project's, as it loads: kept 
 }
 
 
+/* (rfm1cs 0.6.12) the Speech mode (Off / On / Jog, Global Settings): the host's own words only while open; closing
+ * cuts off what is playing; Jog's touch beginning: a firmware that speaks for itself asked for its screen (WHERE) */
+static void speech_sync(void)
+{
+#ifdef RFM_MOVE_HAS_SPEECH
+    static int was;
+    int open;
+    if (!S)
+        return;
+    open = rfm_move_speech_open(&S->core);
+    ann_set_open(open);
+    if (open && !was && rfm_move_speech_mode(&S->core) == RFM_MOVE_SPEECH_JOG && fmr_speaks())
+        fmr_where();
+    was = open;
+#else
+    ann_set_open(1);
+#endif
+}
+
 static void on_action(const rfm1cs_event_t *ev)
 {
     const rfm_move_act_t *a = ev->act;
@@ -1026,9 +1045,11 @@ static void on_action(const rfm1cs_event_t *ev)
         }
         break;
 #ifdef RFM_MOVE_HAS_SPEECH
-    case RFM_MOVE_ACT_SAY:   /* (rfm1cs's words for what the Move's screen shows: the screen reader) */
+    case RFM_MOVE_ACT_SAY:   /* (rfm1cs's words for what the Move's screen shows: the screen reader; gated by the core
+                              * on its Speech mode, its mode's own change said in any mode) */
+        speech_sync();       /* (first: a mode just closed cuts what was playing, not these words) */
         if (a->data && a->len)
-            ann_say(a->index == RFM_MOVE_SAY_EVENT ? ANN_EVENT : ANN_VALUE, "%.*s", (int)a->len, (const char *)a->data);
+            ann_core(a->index == RFM_MOVE_SAY_EVENT ? ANN_EVENT : ANN_VALUE, (const char *)a->data, (int)a->len);
         break;
 #endif
     default:   /* CLICK, AUDIO_REC (no metronome or Sample loop yet) */
@@ -1223,6 +1244,7 @@ static void speak_watch(void)
     int view, k, fwtrack;
     if (!ann_on() || !g_session_on)
         return;
+    speech_sync();
     m = &S->core;
     f = &m->fw;
     view = !m->seq.projects ? m->s.mode : f->fx ? 100 + (m->s.fx_page & 3) : 10 + f->track;
@@ -3095,6 +3117,11 @@ static void housekeeping(uint32_t now)
             ann_stats(&on, &said, &acked, &mixed);
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tts_on\":%d,\"tts_said\":%u,\"tts_acked\":%u,"
                           "\"tts_mixed\":%u", on, said, acked, mixed);
+#ifdef RFM_MOVE_HAS_SPEECH
+            if (S)   /* (rfm1cs 0.6.12: the Speech mode, 0 Off 1 On 2 Jog; open: words may be said now) */
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"speech_mode\":%d,\"speech_open\":%d",
+                              rfm_move_speech_mode(&S->core), rfm_move_speech_open(&S->core));
+#endif
             if (n < (int)sizeof tmp)   /* (the screen reader protocol: the firmware that speaks for itself) */
                 n += fmr_json(tmp + n, (int)sizeof tmp - n);
         }
@@ -3223,8 +3250,13 @@ static void *engine_main(void *arg)
             }
         }
         /* the screen reader protocol (fmreader.h): HELLO to the active firmware while speech is on */
+        speech_sync();
         fmr_tick(now, g_active, SL[g_active].on && !SL[g_active].fw.dead ? SL[g_active].serial : 0,
-                 ann_on() && g_session_on);
+                 ann_on() && g_session_on
+#ifdef RFM_MOVE_HAS_SPEECH
+                     && (rfm_move_speech_open(&S->core) || rfm_move_speech_mode(&S->core) == RFM_MOVE_SPEECH_JOG)
+#endif
+                 );
 #ifdef RFM_MOVE_HAS_SPEECH
         if (S && rfm_move_fw_speech(&S->core) != (fmr_speaks() != 0))   /* (rfm1cs 0.6.11: its words for the firmware's
                                                                           * controls step back while it speaks itself) */
@@ -3358,6 +3390,10 @@ int engine_start(const engine_cfg_t *cfg)
     st_path(p, sizeof p, "move/settings.bin");
     settings = st_read(p, &ns);
     rfm1cs_session_init(S, settings, (uint32_t)ns, "RemoteFM1 on Move", on_event, NULL);
+#ifdef RFM_MOVE_HAS_SPEECH
+    /* (rfm1cs 0.6.12) the Speech mode while the settings have none: Schwung's screen reader setting (announce.h) */
+    rfm_move_set_speech_default(&S->core, ann_user_on() ? RFM_MOVE_SPEECH_ON : RFM_MOVE_SPEECH_OFF);
+#endif
     free(settings);
     rfm1cs_session_give_up(S, -1);
     st_path(p, sizeof p, "move/library.rmvl");

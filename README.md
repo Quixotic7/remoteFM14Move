@@ -566,9 +566,17 @@ contract, Schwung's `src/host/tts_shm.h` (version 1, restated field for field):
 - each utterance goes into the request block (a seqlock) and cuts the one playing; the ring (44.1 kHz stereo) is mixed
   over the firmwares in `engine_audio` (the audio thread; lock-free, as the shim's `tts_client.c`).
 
-Only when the user's screen reader is on (`screen_reader_state.txt` says 1 at the start: Schwung's settings cannot
-change while the tool runs) and the sidecar says so; otherwise no process, no segment, nothing mixed. Options:
-`--screen-reader on|off|auto` (the Move: auto; the simulator: off), `--tts-sidecar`, `--tts-shm`, `--tts-config`.
+**When** (rfm1cs 0.6.12): RemoteFM1's own **Speech** mode, the first row of Global Settings (Sequencer mode: Shift +
+step 2): **Off**, **On** (always), or **Jog** (only while the jog wheel is touched: a touch says the screen as it is,
+then every word while held; let go, silence and what was playing cut off). Saved with RemoteFM1's settings; never
+chosen, its default follows Schwung's screen reader (on: On, so a blind user is never locked out; off: Off). Its change
+is said in any mode ("Speech off"). The sidecar runs whenever it is installed, whatever Schwung's setting: each request
+says "enabled" (the user's engine, voice, volume, speed and pitch restated as they are). With Schwung's own setting off
+the sidecar then saves its `screen_reader_state.txt` on (Schwung's `tts_engine_*.c`), so the host puts that file back
+as it was once the sidecar has acted, and again when it stops. Jog's touch also sends a firmware that speaks for itself
+the protocol's WHERE (its own screen said). The status: `speech_mode` (0 Off, 1 On, 2 Jog), `speech_open`. Options:
+`--screen-reader on|off|auto` (the Move: auto; on: the default On; off: no sidecar at all; the simulator: off),
+`--tts-sidecar`, `--tts-shm`, `--tts-config`. `tests/speechmode_e2e.sh`: the three modes and both defaults.
 
 What is said (Schwung's conventions: "label: value", views named as they open, debounced as the shim does with
 `tts.json`'s `debounce_ms`, 300 ms by default; a value replaces the value before it, events are joined):
