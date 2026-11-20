@@ -318,6 +318,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         const rfm1m_rd1_t *r = rg ? rg() : NULL;
         o->rd1 = r && r->abi == RFM1M_RD1_ABI && r->readout ? r : NULL;
     }
+    {   /* tk1: rfm1m_tk1 (an object built with RFM1M_TK1: its module exports rfm1_tk, rfm1_tk_input, rfm1_tk_state) */
+        const rfm1m_tk1_fn tg = (rfm1m_tk1_fn)(uintptr_t)dlsym(o->so, RFM1M_TK1_SYMBOL);
+        const rfm1m_tk1_t *t = tg ? tg() : NULL;
+        o->tk1 = t && t->abi == RFM1M_TK1_ABI && t->tk && t->input && t->state ? t : NULL;
+    }
     {   /* ain1: rfm1m_ain (an object built with RFM1M_AIN1: its module exports rfm1_audio_in) */
         const rfm1m_ain_fn ag = (rfm1m_ain_fn)(uintptr_t)dlsym(o->so, RFM1M_AIN_SYMBOL);
         const rfm1m_ain_t *a = ag ? ag() : NULL;
@@ -985,6 +990,37 @@ int fw_create_from(fw_t *fw, fw_inst_t *pre)
     return 0;
 }
 
+/* tk1: the record's place, once after rfm1_init (it never moves); refused (no takeover) unless version 1, size at
+ * least FW_TK_SIZE, in memory, its name NUL-terminated printable ASCII */
+static void tk_find(fw_t *fw)
+{
+    volatile uint32_t p = 0;
+    const uint8_t *r;
+    uint16_t ver, size;
+    int i;
+    fw->tk_ptr = 0;
+    if (!fw->obj->tk1 || fw->dead)
+        return;
+    CALL(fw, "rfm1_tk", p = fw->obj->tk1->tk(fw->inst));
+    if (fw->dead || !p || !in_mem(fw, p, FW_TK_SIZE))
+        return;
+    r = fw->mem + p;
+    memcpy(&ver, r, 2);
+    memcpy(&size, r + 2, 2);
+    if (ver != 1 || size < FW_TK_SIZE) {
+        fprintf(stderr, "fwrt: %s: tk1 record version %u size %u refused\n", fw->id, ver, size);
+        return;
+    }
+    for (i = 0; i < 16 && r[FW_TK_NAME + i]; i++)
+        if (r[FW_TK_NAME + i] < 32 || r[FW_TK_NAME + i] > 126)
+            break;
+    if (i == 16 || r[FW_TK_NAME + i]) {
+        fprintf(stderr, "fwrt: %s: tk1 record's name is not printable ASCII: refused\n", fw->id);
+        return;
+    }
+    fw->tk_ptr = p;
+}
+
 int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
 {
     const rfm1m_t *vt = fw->obj->vt;
@@ -1016,6 +1052,7 @@ int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
     fw->booted = 1;
     fw->ms = 0;
     fw->frames_done = fw->due = 0;
+    tk_find(fw);
     return 0;
 }
 
@@ -1148,6 +1185,12 @@ static void apply(fw_t *fw, int op, int a, int b, uint32_t c)
         fw->keys_held = fw->btns_held = 0;
         break;
     }
+    case FWI_TK_INPUT:
+        fw_tk_input(fw, c);
+        break;
+    case FWI_TK_STATE:
+        fw_tk_state(fw, (uint32_t)a, (uint32_t)(uint16_t)b, c);
+        break;
     case FWI_FRAMES:   /* the screen's rate (the next frame due a ms from the last one) */
         fw->frame_ms = a > 0 ? (uint32_t)a : FW_FRAME_MS;
         break;
@@ -1503,6 +1546,28 @@ int fw_readout(fw_t *fw, fw_readout_t *out, int take)
     memcpy(out->value, r + 31, 16);
     out->value[16] = 0;
     return 1;
+}
+
+const uint8_t *fw_tk(const fw_t *fw)
+{
+    return fw->booted && !fw->dead && fw->tk_ptr ? fw->mem + fw->tk_ptr : NULL;
+}
+
+void fw_tk_input(fw_t *fw, uint32_t pkt_)
+{
+    volatile uint32_t pkt = pkt_, r = 0;
+    if (!fw->booted || fw->dead || !fw->tk_ptr)
+        return;
+    CALL(fw, "rfm1_tk_input", r = fw->obj->tk1->input(fw->inst, pkt));
+    (void)r;   /* (0: reserved) */
+}
+
+void fw_tk_state(fw_t *fw, uint32_t on_, uint32_t claims_, uint32_t flags_)
+{
+    volatile uint32_t on = on_, claims = claims_, flags = flags_;
+    if (!fw->booted || fw->dead || !fw->tk_ptr)
+        return;
+    CALL(fw, "rfm1_tk_state", fw->obj->tk1->state(fw->inst, on, claims, flags));
 }
 
 const char *fw_label(fw_t *fw, int which)

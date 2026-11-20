@@ -57,6 +57,10 @@ AIN=""
 grep -q "Z_${ID}Z_rfm1_audio_in(" "$W/$ID.h" && AIN="-DRFM1M_AIN1"
 # rd1 (FM1VST docs/RFM1.md "Readouts (rd1)"): a module that exports rfm1_readout gets rfm1m_rd1() (fwglue.c RFM1M_RD1)
 grep -q "Z_${ID}Z_rfm1_readout(" "$W/$ID.h" && AIN="$AIN -DRFM1M_RD1"
+# tk1, the Move takeover (FM1VST docs/RFM1-TAKEOVER.md): a module that exports rfm1_tk, rfm1_tk_input and
+# rfm1_tk_state gets rfm1m_tk1() (fwglue.c RFM1M_TK1); one with some of them only: none (rfm1_check refuses it)
+grep -q "Z_${ID}Z_rfm1_tk(" "$W/$ID.h" && grep -q "Z_${ID}Z_rfm1_tk_input(" "$W/$ID.h" \
+    && grep -q "Z_${ID}Z_rfm1_tk_state(" "$W/$ID.h" && AIN="$AIN -DRFM1M_TK1"
 PAGES=$(grep -o "wasm_rt_allocate_memory([^,]*, [0-9]*" "$W/$ID.c" | head -1 | sed 's/.*, //')
 # threads (tools/w2c_mt.sh fw): the object counts its call depth in the host's thread-local counter, so instances
 # run on several threads at once, and rfm1m_caps says so (RFM1M_CAP_MT). The generated C is the same; only the

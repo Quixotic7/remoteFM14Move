@@ -6,7 +6,8 @@
  * RFM1M_INST_ARGS: the import modules' instances wasm2c's instantiate takes after the module's own, in its order
  * (tools/build_fw.sh reads them from the header): WASII the WASI imports', HOSTI a Fantasy CFW's rfm1_host_1 (the
  * same host object: fwrt.h); none for a module that imports nothing. Default: the WASI imports' only.
- * RFM1M_AIN1: the module exports rfm1_audio_in (ain1): rfm1m_ain() too (src/rfm1m.h). Without it the object is what it
+ * RFM1M_AIN1: the module exports rfm1_audio_in (ain1): rfm1m_ain() too (src/rfm1m.h). RFM1M_TK1: it exports
+ * rfm1_tk, rfm1_tk_input and rfm1_tk_state (the Move takeover): rfm1m_tk1() too. Without it the object is what it
  * always was. RFM1M_MT: built against tools/w2c_mt.sh's header (rfm1m_caps says RFM1M_CAP_MT). RFM1M_CPU2: the
  * module exports rfm1_c1_stack / rfm1_c1_call and imports rfm1_cpu2_1 (CPU2I in RFM1M_INST_ARGS) or, with
  * RFM1M_CPU2_REC, exports rfm1_cpu2 (FM1VST's docs/RFM1.md "cpu2": no import): rfm1m_cpu2() too. */
@@ -163,6 +164,25 @@ const rfm1m_rd1_t *rfm1m_rd1(void)
     if (!t.abi) {
         t.readout = rd1_readout;
         t.abi = RFM1M_RD1_ABI;
+    }
+    return &t;
+}
+#endif
+
+#ifdef RFM1M_TK1
+/* tk1, the Move takeover (src/rfm1m.h rfm1m_tk1_t): the record's offset, a packet in, the state */
+static uint32_t tk1_tk(void *i) { return X(rfm1_tk)(I); }
+static uint32_t tk1_input(void *i, uint32_t p) { return X(rfm1_tk_input)(I, p); }
+static void tk1_state(void *i, uint32_t on, uint32_t c, uint32_t f) { X(rfm1_tk_state)(I, on, c, f); }
+__attribute__((visibility("default"))) const rfm1m_tk1_t *rfm1m_tk1(void);
+const rfm1m_tk1_t *rfm1m_tk1(void)
+{
+    static rfm1m_tk1_t t;
+    if (!t.abi) {
+        t.tk = tk1_tk;
+        t.input = tk1_input;
+        t.state = tk1_state;
+        t.abi = RFM1M_TK1_ABI;
     }
     return &t;
 }

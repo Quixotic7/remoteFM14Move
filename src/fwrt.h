@@ -43,6 +43,7 @@ typedef struct fw_obj {
     int ain1;
     const rfm1m_ain_t *ain;
     const rfm1m_rd1_t *rd1;            /* rd1: the module exports rfm1_readout (readouts), else NULL */
+    const rfm1m_tk1_t *tk1;            /* tk1: the module exports rfm1_tk, _tk_input, _tk_state (the takeover), else NULL */
     /* threads: built with a thread-local call depth (rfm1m_caps RFM1M_CAP_MT); core 1 (rfm1m_cpu2: NULL none) */
     int mt;
     const rfm1m_cpu2_t *cpu2;
@@ -85,6 +86,8 @@ enum {
     FWI_SYNC = 7,     /* flash_sync (it may change the firmware's state: logged like an input) */
     FWI_RELEASE = 8,  /* every key and button up */
     FWI_TAKE = 9,     /* a: how many packets midi_out_take gave (the replay takes as many) */
+    FWI_TK_INPUT = 11,  /* c a Move surface packet (rfm1_tk_input: tk1, the takeover) */
+    FWI_TK_STATE = 12,  /* a on 1 / off 0, b the claims granted, c the flags (rfm1_tk_state) */
     FWI_FRAMES = 10,  /* a: frame() every a device ms from now (1..255; FW_FRAME_MS the ABI's), idle() between: the
                        * host's screen rate (README "Frames"); logged, so a replay calls frame() as the host did */
 };
@@ -131,6 +134,7 @@ typedef struct fw {
     uint32_t frame_ms;                 /* frame() every this many device ms (0: FW_FRAME_MS); FWI_FRAMES sets it */
     uint32_t rd_ptr, rd_seen;          /* rd1: the readout record (0: none / not asked yet), the seq last taken */
     int rd_asked;
+    uint32_t tk_ptr;                   /* tk1: the takeover record (fw_boot: checked once after rfm1_init), 0 none */
     /* ain1: the input buffer in the module's memory (rfm1_alloc'd at the first fw_ain_info(1, ..)), the state and
      * latency the module was last told (rfm1_audio_in_info), the blocks fed; ain_peak: the last block's peak */
     uint32_t ain_buf, ain_state, ain_lat, ain_blocks;
@@ -242,6 +246,24 @@ typedef struct {
 } fw_readout_t;
 int fw_readout(fw_t *fw, fw_readout_t *out, int take);
 const char *fw_label(fw_t *fw, int which);
+/* tk1, the Move takeover (FM1VST docs/RFM1-TAKEOVER.md): its record, rfm1_tk() asked once after rfm1_init (fw_boot)
+ * and kept when it is version 1, size >= FW_TK_SIZE, in the module's memory, with a printable name. fw_tk: the record
+ * now (a pointer into the module's memory: read it on the instance's thread, between its calls), NULL: no takeover
+ * (no tk1, its record refused, not booted, dead). fw_tk_input / fw_tk_state call the exports now, under the trap guard
+ * (in time order with the ticks: fw_in FWI_TK_INPUT / FWI_TK_STATE, which call these) */
+#define FW_TK_SIZE 1468
+#define FW_TK_CLAIMS 4                /* the record's fields (u32 claims, scr_seq, led_seq, say_seq; u8 say_flags) */
+#define FW_TK_SCR_SEQ 8
+#define FW_TK_LED_SEQ 12
+#define FW_TK_SAY_SEQ 16
+#define FW_TK_SAY_FLAGS 20
+#define FW_TK_NAME 24                 /* char[16] */
+#define FW_TK_SAY 40                  /* char[128] */
+#define FW_TK_SCREEN 168              /* u8[1024]: 128 x 64, 8 pages of 128 columns, bit 0 the top */
+#define FW_TK_LED 1192                /* u8[92][3] */
+const uint8_t *fw_tk(const fw_t *fw);
+void fw_tk_input(fw_t *fw, uint32_t pkt);
+void fw_tk_state(fw_t *fw, uint32_t on, uint32_t claims, uint32_t flags);
 /* ui_info into buf */
 void fw_ui_info(fw_t *fw, char *buf, uint32_t n);
 

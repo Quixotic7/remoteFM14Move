@@ -81,6 +81,21 @@ typedef struct {
 } rfm1m_rd1_t;
 typedef const rfm1m_rd1_t *(*rfm1m_rd1_fn)(void);
 
+/* tk1, the Move takeover (FM1VST docs/RFM1-TAKEOVER.md): a module that exports rfm1_tk, rfm1_tk_input and
+ * rfm1_tk_state gets RFM1M_TK1_SYMBOL (fwglue.c RFM1M_TK1, built by tools/build_fw.sh only for such a module).
+ * tk: rfm1_tk() -> the record's offset in the module's memory (version 1, size 1468: section 4.2), 0 none;
+ * input: rfm1_tk_input(pkt), a Move surface packet as a u32 (byte 0 the cable / CIN); state: rfm1_tk_state(on,
+ * claims, flags) */
+#define RFM1M_TK1_ABI 1
+#define RFM1M_TK1_SYMBOL "rfm1m_tk1"
+typedef struct {
+    uint32_t abi;
+    uint32_t (*tk)(void *inst);
+    uint32_t (*input)(void *inst, uint32_t pkt);
+    void (*state)(void *inst, uint32_t on, uint32_t claims, uint32_t flags);
+} rfm1m_tk1_t;
+typedef const rfm1m_tk1_t *(*rfm1m_tk1_fn)(void);
+
 /* Threads (README "Threads"): RFM1M_CAPS_SYMBOL, in every object tools/build_fw.sh builds since the threads (an older
  * object has none: the host runs every call into it under one lock, as its call depth is a process global) */
 #define RFM1M_CAPS_SYMBOL "rfm1m_caps"
