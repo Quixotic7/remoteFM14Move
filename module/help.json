@@ -35,20 +35,22 @@
     {
       "title": "Accessibility",
       "lines": [
-        "Schwung's screen",
-        "reader speaks what",
-        "RemoteFM1 shows:",
+        "RemoteFM1 speaks",
+        "what the Move shows:",
         "modes, views, slots,",
-        "firmwares, knob",
-        "values and loads.",
+        "firmwares, knobs",
+        "and loads.",
         "",
-        "Turn it on in",
-        "Global Settings >",
-        "Screen Reader",
-        "before you launch",
-        "RemoteFM1. Voice,",
-        "speed and volume",
-        "are its settings."
+        "Global Settings",
+        "(Shift + step 2 in",
+        "Sequencer mode) >",
+        "Speech: Off, On, or",
+        "Jog (only while you",
+        "touch the jog).",
+        "",
+        "Voice, speed and",
+        "volume are",
+        "Schwung's settings."
       ]
     },
     {

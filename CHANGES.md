@@ -1,11 +1,24 @@
 # Changes
 
-## Unreleased
+## 0.1.2
 
-- **Screen reader.** With Schwung's screen reader on (Global Settings > Screen Reader), RemoteFM1 speaks: the mode,
-  the firmware view and its slots, the firmware selected, loads and downloads, the slot played, knob names and values
-  (a firmware's readouts, Control mode's CCs, the volume), latch, the FM-1 linked, and leaving. It uses Schwung's own
-  speech program and the user's voice settings. The on-device help has an Accessibility page.
+- **Screen reader.** RemoteFM1 speaks what the Move shows: the mode, the firmware view and its slots, the firmware
+  selected, loads and downloads, the slot played, buttons, steps ("Step 1") and the sequencer, knob names and values
+  (a firmware's own readouts, Control mode's CCs, the volume), Global Settings, latch, the FM-1 linked, and leaving.
+  It uses Schwung's own speech program and the user's voice settings.
+- **Speech mode** in RemoteFM1's Global Settings (Shift + step 2 in Sequencer mode): **Off**, **On**, or **Jog** (only
+  while the jog wheel is touched; a touch says the screen). Off unless Schwung's own screen reader is on.
+- **Firmwares that speak for themselves.** Firmwares with the FM-1 screen reader protocol
+  ([fm1-reader](https://github.com/charlesvestal/fm1-reader): AMB-1, FoMni-1, Golf, Tekstuur, LOOM-8 and more) say
+  their own words through the Move, with their words file.
+- **MIDI routing between firmwares.** On FX setup's Routing page, hold a firmware's pad and tap another's to send its
+  MIDI there, or the pad below them (**Out**) to send it out: to USB-A (when the FM-1 isn't linked there) and as
+  network MIDI ("RemoteFM1 Move", RTP-MIDI, seen in a Mac's Audio MIDI Setup over USB-C or Wi-Fi). Saved with the
+  project; no loops.
+- **Favorites in your order:** in the Favorites list, knob 2 moves the selected firmware up or down.
+- **Global Settings redrawn:** the battery with its icon and percentage on top, the settings below.
+- **Delete** is a modifier: hold it and tap steps to cut, then paste by the last action; Track 4 + Delete clears.
+- Fixes: audio uploads from the page's file browser, folders dropped on it, knob labels.
 
 ## 0.1.1
 
