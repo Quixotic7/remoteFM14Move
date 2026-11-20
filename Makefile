@@ -116,7 +116,7 @@ FW_DEV_OUT := $(patsubst build/in-dev/%.rfm1,build/fw-dev/%.rfm1m,$(wildcard bui
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
-CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c fw.c session.c store.c speech.c) \
+CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c fw.c session.c store.c speech.c takeover.c) \
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
