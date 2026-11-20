@@ -78,6 +78,15 @@ static char g_ev[EV_MAX], g_val[VAL_MAX];      /* pending: the events (joined), 
 static uint32_t g_first_ms, g_last_ms;
 static uint32_t g_said;
 static volatile uint32_t g_mixed;
+/* (ann_fw) a firmware's words pending: cut (NOW in the burst), keep (KEEP in it), when the burst began and grew last */
+#define FW_MAX 1600
+#define QUEUE_MAX_MS 8000u     /* queued words wait at most this long for the speech playing */
+#define KEEP_MAX_MS 15000u     /* a KEEP holds the rest at most this long */
+static char g_fw[FW_MAX];
+static int g_fw_cut, g_fw_keep;
+static uint32_t g_fw_first, g_fw_ms;
+static uint32_t g_keep_ms;     /* a KEEP utterance sent then (0 none): heard whole */
+static uint32_t g_pub_ms, g_mix_seen, g_mix_ms;   /* the last utterance sent; the audio last seen moving */
 
 static uint32_t mono_ms(void)
 {
@@ -249,6 +258,25 @@ static void publish(const char *text)
     __atomic_store_n(&g_shm->req_seq, seq + 2, __ATOMIC_RELEASE);
     __atomic_store_n(&g_speak, g_count, __ATOMIC_RELEASE);
     g_said++;
+    g_pub_ms = mono_ms();
+    g_keep_ms = 0;
+}
+
+/* the speech still playing: sent and its audio not come yet (the sidecar's start), or its audio moving */
+static int playing(uint32_t now)
+{
+    const uint32_t mx = g_mixed;
+    if (mx != g_mix_seen)
+        g_mix_seen = mx, g_mix_ms = now;
+    return (g_pub_ms && now - g_pub_ms < 300u) || (g_mix_ms && now - g_mix_ms < 120u);
+}
+
+/* a KEEP utterance still playing: nothing cuts it */
+static int kept(uint32_t now)
+{
+    if (g_keep_ms && (!playing(now) || now - g_keep_ms >= KEEP_MAX_MS))
+        g_keep_ms = 0;
+    return g_keep_ms != 0;
 }
 
 static void speak_pending(void)
@@ -354,8 +382,43 @@ void ann_tick(uint32_t now_unused)
                 g_want.engine == 1 ? "Flite" : "eSpeak", g_want.volume, g_want.speed, g_want.pitch);
         __atomic_store_n(&g_mix_on, 1, __ATOMIC_RELEASE);
     }
-    if ((g_ev[0] || g_val[0]) && (now - g_last_ms >= g_debounce || now - g_first_ms >= MAX_WAIT_MS))
+    if (g_fw[0] && now - g_fw_ms >= ANN_FW_GAP_MS && !kept(now) &&
+        (g_fw_cut || !playing(now) || now - g_fw_first >= QUEUE_MAX_MS)) {   /* a firmware's own words */
+        char t[EV_MAX + VAL_MAX + FW_MAX + 8];
+        const int keep = g_fw_keep;
+        snprintf(t, sizeof t, "%s%s%s%s%s", g_ev, g_ev[0] && g_val[0] ? ". " : "", g_val, g_ev[0] || g_val[0] ? ". " : "",
+                 g_fw);
+        g_ev[0] = g_val[0] = g_fw[0] = 0;
+        g_fw_cut = g_fw_keep = 0;
+        fprintf(stderr, "screen reader: \"%s\"%s\n", t, keep ? " (kept whole)" : "");
+        publish(t);
+        if (keep)
+            g_keep_ms = now ? now : 1;
+        return;
+    }
+    if ((g_ev[0] || g_val[0]) && (now - g_last_ms >= g_debounce || now - g_first_ms >= MAX_WAIT_MS) && !kept(now))
         speak_pending();
+}
+
+void ann_fw(int flags, const char *text)
+{
+    const uint32_t now = mono_ms();
+    if (!g_on || !text || !text[0])
+        return;
+    if (flags & ANN_FW_NOW || !g_fw[0]) {   /* (NOW: what of the firmware's was pending is cut off too) */
+        snprintf(g_fw, sizeof g_fw, "%s", text);
+        g_fw_cut = flags & ANN_FW_NOW ? 1 : 0;
+        g_fw_keep = 0;
+        g_fw_first = now;
+    } else {
+        const size_t e = strlen(g_fw), n = strlen(text);
+        if (e + 2 + n < sizeof g_fw) {
+            memcpy(g_fw + e, ". ", 3);
+            memcpy(g_fw + e + 2, text, n + 1);
+        }
+    }
+    g_fw_keep |= flags & ANN_FW_KEEP ? 1 : 0;
+    g_fw_ms = now;
 }
 
 /* the frames the ring holds for the utterance asked last (the shim's ring_avail: what the sidecar pushed before it

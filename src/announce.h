@@ -17,7 +17,8 @@
  *
  * Words are debounced as the shim does (tts.json's debounce_ms, 300 ms by default): a value (a knob's readout, a
  * list's selection) replaces the value before it; an event (a mode, a view, a slot, a firmware loaded) is kept and
- * joined with the events before it. A new utterance cuts the one still playing.
+ * joined with the events before it. A new utterance cuts the one still playing (a firmware's queued words and a KEEP
+ * wait for it instead: ann_fw).
  *
  * THREADS: ann_start / ann_stop on the main thread (before the engine / after it); ann_say, ann_now and ann_tick on
  * the engine's thread; ann_mix on the audio thread (lock-free: the ring's counters). */
@@ -40,6 +41,13 @@ int ann_on(void);                      /* 1 while words can be spoken (the cheap
 /* words to speak: ANN_VALUE replaces the pending value, ANN_EVENT is joined to the pending events */
 void ann_say(int kind, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 void ann_now(const char *text);        /* now, with what is pending, no debounce (leaving) */
+/* a firmware's own words (the screen reader protocol's SAY, fmreader.h), flags ANN_FW_*: NOW cuts off what is being said
+ * (said at once, what of the firmware's was pending dropped); without it, queued: said once the speech playing has
+ * ended (the sidecar cuts an utterance with the next one). KEEP: heard whole, nothing said after it until it has played.
+ * A burst (a new page's lines, within ANN_FW_GAP_MS) is one utterance, after the host's own words pending */
+enum { ANN_FW_NOW = 1, ANN_FW_KEEP = 2 };
+#define ANN_FW_GAP_MS 30
+void ann_fw(int flags, const char *text);
 void ann_tick(uint32_t now_ms);        /* the debounce: speaks what has been quiet long enough */
 /* the audio thread: the sidecar's audio mixed into out (frames stereo int16). have: frames the engine gave (0: none,
  * out is not written yet). The frames out holds now */

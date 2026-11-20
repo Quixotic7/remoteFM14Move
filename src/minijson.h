@@ -13,6 +13,8 @@ int mj_string(const char *json, const char *key, char *out, size_t cap);
  * it; NULL at the end */
 const char *mj_elem(const char **it);
 int mj_int(const char *json, const char *key, long *out);
+/* the JSON string at v ('"', e.g. an array's element) into out (escapes decoded, cut to cap - 1): 0, or -1 not a string */
+int mj_str(const char *v, char *out, size_t cap);
 /* in as a JSON string's contents (no quotes); the length written */
 size_t mj_escape(const char *in, char *out, size_t cap);
 

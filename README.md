@@ -582,6 +582,15 @@ What is said (Schwung's conventions: "label: value", views named as they open, d
 - loading, loaded or failed, downloading, installed or failed, states saved / loaded / deleted, the FM-1 linked or
   lost, and leaving (asked for at the exit gesture; Move Remote stops the audio a moment later, so it is cut short).
 
+**A firmware's own words** (the FM-1 screen reader protocol, [charlesvestal/fm1-reader](https://github.com/charlesvestal/fm1-reader),
+`src/fmreader.c`): while speech is on, the firmware played gets the protocol's HELLO every 2 s (BYE when another slot is
+played). One that answers (most of the catalog's: AMB-1, FoMni-1, LOOM-8, CTL-1, ..) says what its screen shows; its
+words are put in words by its words file (fetched once from the link it gives and kept in `<root>/words/`; without it,
+the common rules: `src/fmwords.c`, a port of fm1-reader's `web/words.js`) and spoken after RemoteFM1's own. NOW cuts off
+what is being said, KEEP is heard whole. Then, in FM-1 mode, the core's words for the firmware's knobs, readouts and
+buttons step back (a knob's name on touch stays). The protocol's SysEx never reaches the page, the MIDI routes or Out.
+The status: `fmr_slot`, `fmr_name`, `fmr_link`, `fmr_words` (loaded, fetching, none, failed), `fmr_said`.
+
 Who says what: rfm1cs-abletonmove 0.6.0+ says what the Move's screen shows (`RFM_MOVE_ACT_SAY`, turned on with
 `rfm_move_set_speech` once the user's screen reader is on): its views, popups (knobs, readouts, the volume, held-button
 labels, host popups such as "FM-1 linked"), menus, the browser, FX setup, the sequencer. The host says only what the

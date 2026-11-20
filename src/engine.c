@@ -29,6 +29,7 @@
 #include "fm1link.h"
 #include "midiout.h"
 #include "announce.h"
+#include "fmreader.h"
 #include "fsvc.h"
 #include "fwrt.h"
 #include "fx.h"
@@ -875,6 +876,27 @@ static void fx_state_take(const char *text)   /* a project's, as it loads: kept 
         }
 }
 
+#ifdef RFM_MOVE_HAS_SPEECH
+/* The active firmware speaks for itself (fmreader.h: the screen reader protocol): the core's words for its controls
+ * step back in FM-1 mode, as the firmware's own are better. Which of the core's SAYs those are, told from its public
+ * state at the call (rfm1cs 0.6.8 has no switch for it): a VALUE while the popup is an FM-1 encoder's (turned, not just
+ * touched: a touch's name stays, the firmware says nothing for a touch), a readout's or a button's or key's label, or
+ * the words of an FM-1 button pressed (its say_now itself). Not under a held Track's menu or a Shift menu, nor the
+ * volume: RemoteFM1's own words stay. (The core's POP_* numbers: rfm1cs src/move_int.h) */
+enum { CORE_POP_ENC = 1, CORE_POP_SELECT = 4, CORE_POP_LABEL = 17, CORE_POP_READ = 18 };
+static int fw_says_it(const rfm_move_act_t *a)
+{
+    const rfm_move_t *m = &S->core;
+    if (a->index != RFM_MOVE_SAY_VALUE || !fmr_speaks() || m->s.mode != RFM_MOVE_MODE_FM1 || m->seq.projects ||
+        m->track_held || m->seq.smenu)
+        return 0;
+    if (a->data == (const uint8_t *)m->say_now)
+        return 1;
+    return ((m->pop == CORE_POP_ENC || m->pop == CORE_POP_SELECT) && !m->pop_blank) || m->pop == CORE_POP_LABEL ||
+           m->pop == CORE_POP_READ;
+}
+#endif
+
 static void on_action(const rfm1cs_event_t *ev)
 {
     const rfm_move_act_t *a = ev->act;
@@ -1025,7 +1047,7 @@ static void on_action(const rfm1cs_event_t *ev)
         break;
 #ifdef RFM_MOVE_HAS_SPEECH
     case RFM_MOVE_ACT_SAY:   /* (rfm1cs's words for what the Move's screen shows: the screen reader) */
-        if (a->data && a->len)
+        if (a->data && a->len && !fw_says_it(a))
             ann_say(a->index == RFM_MOVE_SAY_EVENT ? ANN_EVENT : ANN_VALUE, "%.*s", (int)a->len, (const char *)a->data);
         break;
 #endif
@@ -2193,6 +2215,12 @@ int engine_midi_out(uint8_t *buf, int cap, uint32_t *pos)
     return (int)k;
 }
 
+/* the screen reader protocol's HELLO / BYE into a slot's firmware (fmreader.h) */
+static int fmr_send(int s, const uint8_t *m, int n)
+{
+    return s >= 0 && s < NSLOT && SL[s].on && !SL[s].fw.dead ? fw_midi_feed(&SL[s].fw, m, n) : -1;
+}
+
 /* the page's messages into the active firmware (fw_midi_feed: as many packets a device ms as it takes) */
 static void page_midi(void)
 {
@@ -2808,13 +2836,13 @@ static void render_block(uint32_t now)
                     sl->pk_acc = p;
             }
             if (s != g_active && sl->on && g_mroute[s]) {   /* (0.6.6) a slot not played: its MIDI out where it's routed */
-                uint32_t pk[64];
-                const int n = fw_midi_out(&sl->fw, pk, 64);
+                uint32_t raw[64], pk[65];
+                const int n = fmr_filter(s, raw, fw_midi_out(&sl->fw, raw, 64), pk);   /* (the reader's frames out) */
                 route_out(s, pk, n);
             }
             if (s == g_active && sl->on) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page */
-                uint32_t pk[64];
-                const int n = fw_midi_out(&sl->fw, pk, 64);
+                uint32_t raw[64], pk[65];
+                const int n = fmr_filter(s, raw, fw_midi_out(&sl->fw, raw, 64), pk);   /* (the reader's frames out) */
                 int i;
                 for (i = 0; i < n; i++) {
                     const uint8_t b = (uint8_t)(pk[i] >> 8);
@@ -3087,6 +3115,8 @@ static void housekeeping(uint32_t now)
             ann_stats(&on, &said, &acked, &mixed);
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tts_on\":%d,\"tts_said\":%u,\"tts_acked\":%u,"
                           "\"tts_mixed\":%u", on, said, acked, mixed);
+            if (n < (int)sizeof tmp)   /* (the screen reader protocol: the firmware that speaks for itself) */
+                n += fmr_json(tmp + n, (int)sizeof tmp - n);
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"mroute\":[%d,%d,%d]", g_mroute[0], g_mroute[1],
                       g_mroute[2]);   /* (rfm1cs 0.6.6: each slot's MIDI routes, as the engine forwards them) */
@@ -3212,6 +3242,9 @@ static void *engine_main(void *arg)
                     engine_fm1_in(-1, pin[i].op, pin[i].a, pin[i].b);
             }
         }
+        /* the screen reader protocol (fmreader.h): HELLO to the active firmware while speech is on */
+        fmr_tick(now, g_active, SL[g_active].on && !SL[g_active].fw.dead ? SL[g_active].serial : 0,
+                 ann_on() && g_session_on);
         /* the FM-1 on USB-A (fm1link.c): its panel and MIDI in, the active slot's screen and LEDs out */
         fm1link_tick(now, g_active, SL[g_active].on ? &SL[g_active].fw : NULL);
         midiout_poll(now);   /* (Out: on this thread, as USB-A's other sender) */
@@ -3422,6 +3455,7 @@ int engine_start(const engine_cfg_t *cfg)
         g_session_on = 1;
         __atomic_store_n(&g_out_open, 1, __ATOMIC_RELEASE);
     }
+    fmr_start(C.root, fmr_send);   /* (its fetch thread: an ordinary one, made before the engine's) */
     g_run = 1;
     if (pthread_create(&g_thr, NULL, engine_main, NULL) != 0)
         return -1;
@@ -3435,6 +3469,7 @@ void engine_stop(void)
         return;
     g_run = 0;
     pthread_join(g_thr, NULL);
+    fmr_stop();
     st_worker_stop();
     if (C.capture_out && g_cap_out)
         st_write(C.capture_out, g_cap_out, (size_t)g_cap_out_n * 4u);

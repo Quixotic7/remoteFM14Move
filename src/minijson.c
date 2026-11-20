@@ -133,6 +133,13 @@ int mj_string(const char *json, const char *key, char *out, size_t cap)
     return str_(v, out, cap) ? 0 : -1;
 }
 
+int mj_str(const char *v, char *out, size_t cap)
+{
+    if (cap)
+        out[0] = 0;
+    return v && *v == '"' && str_(v, out, cap) ? 0 : -1;
+}
+
 int mj_int(const char *json, const char *key, long *out)
 {
     const char *v = mj_find(json, key);

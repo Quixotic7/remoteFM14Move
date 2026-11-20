@@ -2,7 +2,8 @@
 #define _GNU_SOURCE
 /* Unit tests: the manifest reader (and the catalog index's arrays), SHA-256, the output stage (mix and limiter), the
  * mDNS answers, the FX stage (pan, the send buses, Schwung's freeverb and arp through fx.c: build/fxmods), the page's
- * file browser (files.c: the path rules, what may change, the zip's records and CRC). */
+ * file browser (files.c: the path rules, what may change, the zip's records and CRC), the screen reader protocol's words
+ * (fmwords.c: fm1-reader's tests/words_test.mjs, case for case). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@
 #include "ed25519.h"
 #include "fsvc.h"
 #include "files.h"
+#include "fmwords.h"
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -881,6 +883,69 @@ static void filesapi(void)
     }
 }
 
+/* fmwords.c: fm1-reader's tests/words_test.mjs, its list and its cases */
+static void fmwords(void)
+{
+    static const char *const CASES[][2] = {
+        { "BD TUNE 37", "bass drum tune 37" }, { "909 GR", "nine oh nine groove" }, { "909 KIT", "nine oh nine kit" },
+        { "P3", "pattern 3" }, { "COPY TO P17-32", "copy to patterns 17 to 32" },
+        { "STEP 5: 1:4", "step 5: loop 1 of every 4" }, { "NEW LINE 3FA2", "new line" },
+        { "LENGTH 16 st", "length 16 steps" }, { "DIRECTION REV", "direction reverse" },
+        { "RATE 1/16T", "rate sixteenth triplet" }, { "TIME 1/8., FEEDBACK 52", "time dotted eighth, feedback 52" },
+        { "TIME 1/8.", "time dotted eighth" }, { "RATE 1/16. STEPS 1-16 ON: NONE", "rate sixteenth. steps 1 to 16 on: none" },
+        { "RATIO 4:1", "ratio 4 to 1" }, { "BATTERY 2/3", "battery 2 of 3" }, { "ROOT C#", "root C sharp" },
+        { "STEP 5 ON C#3", "step 5 on C sharp 3" }, { "REPEAT x1", "repeat 1 time" }, { "REPEAT x4", "repeat 4 times" },
+        { "SWING 50 %", "swing 50 percent" }, { "SWING 50%", "swing 50 percent" }, { "LEVEL -5 dB", "level -5 decibels" },
+        { "BD (1/2): TUNE 34", "bass drum, page 1 of 2: tune 34" }, { "PLAY / STOP", "play or stop" },
+        { "HOME + REC: UNDO", "home plus record: undo" }, { "(+ OCT+: P17-32)", "(plus octave up: patterns 17 to 32)" },
+        { "HOLD A STEP", "hold a step" }, { "LOOP A", "loop A" }, { "KEY A MINOR", "key A minor" },
+        { "A FLAT MAJOR", "A flat major" }, { "A DORIAN", "A dorian" }, { "THE PART'S SOUND", "the part's sound" },
+        { "THE EFFECTS: REVERB, DELAY,. TAPE", "the effects: reverb, delay. tape" },
+        { "CLEAR THIS?. SEL: YES", "clear this? sel: yes" }, { "WAVE Saw", "wave Saw" },
+        { "BREAK MIDI CH 4", "break MIDI channel 4" }, { "A  B ", "A B" }, { "BDX", "bdx" },
+    };
+    const char *list = "{\"format\":1,\"words\":[[\"BD\",\"bass drum\"],[\"909\",\"nine oh nine\"],[\"909 GR\",\"nine oh "
+        "nine groove\"],[\"P#\",\"pattern #\"],[\"P#-#\",\"patterns # to #\"],[\"STEP #: #:#\",\"step #: loop # of every #\"],"
+        "[\"NEW LINE *\",\"new line\"],[\"LENGTH # st\",\"length # steps\"],[\"REV\",\"reverse\"],[\"REV\",\"reverb\"],"
+        "[\"OCT+\",\"octave up\"],[\"REC\",\"record\"],[\"MIDI CH #\",\"MIDI channel #\"],[\"dB\",\"decibels\"],"
+        "[\"\",\"x\"],[1,2]]}";
+    fmw_t w;
+    char out[512];
+    int i, bad = 0, ld = fmw_load(&w, list);
+    CHECK(ld == 0 && w.n == 14, "fmwords: the test list loaded (%d entries; the empty key and the numbers left out)", w.n);
+    for (i = 0; i < (int)(sizeof CASES / sizeof CASES[0]); i++) {
+        fmw_spoken(CASES[i][0], &w, out, sizeof out);
+        if (strcmp(out, CASES[i][1])) {
+            printf("        \"%s\" -> \"%s\", want \"%s\"\n", CASES[i][0], out, CASES[i][1]);
+            bad++;
+        }
+    }
+    CHECK(!bad, "fmwords: words_test.mjs's %d cases (%d wrong)", (int)(sizeof CASES / sizeof CASES[0]), bad);
+    fmw_spoken("BD TUNE 37", NULL, out, sizeof out);
+    CHECK(!strcmp(out, "bd tune 37"), "fmwords: no list: the common rules only (\"%s\")", out);
+    fmw_spoken("BD TUNE 37", &w, out, 8);
+    CHECK(!strcmp(out, "bass dr"), "fmwords: cut to the buffer (\"%s\")", out);
+    fmw_free(&w);
+    CHECK(fmw_load(&w, "{\"format\":2,\"words\":[]}") == -1, "fmwords: format 2 refused");
+    {
+        static char big[(FMW_WORDS_MAX + 1) * 10 + 64];
+        int n = snprintf(big, sizeof big, "{\"format\":1,\"words\":[");
+        for (i = 0; i <= FMW_WORDS_MAX; i++)
+            n += snprintf(big + n, sizeof big - (size_t)n, "%s[\"A\",\"b\"]", i ? "," : "");
+        snprintf(big + n, sizeof big - (size_t)n, "]}");
+        CHECK(fmw_load(&w, big) == -1, "fmwords: more than %d entries refused", FMW_WORDS_MAX);
+    }
+    {
+        char j[600];
+        memset(out, 'A', FMW_WORD_MAX + 1);
+        out[FMW_WORD_MAX + 1] = 0;
+        snprintf(j, sizeof j, "{\"format\":1,\"words\":[[\"%s\",\"b\"],[\"C\",\"%s\"],[\"E\",\"f\"]]}", out, out);
+        CHECK(fmw_load(&w, j) == 0 && w.n == 1 && !strcmp(w.k[0], "E"), "fmwords: an entry over %d characters left out",
+              FMW_WORD_MAX);
+        fmw_free(&w);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c's crash probe runs this program) */
@@ -896,6 +961,7 @@ int main(int argc, char **argv)
     catsig();
     fsapi();
     filesapi();
+    fmwords();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }
