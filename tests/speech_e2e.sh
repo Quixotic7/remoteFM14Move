@@ -103,6 +103,21 @@ wait_for 10 '[ "$(field session)" = 2 ]'; sleep 1; press "cc 42"; sleep 0.6
 [ ! -e "$SAID2" ] && grep -q "screen reader: off (Schwung's setting)" "$T/host-off.log" && [ "$(field tts_on)" = 0 ] \
     && ok "Schwung's screen reader off: no sidecar, nothing said" || bad "off: $(head -2 "$SAID2" 2>/dev/null); tts_on $(field tts_on)"
 cmd quit; wait $HOST
-rm -f "/dev/shm/rfm14-speech-$$"
+
+# Schwung 1.9's setting: shadow_config.json beside config/ says on (no screen_reader_state.txt): the host starts the
+# speech program and sends the user's own settings (eSpeak, volume 65, speed 1, pitch 95), as the shim would
+mv "$CFG/screen_reader_state.txt" "$T/state-off.txt"
+printf '{\n  "screen_reader_enabled": true,\n  "screen_reader_engine": "espeak",\n  "screen_reader_pitch": 95,\n  "screen_reader_speed": 1,\n  "screen_reader_volume": 65,\n  "tts_debounce_ms": 50\n}\n' > "$CFG/../shadow_config.json"
+SAID3=$T/said-19.log
+FAKE_TTS_SHM=/rfm14-speech-$$ FAKE_TTS_LOG=$SAID3 build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" \
+    --firmwares build/fw --site build/site --fw felucca --no-fm1 --screen-reader auto --tts-sidecar build/tools/fake-tts \
+    --tts-shm /rfm14-speech-$$ --tts-config "$CFG" >>"$T/host-19.log" 2>&1 &
+HOST=$!
+wait_for 10 '[ "$(field session)" = 2 ]'
+wait_for 6 'grep -q "RemoteFM1" "$SAID3" 2>/dev/null' && grep -q "screen reader: ready: eSpeak, volume 65, speed 1.00, pitch 95" "$T/host-19.log" \
+    && ok "Schwung 1.9's shadow_config.json on: spoken with the user's settings (eSpeak, volume 65, speed 1, pitch 95)" \
+    || bad "shadow_config.json on: $(grep 'screen reader' "$T/host-19.log" | head -3); said: $(head -3 "$SAID3" 2>/dev/null)"
+cmd quit; wait $HOST
+rm -f "/dev/shm/rfm14-speech-$$" "$CFG/../shadow_config.json"
 echo "speech_e2e: $checks checks, $fail failed"
 [ $fail = 0 ]

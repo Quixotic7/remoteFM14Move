@@ -68,6 +68,8 @@ static int g_ready;            /* the sidecar published its settings */
 static pid_t g_pid = -1;
 static uint32_t g_seen_state, g_start_ms, g_check_ms;
 static tts_settings_t g_want;
+static tts_settings_t g_user;  /* the user's settings from shadow_config.json (Schwung 1.9+), when it has them */
+static int g_user_set;
 static uint32_t g_count;                       /* speak_count (the engine's) */
 static volatile uint32_t g_speak;              /* .. as the audio thread sees it */
 static volatile int g_mix_on;                  /* the audio thread may read the ring */
@@ -96,6 +98,47 @@ static int read_file(const char *path, char *buf, size_t cap)
     return (int)n;
 }
 
+/* a key's value in a flat JSON file: its text after the colon (NULL: not there) */
+static const char *jkey(const char *buf, const char *key)
+{
+    char k[64];
+    const char *p;
+    snprintf(k, sizeof k, "\"%s\"", key);
+    if (!(p = strstr(buf, k)) || !(p = strchr(p + strlen(k), ':')))
+        return NULL;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+        p++;
+    return p;
+}
+
+/* Schwung 1.9's Global Settings > Screen Reader: shadow_config.json beside config/ (the older
+ * config/screen_reader_state.txt is read when it does not say). 1 on, 0 off, -1 not said */
+static int user_setting(const char *dir, uint32_t *debounce)
+{
+    char path[512], buf[8192];
+    const char *v;
+    snprintf(path, sizeof path, "%s/../shadow_config.json", dir);
+    if (read_file(path, buf, sizeof buf) <= 0 || !(v = jkey(buf, "screen_reader_enabled")))
+        return -1;
+    if (strncmp(v, "true", 4) && *v != '1')
+        return 0;
+    memset(&g_user, 0, sizeof g_user);
+    g_user.enabled = 1;
+    g_user.engine = (v = jkey(buf, "screen_reader_engine")) && !strncmp(v, "\"flite\"", 7) ? 1 : 0;
+    g_user.volume = (v = jkey(buf, "screen_reader_volume")) ? atoi(v) : 70;
+    g_user.speed = (v = jkey(buf, "screen_reader_speed")) ? (float)atof(v) : 1.0f;
+    g_user.pitch = (v = jkey(buf, "screen_reader_pitch")) ? (float)atof(v) : 110.0f;
+    if (g_user.volume < 0 || g_user.volume > 100)
+        g_user.volume = 70;
+    if ((v = jkey(buf, "tts_debounce_ms"))) {
+        const int d = atoi(v);
+        *debounce = (uint32_t)(d < 0 ? 0 : d > 1000 ? 1000 : d);
+    }
+    g_user_set = 1;
+    return 1;
+}
+
 int ann_start(const ann_cfg_t *cfg)
 {
     const char *side = cfg && cfg->sidecar ? cfg->sidecar : DEF_SIDECAR;
@@ -108,14 +151,15 @@ int ann_start(const ann_cfg_t *cfg)
     if (mode < 0)
         return 0;
     if (mode == 0) {   /* the user's setting: Schwung's Global Settings > Screen Reader */
+        const int u = user_setting(dir, &g_debounce);
         snprintf(path, sizeof path, "%s/screen_reader_state.txt", dir);
-        if (read_file(path, buf, sizeof buf) < 1 || buf[0] != '1') {
+        if (u == 0 || (u < 0 && (read_file(path, buf, sizeof buf) < 1 || buf[0] != '1'))) {
             fprintf(stderr, "screen reader: off (Schwung's setting)\n");
             return 0;
         }
     }
     snprintf(path, sizeof path, "%s/tts.json", dir);
-    if (read_file(path, buf, sizeof buf) > 0) {   /* the shim's debounce, the user's "Speak Delay" */
+    if (!g_user_set && read_file(path, buf, sizeof buf) > 0) {   /* the shim's debounce, the user's "Speak Delay" */
         const char *p = strstr(buf, "\"debounce_ms\"");
         if (p && (p = strchr(p, ':'))) {
             const int v = atoi(p + 1);
@@ -294,6 +338,11 @@ void ann_tick(uint32_t now_unused)
         }
         g_seen_state = s;
         g_want = g_shm->state;   /* (restated as they are: nothing of the user's is changed or saved) */
+        if (g_user_set) {        /* Schwung 1.9: the user's own settings, as the shim would pass them */
+            g_want.enabled = 1;
+            g_want.engine = g_user.engine, g_want.volume = g_user.volume;
+            g_want.speed = g_user.speed, g_want.pitch = g_user.pitch;
+        }
         g_count = g_shm->speak_count;
         __atomic_store_n(&g_speak, g_count, __ATOMIC_RELEASE);
         g_ready = 1;
