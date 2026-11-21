@@ -71,12 +71,12 @@ sleep 0.15; shot; after=$(lit_all 0 17); val=$(lit_all 20 52)
     || bad "the Move's screen: title rows $after, value rows $val pixels lit"
 cp "$SIM/mr-screen.pbm" build/test-out/rd1_k1.pbm   # (the shots kept: build/test-out/rd1_*.pbm)
 cmd "note 4 0"; sleep 1.5
-# PRESETS (Move knob 1): the sound's name (a PRESET readout: ChoralRoot's engine and sound)
+# PRESETS (Move knob 2: rfm1cs 0.8.0's FM-1 layout, knob 1 SELECT, 2 PRESETS, 3 ALGO): the sound's name (a PRESET readout: ChoralRoot's engine and sound)
 seq0=$(rdf seq)
-cmd "note 0 127"; sleep 0.05; cmd "cc 71 1"; sleep 0.05; cmd "cc 71 1"
+cmd "note 1 127"; sleep 0.05; cmd "cc 72 1"; sleep 0.05; cmd "cc 72 1"
 wait_for 3 '[ "$(rdf seq)" != "$seq0" ] && [ "$(rdf kind)" = 2 ]' && ok "PRESETS turned: \"$(rdf title)\" \"$(rdf value)\" (a sound's name)" \
     || bad "PRESETS: $(info | grep -o '"readout":{[^}]*}')"
-cmd "note 0 0"; sleep 0.3
+cmd "note 1 0"; sleep 0.3
 # a slot switch: the readout forgotten (the page's goes with it)
 load 1 felucca 1 >/dev/null
 wait_for 15 'info | grep -q "\"id\":\"felucca\""' && sleep 0.5

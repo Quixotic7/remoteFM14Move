@@ -4,11 +4,13 @@
 # build image after make with a tk1 build of ChoralRoot among the development builds (make DEV_FIRMWARES=
 # .../choralroot-<v>.rfm1, FM1VST's core-glue/choralroot: build/fw-dev). Skipped when there is none (no fixture is kept
 # in git: the .rfm1 is 1.6 MB; tkdemo, tests/tk_e2e.sh, is the takeover's own fixture). The host on the simulator, the
-# screen reader on (tests/fake_tts.c): ChoralRoot in slot 1, its record read (claims 0x5F); Track 1 opens it (said
+# screen reader on (tests/fake_tts.c): ChoralRoot in slot 1, its record read (claims 0x5F); Track 1 held + the top row's
+# pad 2 (rfm1cs 0.8.0: the slot's takeover layout) opens it (said
 # "ChoralRoot, takeover"), its home screen (the header bar, the 16-step strip); the pads its colours (the Keys layout, the chord keys,
 # the memories); MIN + m7 + D: the pads lit, "Chord D minor seven" said; memory 6 tapped with them held: saved (white,
 # then cyan; "Memory 6, D minor seven"); a step tapped: the chord in it (the strip); Menu held: the picker (its pads),
-# Scale picked; a knob touched: its full-screen popup; volume touched + Back: FM-1 mode, Track 1: back as it was left.
+# Scale picked; a knob touched: its full-screen popup; volume touched + Back: the FM-1 layout, Track 1 held + pad 2:
+# back as it was left.
 #   tests/cr_tk_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -36,6 +38,7 @@ padrgb() { field move_pads | cut -c$(($1 * 6 + 1))-$(($1 * 6 + 6)); }
 wait_for() { _n=$(( $1 * 10 )); shift; while [ $_n -gt 0 ]; do eval "$1" && return 0; sleep 0.1; _n=$((_n - 1)); done; return 1; }
 cmd() { printf '%s\n' "$@" > "$SIM/mr-cmd"; sleep 0.06; }
 press() { cmd "cc $1 127"; cmd "cc $1 0"; }
+tk() { cmd "cc $1 127"; cmd "note 93 100"; cmd "note 93 0"; cmd "cc $1 0"; }   # Track n held + pad 2: slot n's takeover
 shot() { rm -f "$SIM/mr-screen.pbm"; cmd shot; wait_for 3 '[ -s "$SIM/mr-screen.pbm" ]'; }
 rows() { tail -n +3 "$SIM/mr-screen.pbm" | tr -cd 01 | fold -w 128 | sed -n "$(($1 + 1)),$(($2 + 1))p"; }
 lit() { rows "$1" "$2" | tr -cd 1 | wc -c; }
@@ -57,10 +60,10 @@ wait_for 10 '[ "$(sfield 0 tk)" = 95 ]' && [ "$(sfield 0 tk_name)" = ChoralRoot 
     || bad "ChoralRoot's takeover: claims '$(sfield 0 tk)' name '$(sfield 0 tk_name)' mode '$(mode)'"
 sleep 2.5   # (the firmware's splash and the session's own popups gone)
 mkdir -p build/test-out
-# ---- Track 1: the takeover
-mark; press 43
-wait_for 4 '[ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ]' && ok "Track 1: the takeover (mode 4, slot 1 shown)" \
-    || bad "Track 1: mode '$(mode)' shown '$(field tk_shown)'"
+# ---- Track 1 held + pad 2: the takeover
+mark; tk 43
+wait_for 4 '[ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ]' && ok "Track 1 held + pad 2: the takeover (mode 4, slot 1 shown)" \
+    || bad "Track 1 held + pad 2: mode '$(mode)' shown '$(field tk_shown)'"
 wait_for 3 'said "^ChoralRoot"' && ok "entering said: \"$(last)\"" || bad "entering: said '$(last)'"
 sleep 1.6   # (its name popup gone)
 shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_home.pbm
@@ -99,13 +102,13 @@ sleep 1.3; mark; cmd "note 0 127"; sleep 0.2; shot; cp "$SIM/mr-screen.pbm" buil
 [ "$(lit 0 0)" -lt 128 ] && [ "$(lit 20 52)" -gt 100 ] && said "^Voicing" \
     && ok "knob 1 touched: \"$(last)\", its popup full screen" || bad "knob 1: row 0 $(lit 0 0), said '$(last)'"
 cmd "note 0 0"; sleep 1.3
-# ---- volume touched + Back: FM-1 mode; Track 1: as it was left
+# ---- volume touched + Back: the FM-1 layout; Track 1 held + pad 2: as it was left
 cmd "note 8 127"; cmd "cc 51 127"; cmd "cc 51 0"; cmd "note 8 0"
 wait_for 4 '[ "$(mode)" = 0 ] && [ "$(field tk_shown)" = -1 ]' && ok "volume touched + Back: FM-1 mode" \
     || bad "volume + Back: mode '$(mode)' shown '$(field tk_shown)'"
-press 43
+tk 43
 wait_for 4 '[ "$(mode)" = 4 ]' && wait_for 3 '[ "$(padrgb 8)" = ffd228 ] && [ "$(padrgb 21)" = 13abbf ]' \
-    && ok "Track 1 again: the takeover as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
+    && ok "Track 1 held + pad 2 again: the takeover as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 rm -f "/dev/shm/rfm14-crtk-$$"

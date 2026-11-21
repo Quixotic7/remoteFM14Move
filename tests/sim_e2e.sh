@@ -100,9 +100,9 @@ v=$(echo "$mo" | awk '{ for (i = 6; i <= NF && $i != "00"; i++) printf "%s", $i 
 case "$mo" in "F0 7D 46 4C 01 "*" F7"*) ok "an editor's SysEx through the page's MIDI: Felucca's INFO answered ($(echo "$mo" | wc -w | tr -d ' ') bytes back, version '$v')";;
     *) bad "the page's MIDI: no INFO reply: $(echo "$out" | tail -1 | cut -c1-200); $(status | grep -o '"pmidi[^,]*,"pmidi[^,]*,"pmidi[^,]*,"midi_out[^,]*')";; esac
 
-# ---- a firmware switch from the Move: Track 1 held + step 1 (the projects view), step 2 (All), the first pad
-# (ChoralRoot, A-Z), jog press (FW_LOAD)
-cmd "cc 43 127"; sleep 0.15; press "note 16"; cmd "cc 43 0"; sleep 0.3
+# ---- a firmware switch from the Move: Track 1 double click (the firmware browser on slot 1), step 2 (All), the first
+# pad (ChoralRoot, A-Z), jog press (FW_LOAD)
+press "cc 43"; press "cc 43"; sleep 0.3
 press "note 17"
 press "note 92"
 press "cc 3"
@@ -119,9 +119,10 @@ wait_for 5 '[ -s "$ROOT/states/choralroot/state-00.bin" ] && [ "$(slot 0 states)
 press "note 92"
 wait_for 5 '[ "$(slot 0 boot)" -gt "$b0" ]' && ok "STATE_LOAD: ChoralRoot booted again from state 1 (boot $b0 -> $(slot 0 boot))" \
     || bad "no state load (boot $(slot 0 boot))"
-# ---- a second slot: Track 2 in the view (FW_ACTIVE 2), Felucca (the second pad), jog press; Track 1 back
+# ---- a second slot: Back (out of the states), Track 2 double click (the browser on slot 2: FW_ACTIVE 2), Felucca
+# (the second pad), jog press; a Track 1 tap leaves the view and plays slot 1 again
 press "cc 51"
-press "cc 42"
+press "cc 42"; press "cc 42"; sleep 0.3
 press "note 93"
 press "cc 3"
 wait_for 10 '[ "$(slot 1 id)" = felucca ]' && ok "Track 2: Felucca loaded into slot 2, beside ChoralRoot (voices 3)" \
@@ -129,7 +130,6 @@ wait_for 10 '[ "$(slot 1 id)" = felucca ]' && ok "Track 2: Felucca loaded into s
 press "cc 43"
 wait_for 3 '[ "$(field active)" = 0 ]' && ok "Track 1: slot 1 is the one the controls play again (FW_ACTIVE)" \
     || bad "active is $(field active)"
-press "cc 51"; press "cc 51"; press "cc 51"
 sleep 0.5
 cmd "note 84 110" "note 88 110" "note 91 110"
 wait_for 3 '[ "$(field peak)" -gt 1000 ]' && ok "ChoralRoot plays from the pads (peak $(field peak))" \

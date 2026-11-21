@@ -6,9 +6,11 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
 
 - **The firmwares** run as native code: each `.rfm1` is translated by wasm2c and compiled for the Move
   (`<id>-<version>.rfm1m`), with the same sound as the `.rfm1` in wasm3, bit for bit (tested).
-- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.5.9, in-process: FM-1
-  mode on the pads and knobs, MIDI, Control and the sequencer, and the projects view (Shift + step 1, or Track 1 held +
-  step 1) with three firmware slots, their levels and their states.
+- **The controls** are [rfm1cs-abletonmove](https://github.com/Quixotic7/rfm1cs-abletonmove) 0.8.0, in-process. The
+  Track buttons (proposal 2): Track 1, 2, 3 are the three firmware slots (a tap plays one in its own layout: FM-1, its
+  takeover, or a note layout with the Control CCs on the knobs; held: its layout menu; a double tap: its firmware
+  browser); Track 4 is the sequencer side (a tap: the Mixer / Routing; held: the Shift shortcuts; a double tap: the
+  projects); Back flips to the Sequencer and back.
 - **The hardware** is [Move Remote](https://github.com/Quixotic7/abletonmoveremote)'s device code, in-process: the SPI
   link and the real-time audio thread on core 3, the LEDs and the screen.
 - **The page**: `http://remotefm1.local:7730/` (or `http://move.local:7730/`) is RemoteFM1's own site
@@ -561,9 +563,10 @@ Move's screen (build/test-out/rd1_k1.pbm); PRESETS: the sound's name; a slot swi
 A firmware built with FM1VST's `WANTS tk1` brings its own Move interface beside FM-1 mode (FM1VST
 docs/RFM1-TAKEOVER.md; rfm1cs-abletonmove 0.7.0, its README "Takeover"): it draws the Move's 128 x 64 screen and the
 LEDs of the parts it **claims** (screen, pads, steps, knobs, jog, volume, buttons, Track buttons) and gets their raw
-input. **Track 1** in FM-1 mode opens it ("<name>, takeover" shown and said), Track 1 again (when the firmware leaves
-the Track buttons alone) goes back; **volume touched + Back** always leaves it. Unclaimed parts keep their meaning
-(Track 2..4 the modes, Back + Track n the slots). A slot switch leaves it; the slot comes back as it was left.
+input. It is a slot's layout (rfm1cs 0.8.0): **Track n held + pad 2** (the layout menu; pad 2 is lit only when the
+firmware has one) opens it ("<name>, takeover" shown and said), the menu's pad 1 goes back to FM-1; **volume touched
++ Back** always leaves it. While a Track is held its menu takes the pads from the takeover. Unclaimed parts keep their
+meaning (the Track buttons the slots). A slot switch leaves it; the slot comes back in its own layout.
 
 The module exports `rfm1_tk`, `rfm1_tk_input` and `rfm1_tk_state`; `tools/build_fw.sh` builds such a module with
 `RFM1M_TK1` (fwglue.c `rfm1m_tk1`). After `rfm1_init`, fwrt asks for the record once (`fw_boot`: version 1, size at
@@ -610,12 +613,12 @@ the protocol's WHERE (its own screen said). The status: `speech_mode` (0 Off, 1 
 What is said (Schwung's conventions: "label: value", views named as they open, debounced as the shim does with
 `tts.json`'s `debounce_ms`, 300 ms by default; a value replaces the value before it, events are joined):
 
-- entering ("RemoteFM1. FM-1 mode, Slot 1, Felucca"), the mode on a Track tap, the projects view (the firmware slots,
+- entering ("RemoteFM1. FM-1 mode, Slot 1, Felucca"), the slot and its layout on a Track tap ("Felucca, Drum layout"), the projects view (the firmware slots,
   Projects, FX setup and its pages), the firmware selected (with "not installed" / "update ready" / "installed" in the
   catalog; its description when the jog turns to it), Favorites / All / Catalog, the filter, States, latch, the slot
   played ("Playing, Slot 2, ChoralRoot");
 - a knob touched in FM-1 mode (its name, as the firmware labels it), a readout (rd1: "Voicing: +1"), the volume,
-  Control mode's bank and CCs ("CC 16: 66"), MIDI mode's octave, channel and layout;
+  a note layout's CCs ("CC 16: 66"), octave, channel and layout;
 - loading, loaded or failed, downloading, installed or failed, states saved / loaded / deleted, the FM-1 linked or
   lost, and leaving (asked for at the exit gesture; Move Remote stops the audio a moment later, so it is cut short).
 

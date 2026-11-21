@@ -21,6 +21,7 @@ mix() { curl -s "$U/api/mix"; }
 settle() { sleep 1.3; }   # (the status is made once a second)
 cmd() { printf '%s\n' "$@" > "$SIM/mr-cmd"; }
 press() { cmd "$1 127"; sleep 0.12; cmd "$1 0"; sleep 0.12; }
+tap() { press "$1"; sleep 0.25; }   # a Track tap (rfm1cs 0.8.0: pressed again within 300 ms it would be a double click)
 edit() { curl -s -o /dev/null -w '%{http_code}' -X POST --data "{\"op\":$1,\"a\":$2,\"b\":$3}" "$U/api/edit"; }
 midi() { curl -s -o /dev/null -X POST --data "{\"track\":$1,\"b0\":$2,\"b1\":$3,\"b2\":$4}" "$U/api/test/midi"; }
 load() { curl -s -o /dev/null -w '%{http_code}' -X POST --data "{\"slot\":$1,\"id\":\"$2\",\"activate\":$3}" "$U/api/load"; }
@@ -35,8 +36,9 @@ start() {
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' && sleep 1
 }
 stop() { cmd quit; wait $HOST; RC=$?; }
-# the projects view on the Move (Track 1 held + step 1), and its FX setup (Session / Menu)
-view() { cmd "cc 43 127"; sleep 0.15; press "note 16"; cmd "cc 43 0"; sleep 0.3; }
+# the projects view on the Move (rfm1cs 0.8.0: Track 1 double click, the firmware browser on slot 1), and its FX setup
+# (Session / Menu)
+view() { press "cc 43"; press "cc 43"; sleep 0.3; }
 # the mix JSON without what moves by itself (CPU, counters, versions)
 mixstate() { mix | sed -E 's/,"fm1":\{[^}]*\}//' | sed -E 's/"(ver|cpu|run|busy|notes|err|sounding|active|fxopen|page|focus|fxpages|mixpar|pg)":("[^"]*"|[0-9.]+),?//g'; }
 # an audio FX slot's part of the mix JSON (0..2), its values (comma-separated), one of them (slot, index), its page
@@ -63,8 +65,8 @@ start
 edit 17 2 0 >/dev/null
 wait_for 5 '[ -z "$(field id2)" ]' && [ "$(mix | grep -o '{"on":[01]' | tr -d '{"on:' | tr -d '\n')" = 110 ] \
     && ok "the page's unload: slot 3 empty (the core told: the mix shows it empty)" || bad "unload: id2 '$(field id2)'"
-# the Move switches by itself (its projects view, Track 2): the page's state follows
-view; press "cc 42"; press "cc 51"
+# the Move switches by itself (rfm1cs 0.8.0: a Track 2 tap plays slot 2): the page's state follows
+tap "cc 42"
 wait_for 3 '[ "$(field active)" = 1 ] && mix | grep -q "\"active\":1"' && ok "the Move's Track 2: slot 2 active, the mix JSON follows" \
     || bad "the Move's switch: active $(field active)"
 edit 16 0 0 >/dev/null; sleep 0.3
@@ -121,10 +123,10 @@ wait_for 3 '[ "$(field fx_open)" = 1 ]' && ok "the Move's FX setup open (Session
     || bad "fx_open $(field fx_open)"
 edit 22 3 0 >/dev/null
 wait_for 3 '[ "$(field fx_page)" = 3 ]' && ok "the page's tab: the Move's FX setup on the Mixer page (fx_page 3)" || bad "page: $(field fx_page)"
-press "cc 42"
-wait_for 3 '[ "$(field fx_page)" = 1 ] && mix | grep -q "\"page\":1"' && ok "the Move's Track 2 in FX setup: Routing, and the page follows (page 1)" \
+tap "cc 40"
+wait_for 3 '[ "$(field fx_page)" = 1 ] && mix | grep -q "\"page\":1"' && ok "the Move's Track 4 tap on the Mixer: Routing, and the page follows (page 1)" \
     || bad "the Move's page: $(field fx_page)"
-press "cc 40"
+tap "cc 40"   # (Track 4 again: the Mixer)
 edit 18 0 50 >/dev/null
 wait_for 3 '[ "$(field level0)" = 50 ]' || bad "the page's level: $(field level0)"
 cmd "cc 71 3"; sleep 0.4
@@ -134,7 +136,7 @@ wait_for 3 '[ "$(field level0)" = 53 ]' && mix | grep -q '"level":53' \
 press "note 89"; cmd "cc 71 5"; sleep 0.4   # (0.5.0 Mixer: the right 4 x 4's Send 2, then knob 1 for slot 1)
 wait_for 3 'mix | grep -q "\"sends\":\[100,5,0\]"' && ok "the Move's Mixer: Send 2 picked (its pad), knob 1 sets slot 1's: the page's sends follow (100, 5, 0)" \
     || bad "the Move's send: $(mix | grep -o '"sends":\[[0-9,]*\]' | head -1)"
-press "cc 50"; press "cc 51"
+tap "cc 43"   # (a Track 1 tap: out of the view, slot 1 played)
 
 # ---- 3 slots, 3 MIDI FX, 3 audio FX, all playing: no late block
 load 2 choralroot 0 >/dev/null
@@ -162,7 +164,7 @@ echo "  info  CPU: $(status | grep -o '"slots":\[[^]]*\]' | sed 's/"worst_us[^}]
 curl -s "$U/api/fx" | grep -o '"id":"pagesfx".*' | grep -q '"pages":\[{"name":"Pages","knobs":\[0,1,-1,2,3,4,5,6\]},{"name":"Pages 2".*"name":"Advanced".*"name":"Sub".*"name":"Deep".*"name":"Deep 2"' \
     && ok "/api/fx: Page Test's 6 pages (root with its gap, its overflow page, Advanced, Sub, Deep, Deep 2)" \
     || bad "pagesfx pages: $(curl -s "$U/api/fx" | grep -o '"id":"pagesfx".*' | grep -o '"pages":.*' | head -c 300)"
-view; press "cc 50"; press "cc 41"   # (FX setup, the audio FX column)
+cmd "cc 40 127"; press "note 93"; cmd "cc 40 0"; sleep 0.2   # (Track 4 held + pad 2: Routing; audio FX 3's pad below picks its column)
 cmd "note 80 127"; sleep 0.3; cmd "cc 14 1"; sleep 0.3
 [ "$(field afx2)" = freeverb ] && ok "audio FX 3's pad held + the jog: the list shows the next module, nothing loaded yet" \
     || bad "held + jog loaded already: afx2 '$(field afx2)'"
@@ -185,7 +187,7 @@ wait_for 3 '[ "$(afxval 2 9)" = $((v0 + 5)) ]' && grep -q "pagesfx: set spare1=1
 edit 22 $((2 | 1 << 2)) 0 >/dev/null
 wait_for 3 '[ "$(mixf focus)" = 0 ] && [ "$(mixf page)" = 2 ] && [ "$(mixf fxpages)" = 0 ]' \
     && ok "the page's op 22 with a row: audio FX 1 selected on the Move (its pages closed)" || bad "focus $(mixf focus), page $(mixf page)"
-press "cc 51"; press "cc 50"
+press "cc 51"   # (Back: out of the view)
 
 # ---- the FX setup and the modules' own state survive a project save and load (the autosave, then a restart)
 edit 19 3 64 >/dev/null; edit 21 0 2 >/dev/null; edit 21 32 40 >/dev/null   # arp: track 7, mode down; freeverb: room 40

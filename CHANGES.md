@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The Track buttons, proposal 2** (rfm1cs-abletonmove 0.8.0, the owner's board docs/design/track-buttons-v2):
+  Track 1..3 are the firmware slots (tap: play it in its own layout; held: its layout menu: FM-1, its takeover,
+  Scale, Chroma, Drum, Octave, latch, scale, channel, root, octave, CC numbers; double tap: its firmware browser);
+  Track 4 the sequencer side (tap: the Mixer / Routing; held: the Shift shortcuts; double tap: the projects); Back
+  flips to the Sequencer and back. Control mode is gone (every note layout has the CCs on its knobs). The FM-1
+  layout's knobs: SELECT, PRESET, ALGO, -, K1..K4; the jog's click cycles SELECT / PRESET / ALGO. The takeover is
+  pad 2 of its slot's layout menu. help.json, README and every e2e test moved to the new gestures.
 - **Takeover (tk1).** A firmware made for the Move can bring its own Move interface (FM1VST docs/RFM1-TAKEOVER.md,
   rfm1cs-abletonmove 0.7.0): Track 1 in FM-1 mode opens it, the firmware draws the screen and the LEDs of the parts
   it claims and gets their input; volume touched + Back always leaves it. Firmwares without it are unchanged.

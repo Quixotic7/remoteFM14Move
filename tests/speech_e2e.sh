@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MPL-2.0
 # Schwung's screen reader (src/announce.c, README "Screen reader") on the simulator, in the build image: the host with
 # the screen reader on and tests/fake_tts.c as Schwung's speech program (the same shared memory; it logs each text it is
-# asked to speak and answers with a tone): entering the tool, mode switches, a knob's value (Control mode's CC; the
-# volume), the firmware view, a firmware selected and loaded from the Move, the slot played switched (from the page;
-# Back + Track: each said once), the words mixed into the output, leaving (the exit gesture); the user's settings
+# asked to speak and answers with a tone): entering the tool, layout switches (rfm1cs 0.8.0: Track 1 held + a top-row
+# pad, then a Track 1 tap), a knob's value (a note layout's CC; the volume), the firmware view (a Track double click), a
+# firmware selected and loaded from the Move, the slot played switched (from the page; a Track tap: each said once),
+# the words mixed into the output, leaving (the exit gesture); the user's settings
 # never restated otherwise. Then with Schwung's setting off (screen_reader_state.txt 0): the default Speech mode Off
 # (rfm1cs 0.6.12), nothing said.
 #   tests/speech_e2e.sh      (after make)
@@ -46,41 +47,45 @@ grep -q "^UP enabled=1" "$SAID" 2>/dev/null && ok "Schwung's speech program star
 wait_for 6 'said "RemoteFM1" && said "FM-1 mode"' && ok "entering: \"$(grep -m1 RemoteFM1 "$SAID")\"" \
     || bad "entering: said '$(last)'"
 wait_for 10 '[ "$(slotf 0 id)" = felucca ]'; sleep 1
-mark; press "cc 42"   # a tap on Track 2: MIDI mode
-wait_for 3 'said "^MIDI mode"' && ok "Track 2 tapped: \"$(last)\"" || bad "MIDI mode: said '$(last)'"
-mark; press "cc 41"   # Track 3: Control mode
-wait_for 3 'said "^Control mode"' && ok "Track 3 tapped: \"$(last)\"" || bad "Control mode: said '$(last)'"
+# (rfm1cs 0.8.0) Track 1 held + the top row's pad 5: slot 1's Drum layout (MIDI mode), said as changed; a Track 2 tap
+# (slot 2, empty: its FM-1 layout), then a Track 1 tap: slot 1 played in its Drum layout, named
+mark; cmd "cc 43 127"; sleep 0.2; press "note 96"; cmd "cc 43 0"
+wait_for 3 'said "Layout: Drum"' && ok "Track 1 held + pad 5: \"$(last)\"" || bad "Track 1 held + pad 5: said '$(last)'"
+sleep 0.5; press "cc 42"; sleep 0.5
+mark; press "cc 43"
+wait_for 3 'said "^Felucca, Drum layout"' && ok "Track 2, then Track 1 tapped: \"$(last)\"" || bad "Drum layout: said '$(last)'"
 sleep 0.5
-mark; cmd "cc 71 1"; sleep 0.05; cmd "cc 71 1"   # knob 1 turned: its CC's value
-wait_for 3 'said "^CC [0-9]+: [0-9]+$"' && ok "a knob turned in Control mode: \"$(last)\"" || bad "Control knob: said '$(last)'"
+mark; cmd "cc 71 1"; sleep 0.05; cmd "cc 71 1"   # knob 1 turned: its CC's value (a note layout's knobs: CCs)
+wait_for 3 'said "CC [0-9]+: [0-9]+"' && ok "a knob turned in a note layout: \"$(last)\"" || bad "the note layout's knob: said '$(last)'"
 mark; cmd "cc 79 127"   # the volume knob, a detent down: MASTER
 wait_for 3 'said "^Volume [0-9]+%$"' && ok "the volume knob: \"$(last)\"" || bad "volume: said '$(last)'"
-mark; press "cc 43"   # Track 1: FM-1 mode
-wait_for 3 'said "^FM-1 mode"' && ok "Track 1 tapped: \"$(last)\"" || bad "FM-1 mode: said '$(last)'"
+mark; cmd "cc 43 127"; sleep 0.2; press "note 92"; cmd "cc 43 0"   # Track 1 held + pad 1: the FM-1 layout
+wait_for 3 'said "Layout: FM-1"' && ok "Track 1 held + pad 1: \"$(last)\"" || bad "FM-1 layout: said '$(last)'"
 sleep 0.4
 mark; cmd "note 4 127"   # knob 5 touched (the FM-1's K1): its name
 wait_for 3 'said "."' && ok "FM-1 mode, knob 5 touched: \"$(last)\"" || bad "knob touch: said nothing"
 cmd "note 4 0"; sleep 0.4
-# the firmware view (Back), slot 2 (Track 2), All (step 2), the first pad (ChoralRoot, A-Z), jog press: loaded
-mark; press "cc 51"
-wait_for 3 'said "^Firmwares, Slot 1, Felucca"' && ok "Back: \"$(last)\"" || bad "the firmware view: said '$(last)'"
-mark; press "cc 42"
-wait_for 3 'said "Slot 2, empty"' && ok "Track 2 in the view: \"$(last)\"" || bad "slot 2: said '$(last)'"
+# the firmware view (a Track 1 double click), slot 2's (a Track 2 double click: its tap leaves the view), All (step 2),
+# the first pad (ChoralRoot, A-Z), jog press: loaded
+sleep 0.4; mark; press "cc 43"; press "cc 43"
+wait_for 3 'said "Firmwares, Slot 1, Felucca"' && ok "Track 1 double click: \"$(last)\"" || bad "the firmware view: said '$(last)'"
+sleep 0.5; mark; press "cc 42"; press "cc 42"
+wait_for 3 'said "Slot 2, empty"' && ok "Track 2 double click: \"$(last)\"" || bad "slot 2: said '$(last)'"
 press "note 17"; sleep 0.4
 mark; press "note 92"
 wait_for 3 'said "^ChoralRoot"' && ok "a pad: the firmware selected, \"$(last)\"" || bad "the selection: said '$(last)'"
 mark; press "cc 3"
 wait_for 15 'said "ChoralRoot loaded, slot 2"' && ok "jog press: \"$(last)\"" || bad "the load: said '$(last)'"
-# the slot played: slot 1 again (Track 1 in the view), then the mode (Back), then slot 2 from the page
-mark; press "cc 43"; sleep 0.5; press "cc 51"
-wait_for 3 'said "FM-1 mode"' && ok "Track 1 in the view, Back: \"$(last)\"" || bad "back to the mode: said '$(last)'"
+# the slot played: slot 1 again (a Track 1 tap leaves the view), its layout said; then slot 2 from the page
+mark; press "cc 43"
+wait_for 3 'said "Felucca, FM-1 layout"' && ok "Track 1 in the view: \"$(last)\"" || bad "back to the layout: said '$(last)'"
 sleep 0.4
 mark; curl -s -o /dev/null -X POST --data '{"op":16,"a":1,"b":0}' "$U/api/edit"
-wait_for 3 'said "^Playing, Slot 2, ChoralRoot"' && sleep 0.8 && [ "$(count Playing)" = 1 ] \
+wait_for 3 'said "Playing, Slot 2, ChoralRoot"' && sleep 0.8 && [ "$(count Playing)" = 1 ] \
     && ok "the page switched the slot played: \"$(last)\", once" || bad "the page's slot switch: said '$(last)'"
-mark; cmd "cc 51 127"; sleep 0.15; press "cc 43"; cmd "cc 51 0"   # Back held + Track 1: slot 1 played
-wait_for 3 'said "Playing, Slot 1, Felucca"' && sleep 0.8 && [ "$(count Playing)" = 1 ] \
-    && ok "Back + Track 1 switched the slot played: \"$(last)\", once" || bad "Back + Track 1: said '$(last)'"
+mark; press "cc 43"   # a Track 1 tap: slot 1 played
+wait_for 3 'said "Felucca, FM-1 layout"' && sleep 0.8 && [ "$(count "Felucca, FM-1 layout")" = 1 ] \
+    && ok "a Track 1 tap switched the slot played: \"$(last)\", once" || bad "Track 1: said '$(last)'"
 mx=$(field tts_mixed)
 [ "${mx:-0}" -gt 1000 ] && [ "$(field tts_on)" = 1 ] && ok "the words mixed into the Move's output ($mx frames; $(field tts_said) utterances)" \
     || bad "mixed: '$mx' frames, tts_on '$(field tts_on)'"

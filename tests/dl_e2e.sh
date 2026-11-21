@@ -37,8 +37,10 @@ start() {   # start [VAR=value ...]: the host, with those in its environment (XA
 }
 stop() { cmd quit; wait $HOST; RC=$?; }
 url() { echo "$1" > "$ROOT/catalog-url"; }
-view() { cmd "cc 43 127"; sleep 0.15; press "note 16"; cmd "cc 43 0"; sleep 0.3; }   # Track 1 held + step 1
-back() { press "cc 51"; press "cc 51"; press "cc 51"; press "cc 51"; }
+# the projects view (rfm1cs 0.8.0: Track 1 double click, the firmware browser on slot 1); out of it: a Track 1 tap (it
+# leaves the view, slot 1 played; Back with nothing open would flip to the Sequencer)
+view() { press "cc 43"; press "cc 43"; sleep 0.3; }
+back() { sleep 0.2; press "cc 43"; sleep 0.3; }
 U="http://127.0.0.1:$PORT"
 post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "$1" "$U/api/load"; }
 files() { ls "$ROOT/firmwares" | grep "^$1-" | tr '\n' ' '; }
