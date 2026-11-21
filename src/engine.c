@@ -3064,10 +3064,12 @@ static void housekeeping(uint32_t now)
         g_peak_acc = 0;
         n = snprintf(tmp, sizeof tmp, "{\"blocks\":%u,\"late\":%u,\"rt_blocks\":%u,\"ring\":%u,\"limited\":%u,"
                      "\"peak\":%d,\"session\":%d,\"mode\":%d,\"inputs\":%u,\"led_writes\":%u,\"screens\":%u,"
-                     "\"active\":%d,\"master\":%d,\"move_mode\":%d,\"tk_shown\":%d,",
+                     "\"active\":%d,\"master\":%d,\"move_mode\":%d,\"tk_shown\":%d,\"seq_playing\":%d,"
+                     "\"seq_following\":%d,",
                      g_blocks, g_late, g_rt_blocks, mr_ring_count(&g_ring), g_mix.limited, g_peak, S->st.state,
                      S->st.mode, S->st.inputs, S->st.led_writes, S->st.screens, g_active, g_master,
-                     rfm_move_mode(&S->core), rfm_move_tk_shown(&S->core));
+                     rfm_move_mode(&S->core), rfm_move_tk_shown(&S->core), S->core.seq.playing ? 1 : 0,
+                     S->core.seq.following ? 1 : 0);
         if (C.test_api) {   /* (tests: the pads' colours as last written to the Move, 6 hex digits each) */
             int p;
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"move_pads\":\"");

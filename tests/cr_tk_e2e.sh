@@ -102,14 +102,25 @@ sleep 1.3; mark; cmd "note 0 127"; sleep 0.2; shot; cp "$SIM/mr-screen.pbm" buil
 [ "$(lit 0 0)" -lt 128 ] && [ "$(lit 20 52)" -gt 100 ] && said "^Voicing" \
     && ok "knob 1 touched: \"$(last)\", its popup full screen" || bad "knob 1: row 0 $(lit 0 0), said '$(last)'"
 cmd "note 0 0"; sleep 1.3
-# ---- volume touched + Back: the FM-1 layout; Track 1 held + pad 2: as it was left
-cmd "note 8 127"; cmd "cc 51 127"; cmd "cc 51 0"; cmd "note 8 0"
-wait_for 4 '[ "$(mode)" = 0 ] && [ "$(field tk_shown)" = -1 ]' && ok "volume touched + Back: FM-1 mode" \
-    || bad "volume + Back: mode '$(mode)' shown '$(field tk_shown)'"
+# ---- Track 1 held + pad 1: the FM-1 layout (the way out: ChoralRoot claims everything but the Track buttons);
+# Track 1 held + pad 2: as it was left
+cmd "cc 43 127"; cmd "note 92 100"; cmd "note 92 0"; cmd "cc 43 0"
+wait_for 4 '[ "$(mode)" = 0 ] && [ "$(field tk_shown)" = -1 ]' && ok "Track 1 held + pad 1: FM-1 mode" \
+    || bad "Track 1 + pad 1: mode '$(mode)' shown '$(field tk_shown)'"
 tk 43
 wait_for 4 '[ "$(mode)" = 4 ]' && wait_for 3 '[ "$(padrgb 8)" = ffd228 ] && [ "$(padrgb 21)" = 13abbf ]' \
     && ok "Track 1 held + pad 2 again: the takeover as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
+# ---- proposal 6: Back with the volume knob touched stays in; Play: RemoteFM1's sequencer starts and stops with it
+mark; cmd "note 8 127"; cmd "cc 51 127" "cc 51 0"; cmd "note 8 0"; sleep 0.8
+[ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ] && ok "Back with the volume knob touched: still the takeover (the firmware's Back)" \
+    || bad "volume + Back: mode '$(mode)' shown '$(field tk_shown)'"
+cmd "cc 85 127" "cc 85 0"
+wait_for 3 '[ "$(field seq_playing)" = 1 ]' && [ "$(field seq_following)" = 1 ] \
+    && ok "Play: ChoralRoot's loop and RemoteFM1's sequencer start together (it follows the takeover's clock)" \
+    || bad "Play: seq_playing '$(field seq_playing)' following '$(field seq_following)'"
+cmd "cc 85 127" "cc 85 0"
+wait_for 3 '[ "$(field seq_playing)" = 0 ]' && ok "Play again: both stop" || bad "Play again: seq_playing '$(field seq_playing)'"
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 rm -f "/dev/shm/rfm14-crtk-$$"
 mv "$T" "$T.done" 2>/dev/null
