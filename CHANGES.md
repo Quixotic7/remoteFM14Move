@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **One main layout** (rfm1cs-abletonmove 0.9.0, the owner's board docs/design/track-buttons-v3): a slot's note
+  layout is the sequencer on its selected track; Track n held is one menu (layouts on the pads, the 16 tracks on the
+  steps: select, per-firmware solo, not routed); Back only closes layers; a firmware pad's double tap loads it; Play
+  sends Start, clock and Stop to every loaded firmware (engine.c: MIDI dest ALL); Shift shortcuts in the Mixer and
+  Routing; Track 4 held shows its Shift menu at once. help.json and the e2e tests follow; midiout_e2e checks the clock.
 - **The Track buttons, proposal 2** (rfm1cs-abletonmove 0.8.0, the owner's board docs/design/track-buttons-v2):
   Track 1..3 are the firmware slots (tap: play it in its own layout; held: its layout menu: FM-1, its takeover,
   Scale, Chroma, Drum, Octave, latch, scale, channel, root, octave, CC numbers; double tap: its firmware browser);
