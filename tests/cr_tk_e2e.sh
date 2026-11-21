@@ -43,8 +43,8 @@ mode() { field move_mode; }
 mark() { M=$(wc -l < "$SAID" 2>/dev/null || echo 0); }
 said() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | grep -E -q "$1"; }
 last() { tail -n +$((M + 1)) "$SAID" 2>/dev/null | tr '\n' '|' | cut -c1-200; }
-# the takeover's home view: the header bar (row 0 lit across) and the 16-step strip (each box's top edge: 16 x 7 on row 52)
-home() { [ "$(lit 0 0)" = 128 ] && [ "$(lit 52 52)" = 112 ]; }
+# the takeover's home view before a chord (proposal 3): a dash in the middle (24 x 5 from row 28), nothing else
+home() { [ "$(lit 28 32)" = 120 ] && [ "$(lit 0 27)" = 0 ] && [ "$(lit 33 63)" = 0 ]; }
 M=0
 FAKE_TTS_SHM=/rfm14-crtk-$$ FAKE_TTS_LOG=$SAID build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" \
     --firmwares "$FWS" --site build/site --dev-firmwares "$DEV" --fw choralroot --test-api --no-fm1 \
@@ -64,8 +64,8 @@ wait_for 4 '[ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ]' && ok "Track 1: th
 wait_for 3 'said "^ChoralRoot"' && ok "entering said: \"$(last)\"" || bad "entering: said '$(last)'"
 sleep 1.6   # (its name popup gone)
 shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_home.pbm
-home && ok "the Move's screen is the takeover's home view (the header bar, the 16 steps)" \
-    || bad "not the takeover's home: row 0 $(lit 0 0), row 52 $(lit 52 52) lit (build/test-out/crtk_home.pbm)"
+home && ok "the Move's screen is the takeover's home view (no chord yet: a dash)" \
+    || bad "not the takeover's home: rows 28-32 $(lit 28 32), 0-27 $(lit 0 27), 33-63 $(lit 33 63) lit (build/test-out/crtk_home.pbm)"
 [ "$(padrgb 0)" = ffd228 ] && [ "$(padrgb 1)" = 515151 ] && [ "$(padrgb 25)" = 361047 ] && [ "$(padrgb 17)" = 472100 ] \
     && [ "$(padrgb 21)" = 031e22 ] && ok "the pads: Keys (C yellow, D grey), MIN violet, m7 orange, memory 6 empty (dim)" \
     || bad "the pads: C '$(padrgb 0)' D '$(padrgb 1)' MIN '$(padrgb 25)' m7 '$(padrgb 17)' memory 6 '$(padrgb 21)'"
@@ -82,10 +82,10 @@ wait_for 3 '[ "$(padrgb 21)" = 13abbf ]' && ok "memory 6: cyan, it holds a chord
 sleep 1.3
 # ---- a step tapped: the last chord goes in
 cmd "note 16 100" "note 16 0"
-sleep 0.4; shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_step.pbm
-[ "$(rows 55 55 | cut -c2-8)" = 1111111 ] && [ "$(rows 55 55 | cut -c10-16)" = 1000001 ] \
-    && ok "step 1 tapped: Dm7 in it (the strip's first box filled, the second empty)" \
-    || bad "the strip: '$(rows 55 55 | cut -c1-20)' (build/test-out/crtk_step.pbm)"
+sleep 0.4; mark; cmd "note 16 100"; sleep 0.7; shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_step.pbm; cmd "note 16 0"
+[ "$(lit 17 48)" -gt 150 ] && [ "$(lit 50 63)" = 0 ] && ! said "empty" \
+    && ok "step 1 tapped: Dm7 in it (held: the step view, its chord big, \"$(last)\")" \
+    || bad "step 1 held: rows 17-48 $(lit 17 48), 50-63 $(lit 50 63) lit, said '$(last)' (build/test-out/crtk_step.pbm)"
 # ---- Menu held: the picker; Scale picked
 mark; cmd "cc 50 127"; sleep 0.5
 wait_for 3 '[ "$(padrgb 24)" = ffffff ] && [ "$(padrgb 25)" = 727272 ]' \
