@@ -121,6 +121,16 @@ wait_for 3 '[ "$(field seq_playing)" = 1 ]' && [ "$(field seq_following)" = 1 ] 
     || bad "Play: seq_playing '$(field seq_playing)' following '$(field seq_following)'"
 cmd "cc 85 127" "cc 85 0"
 wait_for 3 '[ "$(field seq_playing)" = 0 ]' && ok "Play again: both stop" || bad "Play again: seq_playing '$(field seq_playing)'"
+# ---- the volume knob (the host's): its level over the takeover's screen, then the takeover's again
+shot; before=$(rows 0 63 | md5sum | cut -c1-8)
+mark; cmd "cc 79 3"; sleep 0.25; shot; cp "$SIM/mr-screen.pbm" build/test-out/crtk_volume.pbm
+during=$(rows 0 63 | md5sum | cut -c1-8)
+[ "$during" != "$before" ] && [ "$(lit 52 52)" -gt 80 ] && [ "$(mode)" = 4 ] \
+    && ok "the volume knob turned in the takeover: the host's level popup over the screen (its bar)" \
+    || bad "volume: the screen ($before / $during), row 52 $(lit 52 52) lit, mode '$(mode)'"
+sleep 2.5; shot
+[ "$(rows 0 63 | md5sum | cut -c1-8)" = "$before" ] && ok "the volume popup gone: the takeover's screen again" \
+    || bad "after the volume popup: not the takeover's screen"
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 rm -f "/dev/shm/rfm14-crtk-$$"
 mv "$T" "$T.done" 2>/dev/null
