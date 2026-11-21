@@ -7,6 +7,8 @@
 #     segments) arrive as sent; the clock byte (F8) does not; RS and BY seen;
 #   - USB-A: with the fake FM-1 (RemoteFM1) linked there Out skips it (the unit gets no channel message, the link stays);
 #     a plain MIDI device in its place gets Out's note.
+#   - (rfm1cs 0.9.0) the sequencer's own clock: Play in a note layout sends MIDI Start, clock and Stop to every loaded
+#     firmware (their input logs, --capture).
 #   tests/midiout_e2e.sh      (after make)
 set -u
 cd "$(dirname "$0")/.."
@@ -78,5 +80,34 @@ wait_for 15 '[ "$(mo usba)" = on ]' && ok "a plain MIDI device in its place: Out
     && ok "Out's note on USB-A: the device got 91 3e 50 (cable 2, CIN 9)" \
     || bad "USB-A out: the device's last '$(ff dev_last)', sent '$(mo usba_out_sent)'"
 cmd quit; wait $HOST
+
+# ---- (rfm1cs 0.9.0) the sequencer's clock into the firmwares: Felucca in slot 1, ChoralRoot in slot 2; slot 1's Scale
+# layout (Track 1 held + the top row's pad 3: the sequencer), Play, ~1.5 s, Play: MIDI Start, clock and Stop reach both
+# loaded firmwares (RFM_MOVE_DEST_ALL), read back from their input logs (--capture: inputs-slotN.log, 12-byte records
+# ms, op a b, c; op 6 FWI_MIDI, c the USB-MIDI packet: 0xFA0F Start, 0xF80F clock, 0xFC0F Stop)
+CAP=$T/cap; mkdir -p "$CAP"
+build/sim/remotefm1-host --root "$T/root3" --port $PORT --sim-dir "$SIM" --firmwares build/fw --site build/site --fw felucca \
+    --no-fm1 --no-rtp --capture "$CAP" --capture-seconds 30 >>"$T/host3.log" 2>&1 &
+HOST=$!
+up || { bad "the host did not start (clock)"; tail -20 "$T/host3.log"; exit 1; }
+slot1() { status | grep -o '"slots":\[.*\]' | sed 's/},{/}\n{/g;s/null,/null\n/g' | sed -n 2p | get id; }
+curl -s -o /dev/null -X POST --data '{"slot":1,"id":"choralroot","activate":0}' "$U/api/load"
+wait_for 20 '[ "$(slot1)" = choralroot ]' || bad "ChoralRoot did not load into slot 2: '$(slot1)'"
+sleep 1.5
+cmd "cc 43 127"; sleep 0.2; cmd "note 94 127"; sleep 0.12; cmd "note 94 0"; sleep 0.15; cmd "cc 43 0"; sleep 0.4
+[ "$(status | get move_mode)" = 3 ] || bad "Track 1 held + pad 3: move_mode '$(status | get move_mode)' (3: the sequencer)"
+cmd "cc 85 127"; sleep 0.1; cmd "cc 85 0"; sleep 1.5; cmd "cc 85 127"; sleep 0.1; cmd "cc 85 0"; sleep 0.5
+cmd quit; wait $HOST
+rt() { od -An -v -tx4 -w12 "$1" 2>/dev/null | awk '$2 ~ /06$/ && ($3 == "0000fa0f" || $3 == "0000f80f" || $3 == "0000fc0f") \
+       { sub(/^0000/, "", $3); sub(/0f$/, "", $3); print $3 }'; }
+for s in 1 2; do
+    L=$CAP/inputs-slot$s.log
+    seq_=$(rt "$L" | uniq -c | awk '{printf "%s%s", (NR > 1 ? " " : ""), $2 "x" $1}')
+    f8=$(rt "$L" | grep -c f8)
+    [ -s "$L" ] && [ "$(rt "$L" | head -1)" = fa ] && [ "$(rt "$L" | tail -1)" = fc ] && [ "$(rt "$L" | grep -c fa)" = 1 ] \
+        && [ "$(rt "$L" | grep -c fc)" = 1 ] && [ "$f8" -ge 50 ] && [ "$f8" -le 100 ] \
+        && ok "slot $s ($([ $s = 1 ] && echo Felucca, the slot played || echo ChoralRoot, not played)): the sequencer's Start, $f8 clocks, Stop in its MIDI input ($seq_)" \
+        || bad "slot $s's MIDI input: '$seq_' ($(stat -c %s "$L" 2>/dev/null) bytes of log)"
+done
 echo "midiout_e2e: $checks checks, $fail failed"
 [ $fail = 0 ]

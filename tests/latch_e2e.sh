@@ -1,8 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
-# Latch per slot (rfm1cs-abletonmove 0.5.4) on the simulator, in the build image: MIDI mode (rfm1cs 0.8.0: a note
-# layout of the slot, Track n held + the top row's pad 3, Scale; both slots), latch on (Track 1 held + the top row's
-# pad 8), a chord on slot 1 (Felucca); the active slot switched to slot 2 (ChoralRoot):
+# Latch per slot (rfm1cs-abletonmove 0.5.4) on the simulator, in the build image: a note layout of each slot (Track n
+# held + the top row's pad 3, Scale; rfm1cs 0.9.0: the sequencer, the pads live on the slot's track: slot 1 track 1
+# channel 1, slot 2 track 2 channel 2), latch on (Track 1 held + the top row's pad 8: live notes held), a chord on
+# slot 1 (Felucca); the active slot switched to slot 2 (ChoralRoot):
 # slot 1 keeps sounding (no note off, no all-notes-off from the host) and slot 2 plays its own note; latch off: both
 # let go (each note off to its own slot), silent.
 #   tests/latch_e2e.sh      (after make)
@@ -36,14 +37,14 @@ wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-s
 [ "$(load 1 choralroot)" = 202 ] && wait_for 15 '[ "$(slotf 1 id)" = choralroot ] && [ "$(field active)" = 0 ]' \
     && ok "slot 1 Felucca (active), slot 2 ChoralRoot" || bad "the slots: '$(slotf 0 id)' '$(slotf 1 id)' active $(field active)"
 sleep 1.5
-cmd "cc 43 127"; sleep 0.2; press "note 94"; cmd "cc 43 0"; sleep 0.3   # Track 1 held + the top row's pad 3: Scale (MIDI mode)
+cmd "cc 43 127"; sleep 0.2; press "note 94"; cmd "cc 43 0"; sleep 0.3   # Track 1 held + the top row's pad 3: Scale (the sequencer, track 1)
 cmd "cc 42 127"; sleep 0.2; press "note 94"; cmd "cc 42 0"; sleep 0.3   # slot 2's too (Track 2 held: not played)
 cmd "cc 43 127"; sleep 0.2; press "note 99"; cmd "cc 43 0"; sleep 0.4   # Track 1 held + the top row's pad 8: latch on
 wait_for 4 'quiet 0 && quiet 1'
 n0=$(slotf 0 notes)
 cmd "note 68 100" "note 72 100" "note 75 100"; sleep 0.3; cmd "note 68 0" "note 72 0" "note 75 0"
 wait_for 4 '[ "$(slotf 0 notes)" -ge $((n0 + 3)) ] && [ "$(slotf 0 peak)" -gt 200 ]' && sleep 1.2 && [ "$(slotf 0 peak)" -gt 100 ] \
-    && ok "MIDI mode, latch on: a chord on slot 1 keeps sounding after the pads let go (Felucca's peak $(slotf 0 peak), $(( $(slotf 0 notes) - n0 )) notes)" \
+    && ok "a note layout (the sequencer), latch on: a chord on slot 1 keeps sounding after the pads let go (Felucca's peak $(slotf 0 peak), $(( $(slotf 0 notes) - n0 )) notes)" \
     || bad "the latched chord: notes $n0 -> $(slotf 0 notes), peak $(slotf 0 peak)"
 n1=$(slotf 1 notes)
 [ "$(edit 16 1 0)" = 202 ] && wait_for 4 '[ "$(field active)" = 1 ]'

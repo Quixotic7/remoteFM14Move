@@ -653,6 +653,16 @@ static void route_midi(const rfm_move_act_t *a)
 {
     if (!a->n)
         return;
+#ifdef RFM_MOVE_DEST_ALL
+    if (a->track == 0 && a->dest == RFM_MOVE_DEST_ALL) {   /* (rfm1cs 0.9.0) the sequencer's clock (FA, F8, FC): every
+                                                         * loaded firmware, so their own sequencers and arps follow */
+        int t;
+        for (t = 0; t < NSLOT; t++)
+            if (SL[t].on)
+                slot_midi(t, a->bytes, a->n, a->frame);
+        return;
+    }
+#endif
     if (a->track == 0) {   /* the pads played live (MIDI, Control, the sequencer's live notes): through the MIDI FX as
                             * the track of their channel (the sequencer's tracks play on their own channels), then to
                             * the active slot, or (rfm1cs 0.5.4) dest's: a latched note's off goes to the slot it was

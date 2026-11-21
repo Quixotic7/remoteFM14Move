@@ -3,7 +3,7 @@
 # Schwung's screen reader (src/announce.c, README "Screen reader") on the simulator, in the build image: the host with
 # the screen reader on and tests/fake_tts.c as Schwung's speech program (the same shared memory; it logs each text it is
 # asked to speak and answers with a tone): entering the tool, layout switches (rfm1cs 0.8.0: Track 1 held + a top-row
-# pad, then a Track 1 tap), a knob's value (a note layout's CC; the volume), the firmware view (a Track double click), a
+# pad, then a Track 1 tap), a knob's value (a note layout's TRIG page; the volume), the firmware view (a Track double click), a
 # firmware selected and loaded from the Move, the slot played switched (from the page; a Track tap: each said once),
 # the words mixed into the output, leaving (the exit gesture); the user's settings
 # never restated otherwise. Then with Schwung's setting off (screen_reader_state.txt 0): the default Speech mode Off
@@ -47,16 +47,20 @@ grep -q "^UP enabled=1" "$SAID" 2>/dev/null && ok "Schwung's speech program star
 wait_for 6 'said "RemoteFM1" && said "FM-1 mode"' && ok "entering: \"$(grep -m1 RemoteFM1 "$SAID")\"" \
     || bad "entering: said '$(last)'"
 wait_for 10 '[ "$(slotf 0 id)" = felucca ]'; sleep 1
-# (rfm1cs 0.8.0) Track 1 held + the top row's pad 5: slot 1's Drum layout (MIDI mode), said as changed; a Track 2 tap
-# (slot 2, empty: its FM-1 layout), then a Track 1 tap: slot 1 played in its Drum layout, named
+# (rfm1cs 0.8.0) Track 1 held + the top row's pad 5: slot 1's Drum layout (0.9.0: the sequencer on slot 1's track, Track 1),
+# said as changed; a Track 2 tap (slot 2, empty: its FM-1 layout), then a Track 1 tap: slot 1 played in its Drum layout, named
+# with its track
 mark; cmd "cc 43 127"; sleep 0.2; press "note 96"; cmd "cc 43 0"
 wait_for 3 'said "Layout: Drum"' && ok "Track 1 held + pad 5: \"$(last)\"" || bad "Track 1 held + pad 5: said '$(last)'"
 sleep 0.5; press "cc 42"; sleep 0.5
 mark; press "cc 43"
-wait_for 3 'said "^Felucca, Drum layout"' && ok "Track 2, then Track 1 tapped: \"$(last)\"" || bad "Drum layout: said '$(last)'"
+wait_for 3 'said "^Felucca, Drum layout, Track 1"' && ok "Track 2, then Track 1 tapped: \"$(last)\"" || bad "Drum layout: said '$(last)'"
 sleep 0.5
-mark; cmd "cc 71 1"; sleep 0.05; cmd "cc 71 1"   # knob 1 turned: its CC's value (a note layout's knobs: CCs)
-wait_for 3 'said "CC [0-9]+: [0-9]+"' && ok "a knob turned in a note layout: \"$(last)\"" || bad "the note layout's knob: said '$(last)'"
+mark; cmd "cc 43 127"   # (rfm1cs 0.9.0) Track 1 held, nothing else: the one menu, its layout and track named
+wait_for 3 'said "^Felucca, layouts, Drum, Track 1$"' && ok "Track 1 held: \"$(last)\"" || bad "Track 1 held: said '$(last)'"
+cmd "cc 43 0"; sleep 0.5
+mark; cmd "cc 71 1"; sleep 0.05; cmd "cc 71 1"   # knob 1 turned (rfm1cs 0.9.0: a note layout is the sequencer, its knobs the TRIG page first: Micro)
+wait_for 3 'said "^Micro: \+2$"' && ok "a knob turned in a note layout (the TRIG page): \"$(last)\"" || bad "the note layout's knob: said '$(last)'"
 mark; cmd "cc 79 127"   # the volume knob, a detent down: MASTER
 wait_for 3 'said "^Volume [0-9]+%$"' && ok "the volume knob: \"$(last)\"" || bad "volume: said '$(last)'"
 mark; cmd "cc 43 127"; sleep 0.2; press "note 92"; cmd "cc 43 0"   # Track 1 held + pad 1: the FM-1 layout
