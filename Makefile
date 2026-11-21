@@ -19,7 +19,7 @@
 # The input firmwares are never in git: FIRMWARES names the .rfm1 files (default: RFM1Manager's builds beside this
 # repo). FM1VST (for the wasm3 reference, tools/rfm1_run at origin/rfm1-manager) is found beside it too.
 GH := $(abspath ..)
-FIRMWARES ?= $(GH)/RFM1Manager/out/felucca-1.8.2.rfm1 $(GH)/RFM1Manager/out/choralroot-0.41.rfm1
+FIRMWARES ?= $(GH)/RFM1Manager/out/felucca-1.8.2.rfm1 $(GH)/RFM1Manager/out/choralroot-0.43.rfm1
 # an older ChoralRoot, for the catalog's update test (tests/dl_e2e.sh)
 TEST_FIRMWARES ?= $(GH)/RFM1Manager/out/choralroot-0.40.rfm1
 # development builds to try on a Move (make package DEV_FIRMWARES="a.rfm1 b.rfm1"): compiled into build/fw-dev and

@@ -356,9 +356,9 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   if (TC) {
     const cat = await api("catalog");
     const byId = Object.fromEntries((cat.firmwares || []).map((f) => [f.id, f]));
-    ok(cat.firmwares.length === 5 && byId.ripple && byId.ripple.virtual && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.41" && byId.choralroot.version === "0.42"
+    ok(cat.firmwares.length === 5 && byId.ripple && byId.ripple.virtual && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.43" && byId.choralroot.version === "0.43"
       && cat.firmwares.every((f) => f.thumb && f.thumb.length === 684) && Array.isArray(cat.favorites),
-      `GET /api/catalog: the index's 5 (AMB-1 and the Fantasy CFWs not installed, ChoralRoot 0.41 here, 0.42 in the index), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length})`);
+      `GET /api/catalog: the index's 5 (AMB-1 and the Fantasy CFWs not installed, ChoralRoot 0.43 here (bundled, 0.2.0), newer than the index's 0.42: listed as 0.43), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length}); ChoralRoot ${byId.choralroot && byId.choralroot.installed}/${byId.choralroot && byId.choralroot.version}, ${cat.firmwares.length} firmwares`);
     await altDigit(3);
     ok(await until(`document.querySelector(".mv-pop .mv-pop-item[data-id='choralroot'] .mv-th img") && document.querySelector(".mv-pop [data-browse='2']")`, 5000, "the menu's thumbnails"),
       "slot 3's load menu: each row with its thumbnail, and Browse all");
@@ -372,14 +372,14 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
         slot: document.querySelector("#mv-browse .mv-br-slot.on").dataset.slot, favOff: document.querySelector('#mv-browse .fb-chip[data-v="fav"]').disabled }; })()`);
     ok(th.ambRich && (LIVE_IMAGES || (/amb\.svg/.test(th.amb) && th.bits && /pixelated|crisp/.test(th.px))),
       `AMB-1: RemoteFM1FW's catalog image; ChoralRoot and Felucca: the Move's 1-bit thumbnails, 64 x 64, ${th.px}`);
-    ok(th.up && th.get && th.slot === "2", "marks: UPDATE on ChoralRoot (0.41 here, 0.42 in the index), a download arrow on AMB-1; the head says slot 3");
+    ok(!th.up && th.get && th.slot === "2", "marks: no UPDATE on ChoralRoot (0.43 here is newer than the index's 0.42), a download arrow on AMB-1; the head says slot 3");
     ok(th.favOff, "no favourites on the Move: the Favourites chip is off, All shows");
     const tiles = () => js(`[...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).join(",")`);
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="out"]');
     ok((await tiles()).split(",").sort().join(",") === "amb,elasticat,ripple", "Not installed: AMB-1, Elasticat, Ripple");
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="in"]');
-    const inst = await js(`({ ids: [...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).sort().join(","), n: document.querySelector('#mv-browse .fb-chip[data-v="in"] .fb-n').textContent })`);
-    ok(inst.ids === "choralroot,felucca" && /1 update/.test(inst.n), `Installed: ChoralRoot and Felucca, "${inst.n}"`);
+    const inst = await js(`({ ids: [...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).sort().join(","), n: (document.querySelector('#mv-browse .fb-chip[data-v="in"] .fb-n') || {}).textContent || "" })`);
+    ok(inst.ids === "choralroot,felucca" && !/update/.test(inst.n), `Installed: ChoralRoot and Felucca, no update, "${inst.n}"`);
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="any"]');
     const catChip = await js(`[...document.querySelectorAll('#mv-browse .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v).find((c) => c !== "All")`);
     await click(`#mv-browse .fb-chips[aria-label="Category"] .fb-chip[data-v="${catChip}"]`);
@@ -411,7 +411,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
         into: document.querySelector(".sheet .mv-sh-into").textContent, big: !!document.getElementById("mv-sh-big"),
         chips: [...document.querySelectorAll('.sheet .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v) }; })()`);
     ok(sh.get && sh.fan, "the firmwares not installed (Elasticat, Ripple): their thumbnails, the download mark, FANTASY");
-    ok(sh.up && sh.cur && /slot 3/.test(sh.into) && sh.big, `ChoralRoot's UPDATE; AMB-1 (playing in slot 3) outlined; "${sh.into}"; Bigger view`);
+    ok(!sh.up && sh.cur && /slot 3/.test(sh.into) && sh.big, `ChoralRoot: no UPDATE (0.43 here); AMB-1 (playing in slot 3) outlined; "${sh.into}"; Bigger view`);
     ok(sh.chips.includes("Fantasy CFW"), "the Fantasy CFW filter");
     await sleep(500);   // (the sheet slides in)
     await click('.sheet .fb-chip[data-v="Fantasy CFW"]');
@@ -430,7 +430,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     if (existsSync(BIG)) {
       const big = JSON.parse(readFileSync(BIG, "utf8")).firmwares;
       const here = new Set(["felucca", "choralroot", "amb"]);
-      const rows = big.map((f) => ({ id: f.id, name: f.name, version: f.version, installed: here.has(f.id) ? (f.id === "choralroot" ? "0.41" : f.version) : "",
+      const rows = big.map((f) => ({ id: f.id, name: f.name, version: f.version, installed: here.has(f.id) ? (f.id === "choralroot" ? "0.40" : f.version) : "",
         description: f.description, categories: f.categories, virtual: !!f.virtual, indexed: true, thumb: f.thumb || "" }));
       await js(`(() => { const b = FM1MoveUi.browse; b.load = async () => b.cat; b.cat = { generated: "dist/move-catalog", from: 2, firmwares: ${JSON.stringify(rows)}, favorites: ${JSON.stringify(rows.slice(4, 9).map((r) => r.id))} };
         b.fb.filters.scope = "fav"; b.fb.filters.inst = "any"; b.fb.filters.cat = "All"; b.open(0); return true; })()`);

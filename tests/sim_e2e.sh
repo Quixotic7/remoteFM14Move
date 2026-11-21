@@ -82,7 +82,7 @@ fws=$(curl -s "$U/api/firmwares")
 echo "$fws" | grep -q '"id":"choralroot"' && echo "$fws" | grep -q '"id":"felucca"' \
     && echo "$fws" | grep -q '"skin":\["rfm1skin","rfm1skin.bg","rfm1skin.bgl"\]' \
     && ok "/api/firmwares: the installed firmwares (ChoralRoot with its skin's three files)" || bad "/api/firmwares: $fws"
-curl -s "$U/api/fw/choralroot-0.41.rfm1skin" | grep -q '"skin":1' && [ "$(code "$U/api/fw/choralroot-0.41.rfm1skin.bg" | cut -c1-3)" = 200 ] \
+curl -s "$U/api/fw/choralroot-0.43.rfm1skin" | grep -q '"skin":1' && [ "$(code "$U/api/fw/choralroot-0.43.rfm1skin.bg" | cut -c1-3)" = 200 ] \
     && [ "$(code "$U/api/fw/felucca-1.8.2.licenses.txt" | cut -c1-3)" = 200 ] \
     && ok "/api/fw/: a firmware's skin (rfm1.skin JSON, its image) and licences" || bad "/api/fw/"
 sleep 2.5

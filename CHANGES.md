@@ -1,6 +1,10 @@
 # Changes
 
-## Unreleased
+## 0.2.0
+
+- **ChoralRoot 0.43 bundled**, with its own Move interface (the takeover, CHORDS: pad 2 of its Track's layout menu).
+- **rfm1cs-abletonmove 0.9.1**: proposals 2 and 3 and the takeover (Back is the firmware's, its clock leads the
+  sequencer, the volume popup over it).
 
 - **One main layout** (rfm1cs-abletonmove 0.9.0, the owner's board docs/design/track-buttons-v3): a slot's note
   layout is the sequencer on its selected track; Track n held is one menu (layouts on the pads, the 16 tracks on the
