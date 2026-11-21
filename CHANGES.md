@@ -1,5 +1,14 @@
 # Changes
 
+## Not released (branch session-view-fix)
+
+- **Session view** (rfm1cs-abletonmove 0.9.2, local commit 790142c; the owner's report of 2026-11-21): the pressed
+  clip is framed on the Move's screen (the board docs/design/session-view-v1.movedesign.json); clips are cut, copied
+  and pasted with the steps' gestures (Delete held: cut, the next press pastes; Copy held: copy, an empty slot
+  pastes); a playing clip's pad fades in 6 steps a beat, not a level a tick (measured on the simulator with the
+  owner's project: 39 LED writes a second in a playing session view, 634 before). `tests/sess_e2e.sh` (new, in make
+  test); help.json: a Session View page.
+
 ## 0.2.0
 
 - **ChoralRoot 0.43 bundled**, with its own Move interface (the takeover, CHORDS: pad 2 of its Track's layout menu).

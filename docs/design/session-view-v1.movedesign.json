@@ -1,0 +1,5343 @@
+{
+ "format": "ableton-move-designer",
+ "version": 3,
+ "name": "Session view, proposal 1",
+ "items": [
+  {
+   "id": "7lrwfvealkxw",
+   "x": 0,
+   "y": 0,
+   "w": 4344,
+   "h": 2000,
+   "type": "group",
+   "title": "Session view, proposal 1 (rfm1cs 0.9.2): the selected clip on the screen, clips cut / copied as steps",
+   "color": "#2ad17a"
+  },
+  {
+   "id": "kkxzwwhp0e4f",
+   "x": 60,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "A. Session view at rest",
+   "description": "Track 2 tapped (its note layout: the sequencer), then Menu. The owner's grid of 2026-11-21: tracks 1-4, clips 1 2 3 / 1 2 / 1 3 / 1 2. The slot's track (2) is selected: its clip's pad white, its cell framed.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#ff2a2a"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#959595"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#ffd000"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d3700"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#556d12"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "8 tracks across, 4 clip slots down. NEW: the selected clip framed (a 16 x 15 outline in the gap round its cell). The bar on top: the selected track's column."
+     }
+    }
+   },
+   "screen": "AAB//gAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAAAAAAAAAAAAAAH/+//9//n/+AAAAAAAAAABAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIAAAAAAAAAAEACwANAAkACAAAAAAAAAABAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIBgAGAAYABgEACwANAAkACAYABgAGAAYBAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIAAAAAAAAAAEACwANAAkACAAAAAAAAAABAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIAAAAAAAAAAH/+//9//n/+AAAAAAAAAAAAAP//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/4AAH/+AAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAEACQAIAAEACAAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgGAQAIBgAGAAYABgEACQAIBgEACAYABgAGAAYBAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAEACQAIAAEACAAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAH/+f/4AAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAABAAgAAQAIAAAAAAAAAAAAAQAIAAEACAAAAAAAAAAAAAEACAABAAgAAAAAAAAAAAABAAgAAQAIAAAAAAAAAAAAAQAIBgEACAYABgAGAAYABgEACAYBAAgGAAYABgAGAAYBAAgAAQAIAAAAAAAAAAAAAQAIAAEACAAAAAAAAAAAAAEACAABAAgAAAAAAAAAAAABAAgAAQAIAAAAAAAAAAAAAQAIAAEACAAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "ujfonxaw71bn",
+   "x": 60,
+   "y": 700,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "NEW in 0.9.2: the frame. Before, the screen only had the bar over the selected track's column: nothing said which clip. The pads are unchanged: white = the selected clip, a track's colour = a clip, dark = empty.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "mliqxxy131q7",
+   "x": 1208,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "B. Stopped: a clip pressed",
+   "description": "Track 3's third clip pressed: it is the track's clip at once (it plays with Play) and the selected one: its pad white, its cell framed, the bar over column 3.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#ff2a2a"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#ff8000"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d3700"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#556d12"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#959595"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "The pressed clip framed; the bar moved to its column."
+     }
+    }
+   },
+   "screen": "AAAAAH/+AAAAAAAAAAAAAAAAAAB//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/5//n/+AAAAAAAAAABAAkACQAJAAgAAAAAAAAAAQAJAAkACQAIAAAAAAAAAAEACQAJAAkACAAAAAAAAAABAAkACQAJAAgAAAAAAAAAAQAJAAkACQAIBgAGAAYABgEACQAJAAkACAYABgAGAAYBAAkACQAJAAgAAAAAAAAAAQAJAAkACQAIAAAAAAAAAAEACQAJAAkACAAAAAAAAAABAAkACQAJAAgAAAAAAAAAAQAJAAkACQAIAAAAAAAAAAH/+f/5//n/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/4AAH/+AAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAEACQAIAAEACAAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgGAQAIBgAGAAYABgEACQAIBgEACAYABgAGAAYBAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAEACQAIAAEACAAAAAAAAAABAAkACAABAAgAAAAAAAAAAQAJAAgAAQAIAAAAAAAAAAH/+f/4AAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//AAAAAAAAAAAAAH/+AAD//wAAAAAAAAAAAABAAgAAwAMAAAAAAAAAAAAAQAIAAMADAAAAAAAAAAAAAEACAADAAwAAAAAAAAAAAABAAgAAwAMAAAAAAAAAAAAAQAIBgMADAYABgAGAAYABgEACAYDAAwGAAYABgAGAAYBAAgAAwAMAAAAAAAAAAAAAQAIAAMADAAAAAAAAAAAAAEACAADAAwAAAAAAAAAAAABAAgAAwAMAAAAAAAAAAAAAQAIAAMADAAAAAAAAAAAAAH/+AAD//wAAAAAAAAAAAAAAAAAA//8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "bop374z43h5x",
+   "x": 1208,
+   "y": 700,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "The same for an empty slot: a new clip there, selected and framed.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "ezh3vtgltmqa",
+   "x": 2356,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "C. Playing: a clip pressed waits for the bar",
+   "description": "Track 1's second clip pressed while the sequencer plays: selected at once (framed; its doubled outline blinks while it waits), its pad blinks green until the next bar.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#cb2121"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#cb6600"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#9fcb21"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#002700"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d3700"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#556d12"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#00cb97"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#cba500"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "Framed at once (NEW: before, nothing changed on the screen but the small doubled outline). Playing clips: filled, a black play icon."
+     }
+    }
+   },
+   "screen": "f/4AAAAAAAAAAAAAAAAAAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/5//n/+AAAAAAAAAAB7/nv+QAJ7/gAAAAAAAAAAef55/kACef4AAAAAAAAAAHj+eP5AAnj+AAAAAAAAAAB4fnh+QAJ4fgAAAAAAAAAAeD54PkACeD4BgAGAAYABgHgeeB5AAngeAYABgAGAAYB4Png+QAJ4PgAAAAAAAAAAeH54fkACeH4AAAAAAAAAAHj+eP5AAnj+AAAAAAAAAAB5/nn+QAJ5/gAAAAAAAAAAe/57/kACe/4AAAAAAAAAAH/+f/5//n/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8AAAAAAAAAAAAAAAAAAP//f/4AAH/+AAB//gAAAADAA0ACAABAAgAAe/4AAAAA3/tAAgAAQAIAAHn+AAAAANALQAIAAEACAAB4/gAAAADQC0ACAABAAgAAeH4AAAAA0AtAAgGAQAIBgHg+AYABgNALQAIBgEACAYB4HgGAAYDQC0ACAABAAgAAeD4AAAAA0AtAAgAAQAIAAHh+AAAAANALQAIAAEACAAB4/gAAAADf+0ACAABAAgAAef4AAAAAwANAAgAAQAIAAHv+AAAAAP//f/4AAH/+AAB//gAAAAD//wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAABAAgAAe/4AAAAAAAAAAAAAQAIAAHn+AAAAAAAAAAAAAEACAAB4/gAAAAAAAAAAAABAAgAAeH4AAAAAAAAAAAAAQAIBgHg+AYABgAGAAYABgEACAYB4HgGAAYABgAGAAYBAAgAAeD4AAAAAAAAAAAAAQAIAAHh+AAAAAAAAAAAAAEACAAB4/gAAAAAAAAAAAABAAgAAef4AAAAAAAAAAAAAQAIAAHv+AAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "zx4tub48i09i",
+   "x": 2356,
+   "y": 700,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "Everything launches at the next bar (the owner's rule). A clip pressed is now visibly the selected one while it waits.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "7864o5gweytp",
+   "x": 60,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "D. At the bar: it plays",
+   "description": "The clip plays: its pad white, pulsing; its cell filled, standing clear of its frame. The clip it replaced is its track's colour again.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#b15900"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#8bb11d"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#b1b1b1"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d3700"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#556d12"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#00b184"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": "#b19000"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A clip slot: column = track, row = clip. A press launches it (at the next bar; stopped: at once) and selects it; an empty slot: a new clip there. White: the selected clip. Green, blinking: waiting for the bar. Its track's colour: a clip (pulsing in 6 steps a beat: playing)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "The selected playing clip: filled, inside its frame."
+     }
+    }
+   },
+   "screen": "f/4AAAAAAAAAAAAAAAAAAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/5//n/+AAAAAAAAAABAAnv+QAJ7/gAAAAAAAAAAQAJ5/kACef4AAAAAAAAAAEACeP5AAnj+AAAAAAAAAABAAnh+QAJ4fgAAAAAAAAAAQAJ4PkACeD4BgAGAAYABgEACeB5AAngeAYABgAGAAYBAAng+QAJ4PgAAAAAAAAAAQAJ4fkACeH4AAAAAAAAAAEACeP5AAnj+AAAAAAAAAABAAnn+QAJ5/gAAAAAAAAAAQAJ7/kACe/4AAAAAAAAAAH/+f/5//n/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8AAAAAAAAAAAAAAAAAAIABf/4AAH/+AAB//gAAAAC7/UACAABAAgAAe/4AAAAAuf1AAgAAQAIAAHn+AAAAALj9QAIAAEACAAB4/gAAAAC4fUACAABAAgAAeH4AAAAAuD1AAgGAQAIBgHg+AYABgLgdQAIBgEACAYB4HgGAAYC4PUACAABAAgAAeD4AAAAAuH1AAgAAQAIAAHh+AAAAALj9QAIAAEACAAB4/gAAAAC5/UACAABAAgAAef4AAAAAu/1AAgAAQAIAAHv+AAAAAIABf/4AAH/+AAB//gAAAAD//wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAABAAgAAe/4AAAAAAAAAAAAAQAIAAHn+AAAAAAAAAAAAAEACAAB4/gAAAAAAAAAAAABAAgAAeH4AAAAAAAAAAAAAQAIBgHg+AYABgAGAAYABgEACAYB4HgGAAYABgAGAAYBAAgAAeD4AAAAAAAAAAAAAQAIAAHh+AAAAAAAAAAAAAEACAAB4/gAAAAAAAAAAAABAAgAAef4AAAAAAAAAAAAAQAIAAHv+AAAAAAAAAAAAAH/+AAB//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "qbcpk3h45ttd",
+   "x": 60,
+   "y": 1620,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "The pulse now fades in 6 steps a beat. It was a new level every tick (96 a beat): every playing clip an RGB write a tick, about 630 a second to the Move with four clips at 99 BPM, against 13 in track view. Not confirmed on the hardware whether that flood is what kept the pads from showing presses.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "q5ect8dmd7nc",
+   "x": 1208,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "E. Delete held + a clip: cut",
+   "description": "Clips are cut and pasted as steps are. Delete held: the first clip pressed is cut (an X in its slot, the pad blinking red); the press right after a cut pastes (a clip there is replaced); after a paste a clip is cut again and an empty slot gets the clipboard. The clipboard stays: it pastes again and again.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 1.0
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": "#3b0000"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": "#959595"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": "#ffd000"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "Delete held: cut this clip / paste here (see the rules). Without Delete: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "An X in the cut clip's slot."
+     }
+    }
+   },
+   "screen": "AAB//gAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAAAAAAAAAAAAAAH/+//9//n/+AAAAAAAAAABAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIAAAAAAAAAAEgSwANAAkACAAAAAAAAAABEIsADQAJAAgAAAAAAAAAAQkLAA0ACQAIBgAGAAYABgEGCwANAAkACAYABgAGAAYBCQsADQAJAAgAAAAAAAAAARCLAA0ACQAIAAAAAAAAAAEgSwANAAkACAAAAAAAAAABAAsADQAJAAgAAAAAAAAAAQALAA0ACQAIAAAAAAAAAAH/+//9//n/+AAAAAAAAAAAAAP//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "cmyonk68ktsr",
+   "x": 1208,
+   "y": 1620,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "The owner's steps sequence, on clips: cut A; A again: pasted back; an empty slot: pasted; B: cut; C right after: pasted over C; C again: cut. Said: \"Cut track 1 clip 1\", \"Pasted to track 1 clip 3\", \"Track 3 clip 1 replaced\".",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "l7f6h94run82",
+   "x": 2356,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "F. Copy held + a clip: copied",
+   "description": "Copy held: a clip pressed is copied (dashed, the pad blinking white), an empty slot pressed gets it. Copy let go after copying, then a press on any slot: pasted there once (a clip there replaced).",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot. A tap: its layout (a note layout: the sequencer's track view; session view is left)."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Mixer / Routing; held: the Shift shortcuts; double: the projects"
+     },
+     "led": {
+      "color": "#401010"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "SESSION",
+      "function": "A note layout: track view <-> session view",
+      "click": "Track view <-> session view"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes the latest layer: the clipboard's mark (a waiting copy, a cut), then session view"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "Shift + a clip: its whole row, a scene across the 16 tracks (at the next bar; stopped: at once, playing with Play). Shift + Play: every clip stops"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer (the only thing that does)"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "DELETE",
+      "function": "Held + a clip: cut (an X in its slot). The press right after a cut: pasted there (a clip there replaced). + an empty slot: the clipboard pasted, again and again. The steps' rules."
+     },
+     "led": {
+      "brightness": 0.25
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "COPY",
+      "function": "Held + a clip: copied (dashed). + an empty slot: pasted. Let go after copying, then a press on any slot: pasted there once (a clip there replaced). The steps' rules."
+     },
+     "led": {
+      "brightness": 1.0
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Mute + a clip: its track muted / unmuted"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Undo (Shift: redo): a cut or a paste taken back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one left"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "The tracks in view, one right (8 of 16 show)"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one up"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "The clip slots in view, one down (4 of 16 show)"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "As in track view"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Record: an empty slot pressed with it armed records into the new clip"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "The knob page, as in track view"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "A touch selects the track of this column (its selected clip framed)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": "#3b3b3b"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": "#126d22"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": "#006d51"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "Copy held: copy this clip / paste into this empty slot. Without Copy: launch and select."
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f1a1a"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f5000"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#9f8200"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#7d9f1a"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#1a9f32"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#009f76"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#108e9f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Stop this column's track (at the bar): lit while it plays"
+     },
+     "led": {
+      "color": "#070707"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Mute this column's track (its colour; muted: dim red)"
+     },
+     "led": {
+      "color": "#194b9f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Session",
+      "function": "The copied clip dashed while Copy is held and while a copy waits."
+     }
+    }
+   },
+   "screen": "AAB//gAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAAAAAAAAAAAAAAGZmgAEAAAAAAAAAAAAAAABAAoABAAAAAAAAAAAAAAAAAACAAQAAAAAAAAAAAAAAAAAAgAEAAAAAAAAAAAAAAABAAoABAAAAAAAAAAAAAAAAQAKBgQGAAYABgAGAAYABgAAAgYEBgAGAAYABgAGAAYAAAIABAAAAAAAAAAAAAAAAQAKAAQAAAAAAAAAAAAAAAEACgAEAAAAAAAAAAAAAAAAAAIABAAAAAAAAAAAAAAAAAACAAQAAAAAAAAAAAAAAAGZmgAEAAAAAAAAAAAAAAAAAAP//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAEACAAAAAAAAAAAAAAAAAABAAgAAAAAAAAAAAAAAAAAAQAIAAAAAAAAAAAAAAAAAAEACAAAAAAAAAYABgAGAAYBAAgGAAYABgAGAAYABgAGAQAIBgAGAAYAAAAAAAAAAAEACAAAAAAAAAAAAAAAAAABAAgAAAAAAAAAAAAAAAAAAQAIAAAAAAAAAAAAAAAAAAEACAAAAAAAAAAAAAAAAAABAAgAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+AAAAAAAAAAB//gAAAABAAgAAAAAAAAAAQAIAAAAAQAIAAAAAAAAAAEACAAAAAEACAAAAAAAAAABAAgAAAABAAgAAAAAAAAAAQAIAAAAAQAIBgAGAAYABgEACAYABgEACAYABgAGAAYBAAgGAAYBAAgAAAAAAAAAAQAIAAAAAQAIAAAAAAAAAAEACAAAAAEACAAAAAAAAAABAAgAAAABAAgAAAAAAAAAAQAIAAAAAQAIAAAAAAAAAAEACAAAAAH/+AAAAAAAAAAB//gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "7omq1goalpso",
+   "x": 2356,
+   "y": 1620,
+   "w": 1048,
+   "h": 200,
+   "type": "note",
+   "text": "Back drops a waiting copy's mark (a layer); Back again leaves session view. Copy tapped alone drops it too, or duplicates the selected clip into its track's next empty slot (as before).",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "urnyxdbi6p16",
+   "x": 3504,
+   "y": 60,
+   "w": 780,
+   "h": 1300,
+   "type": "note",
+   "color": "#ffe58a",
+   "text": "SESSION VIEW (0.9.2)\nThe way in: a firmware's Track tapped (a note layout), then Menu. Menu, Back or a Track tap: out.\n\nA CLIP PRESSED: launched at the next bar (stopped: at once) and selected at once: pad white (green, blinking, while it waits), cell framed on the screen.\nAN EMPTY SLOT PRESSED: a new clip there, the same.\nSHIFT + A CLIP: its row, a scene across the 16 tracks. Tracks with no clip in the row stop.\nTHE STEPS: two under each column: stop the track, mute it.\nA KNOB TOUCHED: the track of its column selected.\n\nCUT / COPY / PASTE, as the steps':\nDelete held, a clip: cut. The press right after a cut: pasted (a clip there replaced).\nDelete held, an empty slot: the clipboard pasted. It pastes again and again.\nCopy held, a clip: copied. Copy held, an empty slot: pasted.\nCopy let go after copying, then any slot: pasted there once.\n\nUNCHANGED: the launches, the pads' colours, the mapping (column = track, row = clip; the screen and the pads show the same 8 x 4). No fault was found in them on the simulator with the Move's own build, project and firmware states.\n\nTO DECIDE\n1. The frame as the selected clip's mark: OK, or another mark?\n2. Delete held, two clips in a row: the second is replaced by the first (the steps' rule). OK for clips, or should Delete + a clip always cut?"
+  }
+ ]
+}

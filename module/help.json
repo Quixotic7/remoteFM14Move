@@ -262,6 +262,32 @@
       ]
     },
     {
+      "title": "Session View",
+      "lines": [
+        "Menu in a note",
+        "layout. A column is",
+        "a track, a row a",
+        "clip.",
+        "",
+        "Press a clip: it",
+        "plays at the next",
+        "bar and is the",
+        "selected one: pad",
+        "white, framed on",
+        "the screen.",
+        "Shift + clip: its",
+        "row (a scene).",
+        "",
+        "Delete + clip: cut.",
+        "Next press: paste.",
+        "Copy + clip: copy.",
+        "Empty slot: paste.",
+        "",
+        "Steps: stop / mute",
+        "the track above."
+      ]
+    },
+    {
       "title": "An FM-1 as Panel",
       "lines": [
         "Plug an FM-1 running",
