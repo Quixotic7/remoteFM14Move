@@ -34,8 +34,10 @@ start() {   # start [VAR=value ...]
         wait_for 5 '[ "$(field session)" = 2 ]'
 }
 stop() { cmd quit; wait $HOST; RC=$?; }
-view() { cmd "cc 43 127"; sleep 0.15; press "note 16"; cmd "cc 43 0"; sleep 0.3; }   # Track 1 held + step 1
-back() { press "cc 51"; press "cc 51"; press "cc 51"; press "cc 51"; }
+# the projects view (rfm1cs 0.8.0: Track 1 double click, the firmware browser on slot 1); out of it: a Track 1 tap (it
+# leaves the view, slot 1 played; Back with nothing open would flip to the Sequencer)
+view() { press "cc 43"; press "cc 43"; sleep 0.3; }
+back() { sleep 0.2; press "cc 43"; sleep 0.3; }
 load() { curl -s -o /dev/null -w '%{http_code}' -X POST --data "{\"slot\":$1,\"id\":\"$2\",\"activate\":$3}" "$U/api/load"; }
 up() {   # up NAME FILE [curl args]: the HTTP code of the upload
     _n=$1; _f=$2; shift 2

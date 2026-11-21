@@ -3,7 +3,7 @@
 # RemoteFM1's own Speech mode (rfm1cs 0.6.12, Global Settings: Off / On / Jog) on the simulator, in the build image,
 # with tests/fake_tts.c as Schwung's speech program (as tests/speech_e2e.sh). Schwung's setting off (its sidecar too,
 # as the real one loads screen_reader_state.txt 0): the sidecar runs, the default mode is Off, entering says nothing;
-# Global Settings (Sequencer mode, Shift + step 2) set to On: "Speech on" and words after it, the sidecar's state file
+# Global Settings (Sequencer mode: Back, rfm1cs 0.8.0; Shift + step 2) set to On: "Speech on" and words after it, the sidecar's state file
 # put back as it was; Jog: "Speech jog wheel", then nothing without a touch, a jog touch says the screen, words while
 # held, nothing once let go. The mode is kept (the settings) across a restart. Schwung's setting on, a fresh root:
 # the default On, entering said as before.
@@ -53,7 +53,7 @@ sleep 3
 quiet && [ "$(field speech_mode)" = 0 ] && [ "$(field speech_open)" = 0 ] \
     && ok "the default Off (speech_mode 0, speech_open 0): entering said nothing" \
     || bad "entering, Off: said '$(last)', speech_mode '$(field speech_mode)', open '$(field speech_open)'"
-mark; press "cc 40"; sleep 0.6   # Track 4: Sequencer mode
+mark; press "cc 51"; sleep 0.6   # Back with nothing open (rfm1cs 0.8.0): Sequencer mode
 cmd "cc 49 127"; sleep 0.1; press "note 17"; cmd "cc 49 0"; sleep 0.6   # Shift + step 2: Global Settings
 quiet && ok "Off: Sequencer mode and Global Settings opened in silence" || bad "Off: said '$(last)'"
 mark; click; jog 1   # the Speech row (the first): edit, one step up: On
@@ -72,18 +72,18 @@ wait_for 3 'said "^Speech jog wheel$"' && wait_for 3 '[ "$(field speech_mode)" =
     && ok "Speech set to Jog: \"Speech jog wheel\" said; speech_open 0" \
     || bad "Jog: said '$(last)', speech_mode '$(field speech_mode)', open '$(field speech_open)'"
 sleep 0.5
-mark; click; press "cc 51"; press "cc 43"; sleep 0.8   # Done, Back (the menu closed), Track 1: FM-1 mode
-quiet && ok "Jog, the jog not touched: the edit closed, the menu closed and FM-1 mode said nothing" \
+mark; click; press "cc 51"; sleep 0.3; press "cc 51"; sleep 0.8   # Done, Back (the menu closed), Back: the FM-1 layout
+quiet && ok "Jog, the jog not touched: the edit closed, the menu closed and the FM-1 layout said nothing" \
     || bad "Jog untouched: said '$(last)'"
 mark; cmd "note 9 127"   # the jog touched
-wait_for 3 'said "FM-1 mode"' && wait_for 3 '[ "$(field speech_open)" = 1 ]' && ok "a jog touch says the screen: \"$(last)\"" \
+wait_for 3 'said "FM-1 layout"' && wait_for 3 '[ "$(field speech_open)" = 1 ]' && ok "a jog touch says the screen: \"$(last)\"" \
     || bad "the jog touch: said '$(last)', open '$(field speech_open)'"
 sleep 0.4
-mark; press "cc 41"   # Track 3 while held: Control mode
-wait_for 3 'said "^Control mode"' && ok "words while the jog is held: \"$(last)\"" || bad "held: said '$(last)'"
+mark; press "cc 41"   # Track 3 while held: slot 3 (empty) played, its FM-1 layout
+wait_for 3 'said "^Track 3, FM-1 layout"' && ok "words while the jog is held: \"$(last)\"" || bad "held: said '$(last)'"
 cmd "note 9 0"; sleep 0.3
-mark; press "cc 42"; sleep 1   # let go, Track 2: MIDI mode
-quiet && wait_for 3 '[ "$(field speech_open)" = 0 ]' && ok "the jog let go: MIDI mode said nothing" || bad "let go: said '$(last)'"
+mark; press "cc 42"; sleep 1   # let go, Track 2: slot 2 played
+quiet && wait_for 3 '[ "$(field speech_open)" = 0 ]' && ok "the jog let go: Track 2 (slot 2 played) said nothing" || bad "let go: said '$(last)'"
 cmd quit; wait $HOST
 
 # the mode kept: the same root again (Schwung's setting still off)

@@ -118,8 +118,13 @@ async function until(expr, ms, what) {
 }
 async function untilApi(f, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await f()) return true; await sleep(150); } return false; }
 const mouse = (type, x, y) => cdp("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+// (scrolled into view first, then its place read once it stays put: a smooth scroll or a sliding panel moves it for a
+// while, and a press taken mid-move misses it)
 const click = async (sel) => {
-  const r = await js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: "center" }); const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  const r = await js(`(async () => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: "center" });
+    let b = e.getBoundingClientRect(), n = 0;
+    for (let i = 0; i < 40 && n < 2; i++) { await new Promise((r) => setTimeout(r, 30)); const c = e.getBoundingClientRect(); n = c.left === b.left && c.top === b.top ? n + 1 : 0; b = c; }
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   if (!r) return false;
   await mouse("mouseMoved", r.x, r.y); await mouse("mousePressed", r.x, r.y); await sleep(60); await mouse("mouseReleased", r.x, r.y);
   return true;
