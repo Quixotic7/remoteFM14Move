@@ -1,13 +1,13 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
-# Session view on the simulator (rfm1cs-abletonmove 0.9.2; the owner's report of 2026-11-21: "Scenes don't launch,
-# clicking a clip won't show as selected, the screen and the pads don't seem aligned. I cannot cut and copy clips in
-# the same way you can cut and copy steps"), in the build image after make. The host on the simulator with Felucca
-# in slot 1: Track 1 held + pad 3 (the Scale layout: the sequencer), two steps, Menu: session view. A clip pressed
+# Session view on the simulator (rfm1cs-abletonmove 0.10.0, after the owner's review of 2026-11-21 as an Ableton Live
+# user; 0.9.2 before it), in the build image after make. The host on the simulator with Felucca in slot 1: Track 1
+# held + pad 3 (the Scale layout: the sequencer), two steps, Menu: session view. The pads' columns 1..7 are tracks,
+# the 8th the scenes. An empty slot pressed is selected and not filled (the first note makes the clip); a clip pressed
 # is the selected one on the pad (white) and on the screen (framed); playing, a pressed clip is framed at once and
-# plays within a bar; Shift + a clip launches its row; the pads lit are the clips the screen draws; a playing
-# session view sends few LED writes (the pulse in steps); Delete held: a clip cut (an X), the next press pastes;
-# Copy held: a clip copied into an empty slot.
+# plays within a bar: green; a scene pad launches its row; step 16 stops every clip; a knob touched: its track's
+# popup; the pads lit are the clips the screen draws; a playing session view sends few LED writes; Delete held: a clip
+# cut (an X), the next press pastes; Copy held: a clip copied into an empty slot.
 #   tests/sess_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -35,6 +35,8 @@ clip() { [ "$(px $(($1 * 16 + 1)) $((4 + $2 * 15 + 6)))" = 1 ] || [ "$(px $(($1 
 framed() { [ "$(px $(($1 * 16)) $((3 + $2 * 15)))" = 1 ] && [ "$(px $(($1 * 16 + 15)) $((3 + $2 * 15 + 14)))" = 1 ]; }
 pad() { echo $(( (3 - $2) * 8 + $1 )); }                                 # c r: the pad's index (its note: 68 + it)
 note() { echo $(( 68 + (3 - $2) * 8 + $1 )); }
+green() { _c=$(padrgb "$1"); [ "$(echo "$_c" | cut -c1-2)" = 00 ] && [ "$(echo "$_c" | cut -c5-6)" = 00 ] && [ "$_c" != 000000 ]; }
+plays() { green "$1" || [ "$(padrgb "$1")" = ffffff ]; }                 # (green, pulsing; the selected one white on the beat)
 white() { _c=$(padrgb "$1"); [ "$(echo "$_c" | cut -c1-2)" = "$(echo "$_c" | cut -c3-4)" ] && [ "$(echo "$_c" | cut -c3-4)" = "$(echo "$_c" | cut -c5-6)" ] && [ "$_c" != 000000 ]; }
 build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" --firmwares "$FWS" --site build/site --fw felucca \
     --test-api --no-fm1 >"$T/host.log" 2>&1 &
@@ -52,37 +54,58 @@ shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_rest.pbm
 clip 0 0 && framed 0 0 && ! clip 1 0 && ! framed 1 0 && wait_for 3 'white $(pad 0 0)' \
     && ok "Menu: session view; track 1's clip is the selected one (its pad white, its cell framed)" \
     || bad "session at rest: pad '$(padrgb $(pad 0 0))' (build/test-out/sess_rest.pbm)"
-# ---- stopped: a slot pressed: a clip there, selected on the pad and on the screen
+# ---- stopped: an empty slot pressed: selected on the pad and on the screen, no clip made; track 1's clip (Play
+# starts it) green
 hit $(note 2 1); sleep 0.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_selected.pbm
-clip 2 1 && framed 2 1 && ! framed 0 0 && [ "$(px 33 0)" = 1 ] && [ "$(px 1 0)" = 0 ] && wait_for 3 'white $(pad 2 1)' && ! white $(pad 0 0) \
-    && ok "column 3 row 2 pressed: its pad white, its cell framed, the bar over column 3; track 1's clip no longer" \
-    || bad "a clip pressed: pad '$(padrgb $(pad 2 1))', the old one '$(padrgb $(pad 0 0))' (build/test-out/sess_selected.pbm)"
+! clip 2 1 && framed 2 1 && ! framed 0 0 && [ "$(px 33 0)" = 1 ] && [ "$(px 1 0)" = 0 ] && wait_for 3 'white $(pad 2 1)' && wait_for 3 'green $(pad 0 0)' \
+    && ok "column 3 row 2 (empty) pressed: its pad white, a frame round its dot, no clip; track 1's clip green ($(padrgb $(pad 0 0)))" \
+    || bad "an empty slot pressed: pad '$(padrgb $(pad 2 1))', track 1's clip '$(padrgb $(pad 0 0))' (build/test-out/sess_selected.pbm)"
+# ---- the first note makes the clip: Menu (track 3's steps), a step, Menu; the same for track 1's row 2 (Shift + the
+# slot: selected only)
+press 50; sleep 0.4; hit 18; sleep 0.2; press 50; sleep 1.3; shot
+clip 2 1 && framed 2 1 && ok "Menu, a step, Menu: the slot is a clip now" || bad "the first note did not make the clip"
+cmd "cc 49 127"; sleep 0.3; hit $(note 0 1); sleep 0.2; cmd "cc 49 0"; sleep 0.3; shot
+framed 0 1 && ! clip 0 1 && wait_for 3 'green $(pad 0 0)' && ok "Shift + track 1's row 2: selected, track 1's clip 1 still its clip (green)" \
+    || bad "Shift + a slot: pad row 1 '$(padrgb $(pad 0 0))'"
+press 50; sleep 0.4; hit 22; sleep 0.2; press 50; sleep 1.3
+hit $(note 0 0); sleep 0.3
+# ---- a knob touched: its track's popup over the grid while touched
+cmd "note 2 127"; sleep 0.4; shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_info.pbm
+! framed 0 0 && ! framed 2 1 && [ "$(printf '%s' "$SCR" | cut -c1-2304 | tr -cd 1 | wc -c)" -gt 60 ] && ok "knob 3 touched: track 3's popup over the screen" \
+    || bad "the track popup (build/test-out/sess_info.pbm)"
+cmd "note 2 0"; sleep 0.3; hit $(note 0 0); sleep 0.3
 # ---- playing: a pressed clip is framed at once and plays within a bar
 press 85
 wait_for 3 '[ "$(field seq_playing)" = 1 ]' && ok "Play: the sequencer plays" || bad "Play: seq_playing '$(field seq_playing)'"
 hit $(note 0 1); sleep 0.15; shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_queued.pbm
 framed 0 1 && ! framed 2 1 && ok "playing, column 1 row 2 pressed: framed on the screen at once" \
     || bad "the pressed clip is not framed while it waits (build/test-out/sess_queued.pbm)"
-wait_for 5 'white $(pad 0 1)' && ! white $(pad 0 0) && [ "$(padrgb $(pad 0 0))" != 000000 ] \
-    && ok "within a bar it plays: its pad white ($(padrgb $(pad 0 1))), the clip it replaced in its track's colour" \
+wait_for 5 'plays $(pad 0 1) && ! plays $(pad 0 0)' && [ "$(padrgb $(pad 0 0))" != 000000 ] \
+    && ok "within a bar it plays: its pad green ($(padrgb $(pad 0 1))), the clip it replaced in its track's colour ($(padrgb $(pad 0 0)))" \
     || bad "the pressed clip did not play: pad '$(padrgb $(pad 0 1))', the old one '$(padrgb $(pad 0 0))'"
-# ---- a scene: Shift + a clip of row 1: track 1's first clip plays again, track 3 (no clip in that row) stops
-cmd "cc 49 127"; sleep 0.3; hit $(note 0 0); sleep 0.2; cmd "cc 49 0"
-wait_for 5 'white $(pad 0 0)' && ! white $(pad 0 1) && ok "Shift + a clip of row 1: the scene launches (track 1's clip 1 plays: $(padrgb $(pad 0 0)))" \
-    || bad "the scene: pad row 1 '$(padrgb $(pad 0 0))', row 2 '$(padrgb $(pad 0 1))'"
+# ---- a scene: the 8th column's pad of row 1: track 1's first clip plays again, track 3 (no clip in that row) stops
+hit $(note 7 0)
+wait_for 5 'plays $(pad 0 0) && ! plays $(pad 0 1) && ! plays $(pad 2 1)' && green $(pad 7 0) \
+    && ok "the scene pad of row 1: the scene launches (track 1's clip 1 plays: $(padrgb $(pad 0 0)); the scene pad $(padrgb $(pad 7 0)))" \
+    || bad "the scene: pad row 1 '$(padrgb $(pad 0 0))', row 2 '$(padrgb $(pad 0 1))', the scene pad '$(padrgb $(pad 7 0))'"
 # ---- a playing session view's LED writes (the pulse in 6 steps a beat; a new level every tick before 0.9.2)
 sleep 1.2; a=$(field led_writes); sleep 4; b=$(field led_writes)
 [ $(( (b - a) / 4 )) -lt 60 ] && [ "$b" -gt "$a" ] && ok "playing: $(( (b - a) / 4 )) LED writes a second" || bad "playing: $(( (b - a) / 4 )) LED writes a second"
+# ---- step 16: every clip stops at the bar; the transport runs on
+hit 31
+wait_for 5 '! plays $(pad 0 0)' && [ "$(field seq_playing)" = 1 ] && ok "step 16: every clip stopped (track 1's clip $(padrgb $(pad 0 0))), the sequencer plays on" \
+    || bad "step 16: pad '$(padrgb $(pad 0 0))', seq_playing '$(field seq_playing)'"
 press 85
 wait_for 3 '[ "$(field seq_playing)" = 0 ]' || bad "Play again: seq_playing '$(field seq_playing)'"
-# ---- the screen and the pads: a pad is lit where the screen draws a clip (or the selected slot), over the 8 x 4
+# ---- the screen and the pads: a pad is lit where the screen draws a clip (or the selected slot), over the 7 x 4; the
+# scene pads green
 sleep 1.2; shot; p=$(field move_pads); mis=""
-for r in 0 1 2 3; do for c in 0 1 2 3 4 5 6 7; do
+for r in 0 1 2 3; do for c in 0 1 2 3 4 5 6; do
     i=$(pad $c $r); v=$(echo "$p" | cut -c$((i * 6 + 1))-$((i * 6 + 6)))
     if clip $c $r || framed $c $r; then [ "$v" != 000000 ] || mis="$mis c$((c + 1))r$((r + 1))"
     else [ "$v" = 000000 ] || mis="$mis c$((c + 1))r$((r + 1))"; fi
-done; done
-[ -z "$mis" ] && clip 0 0 && clip 0 1 && clip 2 1 && ok "the pads lit are the clips the screen draws (3 clips, 8 x 4)" || bad "the screen and the pads differ at:$mis"
+done; green $(pad 7 $r) || mis="$mis scene$((r + 1))"; done
+[ -z "$mis" ] && clip 0 0 && clip 0 1 && clip 2 1 && ok "the pads lit are the clips the screen draws (3 clips, 7 x 4), the scene pads green" || bad "the screen and the pads differ at:$mis"
 # ---- Delete held: a clip cut (an X in its slot); the press right after a cut pastes
 cmd "cc 119 127"; sleep 0.2; hit $(note 2 1); sleep 0.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_cut.pbm
 [ "$(px 36 22)" = 1 ] && [ "$(px 37 23)" = 1 ] && ok "Delete held + a clip: cut, an X in its slot" || bad "the cut (build/test-out/sess_cut.pbm)"

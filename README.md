@@ -232,11 +232,12 @@ make test
 - `tests/cpu2fw_e2e.sh` (when FIZZ's and ChoralRoot's cpu2 builds are among the inputs): the host with both, chords on
   each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
   `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
-- `tests/sess_e2e.sh` (session view, rfm1cs 0.9.2): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
-  steps, Menu: a clip pressed is white on its pad and framed on the screen; playing, a pressed clip is framed at once
-  and plays within a bar; Shift + a clip launches its row; the lit pads are the clips the screen draws; a playing
-  session view's LED writes a second; Delete held cuts a clip and the next press pastes it; Copy held copies one into
-  an empty slot.
+- `tests/sess_e2e.sh` (session view, rfm1cs 0.10.0): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
+  steps, Menu: the selected clip is white on its pad and framed on the screen; an empty slot pressed is selected and
+  not filled, the first note makes the clip; Shift + a slot selects only; a knob touched shows its track's popup;
+  playing, a pressed clip is framed at once and plays within a bar (green); a scene pad (column 8) launches its row;
+  a playing session view's LED writes a second; step 16 stops every clip; the lit pads are the clips the screen
+  draws; Delete held cuts a clip and the next press pastes it; Copy held copies one into an empty slot.
 - `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
   takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
   Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume

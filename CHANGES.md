@@ -2,6 +2,13 @@
 
 ## Not released (branch session-view-fix)
 
+- **Session view, after the owner's review** (rfm1cs-abletonmove 0.10.0, local commit bd49975; the board
+  docs/design/session-view-v2.movedesign.json, made before the code by docs/design/mock_session_v2.c and
+  make_session_v2.py): the pads' 8th column launches scenes (7 tracks in view); Live's colours (green: playing; the
+  track's colour, dim: stopped); an empty slot pressed is selected and not filled, and clips with no notes are empty
+  slots again when a project loads; Shift + a slot selects it; the steps under a column select / stop its track,
+  step 16 stops every clip; a knob touched shows its track's popup; Copy tapped alone does nothing there; Shift +
+  Play restarts the clips. `tests/sess_e2e.sh` and help.json's Session View page follow.
 - **Session view** (rfm1cs-abletonmove 0.9.2, local commit 790142c; the owner's report of 2026-11-21): the pressed
   clip is framed on the Move's screen (the board docs/design/session-view-v1.movedesign.json); clips are cut, copied
   and pasted with the steps' gestures (Delete held: cut, the next press pastes; Copy held: copy, an empty slot
