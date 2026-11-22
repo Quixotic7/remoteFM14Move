@@ -1723,6 +1723,8 @@ static void pfw_want(int s, int p, const char *id)
         return;
     proj_switch(p);
     sl->pfw_gen++;
+    if (sl->on && sl->pc_proj == p && (!id[0] || strcmp(sl->fw.id, id)))
+        sl->pc_proj = -1;   /* (the open project's slot made anew, as after a cut of it: what goes is not its now) */
     if (!id[0]) {   /* (nothing to answer for "") */
         if (sl->on) {
             undo_drop(s);

@@ -12,7 +12,8 @@
 #     step 14 New and Undo;
 #   - the page's Files: the copies are in the projects' zip, the open project's are not deleted;
 #   - restarted with ChoralRoot removed: project 1's slot 2 missing, the project keeps its name and its copy; an old
-#     (version 8) project leaves the firmwares alone and becomes version 9, with copies, at its next save.
+#     (version 8) project leaves the firmwares alone and becomes version 9, with copies, at its next save; the open
+#     project cut: its copies into the buffer, pasted onto an empty pad with the project.
 #   tests/projfw_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -209,6 +210,18 @@ wait_for 8 '[ "$(field proj_open)" = 1 ]' && wait_for 8 '[ "$(od -An -tu1 -j22 -
     || bad "project 5 after its save: version '$(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove")', $(ls "$P")"
 [ -s "$(pcopy 1 2)" ] && grep -q '"id":"choralroot"' "$P/move-project-01.fw2.json" \
     && ok "project 1 saved since: its copy of the missing ChoralRoot still there" || bad "project 1's ChoralRoot copy"
+# ---- the open project cut (Delete + its pad): its copies go into the buffer (the core leaves an empty project in its
+# slot with the firmwares as they are, unsaved); then pasted onto an empty pad
+wait_for 8 '[ "$(field id0)" = felucca ] && [ "$(field pfw_loading)" = 0 ]' && sleep 2.5
+projects
+cmd "cc 119 127"; sleep 0.2; hit 93; sleep 0.3; cmd "cc 119 0"
+wait_for 8 '[ -s "$P/.clip.fw1.bin" ] && [ ! -e "$P/move-project-02.rfmmove" ] && [ ! -e "$(pcopy 2 1)" ]' \
+    && grep -q '"id":"felucca"' "$P/.clip.fw1.json" && [ "$(field id0)" = felucca ] \
+    && ok "project 2 (open) cut: its copy moved into the buffer (.clip.fw1.bin, hidden); Felucca stays loaded" \
+    || bad "the cut: slot 1 '$(field id0)', $(ls -a "$P" | tr '\n' ' ')"
+cmd "cc 119 127"; sleep 0.2; hit 97; sleep 0.3; cmd "cc 119 0"
+wait_for 8 '[ -s "$P/move-project-06.rfmmove" ] && [ -s "$(pcopy 6 1)" ]' && cmp -s "$P/.clip.fw1.bin" "$(pcopy 6 1)" \
+    && ok "Delete + an empty pad: pasted as project 6, with its copy" || bad "the paste: $(ls "$P" | tr '\n' ' ')"
 [ "$(cat "$R"/states/felucca/state-*.bin | sha256sum)" = "$sha0" ] && ok "states/: Felucca's states as they were" || bad "states/ changed"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 stop

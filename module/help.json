@@ -207,14 +207,29 @@
         {
           "title": "States",
           "lines": [
-            "Loop: the firmware's",
-            "saved states.",
-            "Pad: load a state",
-            "Empty pad: save",
-            "Copy + pad: save",
-            " over it",
-            "Delete + pad: delete",
-            "Loop or Back: leave"
+            "Track 1-3 held +",
+            "pad 7 (top row), or",
+            "Loop in the firmware",
+            "list: the firmware's",
+            "32 states.",
+            "",
+            "Pad: load a state.",
+            "Empty pad: save.",
+            "The lit state saves",
+            "itself as you play.",
+            "",
+            "Copy + pad: copy;",
+            "then Copy + an",
+            "empty pad: paste.",
+            "Delete + pad: cut.",
+            "",
+            "Step 14: New, the",
+            "firmware as first",
+            "installed.",
+            "Undo: back as it",
+            "was before New.",
+            "",
+            "Back: leave."
           ]
         }
       ]
@@ -358,6 +373,36 @@
         "Global settings,",
         "Launch: when clips",
         "start."
+      ]
+    },
+    {
+      "title": "Projects",
+      "lines": [
+        "Track 4 double tap",
+        "(or held + step 1):",
+        "the 32 projects.",
+        "",
+        "A project keeps its",
+        "three firmwares and",
+        "their sounds:",
+        "opening it loads",
+        "them as you left",
+        "them.",
+        "",
+        "Empty pad: a new",
+        "project, its three",
+        "slots empty.",
+        "",
+        "Copy held + a",
+        "project, then an",
+        "empty pad: a copy",
+        "to make a variation.",
+        "Delete + project:",
+        "cut.",
+        "",
+        "A firmware that is",
+        "not installed: its",
+        "slot stays empty."
       ]
     },
     {

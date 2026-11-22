@@ -239,6 +239,17 @@ make test
   playing, a pressed clip is framed at once and plays within a bar (green); a scene pad (column 8) launches its row;
   a playing session view's LED writes a second; step 16 stops every clip; the lit pads are the clips the screen
   draws; Delete held cuts a clip and the next press pastes it; Copy held copies one into an empty slot.
+- `tests/projfw_e2e.sh` (a project holds its firmwares, the States: rfm1cs 0.13.0, "Projects that hold their
+  firmwares" below): Felucca and ChoralRoot on the simulator, a firmware's memory changed through
+  `POST /api/test/poke` (a byte near its end) and read back from the files the host writes. Project 1's copies follow
+  its memory; an empty pad is a new project with its slots empty; Felucca changed there has project 2's own copy; an
+  emptied slot's copy goes at the project's save; project 1 again: its loading screen comes and goes, Felucca's memory
+  swapped back to project 1's, ChoralRoot loaded again; Copy + a project then an empty pad carries the copies; States
+  (Track 1 held + pad 7): save, the active state follows the memory, load, copy / paste, delete then paste, a paste
+  onto the active state loads it, step 14 New and Undo; the projects' zip holds the copies, the open project's are not
+  deleted; restarted with ChoralRoot removed: missing, the project keeps its name and its copy; a version 8 project
+  (made from a stored one) leaves the firmwares alone and is version 9, with its copies, after its next save; the open
+  project cut moves its copies into the buffer (hidden `.clip.fwK.*`) and a paste writes them for the new slot.
 - `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
   takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
   Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume
@@ -434,6 +445,44 @@ sequencer's tempo and transport) and NULL everything else, with a tail of NULLs 
   the library). Each module's own `get_param("state")` goes beside the project, `move/projects/move-project-NN.fx.json`,
   written with each project save and given back (`set_param("state")`) when that project's modules load.
 - Modules are listed at start: one installed while RemoteFM1 runs shows after a restart.
+
+## Projects that hold their firmwares; States (rfm1cs 0.13.0)
+
+The owner's "Project should save firmwares": the host sets `RFM_MOVE_CAP_PROJFW` (`rfm_move_fw_caps`, before the
+projects), so a project keeps its three firmwares and each one's memory, and a firmware's states are a layer on the
+Move (the core's README, "Projects that hold their firmwares; States").
+
+- **A project's own copy of each firmware's memory** (`src/projmem.h`): `move/projects/move-project-NN.fwK.bin` with
+  its `.json`. The host knows whose memory each slot holds (the project it was loaded for, or taken as) and writes the
+  copy whenever it writes that memory anyway (`slot_write`: the lazy autosave, a firmware leaving its slot, the exit)
+  and when the project is saved, only when the copy is behind it (a 1 MB file is not written again unchanged). A save
+  whose project holds a slot empty drops that slot's copy; a missing firmware's copy stays (the project still names
+  it). `states/<id>/flash.bin` stays the firmware's last memory anywhere: a firmware loaded by hand starts from it.
+- **Opening a project** (a pad, or the last one at start): first every slot's memory, synced, goes into the outgoing
+  project's copies; then for each slot the core's `PROJECT_FW`: the same firmware there with this project's memory
+  already: nothing; the same firmware: only its memory swapped (a new instance of the same object, as a state load);
+  another one: loaded with the project's copy (none: `flash.bin`; none: a fresh memory); "": unloaded; not installed:
+  the slot left empty, "Felucca not installed" on the Move, the project's copy kept for when it is installed again. The
+  slots load on the storage thread one after the other; the core's loading screen shows the progress
+  (`rfm_move_proj_fw`). The memory loaded is compared with the firmware's stored states (their json's hash first, then
+  byte for byte, on the storage thread): an equal one is the active state, else none. A project from before (blob
+  version 1..8) leaves the firmwares as they are; they are its own from then, and its next save makes it version 9
+  with copies of them. At start a version 9 project loads its firmwares this way instead of the library's slots.
+- **The project buffer**: Copy + a project copies its copies into the buffer (`.clip.fwK.*`), a cut moves them there,
+  a paste writes them for the new slot, a delete drops them. "Duplicating a project": Copy held + a project, then an
+  empty pad.
+- **States** (Track 1..3 held + the top row's pad 7): the active state (the last loaded, saved or pasted onto, or the
+  one the project's memory equals) saves itself: every write of the memory also goes to `state-KK.bin` when it is
+  behind. Before another state loads, the memory is synced into the active one. Copy and Delete put a state's bytes in
+  one buffer (RAM, one firmware's; Delete removes the file), a paste writes it (onto the active one: loaded too). Step
+  14 New keeps the memory and the active state in RAM (one per slot) and restarts the firmware with a fresh memory, no
+  state active; Undo puts both back. The undo goes when the firmware in the slot changes.
+- Status (`/api/status`): `proj_open` (the project whose copies the slots' memories are), `proj_cur` (the core's open
+  project), `pfw_loading`, `pfw_shown` / `pfw_ended` (its loading screen came / went), `projects`, `states_open`, and
+  per slot `pcproj<s>`, `stcur<s>` (the active state the host autosaves), `cstcur<s>` (the core's), `want<s>` (the
+  open project's firmware), `undo<s>`.
+- Upgrading from an earlier host: nothing in `states/` is deleted or rewritten; the projects load as they were (a
+  version 8 project keeps the firmwares that are loaded) and get their copies at their next save.
 
 ## Threads
 
@@ -699,6 +748,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/engine.c` | the engine thread: 3 firmware slots on their device clocks, the mix and limiter, the ring the audio thread drains, the rfm1cs session over a socketpair, the actions |
 | `src/fwrt.c` | the firmware runtime: a compiled firmware loaded and booted as RFM1-FORMAT.md section 7 says, its clock, its panel, the WASI imports, traps |
 | `src/storage.c` | the RemoteFM1 folder, the storage thread (firmwares, states, the Move's settings, library and projects) and the network thread |
+| `src/projmem.c` | a project's copies of its firmwares' memory and the states' files: names, the json's hash, the compare that names the active state |
 | `src/catalog.c` | the catalog the browser lists (the index merged with the installed firmwares) and its downloads (SHA-256, install) |
 | `src/https.c`, `src/catsig.c`, `src/ed25519.c`, `src/catalog_key.h` | the downloads' HTTPS client (the system's OpenSSL 3, dlopen'd); the index's signature, Ed25519 (TweetNaCl's arithmetic), the catalog's public key |
 | `tools/sign_index.py` | index.json -> index.json.sig (make catalog, make testcat; tools/bundle.py checks it) |
@@ -730,8 +780,13 @@ On the Move, the RemoteFM1 folder is `/data/UserData/RemoteFM1`:
 firmwares/   <id>-<version>.rfm1m, .json (the manifest, with the .rfm1's SHA-256), .licenses.txt, and its skin when the
              .rfm1 has one: .rfm1skin (rfm1.skin), .rfm1skin.bg, .rfm1skin.bgl (the images)
              .dl/ a download under way (its .part files)
-states/<id>/ flash.bin (the flash as it was left), state-NN.bin (the 32 state slots), each with a .json
-move/        settings.bin, library.rmvl, open-project, projects/move-project-NN.rfmmove
+states/<id>/ flash.bin (the firmware's memory as it was last left, anywhere: what a firmware loaded by hand starts
+             from), state-NN.bin (the 32 state slots), each with a .json (id, version, sha256, saved; and "hash": the
+             image's SHA-256, written by 0.13.0's host)
+move/        settings.bin, library.rmvl, open-project, projects/move-project-NN.rfmmove and beside it
+             move-project-NN.fx.json (its FX modules' own state), move-project-NN.fwK.bin / .fwK.json (K 1..3: its own
+             copy of firmware slot K's memory, 1 MB, and its id, version, sha256, saved, hash); .clip.fwK.* (hidden:
+             the project buffer's copies, while a project is cut or copied)
 catalog/     index.json, index.json.sig (the catalog's index and its signature, as last downloaded)
 catalog-url  (optional) the catalog's base URL, first line
 audio/       a Fantasy CFW's samples, every cart reads them (the page's Audio files puts WAVs here)

@@ -2,6 +2,20 @@
 
 ## Not released (branch session-view-fix)
 
+- **A project holds its firmwares; firmware states on the Move** (rfm1cs-abletonmove 0.13.0, local commit 8b28fed,
+  `RFM_MOVE_CAP_PROJFW`; the owner's "Project should save firmwares"). Each project keeps its own copy of each slot's
+  firmware memory, `move/projects/move-project-NN.fwK.bin` (+ `.json` with the image's hash), written whenever the
+  memory is and only when behind it; opening a project writes the outgoing one's copies (synced), then loads its
+  firmwares with its copies (the same firmware: only the memory swapped; a missing one: the slot empty, the project
+  keeps its name and its copy; no copy: `flash.bin`, else a fresh memory) behind the core's loading screen, and names
+  the stored state the memory equals as the active one. A new project has three empty slots; Copy + a project then an
+  empty pad duplicates it with its copies (the project buffer carries them; a delete drops them). The active state
+  saves itself; Copy / Delete on a state pad use a state buffer, a paste onto the active state loads it; step 14 New
+  (a fresh memory, no state active) and Undo. A version 1..8 project leaves the firmwares alone and becomes version 9
+  with copies at its next save; at start a version 9 project loads its own firmwares instead of the library's. The
+  host now builds the core's `projfw.c` (the Makefile). Status fields for the tests; `POST /api/test/poke`
+  (--test-api); `tests/projfw_e2e.sh` (32 checks) and unit checks of `src/projmem.c`; the page's Files keep the open
+  project's copies. README "Projects that hold their firmwares; States"; help.json's States page and Projects lines.
 - **The owner's answers on the review page** (rfm1cs-abletonmove 0.12.0, local commit bfa3b0b; the board, drawn from
   the build: docs/design/ux-0.12.movedesign.json, 30 layouts, made by docs/design/make_ux_012.py). Session view: from
   anywhere (Shift + Menu, a held Track + Menu, Back + Menu) and Back never leaves it; a colour a slot (orange, blue,
