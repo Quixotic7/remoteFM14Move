@@ -79,7 +79,18 @@
         "Shift shortcuts.",
         "Double: projects.",
         "",
-        "Back closes menus."
+        "Back closes menus.",
+        "",
+        "Hold Track 1-3: a",
+        "step selects its",
+        "track at once.",
+        "Double click: solo.",
+        "Hold: its routing.",
+        "A Track tap blinks",
+        "the selected track",
+        "on the steps.",
+        "Hold Track + volume:",
+        "the slot's level."
       ]
     },
     {
@@ -295,7 +306,58 @@
         "A Shift menu stays",
         "until Back. Touch a",
         "knob: its name on",
-        "top."
+        "top.",
+        "",
+        "Jog: knob pages.",
+        "TRIG, FM-1, then",
+        "the CC banks.",
+        "FM-1 page: knobs",
+        "are the firmware's.",
+        "Jog click there:",
+        "Knobs + Keys. Steps",
+        "and buttons go to",
+        "the firmware too.",
+        "Pads stay notes.",
+        "Jog click: back.",
+        "",
+        "Loop page:",
+        "Jog: loop length.",
+        "The steps show the",
+        "last bar's steps.",
+        "Two lower pad rows:",
+        "last bar's length,",
+        "1-16 steps.",
+        "Hold a bar + jog:",
+        "its notes' length.",
+        "Double click a bar:",
+        "loop it alone.",
+        "Hold a bar + press",
+        "another: the range.",
+        "",
+        "Shift menus:",
+        "Jog picks a value.",
+        "Jog click edits it.",
+        "Click again: done.",
+        "Knobs work as well."
+      ]
+    },
+    {
+      "title": "Back Shortcuts",
+      "lines": [
+        "Hold Back, then:",
+        "Left: bar 1, or",
+        "track 1 in session.",
+        "Up: scene 1 in",
+        "session view.",
+        "Loop: the loop is",
+        "the whole clip.",
+        "Play: to bar 1.",
+        "Never starts or",
+        "stops playback.",
+        "Delete: close every",
+        "open layer.",
+        "A quick Back click",
+        "closes one layer."
       ]
     },
     {
@@ -372,7 +434,11 @@
         "",
         "Global settings,",
         "Launch: when clips",
-        "start."
+        "start.",
+        "",
+        "Double click the",
+        "playing clip: it",
+        "stops now."
       ]
     },
     {
