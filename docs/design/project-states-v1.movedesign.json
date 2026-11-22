@@ -1,0 +1,7029 @@
+{
+ "format": "ableton-move-designer",
+ "version": 3,
+ "name": "RemoteFM1 for the Move: projects and states, proposal 1",
+ "items": [
+  {
+   "id": "6pycdybk155o",
+   "x": 0,
+   "y": 0,
+   "w": 4652,
+   "h": 1940,
+   "type": "group",
+   "title": "PROPOSAL (not built): a project holds its firmwares; firmware states on the Move (2026-11-22)",
+   "color": "#ffb000"
+  },
+  {
+   "id": "xtz7q74sviz7",
+   "x": 60,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "A. A project pressed: it loads",
+   "description": "The project's number and its three firmwares, a bar each. Slot 1 held the same firmware (only its state swapped: ready), slot 2 loads, slot 3 waits.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#c7c7c7"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A quick click closes the latest layer"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "While a project loads: it plays once every firmware is ready"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: cut"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: copied, with its firmwares and their states"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A held project's colour"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#126d22"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#0b616d"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1855"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d492f"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#4d6d44"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Loading",
+      "function": "A bar a firmware; dotted: waiting"
+     }
+    }
+   },
+   "screen": "H/A//4AAAAAAAAAAAAAAAB/wP/+AAAAAAAAAAAAAAAAf8D//gAAAAAAAAAAAAAAA4A4AA4AAAAAAAAAAAAAAAOAOAAOAYAAAAAAGBgAAAADgDgADgGAAAAAABgYAAAAA4H4AHABgAAAAAAYAAAAAAOB+ABwAYAAAAAAGAAAAAADgfgAcAGAB+B+B5h4GeB/g444A4ABgAfgfgeYeBngf4OOOAOAAYAYGAGYeBgeGYGDjjgDgAGAGBgBmHgYHhmBg/A4HAABgBgYf5gYGBgZgYPwOBwAAYAYGH+YGBgYGYGD8DgcAAGAGBmBmBgYGBh/g4A4HAABgBgZgZgYGBgYf4OAOBwAAf+H4H+H+H4YGAGDgDgcAAH/h+B/h/h+GBgBgH/AHAAAAAAAAAAAAAAAfgB/wBwAAAAAAAAAAAAAAH4Af8AcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAHIAAAGPAAEAAAAAAAAABgCKAAAAiIABAAD//////+IAgscscIicc4AA///////iAIMosgiPIokAAP//////4gCCKKB4iiKJAAD//////+IAiiigiIkiiSAA///////nAHInIHnInHDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHAHoHHPAAAAAAAAAAAAAACICCCKKIAAAAAAD//////+CAggiiiAAAAAAA////gAAhAHIIovAAAAAAAP///4AAIgAKCKKAAAAAAAD///+AACQACgiigAAAAAAA///////vgPPnHIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgPgGAAAAAAAAAAAAAAAAAQCAAgAAAAAAAAAAAAAAAAIAgcIicccAAAAAAAAAAAABAPIiIoIAgAAAAMzMzMzMwICD4iKCB4AAAAAAAAAAAAiAggImiiiAAAAAAAAAAAAHAIHHGnHHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "x1o9ro5nzqdg",
+   "x": 60,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "The sound stops while firmwares load. A Track button lights when its firmware is ready.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "2w3ll9tzql8i",
+   "x": 1208,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "B. A firmware that is not on this Move",
+   "description": "Said for a second; the slot stays empty. The project keeps the firmware's name and state.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#0a1e3f"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#c7c7c7"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A quick click closes the latest layer"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "While a project loads: it plays once every firmware is ready"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: cut"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: copied, with its firmwares and their states"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A held project's colour"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#126d22"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#0b616d"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1855"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d492f"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#4d6d44"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Message",
+      "function": "A second"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/gAB4AAAAAAAAAAAAAAAB/4AAeAAAAAAAAAAAAAAAAYAAABgAAAAAAAAAAAAAAAGAAAAYAAAAAAAAAAAAAAABgAfgGBgYfgfgfgAAAAAAAYAH4BgYGH4H4H4AAAAAAAH+GBgYGBmAGAABgAAAAAAB/hgYGBgZgBgAAYAAAAAAAYAf+BgYGYAYAH+AAAAAAAGAH/gYGBmAGAB/gAAAAAABgBgAGBh5gZgZgYAAAAAAAYAYABgYeYGYGYGAAAAAAAGAB+B+B5h+B+B/gAAAAAABgAfgfgeYfgfgf4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAIAAQAYYACAAAAAAAAAAEAAAAEACCAAgAAAAAAACxzgBixzhwghxoAAAAAAAAyiQAIygQCIIimAAAAAAAAIokACInEHiCPogAAAAAAACKJIAiIJKIgiCIAAAAAAAAicMAci8MeccceAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD4AACAD4AAABAAAAAAAAAAIAAAgAEAAAAQAAAAAAAAACLHHJACAHNPOIgAAAAAAAAjIKCgAQCKqJCIAAAAAAAAIgegwACA+qiQiAAAAAAAACIIoqAIgIIvEngAAAAAAAAiB5yQBwByKAwIAAAAAAAAAAAAAAAAAAgAcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "1n2fvu0i3xx0",
+   "x": 1208,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "Nothing downloads by itself.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "bzn1kir0gshy",
+   "x": 2356,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "C. A project held",
+   "description": "Its number, tempo, clips, and its three firmwares.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#3f1e00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#0a1e3f"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#3f3200"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#c7c7c7"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A quick click closes the latest layer"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "While a project loads: it plays once every firmware is ready"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: cut"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: copied, with its firmwares and their states"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A held project's colour"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": "#773bfe"
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#0b616d"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1855"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d492f"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#4d6d44"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Project",
+      "function": "While held"
+     }
+    }
+   },
+   "screen": "H/A//4AAAAAAAAAAAAAAAB/wP/+AAAAAAAAAAAAAAAAf8D//gAAAAAAAAAAAAAAA4A4AA4AAAGAfgfgAAAYB+OAOAAOAAABgH4H4AAAGAfjgDgADgCAB4GBmBg/+HgYG4H4AHAAwAeBgZgYIAh4GBuB+ABwAOABgAGYeC4IGAAbgfgAcADwAYABmHggCBgAG444A4AA+AGABhmYIcgYAGOOOAOAAPwBgAYZmCAIGABjjjgDgAD4AYAYHhgnCBgBg/A4HAAA8AGAGB4YIAgYAYPwOBwAAOABgGAYGCBoGAYD8DgcAADAAYBgGBggCBgGA4A4HAAAgAfh/4fgP/h+H/uAOBwAAAAH4f+H4AAAfh/7gDgcAAAAAAAAAAAAAAAAAH/AHAAAAAAAAAAAAAAAAAB/wBwAAAAAAAAAAAAAAAAAf8AcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAHIAAAGPAAEAAAAAAAAABgCKAAAAiIABAAAAAAAAAAIAgscscIicc4AAAAAAAAACAIMosgiPIokAAAAAAAAAAgCCKKB4iiKJAAAAAAAAAAIAiiigiIkiiSAAAAAAAAAHAHInIHnInHDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHAHoHHPAAAAAAAAAAAAAACICCCKKIAAAAAAAAAAAAAACAggiiiAAAAAAAAAAAAAABAHIIovAAAAAAAAAAAAAAAgAKCKKAAAAAAAAAAAAAAAQACgiigAAAAAAAAAAAAAAPgPPnHIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgPgGAAAAAAAAAAAAAAAAAQCAAgAAAAAAAAAAAAAAAAIAgcIicccAAAAAAAAAAAABAPIiIoIAgAAAAAAAAAAAAICD4iKCB4AAAAAAAAAAAAiAggImiiiAAAAAAAAAAAAHAIHHGnHHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "l5sn3pkzjli4",
+   "x": 2356,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "The activity bars go, to make room.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "ufh1reosfhyp",
+   "x": 3504,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "D. A project held: a slot empty",
+   "description": "An empty slot is a dotted line.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Lights in its slot's colour when its firmware is ready"
+     },
+     "led": {
+      "color": "#c7c7c7"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A quick click closes the latest layer"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "While a project loads: it plays once every firmware is ready"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: cut"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a project: copied, with its firmwares and their states"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "A held project's colour"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here (dark)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1212"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d5900"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#0b616d"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d1855"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#6d492f"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": "#4d6d44"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A project, in its colour (white: the open one). A press opens it: its firmwares load, each put back in the state the project left it in. Held: what is in it. An empty pad: a new project"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": ""
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Project",
+      "function": "While held"
+     }
+    }
+   },
+   "screen": "H/A//4AAAAAAAAAAAAAAAB/wP/+AAAAAAAAAAAAAAAAf8D//gAAAAAAAAAAAAAAA4A4AHAAAAfgHgAAAAAGAAOAOABwAAAH4B4AAAAABgADgDgAcACAGBhgAAA/+B4AA4H4A4AAwBgYYAAAIAgeAAOB+AOAAOAYGYAAAC4IZgADgfgDgADwGBmAAAAgCGYAA444AHAA+Af5/gAAIcmGAAOOOABwAPwH+f4AACAJhgADjjgAcAD4ABmBgAAnCf+AA/A4AA4A8AAZgYAAIAn/gAPwOAAOAOAAYYGAACBoBgAD8DgADgDAAGGBgAAgCAYAA4A44A4AgAeAfgAAP/gGAAOAOOAOAAAHgH4AAAAABgADgDjgDgAAAAAAAAAAAAAAAH/AH/AAAAAAAAAAAAAAAAB/wB/wAAAAAAAAAAAAAAAAf8Af8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAHIAAAGPAAEAAAAAAAAABgCKAAAAiIABAAAAAAAAAAIAgscscIicc4AAAAAAAAACAIMosgiPIokAAAAAAAAAAgCCKKB4iiKJAAAAAAAAAAIAiiigiIkiiSAAAAAAAAAHAHInIHnInHDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHAHoHHPAAAAAAAAAAAAAACICCCKKIAAAAAAAAAAAAAACAggiiiAAAAAAAAAAAAAABAHIIovAAAAAAAAAAAAAAAgAKCKKAAAAAAAAAAAAAAAQACgiigAAAAAAAAAAAAAAPgPPnHIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPgAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAABAMzMzMzMAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAiAAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "n3nwk0do4ue1",
+   "x": 60,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "E. Track 2 held: pad 7 is States",
+   "description": "The layout menu as built, with pad 7 of the top row lit in the slot's colour.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Track 2 held: its menu"
+     },
+     "led": {
+      "color": "#3f1e00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Track 2 held: its menu"
+     },
+     "led": {
+      "color": "#2878ff"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Track 2 held: its menu"
+     },
+     "led": {
+      "color": "#191919"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "Track 2 held: its menu"
+     },
+     "led": {
+      "color": "#3f0a0a"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A quick click closes the latest layer"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Root"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "CC numbers"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": "#7f7f7f"
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "FM-1 layout"
+     },
+     "led": {
+      "color": "#4c4c4c"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The firmware's takeover"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "Scale"
+     },
+     "led": {
+      "color": "#c8ff2a"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "Chroma"
+     },
+     "led": {
+      "color": "#3c4c0c"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "Drum"
+     },
+     "led": {
+      "color": "#3c4c0c"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "Octave"
+     },
+     "led": {
+      "color": "#3c4c0c"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "NEW: States. Lit in the slot's colour when a firmware is loaded. A press opens this firmware's States; they stay after the Track is let go"
+     },
+     "led": {
+      "color": "#2878ff"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "Latch"
+     },
+     "led": {
+      "color": "#4c3300"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layout menu's scale and root"
+     },
+     "led": {
+      "color": "#095059"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": "#aa3cff"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The 16 tracks: route, solo, select"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Slot summary",
+      "function": "While held (as built)"
+     }
+    }
+   },
+   "screen": "/8AAPAAAAAAAAAAAAAAAAP/AADwAAAAAAAAAAAAAAADAAAAMAAAAAAAAAAAAAAAAwAAADAAAAAAAAAAAAAAAAMAD8AwMDD8D8D8AAAAAAADAA/AMDAw/A/A/AAAAAAAA/wwMDAwMwAwAAMAAAAAAAP8MDAwMDMAMAADAAAAAAADAD/wMDAzADAA/wAAAAAAAwA/8DAwMwAwAP8AAAAAAAMAMAAwMPMDMDMDAAAAAAADADAAMDDzAzAzAwAAAAAAAwAPwPwPMPwPwP8AAAAAAAMAD8D8DzD8D8D/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/wAAAA8AAAAAAAAAAAAAAP8AAAAPAAAAAAAAAAAAAAMAAAAAAwAAAAAAAAAAAAADAAAAAAMAAAAAAAAAAAAAAwAPwPwDAPwAAAAAAAAAAAMAD8D8AwD8AAAAAAAAAAAA/DAAAwMDAwAAAAAAAAAAAPwwAAMDAwMAAAAAAAAAAAADMAD/AwP/AAAAAAAAAAAAAzAA/wMD/wAAAAAAAAAAAAMwMwMDAwAAAAAAAAAAAAADMDMDAwMAAAAAAAAAAAAD/A/A/w/A/AAAAAAAAAAAA/wPwP8PwPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAMDAAAMAAAAAAAAAAAA/AADAwAADAAAAAAAAAAAAwMAA88AAAAAAAAAAAAAAAMDAAPPAAAAAAAAAAAAAAADAAADMw/APAAAAAAAAAAAAwAAAzMPwDwAAAAAAAAAAAMAAAMzADAMAAAAAAAAAAADAAADMwAwDAAAAAAAAAAAAwAAAwMP8AwAAAAAAAAAAAMAAAMDD/AMAAAAAAAAAAADAwADAzAwDAAAAAAAAAAAAwMAAwMwMAwAAAAAAAAAAAD8AAMDD/MMAAAAAAAAAAAA/AADAw/zDAAAAAAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAADwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAB+AAAAAAAAABgYGBgYGBgYfhgYGBgYGBgYGBgYGBgYGH4YGBgYGBgYAAAAAAAAAAB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfgAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "1rb4pvp3bn88",
+   "x": 60,
+   "y": 1620,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "Today States are reached by a double click on a Track, then Loop.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "0pzcy7ibbtdd",
+   "x": 1208,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "F. States",
+   "description": "The firmware's name, its 32 states: framed stored, filled current, a dot empty. Pads in the slot's colour. Step 14's icon lit: New.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#0a1e3f"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#3f3200"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes States"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Dead"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: that state deleted"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: the firmware's state now, saved over it"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Right after a load or New: what the firmware held is back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "In the firmware browser: opens States too (as today)"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "New: the firmware restarts as first installed (its icon lit). Undo brings the old state back"
+     },
+     "led": {
+      "color": "#3f3f3f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 1.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "States",
+      "function": "ChoralRoot, slot 1"
+     }
+    }
+   },
+   "screen": "H4YAAAAAAAHgf4AAAAGAAB+GAAAAAAAB4H+AAAABgABgZgAAAAAAAGBgYAAAAYAAYGYAAAAAAABgYGAAAAGAAGAGeB+GeB+AYGBh+B+H4ABgBngfhngfgGBgYfgfh+AAYAeGYGeGAGBgf4YGYGGAAGAHhmBnhgBgYH+GBmBhgABgBgZgZgAf4GBmBgZgYYAAYAYGYGYAH+BgZgYGYGGAAGBmBmBmAGBgYGGGBmBhhgBgZgZgZgBgYGBhhgZgYYYAH4YGH4YAH+H4YGH4H4B4AB+GBh+GAB/h+GBh+B+AeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/+f/4AAAAAf/4AAAAAAABAAn/+AAAAAEACAAAAAAAAQQJ8fgAAAABHwgAAAAAAAEMCe74AAAAARAIAAAAAAABBAn++AAAAAEeCAAAAAAAAQQJ/fgGAAYBAQgGAAYABgEECfv4BgAGAQEIBgAGAAYBBAn3+AAAAAERCAAAAAAAAQ4J4PgAAAABDggAAAAAAAEACf/4AAAAAQAIAAAAAAAB//n/+AAAAAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/4AAAAAAAAAAAAAAAAAAEACAAAAAAAAAAAAAAAAAABIMgAAAAAAAAAAAAAAAAAAWEIAAAAAAAAAAAAAAAAAAEiCAYABgAGAAYABgAGAAYBI8gGAAYABgAGAAYABgAGASIoAAAAAAAAAAAAAAAAAAEiKAAAAAAAAAAAAAAAAAABccgAAAAAAAAAAAAAAAAAAQAIAAAAAAAAAAAAAAAAAAH/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAGAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "0gdmsaur44na",
+   "x": 1208,
+   "y": 1620,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "States are the firmware's own, shared by every project.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "m73wa3yy8dx3",
+   "x": 2356,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "G. Step 14: a new state",
+   "description": "The firmware restarts as first installed. No stored state is touched; none is the current one.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#0a1e3f"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#3f3200"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes States"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Dead"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: that state deleted"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: the firmware's state now, saved over it"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Right after a load or New: what the firmware held is back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "In the firmware browser: opens States too (as today)"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "New: the firmware restarts as first installed (its icon lit). Undo brings the old state back"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 1.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Message",
+      "function": "A second"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYGAAAAAAAAGAAAGAAAAAAGBgAAAAAAABgAABgAAAAABgYAAAAAAAAYAAAYAAAAAAYGAAAAAAAAGAAAGAAAAAAHhh+GBgAB+H4B+H4B+AAAB4YfhgYAAfh+Afh+AfgAAAZmYGYGAAYAGAAGGAYGAAAGZmBmBgAGABgABhgGBgAABh5/5mYAAfgYAf4YB/4AAAYef+ZmAAH4GAH+GAf+AAAGBmAGZgAABhhmBhhmAAAABgZgBmYAAAYYZgYYZgAAAAYGH4GYAAf4B4H+B4H4AAAGBh+BmAAH+AeB/geB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5AAAAx4AAgAAAAAAAAAAARQAAAERAAIAAAAAAAAAAAEFjljhETjnAAAAAAAAAAABBlFkER5FEgAAAAAAAAAAAQRRQPEURRIAAAAAAAAAAAEUUUEREkUSQAAAAAAAAAAA5E5A85E44YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "s4kc4o499oya",
+   "x": 3504,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "H. Undo after it",
+   "description": "What the firmware held before is back. The same after a state is loaded.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#0a1e3f"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#3f3200"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "SEQ",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Closes States"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "Start / stop the sequencer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Dead"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: that state deleted"
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "Held + a pad: the firmware's state now, saved over it"
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "Right after a load or New: what the firmware held is back"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "In the firmware browser: opens States too (as today)"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "Nothing here"
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#ff7800"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": "#6b3200"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "A state of this firmware. Stored (dim): a press loads it. Empty (dark): a press saves there. Copy held + a pad: saved over. Delete held + a pad: deleted. The current one is full"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "New: the firmware restarts as first installed (its icon lit). Undo brings the old state back"
+     },
+     "led": {
+      "color": "#3f3f3f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 1.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Message",
+      "function": "A second"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYGAAAGAAAAAAAAAAAAAAAGBgAABgAAAAAAAAAAAAAABgYAAAYAAAAAAAAAAAAAAAYGAAAGAAAAAAAAAAAAAAAGBmeB5h+AAAAAAAAAAAAABgZngeYfgAAAAAAAAAAAAAYGeGYeYGAAAAAAAAAAAAAGBnhmHmBgAAAAAAAAAAAABgZgZgZgYAAAAAAAAAAAAAYGYGYGYGAAAAAAAAAAAAAGBmBmBmBgAAAAAAAAAAAABgZgZgZgYAAAAAAAAAAAAAH4YGH+H4AAAAAAAAAAAAAB+GBh/h+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIgAAAEAEAAAAAAAAAAAAACIAAABABAAAAAAAAAAAAAAyciAc4c4cAAAAAAAAAAAAKoogIEAkIgAAAAAAAAAAACb6oBxB5D4AAAAAAAAAAAAigqACSiSgAAAAAAAAAAAAInFAPDHjHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "5vngcngsuu2s",
+   "x": 3504,
+   "y": 1620,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "One step: the last load only.",
+   "color": "#cfe3ff"
+  }
+ ]
+}
