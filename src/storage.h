@@ -7,7 +7,9 @@
  *                .json beside it (id, version, sha256, saved)
  *   move/        settings.bin (rfm1cs's settings image), library.rmvl (its library blob), open-project (the slot),
  *                projects/move-project-NN.rfmmove (rfm1cs's project files, RMVP), and beside each
- *                move-project-NN.fx.json: its FX modules' own state (get_param "state"; R_PROJECT_LOADED's text)
+ *                move-project-NN.fx.json: its FX modules' own state (get_param "state"; R_PROJECT_LOADED's text),
+ *                move-project-NN.fwK.bin / .json: its own copy of firmware slot K's memory (rfm1cs 0.13.0;
+ *                projmem.h), .clip.fwK.*: the project buffer's
  *   audio/       a Fantasy CFW's shared samples (FM1VST docs/VIRTUAL-CARTS.md section 3: every cart reads them; the
  *                page puts WAVs here, web.c /api/files/audio)
  *   code/<id>/   a cart's own scripts and assets (read), data/<id>/ its own files (read and write): fsvc.c
@@ -52,12 +54,15 @@ int st_vercmp(const char *a, const char *b);
 
 /* ---- the storage thread: jobs in, results out (the engine drains them on its own thread) */
 enum {
-    J_WRITE = 1,          /* path, data/len: written (no result) */
+    J_WRITE = 1,          /* path, data/len: written (no result); also to aux_path and path2 when set; text: the
+                           * .json beside each (with the image's "hash" when text is set) */
     J_FW_OPEN,            /* slot, id, path (the .rfm1m), aux_path (flash.bin): back with ptr (the instance made, its
                            * memory and data: fw_instantiate) + data (the flash, or none) */
     J_STATE_SAVE,         /* slot, index, id, data/len (the image), text (its .json): back with used bits */
-    J_STATE_LOAD,         /* slot, index, id, obj: back with data (the image; none: a failure) and ptr (an instance) */
-    J_STATE_DELETE,       /* slot, index, id: back with used bits */
+    J_STATE_LOAD,         /* slot, index, id, obj: back with data (the image; none: a failure) and ptr (an instance);
+                           * act STA_NEW: no file (a fresh memory, data none), STA_UNDO: data given (kept) */
+    J_STATE_DELETE,       /* slot, index, id: back with used bits ((rfm1cs 0.13.0) the state moved into the state
+                           * buffer first) */
     J_STATE_SCAN,         /* slot, id: back with used bits */
     J_PROJECT,            /* kind (the act), index, value, data/len: rfm1cs_store_request */
     J_FW_FREE,            /* ptr: a stopped instance (fw_inst_t) freed (no result) */
@@ -79,11 +84,23 @@ enum {
                            * off the engine thread (Schwung sets it on its loader thread too); back as the same job */
     J_FS_IO,              /* ptr: a Fantasy CFW's file request (fsvc.c), done on the file thread (no result: fsvc
                            * hands it back to its instance, which the engine reads between two calls) */
+    /* (rfm1cs 0.13.0) the state buffer (one, the storage thread's, with its firmware id) and a project's firmwares */
+    J_STATE_COPY,         /* slot, index, id: that state into the buffer: back with used bits */
+    J_STATE_PASTE,        /* slot, index, id, text (the .json), value 1: also loaded (obj: an instance made, back with
+                           * data and ptr as J_STATE_LOAD's): the buffer stored as that state; back with used bits, ok
+                           * 0 nothing pasted (no buffer, or another firmware's) */
+    J_PFW_OPEN,           /* slot, index (the project), value (a generation), id, path (the .rfm1m) or obj (the same
+                           * firmware's object: only its memory swapped), aux_path (the project's copy), path2
+                           * (flash.bin): back with ptr (the instance; NULL with err), data (the copy when its json
+                           * names id, else flash.bin, else none), ok (2 the copy, 1 flash.bin, 0 a fresh memory) and
+                           * match (the stored state equal to it, -1 none) */
 };
+enum { STA_LOAD = 0, STA_NEW = 1, STA_UNDO = 2 };   /* J_STATE_LOAD's act */
 typedef struct st_job {
     int kind, slot, index, value, act;
     char id[RFM_MOVE_FW_ID_MAX];
-    char path[ST_PATH], aux_path[ST_PATH];
+    char path[ST_PATH], aux_path[ST_PATH], path2[ST_PATH];
+    int match;                        /* J_PFW_OPEN: the stored state equal to the memory, -1 none */
     char *text;
     uint8_t *data;
     uint32_t len;

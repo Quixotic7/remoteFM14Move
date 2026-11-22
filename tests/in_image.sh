@@ -7,7 +7,8 @@
 # Move's audio input for them (ain1: tests/ain_e2e.sh), the page's file browser (tests/files_e2e.sh),
 # latch per slot (tests/latch_e2e.sh), the slots' render threads and core 1 (tests/threads_e2e.sh; FIZZ's and
 # ChoralRoot's cpu2 builds when among the inputs: tests/cpu2fw_e2e.sh), readouts (an rd1 ChoralRoot among
-# them: tests/rd1_e2e.sh), session view (tests/sess_e2e.sh), the takeover (tk1, tests/tkdemo: tests/tk_e2e.sh; ChoralRoot's CHORDS when a tk1 build of it is among them: tests/cr_tk_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh; RemoteFM1's Speech mode: tests/speechmode_e2e.sh) and the firmwares' own words through it (the
+# them: tests/rd1_e2e.sh), session view (tests/sess_e2e.sh), projects that hold their firmwares and the States
+# (tests/projfw_e2e.sh), the takeover (tk1, tests/tkdemo: tests/tk_e2e.sh; ChoralRoot's CHORDS when a tk1 build of it is among them: tests/cr_tk_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh; RemoteFM1's Speech mode: tests/speechmode_e2e.sh) and the firmwares' own words through it (the
 # FM-1 screen reader protocol: tests/fmreader_e2e.sh), Out: network MIDI and USB-A (tests/midiout_e2e.sh).
 cd "$(dirname "$0")/.."
 fail=0
@@ -50,6 +51,7 @@ tests/threads_e2e.sh || fail=1
 tests/cpu2fw_e2e.sh || fail=1
 tests/rd1_e2e.sh || fail=1
 tests/sess_e2e.sh || fail=1
+tests/projfw_e2e.sh || fail=1
 tests/tk_e2e.sh || fail=1
 tests/cr_tk_e2e.sh || fail=1
 tests/speech_e2e.sh || fail=1

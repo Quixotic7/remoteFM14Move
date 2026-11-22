@@ -134,5 +134,8 @@ char *engine_fx_modules(void);
 int engine_test_midi(int track, int b0, int b1, int b2);
 /* tests: whole messages for Out (midiout_send), sent from the engine's next block. 0 queued, -1 no room or no test API */
 int engine_test_midiout(const uint8_t *msgs, int n);
+/* tests: byte off of slot 0..2's firmware memory (its flash image) set to val on the engine's thread, the slot's memory
+ * then taken as changed (its autosave). 0 queued, -1 no test API, a bad slot or no room */
+int engine_test_poke(int slot, uint32_t off, int val);
 
 #endif

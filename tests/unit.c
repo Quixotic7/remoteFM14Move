@@ -3,7 +3,8 @@
 /* Unit tests: the manifest reader (and the catalog index's arrays), SHA-256, the output stage (mix and limiter), the
  * mDNS answers, the FX stage (pan, the send buses, Schwung's freeverb and arp through fx.c: build/fxmods), the page's
  * file browser (files.c: the path rules, what may change, the zip's records and CRC), the screen reader protocol's words
- * (fmwords.c: fm1-reader's tests/words_test.mjs, case for case). */
+ * (fmwords.c: fm1-reader's tests/words_test.mjs, case for case), a project's firmware copies and the states' files
+ * (projmem.c: the names, the json's hash, the compare that finds the active state, a blob's firmware ids). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@
 #include "fsvc.h"
 #include "files.h"
 #include "fmwords.h"
+#include "projmem.h"
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -833,6 +835,10 @@ static void filesapi(void)
     CHECK(NO("move/projects/move-project-03.rfmmove", FILES_DELETE) && NO("move/projects/move-project-03.fx.json", FILES_RENAME) &&
           NO("move/projects/move-project-03.rfmmove", FILES_REPLACE) && !NO("move/projects/move-project-04.rfmmove", FILES_DELETE),
           "files: the open project's files (project 3) stay");
+    CHECK(NO("move/projects/move-project-03.fw1.bin", FILES_DELETE) && NO("move/projects/move-project-03.fw3.json", FILES_REPLACE) &&
+          NO("move/projects/move-project-03.fw2.bin", FILES_RENAME) && !NO("move/projects/move-project-04.fw1.bin", FILES_DELETE) &&
+          !NO("move/projects/move-project-03.fw2.bin", FILES_PUT),
+          "files: the open project's firmware copies (rfm1cs 0.13.0) stay too; another project's change");
     CHECK(NO("states/elasticat/state-00.bin", FILES_DELETE) && NO("states/elasticat/new.bin", FILES_PUT) && NO("states/choralroot", FILES_RENAME) &&
           strstr((files_refuse("states/elasticat/x", FILES_PUT, &u, w, sizeof w), w), "slot 1") &&
           NO("data/elasticat/settings.bin", FILES_DELETE) && NO("data/elasticat", FILES_RENAME) && NO("data/elasticat/x", FILES_REPLACE) &&
@@ -946,6 +952,81 @@ static void fmwords(void)
     }
 }
 
+/* (rfm1cs 0.13.0) projmem.c: a project's copies of its firmwares' memory, the states' files */
+static void wr(const char *p, const void *b, size_t n)
+{
+    FILE *f = fopen(p, "wb");
+    if (f) {
+        fwrite(b, 1, n, f);
+        fclose(f);
+    }
+}
+static void projmem(void)
+{
+    char p[512], hex[65], ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX], id[32], root[] = "/tmp/rfm14-pm-XXXXXX";
+    static uint8_t img[4096], other[4096], blob[200 + RFM_MOVE_PFW_BYTES + 4];
+    char *j;
+    int i, k;
+    pm_copy_path(p, sizeof p, "/r", 0, 0);
+    CHECK(!strcmp(p, "/r/move/projects/move-project-01.fw1.bin"), "projmem: project 1's copy of slot 1: %s", p);
+    pm_copy_path(p, sizeof p, "/r", 31, 2);
+    CHECK(!strcmp(p, "/r/move/projects/move-project-32.fw3.bin"), "projmem: project 32, slot 3: %s", p);
+    pm_clip_path(p, sizeof p, "/r", 1);
+    CHECK(!strcmp(p, "/r/move/projects/.clip.fw2.bin"), "projmem: the buffer's copy is hidden: %s", p);
+    pm_json_path(p, sizeof p, "/r/move/projects/move-project-07.fw2.bin");
+    CHECK(!strcmp(p, "/r/move/projects/move-project-07.fw2.json"), "projmem: its .json: %s", p);
+    for (i = 0; i < (int)sizeof img; i++)
+        img[i] = (uint8_t)(i * 13), other[i] = (uint8_t)(i * 13);
+    other[4000] ^= 1;
+    pm_hash_hex((const uint8_t *)"abc", 3, hex);
+    CHECK(!strcmp(hex, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "projmem: the hash (SHA-256 of abc)");
+    j = pm_json_hash("{\"id\":\"x\",\"saved\":1}\n", (const uint8_t *)"abc", 3);
+    CHECK(j && !strcmp(j, "{\"id\":\"x\",\"saved\":1,\"hash\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"}\n"),
+          "projmem: the json gets its hash before its last }: %s", j ? j : "(null)");
+    free(j);
+    j = pm_json_hash("{}", (const uint8_t *)"abc", 3);
+    CHECK(j && !strncmp(j, "{\"hash\":\"ba78", 12) && j[strlen(j) - 1] == '}', "projmem: an empty object: %s", j ? j : "(null)");
+    free(j);
+    if (mkdtemp(root)) {
+        /* states: 2 another image with no hash (an older json), 5 this image under a wrong hash, 9 this image with no
+         * json, 12 this image with its hash */
+        snprintf(p, sizeof p, "%s/states", root), mkdir(p, 0755);
+        snprintf(p, sizeof p, "%s/states/fw", root), mkdir(p, 0755);
+        snprintf(p, sizeof p, "%s/states/fw/state-02.bin", root), wr(p, other, sizeof other);
+        snprintf(p, sizeof p, "%s/states/fw/state-02.json", root), wr(p, "{\"id\":\"fw\"}\n", 12);
+        CHECK(pm_state_match(root, "fw", img, sizeof img) == -1, "projmem: no stored state holds the image: -1");
+        snprintf(p, sizeof p, "%s/states/fw/state-05.bin", root), wr(p, img, sizeof img);
+        snprintf(p, sizeof p, "%s/states/fw/state-05.json", root);
+        wr(p, "{\"id\":\"fw\",\"hash\":\"00\"}\n", 24);
+        CHECK(pm_state_match(root, "fw", img, sizeof img) == -1, "projmem: a state whose json hash says otherwise is not read");
+        snprintf(p, sizeof p, "%s/states/fw/state-09.bin", root), wr(p, img, sizeof img);
+        CHECK((k = pm_state_match(root, "fw", img, sizeof img)) == 9, "projmem: a state with no json, the same bytes: %d", k);
+        CHECK(pm_state_match(root, "fw", other, sizeof other) == 2, "projmem: an older json (no hash): compared byte for byte");
+        CHECK(pm_state_match(root, "fw", img, sizeof img - 1) == -1 && pm_state_match(root, "fw", NULL, 0) == -1 &&
+              pm_state_match(root, "nofw", img, sizeof img) == -1, "projmem: another size, no image, another firmware: -1");
+        snprintf(p, sizeof p, "%s/states/fw/state-09.bin", root), unlink(p);
+        j = pm_json_hash("{\"id\":\"fw\"}\n", img, sizeof img);
+        snprintf(p, sizeof p, "%s/states/fw/state-12.json", root), wr(p, j, strlen(j));
+        free(j);
+        snprintf(p, sizeof p, "%s/states/fw/state-12.bin", root), wr(p, img, sizeof img);
+        CHECK(pm_state_match(root, "fw", img, sizeof img) == 12, "projmem: a state with the image's hash: found");
+        CHECK(pm_json_id(p, id, sizeof id) == -1, "projmem: no json: no id");
+        snprintf(p, sizeof p, "%s/states/fw/state-12.json", root);
+        CHECK(pm_json_id(p, id, sizeof id) == 0 && !strcmp(id, "fw"), "projmem: a copy's json names its firmware");
+    }
+    /* a blob's firmware ids: the version 9 part right before the 4-byte check */
+    memset(blob, 0, sizeof blob);
+    memcpy(blob, "RMSQ", 4);
+    blob[4] = 9;
+    memcpy(blob + sizeof blob - 4 - RFM_MOVE_PFW_BYTES, "felucca", 7);
+    memcpy(blob + sizeof blob - 4 - RFM_MOVE_PFW_BYTES + 2 * RFM_MOVE_PFW_SLOT_BYTES, "choralroot", 10);
+    CHECK(pm_blob_ids(blob, sizeof blob, ids) == 1 && !strcmp(ids[0], "felucca") && !ids[1][0] && !strcmp(ids[2], "choralroot"),
+          "projmem: a version 9 blob's firmwares: '%s' '%s' '%s'", ids[0], ids[1], ids[2]);
+    blob[4] = 8;
+    CHECK(pm_blob_ids(blob, sizeof blob, ids) == 0 && !ids[0][0], "projmem: a version 8 blob holds no firmwares");
+    CHECK(pm_blob_ids(blob, 10, ids) == 0 && pm_blob_ids(NULL, 0, ids) == 0, "projmem: a short blob, none: no firmwares");
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 5 && !strcmp(argv[1], "--fx-probe"))   /* (fx.c's crash probe runs this program) */
@@ -962,6 +1043,7 @@ int main(int argc, char **argv)
     fsapi();
     filesapi();
     fmwords();
+    projmem();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }

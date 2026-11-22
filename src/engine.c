@@ -35,6 +35,7 @@
 #include "fx.h"
 #include "minijson.h"
 #include "mr_core.h"
+#include "projmem.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
 #include "wasm-rt.h"
@@ -180,10 +181,25 @@ typedef struct {
     uint32_t tk_claims, tk_scr, tk_led, tk_say;
     char tk_name[16];
     uint32_t tk_in, tk_states;           /* TK_INPUT / TK_STATE actions given to it (the status: tests) */
+    /* (rfm1cs 0.13.0, RFM_MOVE_CAP_PROJFW) whose memory this is (projmem.h): every write of it (slot_write) also goes
+     * to that project's copy and to the active state, when they are behind it */
+    int pc_proj;                         /* the project whose copy (move-project-NN.fwK.bin) it is, -1 none */
+    uint32_t pc_seen;                    /* .. flash_dirty when that copy was last written or read */
+    int pc_stale;                        /* .. the copy is behind it whatever flash_dirty says */
+    int st_cur;                          /* the active state (states/<id>/state-KK.bin), -1 none */
+    uint32_t st_seen;
+    int st_stale;
+    uint32_t pfw_gen;                    /* a project's load of this slot (J_PFW_OPEN): a later one wins */
+    uint8_t *undo;                       /* STATE_NEW's undo: the memory before it (NULL none), its state, its id */
+    uint32_t undo_n;
+    int undo_k;
+    char undo_id[RFM_MOVE_FW_ID_MAX];
 } slot_t;
 
 static slot_t SL[NSLOT];
 static int g_active;
+static int g_proj_open = -1;                 /* (rfm1cs 0.13.0) the project the slots' memories belong to */
+static uint32_t g_pfw_shown, g_pfw_ended;    /* .. its loading screen came up, went (the status: tests) */
 static int g_master = -1;                    /* the volume knob's MASTER, -1 not touched yet */
 static uint32_t g_serial;
 static fw_t *g_raw_fw;                       /* the instance the raw capture and the input log follow */
@@ -892,6 +908,8 @@ static void fx_state_take(const char *text)   /* a project's, as it loads: kept 
 }
 
 
+static void slot_write(int s, int sync, int flash);
+
 /* (rfm1cs 0.6.12) the Speech mode (Off / On / Jog, Global Settings): the host's own words only while open; closing
  * cuts off what is playing; Jog's touch beginning: a firmware that speaks for itself asked for its screen (WHERE) */
 static void speech_sync(void)
@@ -976,6 +994,17 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_PROJECT_PASTE:
     case RFM_MOVE_ACT_PROJECT_COLOR: {
         st_job_t *j = st_job_new(J_PROJECT);
+        int s;
+        /* (rfm1cs 0.13.0) the open project's firmware copies brought up to date before it is saved (as they are),
+         * copied or cut (synced: the buffer gets what the firmwares hold now); the storage thread moves them with it */
+        if (a->index == g_proj_open && (a->kind == RFM_MOVE_ACT_PROJECT_SAVE || a->kind == RFM_MOVE_ACT_PROJECT_COPY ||
+                                        a->kind == RFM_MOVE_ACT_PROJECT_CUT))
+            for (s = 0; s < NSLOT; s++)
+                slot_write(s, a->kind != RFM_MOVE_ACT_PROJECT_SAVE, 0);
+        if (a->kind == RFM_MOVE_ACT_PROJECT_DELETE || a->kind == RFM_MOVE_ACT_PROJECT_CUT)
+            for (s = 0; s < NSLOT; s++)   /* (its copies are gone: written again if it is saved again) */
+                if (SL[s].pc_proj == a->index)
+                    SL[s].pc_stale = 1;
         j->act = a->kind, j->index = a->index, j->value = a->value;
         if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE && ev->data && ev->len && (j->data = malloc(ev->len))) {
             memcpy(j->data, ev->data, ev->len);
@@ -1062,6 +1091,11 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_STATE_SAVE:
     case RFM_MOVE_ACT_STATE_LOAD:
     case RFM_MOVE_ACT_STATE_DELETE:
+    case RFM_MOVE_ACT_PROJECT_FW:   /* (rfm1cs 0.13.0) */
+    case RFM_MOVE_ACT_STATE_COPY:
+    case RFM_MOVE_ACT_STATE_PASTE:
+    case RFM_MOVE_ACT_STATE_NEW:
+    case RFM_MOVE_ACT_STATE_UNDO:
         if (g_ndefer < (int)(sizeof g_defer / sizeof g_defer[0])) {
             defer_t *d = &g_defer[g_ndefer++];
             d->a = *a;
@@ -1145,32 +1179,92 @@ static char *state_json(const fw_t *fw)
     return t;
 }
 
-/* the firmware's flash now, to states/<id>/flash.bin (sync: first what it would save lazily) */
-static void slot_save(int s, int sync)
+/* the firmware's memory now (sync: first what it would save lazily): to states/<id>/flash.bin (flash), and (rfm1cs
+ * 0.13.0) to the copy of the project it belongs to and to its active state, each only when behind it (1 MB files are
+ * not written again unchanged). One image, one job, up to three files */
+static void slot_write(int s, int sync, int flash)
 {
-    fw_t *fw = &SL[s].fw;
+    slot_t *sl = &SL[s];
+    fw_t *fw = &sl->fw;
     const uint8_t *img;
-    char p[ST_PATH];
-    if (!SL[s].on || (fw->dead && !fw->halted))
+    uint32_t d;
+    int pc, st, nt = 0;
+    st_job_t *j;
+    char *to[3];
+    if (!sl->on || (fw->dead && !fw->halted))
         return;
     if (sync && !fw->dead)
         fw_in_now(fw, FWI_SYNC, 0, 0, 0);
     if (!(img = fw_flash(fw)))
         return;
-    st_path(p, sizeof p, "states/%s/flash.bin", fw->id);
-    {
-        st_job_t *j = st_job_new(J_WRITE);
-        snprintf(j->path, sizeof j->path, "%s", p);
-        j->data = malloc(fw->flash_size);
-        if (j->data) {
-            memcpy(j->data, img, fw->flash_size);
-            j->len = fw->flash_size;
-        }
-        j->text = state_json(fw);
-        st_post(j);
+    d = fw_flash_dirty(fw);
+    pc = sl->pc_proj >= 0 && (sl->pc_stale || d != sl->pc_seen);
+    st = sl->st_cur >= 0 && (sl->st_stale || d != sl->st_seen);
+    if (!flash && !pc && !st)
+        return;
+    j = st_job_new(J_WRITE);
+    to[0] = j->path, to[1] = j->aux_path, to[2] = j->path2;
+    if (flash)
+        st_path(to[nt++], ST_PATH, "states/%s/flash.bin", fw->id);
+    if (pc)
+        pm_copy_path(to[nt++], ST_PATH, st_root(), sl->pc_proj, s);
+    if (st)
+        st_path(to[nt++], ST_PATH, "states/%s/state-%02d.bin", fw->id, sl->st_cur);
+    if ((j->data = malloc(fw->flash_size))) {
+        memcpy(j->data, img, fw->flash_size);
+        j->len = fw->flash_size;
     }
-    SL[s].dirty = 0;
-    SL[s].dirty_seen = fw_flash_dirty(fw);
+    j->text = state_json(fw);
+    st_post(j);
+    if (flash)
+        sl->dirty = 0, sl->dirty_seen = d;
+    if (pc)
+        sl->pc_seen = d, sl->pc_stale = 0;
+    if (st)
+        sl->st_seen = d, sl->st_stale = 0;
+}
+static void slot_save(int s, int sync) { slot_write(s, sync, 1); }
+
+/* (rfm1cs 0.13.0) after a boot: whose memory the slot holds now (proj, -1 none), its active state (-1 none), and
+ * whether that state's file and the project's copy hold it already; flash.bin follows on the autosave */
+static void mem_new(int s, int proj, int st, int st_clean, int pc_clean)
+{
+    slot_t *sl = &SL[s];
+    const uint32_t d = sl->on ? fw_flash_dirty(&sl->fw) : 0;
+    sl->pc_proj = proj, sl->pc_seen = d, sl->pc_stale = !pc_clean;
+    sl->st_cur = st, sl->st_seen = d, sl->st_stale = !st_clean;
+    sl->dirty = 1, sl->dirty_ms = now_ms();
+}
+static void undo_drop(int s)
+{
+    free(SL[s].undo);
+    SL[s].undo = NULL, SL[s].undo_n = 0;
+}
+/* another project's firmwares are coming (PROJECT_FW), or it loaded: the outgoing project's copies written first,
+ * synced (nothing of its last seconds lost); from now on no slot's memory is any project's until the new one's copy
+ * is in it (pfw_want) or it is taken as the new one's (an older project: proj_adopt) */
+static void proj_switch(int p)
+{
+    int s;
+    if (p == g_proj_open)
+        return;
+    for (s = 0; s < NSLOT; s++) {
+        if (SL[s].on && SL[s].pc_proj >= 0)
+            slot_write(s, 1, 1);
+        SL[s].pc_proj = -1;
+    }
+    fprintf(stderr, "engine: project %d open (the slots' copies were project %d's)\n", p + 1, g_proj_open + 1);
+    g_proj_open = p;
+}
+/* a project of version 1..8 (no firmwares of its own) or an empty one: what the slots hold now is its; its copies
+ * are written at its next save (it becomes version 9 then) */
+static void proj_adopt(int p)
+{
+    int s;
+    g_proj_open = p;
+    for (s = 0; s < NSLOT; s++)
+        if (SL[s].on)
+            SL[s].pc_proj = p, SL[s].pc_stale = 1;
 }
 
 /* the tests' capture per slot (README "Threads": every slot replayed offline): the first instance each slot runs, its
@@ -1290,6 +1384,7 @@ static void slot_unload(int s, int save)
         st_post(j);
     }
     SL[s].on = 0;
+    SL[s].pc_proj = SL[s].st_cur = -1;   /* (rfm1cs 0.13.0: no memory here now; mem_new says whose the next one is) */
     if ((i = catalog_find(SL[s].fw.id)) >= 0 && strcmp(g_fws[i].so, SL[s].so))
         g_sweep = 1;   /* (it ran an older version than the one installed: its files can go now) */
     SL[s].so[0] = 0;
@@ -1614,6 +1709,68 @@ static void load_failed(const char *id)
     view_info();
 }
 
+/* (rfm1cs 0.13.0) PROJECT_FW: project p wants firmware id in slot s ("" empty). The outgoing project's copies first
+ * (proj_switch); then: the same firmware there with this project's memory already: ready; "": unloaded; a firmware not
+ * installed: the slot emptied, the project's copy file left alone (it keeps the firmware's name: installed later, the
+ * copy is there); else the storage thread makes the instance (the same object when the same firmware runs here: only
+ * its memory swapped) and reads the project's copy (none: flash.bin; none: a fresh memory), J_PFW_OPEN */
+static void pfw_want(int s, int p, const char *id)
+{
+    slot_t *sl = &SL[s];
+    int i;
+    st_job_t *j;
+    if (p < 0 || p >= RFM_MOVE_PROJECTS)
+        return;
+    proj_switch(p);
+    sl->pfw_gen++;
+    if (!id[0]) {   /* (nothing to answer for "") */
+        if (sl->on) {
+            undo_drop(s);
+            slot_unload(s, 1);
+            slots_tell();
+            if (s == g_active)
+                active_changed();
+        }
+        return;
+    }
+    if (sl->on && !strcmp(sl->fw.id, id) && sl->pc_proj == p) {   /* (this project's memory already) */
+        rfm_move_proj_fw(&S->core, s, RFM_MOVE_PFW_READY);
+        slots_tell();
+        rfm_move_fw_state_cur(&S->core, s, sl->st_cur);
+        return;
+    }
+    if ((i = catalog_find(id)) < 0) {
+        fprintf(stderr, "engine: project %d: %s is not installed (slot %d left empty)\n", p + 1, id, s + 1);
+        if (sl->on) {
+            undo_drop(s);
+            slot_unload(s, 1);
+            if (s == g_active)
+                active_changed();
+        }
+        rfm_move_proj_fw(&S->core, s, RFM_MOVE_PFW_MISSING);
+        slots_tell();
+        return;
+    }
+    j = st_job_new(J_PFW_OPEN);
+    j->slot = s, j->index = p, j->value = (int)sl->pfw_gen;
+    snprintf(j->id, sizeof j->id, "%s", id);
+    if (sl->on && !strcmp(sl->fw.id, id) && !strcmp(sl->so, g_fws[i].so) && sl->fw.obj) {
+        fw_obj_ref(sl->fw.obj);
+        j->obj = sl->fw.obj;
+    } else
+        snprintf(j->path, sizeof j->path, "%s", g_fws[i].so);
+    pm_copy_path(j->aux_path, sizeof j->aux_path, st_root(), p, s);
+    st_path(j->path2, sizeof j->path2, "states/%s/flash.bin", id);
+    {   /* (another slot running it: its flash.bin first, as FW_LOAD's) */
+        int o;
+        for (o = 0; o < NSLOT; o++)
+            if (o != s && SL[o].on && !strcmp(SL[o].fw.id, id))
+                slot_save(o, 1);
+    }
+    st_post(j);
+    rfm_move_proj_fw(&S->core, s, 10);
+}
+
 static void page_edit(int op, int a, int b);
 static void do_deferred(void)
 {
@@ -1625,6 +1782,7 @@ static void do_deferred(void)
         switch (a->kind) {
         case RFM_MOVE_ACT_FW_LOAD: {
             const int i = catalog_find(id);
+            SL[s].pfw_gen++;   /* (a project's load of this slot under way: this one wins) */
             if (i < 0) {
                 rfm_move_fw_progress(&S->core, id, RFM_MOVE_FW_FAILED);
                 load_failed(id);
@@ -1661,6 +1819,8 @@ static void do_deferred(void)
             break;
         }
         case RFM_MOVE_ACT_FW_UNLOAD:
+            SL[s].pfw_gen++;
+            undo_drop(s);
             slot_unload(s, 1);
             slots_tell();
             ann_say(ANN_EVENT, "Slot %d emptied", s + 1);
@@ -1708,7 +1868,7 @@ static void do_deferred(void)
             if (SL[s].on) {
                 fw_t *fw = &SL[s].fw;
                 const uint8_t *img;
-                fw_in_now(fw, FWI_SYNC, 0, 0, 0);
+                slot_write(s, 1, 0);   /* (synced; the state active so far and the project's copy get it too) */
                 if ((img = fw_flash(fw))) {
                     st_job_t *j = st_job_new(J_STATE_SAVE);
                     j->slot = s, j->index = a->index;
@@ -1719,14 +1879,27 @@ static void do_deferred(void)
                     }
                     j->text = state_json(fw);
                     st_post(j);
+                    if (a->index < RFM_MOVE_FW_STATES) {   /* (the saved one is the active one: it holds the memory) */
+                        SL[s].st_cur = a->index, SL[s].st_seen = fw_flash_dirty(fw), SL[s].st_stale = 0;
+                    }
                 }
             }
             break;
         case RFM_MOVE_ACT_STATE_LOAD:
         case RFM_MOVE_ACT_STATE_DELETE:
+        case RFM_MOVE_ACT_STATE_COPY:
             if (SL[s].on) {
-                st_job_t *j = st_job_new(a->kind == RFM_MOVE_ACT_STATE_LOAD ? J_STATE_LOAD : J_STATE_DELETE);
-                j->slot = s, j->index = a->index;
+                const int k = a->kind == RFM_MOVE_ACT_STATE_LOAD ? J_STATE_LOAD : a->kind == RFM_MOVE_ACT_STATE_DELETE
+                              ? J_STATE_DELETE : J_STATE_COPY;
+                st_job_t *j;
+                /* (rfm1cs 0.13.0) the active state gets the memory first (synced): a load leaves it as it was left,
+                 * a copy or a delete puts what the firmware holds now in the buffer */
+                if (a->kind == RFM_MOVE_ACT_STATE_LOAD || SL[s].st_cur == a->index)
+                    slot_write(s, 1, 0);
+                if (a->kind == RFM_MOVE_ACT_STATE_DELETE && SL[s].st_cur == a->index)
+                    SL[s].st_cur = -1;   /* (the firmware keeps what it holds, no state is active) */
+                j = st_job_new(k);
+                j->slot = s, j->index = a->index, j->act = STA_LOAD;
                 snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
                 if (a->kind == RFM_MOVE_ACT_STATE_LOAD) {   /* (a new instance of the same object, made there) */
                     fw_obj_ref(SL[s].fw.obj);
@@ -1734,6 +1907,61 @@ static void do_deferred(void)
                 }
                 st_post(j);
             }
+            break;
+        case RFM_MOVE_ACT_STATE_PASTE:   /* (rfm1cs 0.13.0) the buffer stored as that state; value 1: loaded too */
+            if (SL[s].on && a->index < RFM_MOVE_FW_STATES) {
+                st_job_t *j = st_job_new(J_STATE_PASTE);
+                j->slot = s, j->index = a->index, j->value = a->value ? 1 : 0;
+                snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                j->text = state_json(&SL[s].fw);
+                if (j->value) {   /* (the active one replaced: no autosave into it until the paste is in) */
+                    if (SL[s].st_cur == a->index)
+                        SL[s].st_cur = -1;
+                    fw_obj_ref(SL[s].fw.obj);
+                    j->obj = SL[s].fw.obj;
+                }
+                st_post(j);
+            }
+            break;
+        case RFM_MOVE_ACT_STATE_NEW:   /* (rfm1cs 0.13.0) the memory kept (the undo), the firmware as first installed */
+            if (SL[s].on) {
+                slot_t *sl = &SL[s];
+                const uint8_t *img;
+                st_job_t *j;
+                slot_write(s, 1, 0);   /* (the active state and the project's copy have it: the undo's state is right) */
+                undo_drop(s);
+                if ((img = fw_flash(&sl->fw)) && (sl->undo = malloc(sl->fw.flash_size))) {
+                    memcpy(sl->undo, img, sl->fw.flash_size);
+                    sl->undo_n = sl->fw.flash_size;
+                    sl->undo_k = sl->st_cur;
+                    memcpy(sl->undo_id, sl->fw.id, sizeof sl->undo_id);   /* (both RFM_MOVE_FW_ID_MAX, NUL-ended) */
+                }
+                sl->st_cur = -1;
+                j = st_job_new(J_STATE_LOAD);
+                j->slot = s, j->index = -1, j->act = STA_NEW;
+                snprintf(j->id, sizeof j->id, "%s", sl->fw.id);
+                fw_obj_ref(sl->fw.obj);
+                j->obj = sl->fw.obj;
+                st_post(j);
+            }
+            break;
+        case RFM_MOVE_ACT_STATE_UNDO:   /* (rfm1cs 0.13.0) the memory New kept, back; its state active again */
+            if (SL[s].on && SL[s].undo && !strcmp(SL[s].undo_id, SL[s].fw.id)) {
+                slot_t *sl = &SL[s];
+                st_job_t *j = st_job_new(J_STATE_LOAD);
+                j->slot = s, j->act = STA_UNDO;
+                j->index = j->value = a->value >= 0 && a->value < RFM_MOVE_FW_STATES ? a->value : -1;
+                snprintf(j->id, sizeof j->id, "%s", sl->fw.id);
+                j->data = sl->undo, j->len = sl->undo_n;
+                sl->undo = NULL, sl->undo_n = 0;
+                fw_obj_ref(sl->fw.obj);
+                j->obj = sl->fw.obj;
+                st_post(j);
+            } else if (SL[s].on)   /* (nothing kept: the firmware stays as it is, and so does its active state) */
+                rfm_move_fw_state_cur(&S->core, s, SL[s].st_cur);
+            break;
+        case RFM_MOVE_ACT_PROJECT_FW:   /* (rfm1cs 0.13.0) project a->index's firmware for this slot */
+            pfw_want(s, a->index, id);
             break;
         default:
             break;
@@ -1749,7 +1977,13 @@ static void do_results(void)
     while (n++ < 16 && (j = st_take())) {
         const int s = j->slot >= 0 && j->slot < NSLOT ? j->slot : 0;
         switch (j->kind) {
-        case J_FW_OPEN:
+        case J_FW_OPEN: {
+            /* (a halted firmware powered on again keeps whose memory it was and its active state; a firmware loaded
+             * by hand belongs to the open project, no state active) */
+            const int again = SL[s].on && SL[s].reboot && !strcmp(SL[s].fw.id, j->id);
+            const int pp = again ? SL[s].pc_proj : g_proj_open, sk = again ? SL[s].st_cur : -1;
+            if (!again)
+                undo_drop(s);
             if (!j->ptr) {
                 fprintf(stderr, "engine: %s: %s\n", j->id, j->err);
                 ann_say(ANN_EVENT, "%s did not load", fw_name(j->id));
@@ -1766,7 +2000,9 @@ static void do_results(void)
                     active_changed();
                 break;
             }
+            mem_new(s, pp, sk, 0, 0);
             slots_tell();
+            rfm_move_fw_state_cur(&S->core, s, sk);
             rfm_move_fw_progress(&S->core, j->id, 100);
             ann_say(ANN_EVENT, "%s loaded, slot %d", fw_name(j->id), s + 1);
             states_scan(s);
@@ -1778,26 +2014,84 @@ static void do_results(void)
                 active_changed();
             view_info();
             break;
+        }
         case J_STATE_SAVE:
         case J_STATE_DELETE:
         case J_STATE_SCAN:
+        case J_STATE_COPY:
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id))
                 rfm_move_fw_states(&S->core, s, j->used);
-            if (j->kind != J_STATE_SCAN)
+            if (j->kind == J_STATE_SAVE || j->kind == J_STATE_DELETE)
                 ann_say(ANN_EVENT, "State %d %s", j->index + 1, j->kind == J_STATE_SAVE ? "saved" : "deleted");
             break;
-        case J_STATE_LOAD:
-            if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->data && j->ptr) {
-                slot_unload(s, 0);   /* (the state replaces what was there: its flash.bin follows on the next save) */
+        case J_STATE_PASTE:
+            if (SL[s].on && !strcmp(SL[s].fw.id, j->id))
+                rfm_move_fw_states(&S->core, s, j->used);
+            if (!j->value) {
+                fw_inst_free(j->ptr);
+                break;
+            }
+            /* (onto the active one: loaded too, as a state load) */
+            /* fall through */
+        case J_STATE_LOAD: {
+            /* a state (STA_LOAD, a paste onto the active one), a fresh memory (STA_NEW) or the one New kept
+             * (STA_UNDO) into the same firmware: a new instance of its object, booted with it */
+            const int fresh = j->kind == J_STATE_LOAD && j->act == STA_NEW;
+            const int k = j->kind == J_STATE_PASTE || j->act == STA_LOAD ? j->index : j->act == STA_UNDO ? j->value : -1;
+            if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->ptr && (j->data || fresh)) {
+                const int pp = SL[s].pc_proj;
+                uint8_t *keep = SL[s].undo;   /* (New's undo survives its own restart) */
+                SL[s].undo = NULL;
+                slot_unload(s, 0);   /* (the memory was written before the job: the state or New replaces it) */
                 if (slot_boot(s, j->ptr, j->data, j->len) == 0) {
-                    ann_say(ANN_EVENT, "State %d loaded", j->index + 1);
-                    SL[s].dirty = 1, SL[s].dirty_ms = now_ms();
+                    mem_new(s, pp, k, 1, 0);
+                    if (fresh) {
+                        SL[s].undo = keep, keep = NULL;
+                        ann_say(ANN_EVENT, "New state");
+                    } else if (j->kind == J_STATE_LOAD && j->act == STA_UNDO)
+                        ann_say(ANN_EVENT, "Undo");
+                    else
+                        ann_say(ANN_EVENT, "State %d loaded", j->index + 1);
                     if (s == g_active)
                         active_changed();
                 }
+                free(keep);
                 slots_tell();
-            } else
+                rfm_move_fw_state_cur(&S->core, s, SL[s].on ? SL[s].st_cur : -1);
+            } else {
                 fw_inst_free(j->ptr);
+                if (SL[s].on && !strcmp(SL[s].fw.id, j->id))   /* (it did not happen: the core hears what is active) */
+                    rfm_move_fw_state_cur(&S->core, s, SL[s].st_cur);
+            }
+            break;
+        }
+        case J_PFW_OPEN:   /* (rfm1cs 0.13.0) a project's firmware with its memory: booted, the core told */
+            if (j->value != (int)SL[s].pfw_gen || j->index != g_proj_open) {   /* (another load since) */
+                fw_inst_free(j->ptr);
+                break;
+            }
+            undo_drop(s);
+            if (!j->ptr || slot_boot(s, j->ptr, j->data, j->len) != 0) {
+                fprintf(stderr, "engine: project %d: slot %d: %s did not load%s%s\n", j->index + 1, s + 1, j->id,
+                        j->err[0] ? ": " : "", j->err);
+                slot_unload(s, 1);
+                rfm_move_proj_fw(&S->core, s, RFM_MOVE_PFW_FAILED);
+                slots_tell();
+                if (s == g_active)
+                    active_changed();
+                break;
+            }
+            mem_new(s, j->index, j->match, 1, j->ok == 2);
+            fprintf(stderr, "engine: project %d: slot %d: %s with %s%s\n", j->index + 1, s + 1, j->id,
+                    j->ok == 2 ? "the project's memory" : j->ok == 1 ? "its last memory (flash.bin)" : "a fresh memory",
+                    j->match >= 0 ? ", the active state's" : "");
+            slots_tell();
+            rfm_move_proj_fw(&S->core, s, RFM_MOVE_PFW_READY);
+            rfm_move_fw_state_cur(&S->core, s, j->match);
+            states_scan(s);
+            if (s == g_active)
+                active_changed();
+            view_info();
             break;
         case R_DL_PROGRESS:
             if (g_dl_busy && !strcmp(j->id, g_dl.id)) {
@@ -1851,11 +2145,19 @@ static void do_results(void)
         case J_FX_STATE:
             fx_opened(j);
             break;
-        case R_PROJECT_LOADED:
+        case R_PROJECT_LOADED: {
+            const int nd = g_ndefer;
+            int k, asked = 0;
             fx_state_take(j->text);   /* (before the core's fx_sync loads its modules) */
+            proj_switch(j->index);    /* (rfm1cs 0.13.0: the outgoing project's firmware copies first) */
             if (rfm1cs_session_project_answer(S, now_ms(), j->index, j->data, j->len) < 0)
                 rfm1cs_session_project_answer(S, now_ms(), j->index, NULL, 0);
+            for (k = nd; k < g_ndefer; k++)
+                asked |= g_defer[k].a.kind == RFM_MOVE_ACT_PROJECT_FW;
+            if (!asked)   /* (a project of version 1..8, or an empty one: the firmwares stay, now this one's) */
+                proj_adopt(j->index);
             break;
+        }
         case R_PROJECT_STORED:
             rfm_move_project_dir(&S->core, j->used);
             rfm_move_project_info(&S->core, j->index, j->data, j->len);
@@ -2231,6 +2533,43 @@ int engine_test_midi(int track, int b0, int b1, int b2)
     }
     pthread_mutex_unlock(&g_vmu);
     return r;
+}
+
+/* tests: bytes of a slot's memory changed from outside (a firmware's own edit, as far as the host can tell) */
+static struct { int slot; uint32_t off; uint8_t val; } g_tpoke[8];
+static int g_ntpoke;
+int engine_test_poke(int slot, uint32_t off, int val)
+{
+    int r = -1;
+    if (!C.test_api || slot < 0 || slot >= NSLOT)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (g_ntpoke < (int)(sizeof g_tpoke / sizeof g_tpoke[0])) {
+        g_tpoke[g_ntpoke].slot = slot, g_tpoke[g_ntpoke].off = off, g_tpoke[g_ntpoke].val = (uint8_t)val;
+        g_ntpoke++;
+        r = 0;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return r;
+}
+static void test_pokes(void)
+{
+    int i, n;
+    struct { int slot; uint32_t off; uint8_t val; } p[8];
+    pthread_mutex_lock(&g_vmu);
+    n = g_ntpoke;
+    memcpy(p, g_tpoke, sizeof p[0] * (size_t)n);
+    g_ntpoke = 0;
+    pthread_mutex_unlock(&g_vmu);
+    for (i = 0; i < n; i++) {
+        slot_t *sl = &SL[p[i].slot];
+        uint8_t *img = sl->on ? (uint8_t *)fw_flash(&sl->fw) : NULL;
+        if (!img || p[i].off >= sl->fw.flash_size)
+            continue;
+        img[p[i].off] = p[i].val;
+        sl->pc_stale = sl->st_stale = 1;   /* (the firmware's own counter did not move: the host's flags do) */
+        sl->dirty = 1, sl->dirty_ms = now_ms();
+    }
 }
 
 int engine_test_midiout(const uint8_t *msgs, int n)
@@ -3211,6 +3550,19 @@ static void housekeeping(uint32_t now)
                           SL[s].on ? SL[s].fw.id : "", s, SL[s].on ? SL[s].fw.version : "", s,
                           SL[s].on ? SL[s].serial : 0, s, S->core.fw.st_used[s], s, SL[s].notes, s, SL[s].level, s, SL[s].pan,
                           s, SL[s].on && SL[s].fw.obj ? SL[s].fw.obj->vt->sha256 : "");   /* (sha: its .rfm1's) */
+        /* (rfm1cs 0.13.0) a project's firmwares, the states: the project the slots' memories are (proj_open) and the
+         * core's open one (proj_cur), its firmwares loading; per slot whose memory it is (pcproj), the active state as
+         * the host autosaves it (stcur) and as the core shows it (cstcur), the open project's wanted firmware (want),
+         * a New's undo kept (undo) */
+        n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"proj_open\":%d,\"proj_cur\":%d,\"pfw_loading\":%d,"
+                      "\"pfw_shown\":%u,\"pfw_ended\":%u,\"projects\":%d,\"states_open\":%d", g_proj_open,
+                      rfm_move_project_slot(&S->core), rfm_move_proj_fw_loading(&S->core), g_pfw_shown, g_pfw_ended,
+                      S->core.seq.projects ? 1 : 0, rfm_move_states_open(&S->core));
+        for (s = 0; s < NSLOT; s++)
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"pcproj%d\":%d,\"stcur%d\":%d,\"cstcur%d\":%d,"
+                          "\"want%d\":\"%s\",\"undo%d\":%d", s, SL[s].on ? SL[s].pc_proj : -1, s,
+                          SL[s].on ? SL[s].st_cur : -1, s, S->core.fw.st_cur[s], s, S->core.pfw_want[s], s,
+                          SL[s].undo != NULL);
         /* the catalog and its downloads */
         mj_escape(g_dl.err, esc[0], sizeof esc[0]);
         mj_escape(g_index_err, esc[1], sizeof esc[1]);
@@ -3358,6 +3710,8 @@ static void *engine_main(void *arg)
                 }
             }
             page_midi();
+            if (C.test_api)
+                test_pokes();
             for (i = 0; i < n; i++) {
                 if (pin[i].op >= ENG_OP_ACTIVE && pin[i].op <= ENG_OP_LAST)
                     page_edit(pin[i].op, pin[i].a, pin[i].b);
@@ -3397,6 +3751,12 @@ static void *engine_main(void *arg)
         }
         rfm1cs_session_tick(S, now);
         do_deferred();
+        {   /* (rfm1cs 0.13.0) a project's loading screen, counted as it comes and goes (the status) */
+            static int was;
+            const int l = rfm_move_proj_fw_loading(&S->core);
+            if (l != was)
+                (l ? g_pfw_shown++ : g_pfw_ended++), was = l;
+        }
         while (mr_ring_count(&g_ring) < lead && g_run)
             render_block(now_ms());
         publish(now);
@@ -3458,7 +3818,7 @@ int engine_start(const engine_cfg_t *cfg)
     uint8_t *settings, *lib, *blob;
     size_t ns = 0, nl = 0;
     uint32_t nb = 0, used;
-    int open_slot = 0, s;
+    int open_slot = 0, s, pfw_start = 0;
     char p[ST_PATH];
     C = *cfg;
     if (st_init(C.root) != 0) {
@@ -3517,6 +3877,9 @@ int engine_start(const engine_cfg_t *cfg)
     if (rfm_move_fw_library(&S->core, lib, (uint32_t)nl) < 0)
         fprintf(stderr, "engine: %s is not a library; starting empty\n", p);
     free(lib);
+    /* (rfm1cs 0.13.0) a project holds its firmwares: before the projects (rfm_move_project_dir: a fresh install's first
+     * project gets the new-project defaults) and before the list */
+    rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW);
     rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
     rfm_move_set_master(&S->core, 768);
@@ -3532,7 +3895,7 @@ int engine_start(const engine_cfg_t *cfg)
         }
     }
     for (s = 0; s < NSLOT; s++)   /* (before the project: its FX setup's MIX and ROUTE come as it loads) */
-        SL[s].filt = 0xFFFF, SL[s].level = 127, SL[s].pan = 64;
+        SL[s].filt = 0xFFFF, SL[s].level = 127, SL[s].pan = 64, SL[s].pc_proj = SL[s].st_cur = -1;
     {   /* the Schwung FX modules the user installed: the core's FX setup lists them (before the project names them) */
         int kind, k;
         g_fx_budget = C.fx_budget > 0 ? C.fx_budget : 200;
@@ -3552,13 +3915,23 @@ int engine_start(const engine_cfg_t *cfg)
         }
     }
     used = st_projects_scan(open_slot, &blob, &nb);
-    rfm1cs_session_projects_init(S, now_ms(), used, open_slot, blob, nb);
+    {
+        const int nd = g_ndefer;
+        int k;
+        rfm1cs_session_projects_init(S, now_ms(), used, open_slot, blob, nb);
+        /* (rfm1cs 0.13.0) a version 9 project asked for its firmwares (PROJECT_FW, deferred): the engine's loop loads
+         * them as for any project (pfw_want: its copies, the loading screen); the library's slots are not restored
+         * then. Older (or none): the library's, as before, and they are the open project's from now on */
+        for (k = nd; k < g_ndefer; k++)
+            pfw_start |= g_defer[k].a.kind == RFM_MOVE_ACT_PROJECT_FW;
+    }
     free(blob);
     if (st_worker_start(used) != 0)
         return -1;
     g_active = rfm_move_fw_active(&S->core);
+    g_proj_open = rfm_move_project_slot(&S->core);
     /* the firmwares the library had on its slots; none: the default on slot 1 */
-    {
+    if (!pfw_start) {
         int any = 0;
         for (s = 0; s < NSLOT; s++)
             if (S->core.fw.slot_id[s][0] && catalog_find(S->core.fw.slot_id[s]) >= 0) {
@@ -3570,7 +3943,9 @@ int engine_start(const engine_cfg_t *cfg)
             g_active = 0;
             slot_load_now(0, id);
         }
-    }
+        proj_adopt(g_proj_open);
+    } else
+        fprintf(stderr, "engine: project %d holds its firmwares: they load from its copies\n", g_proj_open + 1);
     slots_tell();
     for (s = 0; s < NSLOT; s++)
         states_scan(s);

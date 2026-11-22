@@ -19,6 +19,7 @@
 #include "fsvc.h"
 #include "fwrt.h"
 #include "minijson.h"
+#include "projmem.h"
 #include "rfm1cs/store.h"
 
 static char g_root[ST_PATH];
@@ -566,19 +567,99 @@ static void net_progress(void *ctx, int pct)
     post_result(r);
 }
 
+/* (rfm1cs 0.13.0) the state buffer: one state's bytes and its firmware's id (STATE_COPY, STATE_DELETE; STATE_PASTE) */
+static uint8_t *g_sbuf;
+static uint32_t g_sbuf_n;
+static char g_sbuf_id[RFM_MOVE_FW_ID_MAX];
+
+static void unlink_copy(const char *bin)   /* a copy and its .json */
+{
+    char p[ST_PATH + 8];
+    unlink(bin);
+    pm_json_path(p, sizeof p, bin);
+    unlink(p);
+}
+static int copy_file(const char *from, const char *to)   /* (st_copy without its chmod) 0, -1 */
+{
+    size_t n;
+    uint8_t *b = st_read(from, &n);
+    int rc;
+    if (!b)
+        return -1;
+    rc = st_write(to, b, n);
+    free(b);
+    return rc;
+}
+static void copy_pair(const char *from, const char *to)   /* a copy and its .json: from replaces to (none: to gone) */
+{
+    char fj[ST_PATH + 8], tj[ST_PATH + 8];
+    pm_json_path(fj, sizeof fj, from);
+    pm_json_path(tj, sizeof tj, to);
+    if (copy_file(from, to) != 0 || copy_file(fj, tj) != 0)
+        unlink_copy(to);
+}
+/* a project's firmware copies (projmem.h) with the project buffer: a delete drops them, a cut moves them into the
+ * buffer, a copy copies them there, a paste writes the buffer's for the target; a save drops the copy of a slot the
+ * saved blob holds empty (a missing firmware's copy stays: the blob still names it) */
+static void proj_files(const st_job_t *j)
+{
+    char a[ST_PATH], b[ST_PATH], p[ST_PATH];
+    int s;
+    proj_path(p, sizeof p, j->index);
+    for (s = 0; s < PM_SLOTS; s++) {
+        pm_copy_path(a, sizeof a, g_root, j->index, s);
+        pm_clip_path(b, sizeof b, g_root, s);
+        switch (j->act) {
+        case RFM_MOVE_ACT_PROJECT_DELETE:
+            unlink_copy(a);
+            break;
+        case RFM_MOVE_ACT_PROJECT_CUT:
+        case RFM_MOVE_ACT_PROJECT_COPY:
+            if (access(p, F_OK) != 0)
+                return;   /* (no project there: the buffer stays as it was, as the store's) */
+            copy_pair(a, b);
+            if (j->act == RFM_MOVE_ACT_PROJECT_CUT)
+                unlink_copy(a);
+            break;
+        case RFM_MOVE_ACT_PROJECT_PASTE:
+            if (!g_store.clip_len)
+                return;   /* (an empty buffer: the store pastes nothing either) */
+            copy_pair(b, a);
+            break;
+        case RFM_MOVE_ACT_PROJECT_SAVE: {
+            char ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX];
+            if (pm_blob_ids(j->data, j->len, ids) && !ids[s][0])
+                unlink_copy(a);
+            break;
+        }
+        default:
+            return;
+        }
+    }
+}
+
 static void run_job(st_job_t *j)
 {
     switch (j->kind) {
-    case J_WRITE:
-        if (st_write(j->path, j->data, j->len) != 0)
-            fprintf(stderr, "storage: cannot write %s: %s\n", j->path, strerror(errno));
-        if (j->text) {   /* (a .json beside it) */
-            char p[ST_PATH + 8];
-            snprintf(p, sizeof p, "%.*s.json", (int)(strlen(j->path) - 4), j->path);
-            st_write(p, j->text, strlen(j->text));
+    case J_WRITE: {
+        const char *to[3] = { j->path, j->aux_path, j->path2 };
+        char *js = j->text ? pm_json_hash(j->text, j->data, j->len) : NULL;   /* (the image's hash in its .json) */
+        int k;
+        for (k = 0; k < 3; k++) {
+            if (!to[k][0])
+                continue;
+            if (st_write(to[k], j->data, j->len) != 0)
+                fprintf(stderr, "storage: cannot write %s: %s\n", to[k], strerror(errno));
+            else if (js) {   /* (a .json beside it) */
+                char p[ST_PATH + 8];
+                pm_json_path(p, sizeof p, to[k]);
+                st_write(p, js, strlen(js));
+            }
         }
+        free(js);
         st_job_free(j);
         return;
+    }
     case J_FW_OPEN: {
         size_t n = 0;
         fw_obj_t *obj = fw_obj_open(j->path, j->err, sizeof j->err);
@@ -620,8 +701,11 @@ static void run_job(st_job_t *j)
         if (st_write(p, j->data, j->len) != 0)
             snprintf(j->err, sizeof j->err, "cannot write %s", p);
         else if (j->text) {
+            char *js = pm_json_hash(j->text, j->data, j->len);
             st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
-            st_write(p, j->text, strlen(j->text));
+            if (js)
+                st_write(p, js, strlen(js));
+            free(js);
         }
         free(j->data);
         j->data = NULL, j->len = 0;
@@ -631,10 +715,12 @@ static void run_job(st_job_t *j)
     case J_STATE_LOAD: {
         char p[ST_PATH];
         size_t n = 0;
-        st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
-        j->data = st_read(p, &n);
-        j->len = (uint32_t)n;
-        if (!j->data)
+        if (j->act == STA_LOAD) {
+            st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
+            j->data = st_read(p, &n);
+            j->len = (uint32_t)n;
+        }
+        if (!j->data && j->act != STA_NEW)
             snprintf(j->err, sizeof j->err, "no state %d for %s", j->index + 1, j->id);
         else if (j->obj && !(j->ptr = fw_instantiate(j->obj)))
             snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
@@ -643,9 +729,21 @@ static void run_job(st_job_t *j)
         j->obj = NULL;
         break;
     }
-    case J_STATE_DELETE: {
+    case J_STATE_COPY:
+    case J_STATE_DELETE: {   /* (a delete is a cut: the state into the buffer first) */
         char p[ST_PATH];
+        size_t n = 0;
+        uint8_t *b;
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
+        if ((b = st_read(p, &n))) {
+            free(g_sbuf);
+            g_sbuf = b, g_sbuf_n = (uint32_t)n;
+            snprintf(g_sbuf_id, sizeof g_sbuf_id, "%s", j->id);
+        }
+        if (j->kind == J_STATE_COPY) {
+            j->used = st_states_used(j->id);
+            break;
+        }
         unlink(p);
         st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
         unlink(p);
@@ -655,7 +753,64 @@ static void run_job(st_job_t *j)
     case J_STATE_SCAN:
         j->used = st_states_used(j->id);
         break;
+    case J_STATE_PASTE: {
+        char p[ST_PATH];
+        j->ok = 0;
+        if (g_sbuf && !strcmp(g_sbuf_id, j->id)) {
+            st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
+            if (st_write(p, g_sbuf, g_sbuf_n) == 0) {
+                char *js = pm_json_hash(j->text, g_sbuf, g_sbuf_n);
+                j->ok = 1;
+                st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
+                if (js)
+                    st_write(p, js, strlen(js));
+                free(js);
+                if (j->value && j->obj && (j->data = malloc(g_sbuf_n))) {   /* (onto the active one: loaded too) */
+                    memcpy(j->data, g_sbuf, g_sbuf_n);
+                    j->len = g_sbuf_n;
+                    if (!(j->ptr = fw_instantiate(j->obj)))
+                        snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
+                }
+            } else
+                snprintf(j->err, sizeof j->err, "cannot write %s", p);
+        }
+        if (j->obj)
+            fw_obj_close(j->obj);
+        j->obj = NULL;
+        j->used = st_states_used(j->id);
+        break;
+    }
+    case J_PFW_OPEN: {
+        size_t n = 0;
+        char jp[ST_PATH + 8], id[RFM_MOVE_FW_ID_MAX];
+        if (j->obj) {   /* (the same firmware: a new instance of its object) */
+            if (!(j->ptr = fw_instantiate(j->obj)))
+                snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
+            fw_obj_close(j->obj);
+            j->obj = NULL;
+        } else {
+            fw_obj_t *obj = fw_obj_open(j->path, j->err, sizeof j->err);
+            if (obj) {
+                if (!(j->ptr = fw_instantiate(obj)))
+                    snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
+                fw_obj_close(obj);
+            }
+        }
+        j->ok = 0, j->match = -1;
+        if (j->ptr) {
+            pm_json_path(jp, sizeof jp, j->aux_path);   /* the project's copy, when its json names this firmware */
+            if (pm_json_id(jp, id, sizeof id) == 0 && !strcmp(id, j->id) && (j->data = st_read(j->aux_path, &n)))
+                j->ok = 2;
+            else if (j->path2[0] && (j->data = st_read(j->path2, &n)))   /* (else its last memory anywhere) */
+                j->ok = 1;
+            j->len = (uint32_t)n;
+            if (j->data)   /* the stored state it equals (the active one), compared here, off the engine */
+                j->match = pm_state_match(g_root, j->id, j->data, j->len);
+        }
+        break;
+    }
     case J_PROJECT:
+        proj_files(j);   /* (the firmwares' copies travel with the project: before the store's own work) */
         rfm1cs_store_request(&g_store, j->act, j->index, j->value, j->data, j->len);
         st_job_free(j);
         return;

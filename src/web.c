@@ -1048,6 +1048,16 @@ static void request(client_t *c, const char *body)
             else
                 json_reply(c, "202 Accepted", "{\"ok\":true}");
         }
+        else if (!strcmp(path, "/api/test/poke")) {   /* (--test-api) {"slot", "off", "val"}: a byte of its memory */
+            long sl = -1, off = -1, val = -1;
+            if (!body || mj_int(body, "slot", &sl) || mj_int(body, "off", &off) || mj_int(body, "val", &val) || off < 0 ||
+                val < 0 || val > 255)
+                json_reply(c, "400 Bad Request", "{\"ok\":false}");
+            else if (engine_test_poke((int)sl, (uint32_t)off, (int)val) != 0)
+                json_reply(c, "403 Forbidden", "{\"ok\":false}");
+            else
+                json_reply(c, "202 Accepted", "{\"ok\":true}");
+        }
         else if (!strncmp(path, "/api/fs/", 8))
             api_fs_post(c, path + 8, query);
         else if (!strncmp(path, "/api/fm1/wifi/", 14))

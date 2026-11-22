@@ -116,11 +116,11 @@ FW_DEV_OUT := $(patsubst build/in-dev/%.rfm1,build/fw-dev/%.rfm1m,$(wildcard bui
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
-CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c fw.c session.c store.c speech.c takeover.c) \
+CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c projfw.c fw.c session.c store.c speech.c takeover.c) \
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/wav.c src/fsvc.c src/storage.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
             src/fmwords.c src/fmreader.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
@@ -232,10 +232,10 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 
 build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h src/catsig.c \
                   src/ed25519.c src/catsig.h src/ed25519.h src/catalog_key.h build/testkey/catalog_test_key.h src/fsvc.c src/fsvc.h \
-                  src/files.c src/files.h src/fmwords.c src/fmwords.h
+                  src/files.c src/files.h src/fmwords.c src/fmwords.h src/projmem.c src/projmem.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT $(TEST_BUILD) -rdynamic -o $@ tests/unit.c src/minijson.c \
-	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c src/fsvc.c src/files.c src/fmwords.c -lm -lpthread -ldl
+	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c src/fsvc.c src/files.c src/fmwords.c src/projmem.c -lm -lpthread -ldl
 
 # the tests' catalog signing key (never the real one: that is on the owner's Mac only, outside the repo): made once
 # under build/, its public half a header for the test build

@@ -243,8 +243,9 @@ const char *files_refuse(const char *rel, int op, const files_use_t *u, char *wh
             return why;
         }
         if (u && u->open_project >= 0 && op != FILES_PUT && op != FILES_MKDIR) {
-            const char *suf[2] = { "rfmmove", "fx.json" };
-            for (i = 0; i < 2; i++) {
+            /* (the project and, rfm1cs 0.13.0, its own copies of its firmwares' memory: projmem.h) */
+            const char *suf[8] = { "rfmmove", "fx.json", "fw1.bin", "fw1.json", "fw2.bin", "fw2.json", "fw3.bin", "fw3.json" };
+            for (i = 0; i < 8; i++) {
                 snprintf(p, sizeof p, "move/projects/move-project-%02d.%s", u->open_project + 1, suf[i]);
                 if (touches(rel, p, op)) {
                     snprintf(why, cap, "project %d is the open project on the Move: open another one first", u->open_project + 1);
