@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: MPL-2.0
+# The QA launcher (tools/device_qa/dq.py puts it on the Move as /data/UserData/remotefm1-qa/standalone): the installed
+# host, on a COPY of the RemoteFM1 folder (/data/UserData/RemoteFM1-qa) with the test API on, so a test run never
+# writes into the owner's projects, states or settings. Started through Schwung's launch-standalone.sh, as the Tools
+# menu starts the real one; with /dev/shm/mr-test present the output is silent and /dev/shm/mr-cmd takes presses.
+DIR=/data/UserData/schwung/modules/tools/remotefm1
+LOG=/data/UserData/schwung/remotefm1-host.log
+rm -f "$LOG" 2>/dev/null
+if ! : 2>/dev/null >"$LOG"; then LOG=/dev/null; fi
+exec >"$LOG" 2>&1
+echo "launch (QA): uid=$(id -u) dir=$DIR root=/data/UserData/RemoteFM1-qa"
+exec "$DIR/remotefm1-host" --root /data/UserData/RemoteFM1-qa --test-api
