@@ -7,7 +7,7 @@
 # is the selected one on the pad (white) and on the screen (framed); playing, a pressed clip is framed at once and
 # plays within a bar: green; a scene pad launches its row; step 16 stops every clip; a knob touched: its track's
 # popup; the pads lit are the clips the screen draws; a playing session view sends few LED writes; Delete held: a clip
-# cut (an X), the next press pastes; Copy held: a clip copied into an empty slot.
+# deleted into the buffer (an X), Delete never pastes; Copy held: the buffer into an empty slot, a clip copied.
 #   tests/sess_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -106,12 +106,16 @@ for r in 0 1 2 3; do for c in 0 1 2 3 4 5 6; do
     else [ "$v" = 000000 ] || mis="$mis c$((c + 1))r$((r + 1))"; fi
 done; green $(pad 7 $r) || mis="$mis scene$((r + 1))"; done
 [ -z "$mis" ] && clip 0 0 && clip 0 1 && clip 2 1 && ok "the pads lit are the clips the screen draws (3 clips, 7 x 4), the scene pads green" || bad "the screen and the pads differ at:$mis"
-# ---- Delete held: a clip cut (an X in its slot); the press right after a cut pastes
+# ---- Delete held: a clip deleted into the buffer (an X in its slot); (0.12.0) Delete never pastes: Copy held + an
+# empty slot gets the buffer
 cmd "cc 119 127"; sleep 0.2; hit $(note 2 1); sleep 0.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/sess_cut.pbm
 [ "$(px 36 22)" = 1 ] && [ "$(px 37 23)" = 1 ] && ok "Delete held + a clip: cut, an X in its slot" || bad "the cut (build/test-out/sess_cut.pbm)"
 hit $(note 5 3); sleep 0.2; cmd "cc 119 0"; sleep 0.4; shot
-clip 5 3 && ! clip 2 1 && wait_for 3 '[ "$(padrgb $(pad 5 3))" != 000000 ]' && ok "the next press (Delete still held): pasted into column 6 row 4" \
-    || bad "the paste after a cut: pad '$(padrgb $(pad 5 3))'"
+! clip 5 3 && [ "$(padrgb $(pad 5 3))" = 000000 ] && [ "$(px 36 22)" = 1 ] && [ "$(px 37 23)" = 1 ] && ok "the next press (Delete still held) on an empty slot: nothing pasted (the X stays: the buffer's mark)" \
+    || bad "Delete pasted: pad '$(padrgb $(pad 5 3))'"
+cmd "cc 60 127"; sleep 0.2; hit $(note 5 3); sleep 0.2; cmd "cc 60 0"; sleep 0.4; shot
+clip 5 3 && ! clip 2 1 && wait_for 3 '[ "$(padrgb $(pad 5 3))" != 000000 ]' && ok "Copy held + that empty slot: the deleted clip pasted into column 6 row 4, its old slot empty" \
+    || bad "the paste of the deleted clip: pad '$(padrgb $(pad 5 3))'"
 # ---- Copy held: a clip copied, an empty slot gets it; the source stays
 cmd "cc 60 127"; sleep 0.2; hit $(note 0 0); sleep 0.2; hit $(note 4 2); sleep 0.2; cmd "cc 60 0"; sleep 0.4; shot
 cp "$SIM/mr-screen.pbm" build/test-out/sess_copied.pbm

@@ -2,6 +2,21 @@
 
 ## Not released (branch session-view-fix)
 
+- **The owner's answers on the review page** (rfm1cs-abletonmove 0.12.0, local commit bfa3b0b; the board, drawn from
+  the build: docs/design/ux-0.12.movedesign.json, 30 layouts, made by docs/design/make_ux_012.py). Session view: from
+  anywhere (Shift + Menu, a held Track + Menu, Back + Menu) and Back never leaves it; a colour a slot (orange, blue,
+  yellow; the columns take their slot's, solo purple); columns that do not reach the firmware played dimmed and
+  dotted; the stop icon filled; Delete deletes into the buffer and never pastes, Copy held copies / pastes /
+  replaces, the same for scene rows, with an icon while held; Launch quantization (Global settings) and each clip's
+  own Launch and After (project blob version 8); a select step held: the clip's settings on knobs 1, 2 and the level
+  on the volume knob; Shift + arrows page. The arp: Shift + step 11 gated (a click opens, a hold toggles), On / Off
+  across the screen and the pictures dimmed when off, the lanes' wave, a held lane step's pad shortcuts, step 1 + a
+  step the length. Buttons and menus: held controls take over an open menu, only Back closes a menu, Loop and Mute
+  latch on a quick click, every Shift menu names its knobs, a menu owns its knobs over the Mixer / Routing / the FM-1
+  layout, Track 4 held a whole layer, Delete + Play clears the clip (Shift + step 13 gone), octave and held-step
+  transpose popups, Fill shown, "None" for an empty undo, Back's light only with a layer to close, the browser's
+  filter icons, knob popups over a takeover's screen. `tests/sess_e2e.sh` (20 checks: Delete never pastes, Copy held
+  pastes the deleted clip) and help.json (Session View, Arp, Sequencer, Track Buttons, Layout Menu) follow.
 - **The owner's UX rules on the arp, the held Track buttons and session view** (rfm1cs-abletonmove 0.11.0, local
   commit e398818; the rules: its design/UX-RULES.md; the board, drawn from the build as the items were greenlit:
   docs/design/ux-0.11.movedesign.json, made by docs/design/make_ux_011.py from the core's test dumps). The arp menu:

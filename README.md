@@ -233,7 +233,7 @@ make test
   each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
   `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
 - `tests/sess_e2e.sh` (session view, rfm1cs 0.10.0, 0.11.0: a scene pad from stopped, Shift + a scene's double click, a
-  Track tapped stays in the view): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
+  Track tapped stays in the view; 0.12.0: Delete never pastes, Copy held pastes the deleted clip): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
   steps, Menu: the selected clip is white on its pad and framed on the screen; an empty slot pressed is selected and
   not filled, the first note makes the clip; Shift + a slot selects only; a knob touched shows its track's popup;
   playing, a pressed clip is framed at once and plays within a bar (green); a scene pad (column 8) launches its row;
