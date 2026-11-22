@@ -2,6 +2,20 @@
 
 ## Not released (branch session-view-fix)
 
+- **The owner's requests while testing 0.12.0 on the Move** (rfm1cs-abletonmove 0.13.0, local commit f91f2ea; the
+  board, drawn from the build: docs/design/ux-0.13.movedesign.json, 30 layouts, made by docs/design/make_ux_013.py).
+  Shortcuts on a held Back (+ Left / Up home, + Loop the whole clip, + Play to bar 1, + Delete closes everything); a
+  held Track's step selects at the press, a Track tap flashes the selected track, a held Track + the volume knob
+  shows the slot's level in every layout; the FM-1 knob page in the note layouts (TRIG, FM-1, CC banks; the jog's
+  click: Knobs / Knobs + Keys); session view: a deleted clip's X goes when Delete is let go, a double click on the
+  playing clip stops it; the Loop page: the length's popup and the step lights show the last bar's steps, the pads
+  set its length, a step after the loop's end leaves the length alone, a bar held + the jog changes its notes'
+  length, a double click always makes that bar the loop; the Shift menus: the jog selects a parameter, its click
+  edits it; a new project's routing (tracks 1-4 / 5-8 / 9-12 to firmwares 1 / 2 / 3, channels 1-4 a group), also for
+  an empty project made current at start. `tests/sess_e2e.sh` (21 checks: the X), `tests/fx_e2e.sh` (its premise,
+  every firmware hearing every track, set explicitly). `tests/page_e2e.mjs`: 4 catalog checks fail since the
+  published catalog lists ChoralRoot 0.44 (the test and the bundle are written for 0.43 newer than 0.42): not
+  changed here.
 - **A project holds its firmwares; firmware states on the Move** (rfm1cs-abletonmove 0.13.0, local commit 8b28fed,
   `RFM_MOVE_CAP_PROJFW`; the owner's "Project should save firmwares"). Each project keeps its own copy of each slot's
   firmware memory, `move/projects/move-project-NN.fwK.bin` (+ `.json` with the image's hash), written whenever the

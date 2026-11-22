@@ -72,6 +72,9 @@ wait_for 3 '[ "$(field active)" = 1 ] && mix | grep -q "\"active\":1"' && ok "th
 edit 16 0 0 >/dev/null; sleep 0.3
 
 # ---- MIDI FX on the sequencer's MIDI
+# (rfm1cs 0.13.0: a new project routes tracks 1-4 / 5-8 / 9-12 to firmwares 1 / 2 / 3. This test's premise is every
+# firmware hearing every track, the older default: set it)
+edit 19 0 65535 >/dev/null; edit 19 1 65535 >/dev/null; edit 19 2 65535 >/dev/null; settle
 settle; n0=$(field notes0); midi 1 144 60 100; settle; n1=$(field notes0); midi 1 128 60 0
 [ $((n1 - n0)) = 1 ] && ok "no MIDI FX: a sequencer note on track 1 reaches slot 1 once ($n0 -> $n1)" || bad "plain: $n0 -> $n1"
 edit 20 0 0 >/dev/null; edit 19 3 1 >/dev/null   # arp into MIDI FX 1, acting on track 1
