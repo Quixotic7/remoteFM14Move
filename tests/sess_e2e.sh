@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
-# Session view on the simulator (rfm1cs-abletonmove 0.10.0, after the owner's review of 2026-11-21 as an Ableton Live
-# user; 0.9.2 before it), in the build image after make. The host on the simulator with Felucca in slot 1: Track 1
+# Session view on the simulator (rfm1cs-abletonmove 0.11.0: the owner's UX rules; 0.10.0, after the owner's review of
+# 2026-11-21 as an Ableton Live user; 0.9.2 before it), in the build image after make. The host on the simulator with Felucca in slot 1: Track 1
 # held + pad 3 (the Scale layout: the sequencer), two steps, Menu: session view. The pads' columns 1..7 are tracks,
 # the 8th the scenes. An empty slot pressed is selected and not filled (the first note makes the clip); a clip pressed
 # is the selected one on the pad (white) and on the screen (framed); playing, a pressed clip is framed at once and
@@ -117,6 +117,18 @@ cmd "cc 60 127"; sleep 0.2; hit $(note 0 0); sleep 0.2; hit $(note 4 2); sleep 0
 cp "$SIM/mr-screen.pbm" build/test-out/sess_copied.pbm
 clip 4 2 && clip 0 0 && wait_for 3 '[ "$(padrgb $(pad 4 2))" != 000000 ]' && ok "Copy held + a clip, then an empty slot: copied there, the source stays" \
     || bad "the copy: pad '$(padrgb $(pad 4 2))' (build/test-out/sess_copied.pbm)"
+# ---- (0.11.0, the owner's) stopped: a scene pad plays the scene; Shift + the pad, a double click: its clips stop at once
+hit $(note 7 0)
+wait_for 3 '[ "$(field seq_playing)" = 1 ]' && wait_for 5 'plays $(pad 0 0)' && ok "stopped: the scene pad of row 1 plays the scene (track 1's clip $(padrgb $(pad 0 0)))" \
+    || bad "the scene pad from stopped: seq_playing '$(field seq_playing)', pad '$(padrgb $(pad 0 0))'"
+N=$(note 7 0); cmd "cc 49 127"; sleep 0.2; cmd "note $N 100" "note $N 0" "note $N 100" "note $N 0"; sleep 0.2; cmd "cc 49 0"
+wait_for 2 '! plays $(pad 0 0)' && [ "$(field seq_playing)" = 1 ] && ok "Shift + the scene pad, a double click: its clips stopped at once, the sequencer plays on" \
+    || bad "Shift + scene: pad '$(padrgb $(pad 0 0))', seq_playing '$(field seq_playing)'"
+# ---- session view is its own layer: a Track tapped: the view stays (its summary a second, then the grid)
+press 43; sleep 1.6; shot
+[ "$(field move_mode)" = 3 ] && clip 0 0 && clip 4 2 && ok "Track 1 tapped in session view: the view stays" || bad "Track 1 tapped: mode '$(field move_mode)'"
+press 85
+wait_for 3 '[ "$(field seq_playing)" = 0 ]' || bad "Play (stop): seq_playing '$(field seq_playing)'"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 printf 'quit\n' > "$SIM/mr-cmd"; wait $HOST
 mv "$T" "$T.done" 2>/dev/null

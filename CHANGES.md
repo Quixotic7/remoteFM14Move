@@ -2,6 +2,16 @@
 
 ## Not released (branch session-view-fix)
 
+- **The owner's UX rules on the arp, the held Track buttons and session view** (rfm1cs-abletonmove 0.11.0, local
+  commit e398818; the rules: its design/UX-RULES.md; the board, drawn from the build as the items were greenlit:
+  docs/design/ux-0.11.movedesign.json, made by docs/design/make_ux_011.py from the core's test dumps). The arp menu:
+  a header names the touched knob and its value, the jog's click turns the arp off and on, the lanes' steps are the
+  step keys (the MOD lane drawn as signs), Menu flips the view under the menu and Back closes it. A held Track 1..3:
+  click / hold / double click gated (a hold acts while held), not routed is dark, the selected track blinks, a solo
+  stays, the slot at a glance on the screen. Session view: its own layer (a Track tap stays in it, the knobs lit by
+  the routing; a held Track: the pads route a column), a scene pad starts playback, the handover flashes (stop icon /
+  play icon), a double click is now, Shift + a scene stops it, the stop steps' icons lit. `tests/sess_e2e.sh` (19
+  checks) and help.json (Session View, Layout Menu, a new Arp page) follow.
 - **Session view, after the owner's review** (rfm1cs-abletonmove 0.10.0, local commit bd49975; the board
   docs/design/session-view-v2.movedesign.json, made before the code by docs/design/mock_session_v2.c and
   make_session_v2.py): the pads' 8th column launches scenes (7 tracks in view); Live's colours (green: playing; the

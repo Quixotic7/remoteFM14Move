@@ -232,7 +232,8 @@ make test
 - `tests/cpu2fw_e2e.sh` (when FIZZ's and ChoralRoot's cpu2 builds are among the inputs): the host with both, chords on
   each; core 1 ran jobs for both; each slot's blocks equal the firmware replayed offline with core 1 off, bit for bit.
   `tools/fwrun` prints where a block's time went (audio, tick + idle, frame) and core 1's jobs.
-- `tests/sess_e2e.sh` (session view, rfm1cs 0.10.0): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
+- `tests/sess_e2e.sh` (session view, rfm1cs 0.10.0, 0.11.0: a scene pad from stopped, Shift + a scene's double click, a
+  Track tapped stays in the view): Felucca on the simulator, Track 1 held + pad 3 (Scale), two
   steps, Menu: the selected clip is white on its pad and framed on the screen; an empty slot pressed is selected and
   not filled, the first note makes the clip; Shift + a slot selects only; a knob touched shows its track's popup;
   playing, a pressed clip is framed at once and plays within a bar (green); a scene pad (column 8) launches its row;
