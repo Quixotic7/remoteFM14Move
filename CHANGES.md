@@ -2,6 +2,21 @@
 
 ## Not released
 
+- **rfm1cs-abletonmove 0.14.0** (local d013197; the owner's notes of 2026-11-23 on the Move's controls and the
+  Projects page; the core's CHANGES has each one). In the track view each track keeps its knob page; on the FM-1 knob
+  page the jog's click is the takeover (Knobs + Keys) and there the jog turns the FM-1 layout's target (SELECT, PRESET,
+  ALGO: Shift + click the next; in Knobs, Shift + click puts the jog on a knob or back on its pages), Play the
+  firmware's only while taken over; Delete and Copy held are the sequencer's there too, so Delete + Play clears the clip
+  to one bar and nothing reaches the firmware; Shift + Track 1-3 opens that firmware's track settings; the Shift menus
+  mark the selected row in place; a Shift + knob turn with no readout shows the turn; the active state and the open
+  project are white, breathing; the Projects page: a pad's press is its info, its click opens, the open one's click
+  saves ("Saved"), Undo brings back a deleted project, a delete is a short red flash then an empty slot; **the arp has
+  no CHANCE** (always 100 %, knob 4 dark; a stored 0 no longer silences it). The host's part: `PROJECT_SAVE` with
+  `value` 1 (the open project's pad clicked) writes the firmwares' copies as they are at that moment, synced, with
+  their working memory, as the page's Save does (the autosave still writes a copy only when it is behind);
+  `tests/store_e2e.sh` clicks the pad on the simulator. Undo of a delete is the core's `PROJECT_PASTE` of the cut
+  project (nothing new here); the arp's notes reach a firmware through the track's routing as a clip's (nothing new).
+  help.json: the Sequencer, States and Projects pages.
 - **The page's States and projects** (the owner's "the local webpage still has no way of saving or changing states on
   a firmware, and there is no way to save or load a project"; README "The page's States and projects"). The header's
   States and Projects caps (the phone's slot menu; "States of slot n" in a slot's load menu) open one panel: a slot's

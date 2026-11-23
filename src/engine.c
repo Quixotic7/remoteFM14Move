@@ -1021,9 +1021,15 @@ static void on_action(const rfm1cs_event_t *ev)
         /* (rfm1cs 0.13.0) the open project's firmware copies brought up to date before it is saved (as they are),
          * copied or cut (synced: the buffer gets what the firmwares hold now); the storage thread moves them with it */
         if (a->index == g_proj_open && (a->kind == RFM_MOVE_ACT_PROJECT_SAVE || a->kind == RFM_MOVE_ACT_PROJECT_COPY ||
-                                        a->kind == RFM_MOVE_ACT_PROJECT_CUT))
+                                        a->kind == RFM_MOVE_ACT_PROJECT_CUT)) {
+            /* (rfm1cs 0.14.0) PROJECT_SAVE with value 1: the player's own save (the open project's pad clicked,
+             * "Saved"): the firmwares as they are at this moment, synced, working memory and all, as the page's Save */
+            const int now = a->kind != RFM_MOVE_ACT_PROJECT_SAVE || a->value == 1;
             for (s = 0; s < NSLOT; s++)
-                slot_write(s, a->kind != RFM_MOVE_ACT_PROJECT_SAVE, 0, a->kind != RFM_MOVE_ACT_PROJECT_SAVE, NULL);
+                slot_write(s, now, 0, now, NULL);
+            if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE && a->value == 1)
+                fprintf(stderr, "engine: project %d saved by its pad: the firmwares as they are now\n", a->index + 1);
+        }
         if (a->kind == RFM_MOVE_ACT_PROJECT_DELETE || a->kind == RFM_MOVE_ACT_PROJECT_CUT)
             for (s = 0; s < NSLOT; s++)   /* (its copies are gone: written again if it is saved again) */
                 if (SL[s].pc_proj == a->index)

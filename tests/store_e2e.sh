@@ -158,6 +158,20 @@ store '{"op":"project-delete","k":5}'
 [ "$code" = 200 ] && [ ! -e "$P/move-project-06.rfmmove" ] && [ ! -e "$P/move-project-06.fw1.bin" ] && [ ! -e "$P/move-project-06.fw1.mem" ] \
     && [ $(( $(sfield used) >> 5 & 1 )) = 0 ] && ok "project 6 deleted from the page: the project and its copies gone, the core's grid with it" \
     || bad "delete project 6: $code $(cat "$T/out")"
+# ---- the Move's own "Saved" (rfm1cs 0.14.0, the owner's "Clicking the open project again should show Saved and save
+# it"): the projects' page (Track 4 held + step 1), the open project's pad clicked: its firmware copies written with
+# the sound as it is at the click (PROJECT_SAVE with value 1), nothing reloaded
+cp "$P/$f1.fw1.mem" "$T/before.mem"; boot0=$(field boot0)
+turn 1; v8=$(vo)
+pn=$((68 + (3 - open0 / 8) * 8 + open0 % 8))
+cmd "cc 40 127"; cmd "note 16 127"; cmd "note 16 0"; cmd "cc 40 0"; sleep 0.3
+cmd "note $pn 100"; cmd "note $pn 0"
+wait_for 5 'grep -q "project $((open0 + 1)) saved by its pad" "$T/host.log"' && sleep 0.5
+grep -q "project $((open0 + 1)) saved by its pad" "$T/host.log" && ! cmp -s "$P/$f1.fw1.mem" "$T/before.mem" \
+    && [ "$(field proj_cur)" = "$open0" ] && [ "$(field boot0)" = "$boot0" ] \
+    && ok "the open project's pad clicked on the Move: saved with the sound as it is now (voicing $v8), nothing reloaded" \
+    || bad "the Move's Saved click: voicing '$v8', proj_cur $(field proj_cur), boot $boot0 -> $(field boot0), $(grep -c 'saved by its pad' "$T/host.log") log lines"
+cmd "cc 51 127"; cmd "cc 51 0"
 late=$(field late)
 [ "$late" = "$late0" ] && ok "no late block while states and projects went in and out ($late)" || bad "late blocks: $late0 -> $late"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
