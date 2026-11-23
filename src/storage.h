@@ -69,7 +69,7 @@ enum {
                            * and ptr (an instance); act STA_NEW: no file (a fresh memory, data none), STA_UNDO: data and
                            * snap given (kept) */
     J_STATE_DELETE,       /* slot, index, id: back with used bits ((rfm1cs 0.13.0) the state moved into the state
-                           * buffer first) */
+                           * buffer first; value 1, the page's delete: not, the Move's buffer stays as it was) */
     J_STATE_SCAN,         /* slot, id: back with used bits */
     J_PROJECT,            /* kind (the act), index, value, data/len: rfm1cs_store_request */
     J_FW_FREE,            /* ptr: a stopped instance (fw_inst_t) freed (no result) */
@@ -102,6 +102,17 @@ enum {
                            * names id, else flash.bin, else none), snap (the copy's working memory, as a state's), ok (2
                            * the copy, 1 flash.bin, 0 a fresh memory) and match (the stored state equal to it, its
                            * working memory too, -1 none) */
+    /* the page's States and projects (engine.c store_run, web.c /api/store): req set, the engine answers the page's
+     * request when the job is back */
+    J_SYNC,               /* nothing: back as it came (every job posted before it is done) */
+    J_STATE_IMPORT,       /* slot, index, id, path (a folder: s.bin, s.json, s.mem: a state file the page sent), total
+                           * (the firmware's flash size), value 1: also loaded (obj, as J_STATE_PASTE's): that state
+                           * replaced (the old one's files gone first, then the .mem and .json put in, the .bin last:
+                           * renames, one file system); back as J_STATE_PASTE's (err on a failure) */
+    J_PROJECT_DUP,        /* index (a stored project), value (an empty slot): its FX state and firmware copies copied
+                           * there, then its blob through the store (R_PROJECT_STORED); back with err on a failure */
+    J_PROJECT_IMPORT,     /* index, path (a folder: p.rfmmove, p.fx.json, p.fwK.bin / .json / .mem): the project
+                           * there replaced (the old one gone first, the blob last, through the store); back with err */
 };
 enum { STA_LOAD = 0, STA_NEW = 1, STA_UNDO = 2 };   /* J_STATE_LOAD's act */
 typedef struct st_job {
@@ -121,6 +132,7 @@ typedef struct st_job {
     uint64_t total;
     int ok;
     char err[300];
+    int req;                          /* a page's request (engine_store) this job answers, 0 none */
     struct st_job *next;
 } st_job_t;
 

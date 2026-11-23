@@ -732,6 +732,142 @@ static void proj_files(const st_job_t *j)
     }
 }
 
+/* ---- the page's States and projects (J_STATE_IMPORT, J_PROJECT_DUP, J_PROJECT_IMPORT): a file the page sent waits in
+ * a hidden folder of the root (web.c), so each of its files goes into place by a rename */
+/* dir/name moved to to: 1 moved, 0 none there, -1 a failure */
+static int move_in(const char *dir, const char *name, const char *to)
+{
+    char from[ST_PATH + 64];
+    snprintf(from, sizeof from, "%s/%s", dir, name);
+    if (access(from, F_OK) != 0)
+        return 0;
+    if (rename(from, to) != 0) {
+        fprintf(stderr, "storage: cannot put %s in place as %s: %s\n", from, to, strerror(errno));
+        return -1;
+    }
+    return 1;
+}
+/* a stored project's blob (malloc'd, its length in *n), NULL none or not readable */
+static uint8_t *proj_blob(int slot, uint32_t *n)
+{
+    uint8_t *b = malloc(RFM_MOVE_PROJECT_MAX);
+    const int len = b ? io_read(NULL, slot, b, RFM_MOVE_PROJECT_MAX) : -1;
+    if (len <= 0) {
+        free(b);
+        return NULL;
+    }
+    *n = (uint32_t)len;
+    return b;
+}
+static void state_import(st_job_t *j)
+{
+    char p[ST_PATH], dir[ST_PATH], to[ST_PATH + 8], from[ST_PATH + 16];
+    size_t n = 0;
+    uint8_t *img;
+    snprintf(from, sizeof from, "%s/s.bin", j->path);
+    img = st_read(from, &n);
+    j->ok = 0;
+    if (!img)
+        snprintf(j->err, sizeof j->err, "the file holds no flash image");
+    else if (j->total && n != j->total)
+        snprintf(j->err, sizeof j->err, "its flash image is %zu bytes, the firmware's flash %llu", n,
+                 (unsigned long long)j->total);
+    else {
+        st_path(dir, sizeof dir, "states/%s", j->id);
+        st_mkdirs(dir);
+        st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
+        unlink_copy(p);   /* (the state there gone first: a stop half way leaves none, never a mix of two) */
+        ms_path(to, sizeof to, p);
+        move_in(j->path, "s.mem", to);
+        pm_json_path(to, sizeof to, p);
+        move_in(j->path, "s.json", to);
+        if (move_in(j->path, "s.bin", p) != 1) {   /* (the image last: the state is there from now on) */
+            unlink_copy(p);
+            snprintf(j->err, sizeof j->err, "cannot write state %d", j->index + 1);
+        } else {
+            j->ok = 1;
+            if (j->value && j->obj) {   /* (loaded too, as a paste onto the active one) */
+                j->data = img, j->len = (uint32_t)n, img = NULL;
+                j->snap = mem_read(p, ((fw_obj_t *)j->obj)->vt->sha256, j->data, j->len, j->memwhy, sizeof j->memwhy);
+                if (!(j->ptr = fw_instantiate(j->obj)))
+                    snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
+            }
+        }
+    }
+    free(img);
+    if (j->obj)
+        fw_obj_close(j->obj);
+    j->obj = NULL;
+    j->used = st_states_used(j->id);
+}
+static void project_dup(st_job_t *j)
+{
+    char a[ST_PATH], b[ST_PATH];
+    uint32_t n = 0;
+    uint8_t *blob = proj_blob(j->index, &n);
+    int s;
+    if (!blob || rfm_move_project_check(blob, n) != 0) {
+        snprintf(j->err, sizeof j->err, "project %d could not be read", j->index + 1);
+        free(blob);
+        return;
+    }
+    st_fx_state_path(a, sizeof a, j->index);
+    st_fx_state_path(b, sizeof b, j->value);
+    if (copy_file(a, b) != 0)
+        unlink(b);
+    for (s = 0; s < PM_SLOTS; s++) {   /* (its firmwares' copies with it: a copy restores the same sound) */
+        pm_copy_path(a, sizeof a, g_root, j->index, s);
+        pm_copy_path(b, sizeof b, g_root, j->value, s);
+        copy_pair(a, b);
+    }
+    if (rfm1cs_store_request(&g_store, RFM_MOVE_ACT_PROJECT_SAVE, j->value, 0, blob, n) < 0)
+        snprintf(j->err, sizeof j->err, "project %d could not be written", j->value + 1);
+    free(blob);
+}
+static void project_import(st_job_t *j)
+{
+    char f[ST_PATH + 16], to[ST_PATH + 8], p[ST_PATH];
+    size_t n = 0;
+    uint8_t *raw;
+    rfm1cs_file_entry_t e[RFM1CS_SLOTS];
+    rfm1cs_file_error_t fe;
+    int kind = 0, s, k;
+    snprintf(f, sizeof f, "%s/p.rfmmove", j->path);
+    raw = st_read(f, &n);
+    memset(&fe, 0, sizeof fe);
+    if (!raw || (k = rfm1cs_file_unpack(raw, (uint32_t)n, &kind, e, &fe)) < 1 || kind != RFM1CS_FILE_ONE) {
+        char why[200] = "";
+        if (raw && fe.code)
+            rfm1cs_file_error_text(&fe, NULL, why, sizeof why);
+        snprintf(j->err, sizeof j->err, "not a project this Move reads%s%s", why[0] ? ": " : "", why);
+        free(raw);
+        return;
+    }
+    proj_path(p, sizeof p, j->index);
+    if (access(p, F_OK) == 0)   /* (the project there gone first, its blob before its copies) */
+        rfm1cs_store_request(&g_store, RFM_MOVE_ACT_PROJECT_DELETE, j->index, 0, NULL, 0);
+    for (s = 0; s < PM_SLOTS; s++) {
+        char nm[32];
+        pm_copy_path(p, sizeof p, g_root, j->index, s);
+        unlink_copy(p);
+        snprintf(nm, sizeof nm, "p.fw%d.mem", s + 1);
+        ms_path(to, sizeof to, p);
+        move_in(j->path, nm, to);
+        snprintf(nm, sizeof nm, "p.fw%d.json", s + 1);
+        pm_json_path(to, sizeof to, p);
+        move_in(j->path, nm, to);
+        snprintf(nm, sizeof nm, "p.fw%d.bin", s + 1);
+        if (move_in(j->path, nm, p) < 0)
+            unlink_copy(p);
+    }
+    st_fx_state_path(p, sizeof p, j->index);
+    unlink(p);
+    move_in(j->path, "p.fx.json", p);
+    if (rfm1cs_store_request(&g_store, RFM_MOVE_ACT_PROJECT_SAVE, j->index, 0, e[0].bytes, e[0].len) < 0)
+        snprintf(j->err, sizeof j->err, "project %d could not be written", j->index + 1);
+    free(raw);
+}
+
 static void run_job(st_job_t *j)
 {
     switch (j->kind) {
@@ -842,7 +978,7 @@ static void run_job(st_job_t *j)
         size_t n = 0;
         uint8_t *b;
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
-        if ((b = st_read(p, &n))) {
+        if (!(j->kind == J_STATE_DELETE && j->value) && (b = st_read(p, &n))) {   /* (the page's: not into it) */
             char mp[ST_PATH + 8];
             free(g_sbuf);
             free(g_sbuf_mem);
@@ -926,6 +1062,17 @@ static void run_job(st_job_t *j)
         }
         break;
     }
+    case J_SYNC:
+        break;
+    case J_STATE_IMPORT:
+        state_import(j);
+        break;
+    case J_PROJECT_DUP:
+        project_dup(j);
+        break;
+    case J_PROJECT_IMPORT:
+        project_import(j);
+        break;
     case J_PROJECT:
         proj_files(j);   /* (the firmwares' copies travel with the project: before the store's own work) */
         rfm1cs_store_request(&g_store, j->act, j->index, j->value, j->data, j->len);

@@ -10,6 +10,8 @@
 //     "Load into slot n", then "Mix & FX" and "Load into slot n" (the firmware list, with Unload).
 //   - the load menus' rows carry each firmware's thumbnail; their "Browse all" opens the firmware browser for that slot
 //     (js/movebrowse.js: the Move's whole catalog as tiles, downloads, the filters)
+//   - the Move's States and projects (js/movestore.js): the header's States and Projects caps (desktop), "States of
+//     slot n" in a slot's load menu, States and Projects in the phone's slot menu
 //   - keys: ⌥1 ⌥2 ⌥3 play a slot (an empty one: its load menu), ⌥M the Mix & FX view, Esc back to the faceplate
 //     (when nothing is latched: the panel's Esc lets latches go first).
 // The faceplate follows the playing slot by itself (movehost.js "moved": main.js followMove).
@@ -20,6 +22,7 @@ import { LAYOUTS } from "./panel.js";
 import { mountMoveFiles } from "./movefiles.js";
 import { mountMoveWifi } from "./movewifi.js";
 import { mountMoveBrowse } from "./movebrowse.js";
+import { mountMoveStore, STORE_IC } from "./movestore.js";
 
 const PHONE = "(max-width: 640px)";
 
@@ -140,6 +143,8 @@ class SlotsUi {
       h("div", { class: "mv-pop-foot" },
         h("button", { class: "mv-pill", disabled: !this.store.slot(slot).on, "data-unload": slot, onclick: () => { closePop(); this.store.unload(slot); } }, `Unload slot ${slot + 1}`),
         h("button", { class: "mv-pill mv-browse-btn", "data-browse": slot, title: "Every firmware of the Move's catalog: thumbnails, filters, downloads", onclick: () => { closePop(); this.browse.open(slot); } }, "Browse all")),
+      this.store.slot(slot).on ? h("div", { class: "mv-pop-foot" },
+        h("button", { class: "mv-pill", "data-states": slot, title: `The 32 States of ${this.store.slot(slot).name}`, onclick: () => { closePop(); this.storeView.open("states", slot); } }, svg(STORE_IC.states, 13), `States of slot ${slot + 1}`)) : null,
     ], { width: 280, cls: "mv-loadmenu", onClose: () => { this.pop = null; } });
   }
 
@@ -187,7 +192,10 @@ class SlotsUi {
     });
     m.replaceChildren(...rows, h("div", { class: "mv-ip-foot" },
       h("button", { class: "mv-pill", id: "mv-ip-mix", onclick: () => { this.closeMenus(); this.view.open(); } }, svg(IC.mix, 14), "Mix & FX"),
-      h("button", { class: "mv-pill", onclick: () => { this.menuSub = act; this.fillMenu(); } }, `Load into slot ${act + 1}`)));
+      h("button", { class: "mv-pill", onclick: () => { this.menuSub = act; this.fillMenu(); } }, `Load into slot ${act + 1}`)),
+      h("div", { class: "mv-ip-foot" },
+        h("button", { class: "mv-pill", id: "mv-ip-states", onclick: () => { this.closeMenus(); this.storeView.open("states", act); } }, svg(STORE_IC.states, 14), "States"),
+        h("button", { class: "mv-pill", id: "mv-ip-projects", onclick: () => { this.closeMenus(); this.storeView.open("projects"); } }, svg(STORE_IC.projects, 14), "Projects")));
   }
   closeMenus() {
     let any = closePop();
@@ -213,6 +221,7 @@ class SlotsUi {
       }
       if (e.code === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (this.browse.isOpen) { e.preventDefault(); e.stopImmediatePropagation(); this.browse.close(); return; }
+        if (this.storeView && this.storeView.isOpen) { e.preventDefault(); e.stopImmediatePropagation(); this.storeView.escape(); return; }
         if (popOpen() || this.menuEl) { e.preventDefault(); e.stopImmediatePropagation(); this.closeMenus(); return; }
         if (this.view.isOpen && !(this.o.controls && this.o.controls.anyLatched())) { e.preventDefault(); e.stopImmediatePropagation(); this.view.close(); }
       }
@@ -235,6 +244,13 @@ export function mountMoveUi(o) {
   ui.filesBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn", id: "mv-filesbtn", title: "Files on the Move", onclick: () => ui.files.toggle() },
     svg('<path d="M2 3.5h4.5l1.3 1.5H14v8H2z"/>', 15), h("span", {}, "Files"));
   ui.mixBtn.before(ui.filesBtn);
+  // the Move's States and projects (js/movestore.js): two caps in the header, before Files (the phone: its slot menu)
+  ui.storeView = mountMoveStore({ store: ui.store, toast: (t, k) => ui.store.toast(t, k) }).view;
+  ui.statesBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-statesbtn", id: "mv-statesbtn", title: "The playing firmware's 32 States on the Move",
+    onclick: () => ui.storeView.toggle("states") }, svg(STORE_IC.states, 15), h("span", {}, "States"));
+  ui.projectsBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-projectsbtn", id: "mv-projectsbtn", title: "The sequencer's 32 projects on the Move",
+    onclick: () => ui.storeView.toggle("projects") }, svg(STORE_IC.projects, 15), h("span", {}, "Projects"));
+  ui.filesBtn.before(ui.statesBtn, ui.projectsBtn);
   // the FM-1's Wi-Fi set up over the Move's USB-A (js/movewifi.js): the settings sheet's FM-1 Wi-Fi section, ?wifi
   ui.wifi = mountMoveWifi(o).view;
   return ui;

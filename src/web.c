@@ -27,6 +27,8 @@
 #include "fsvc.h"
 #include "minijson.h"
 #include "mr_ws.h"
+#include "memsnap.h"
+#include "projmem.h"
 #include "storage.h"
 #ifdef RFM14_PLAT_SIM
 #include "fm1sim.h"
@@ -66,6 +68,14 @@ typedef struct {
     int dl_fd;               /* (-1 / 0 none) */
     uint64_t dl_left;
     files_zip_t *zip;
+    /* the page's States and projects (/api/store): a state or project file on its way (up_store: its request, filled
+     * in as the upload starts), a request the engine is doing (sreq, answered when done; sdir: the file's folder,
+     * removed then) */
+    int up_store;
+    eng_store_t up_sr;
+    int sreq;
+    uint64_t sreq_ms;
+    char sdir[ST_PATH + 64];
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -514,6 +524,8 @@ static void api_audio_delete(client_t *c, const char *urlname)
 }
 
 static int fs_put_start(client_t *c, const char *query, long want);
+static int store_put_start(client_t *c, const char *query, long want);
+static void store_put_done(client_t *c);
 /* the headers of POST /api/files/audio/<name> or /api/fs/put?.. seen: 1 an upload starts (or was refused: replied),
  * 0 not one */
 static int upload_start(client_t *c, const char *req, long want)
@@ -524,6 +536,10 @@ static int upload_start(client_t *c, const char *req, long want)
     if (!strncmp(path, "/api/fs/put?", 12)) {
         c->closing = 0;
         return fs_put_start(c, path + 12, want);
+    }
+    if (!strncmp(path, "/api/store/put?", 15)) {
+        c->closing = 0;
+        return store_put_start(c, path + 15, want);
     }
     if (strncmp(path, "/api/files/audio/", 17))
         return 0;
@@ -581,6 +597,10 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
         return;
     close(c->up_fd);
     c->up_fd = -1;
+    if (c->up_store) {   /* (a state or project file: checked, then the engine puts it in place) */
+        store_put_done(c);
+        return;
+    }
     if (c->up_magic && (memcmp(c->up_head, "RIFF", 4) || memcmp(c->up_head + 8, "WAVE", 4)) &&
         (!c->up_fs || memcmp(c->up_head, "FORM", 4) || (memcmp(c->up_head + 8, "AIFF", 4) && memcmp(c->up_head + 8, "AIFC", 4)))) {
         unlink(c->up_tmp);
@@ -997,6 +1017,404 @@ static void api_fs_post(client_t *c, const char *what, const char *q)
         http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
 }
 
+/* ------------------------------------------------------------------ States and projects (/api/store) --- */
+/* The page's States (each slot's firmware's 32) and the sequencer's 32 projects, done by the engine as the Move's pads
+ * do them (engine.h engine_store; README "The page's States and projects"):
+ *   GET  /api/store                          engine_store_json: what is stored, the active state, the open project
+ *   POST /api/store {"op", "slot", "k", "to", "id", "replace"}   op: state-save, state-load, state-delete (slot, k,
+ *                                            id: the firmware the page means), project-open, project-save,
+ *                                            project-dup (k into the empty to), project-delete (k). Answered when
+ *                                            done: 200 {"ok":true,"message"}, or 409 {"ok":false,"error"}
+ *   GET  /api/store/state?slot=S&k=K         state K of slot S's firmware as a file: a .zip (store only, as /api/fs/zip
+ *                                            makes) of state-KK.bin, .json (id, version, sha256, the image's hash,
+ *                                            the .mem's) and .mem (its working memory, when it has one)
+ *   GET  /api/store/project?k=K              project K as a file: a .zip of move-project-KK.rfmmove, .fx.json and
+ *                                            its firmware copies .fwN.bin / .json / .mem
+ *   POST /api/store/put?kind=state&slot=S&k=K[&replace=1][&load=1]   a state file as state K: it must be the slot's
+ *                                            firmware's (its .json's id); over the active state only with load=1
+ *   POST /api/store/put?kind=project&k=K[&replace=1]   a project file (or a lone .rfmmove: RemoteFM1's web player's
+ *                                            Backup) as project K; never over the open project
+ * A file is checked whole first (its names, its hashes, its firmware), unpacked into a hidden folder of the root
+ * (.store-up-N/), then put in place by the storage thread with renames: a state or project there is the old one or the
+ * new one, never half of each. The file browser's own rules (files.h) stay as they are: it never writes these. */
+#define STORE_UP_MAX (256ull * 1024 * 1024)
+static int g_store_up;   /* (the hidden folders' numbers) */
+
+static int store_slot_id(int s, char *id, size_t cap)   /* the firmware in slot s: 0, -1 none */
+{
+    char ids[3][32];
+    if (s < 0 || s > 2)
+        return -1;
+    engine_running_ids(ids);
+    if (!ids[s][0])
+        return -1;
+    snprintf(id, cap, "%s", ids[s]);
+    return 0;
+}
+/* a firmware's name (the installed ones'), else its id */
+static void fw_name(const char *id, char *out, size_t cap)
+{
+    char *j = engine_firmwares();
+    const char *it = j ? mj_find(j, "firmwares") : NULL, *e;
+    char x[64];
+    snprintf(out, cap, "%s", id);
+    if (it && *it == '[')
+        while ((e = mj_elem(&it)))
+            if (!mj_string(e, "id", x, sizeof x) && !strcmp(x, id)) {
+                mj_string(e, "name", out, cap);
+                break;
+            }
+    free(j);
+}
+/* a request answered once the engine has done it (web_main: engine_store_done) */
+static void store_wait(client_t *c, const eng_store_t *r, const char *dir)
+{
+    const int id = engine_store(r);
+    if (id <= 0) {
+        if (dir)
+            files_rmtree(dir);
+        fs_err(c, "503 Service Unavailable", "the Move is busy: try again");
+        return;
+    }
+    c->sreq = id;
+    c->sreq_ms = now_ms();
+    snprintf(c->sdir, sizeof c->sdir, "%s", dir ? dir : "");
+    c->closing = 0;
+}
+
+static void api_store(client_t *c, const char *body)
+{
+    static const char *const OPS[] = { "state-save", "state-load", "state-delete", "", "project-open", "project-save",
+                                       "project-dup", "project-delete" };
+    char op[32] = "";
+    long slot = 0, k = -1, to = -1, rep = 0;
+    eng_store_t r;
+    int i;
+    memset(&r, 0, sizeof r);
+    if (!body || mj_string(body, "op", op, sizeof op) || mj_int(body, "k", &k)) {
+        fs_err(c, "400 Bad Request", "want {op, k}");
+        return;
+    }
+    for (i = 0; i < 8 && strcmp(OPS[i], op); i++) {}
+    if (i == 8 || !op[0]) {
+        fs_err(c, "400 Bad Request", "no such op");
+        return;
+    }
+    mj_int(body, "slot", &slot);
+    mj_int(body, "to", &to);
+    mj_int(body, "replace", &rep);
+    r.op = ENG_ST_SAVE + i, r.slot = (int)slot, r.k = (int)k, r.to = (int)to, r.flags = rep ? ENG_STF_REPLACE : 0;
+    if (r.op <= ENG_ST_DELETE && mj_string(body, "id", r.id, sizeof r.id) && store_slot_id(r.slot, r.id, sizeof r.id)) {
+        fs_err(c, "409 Conflict", "that slot is empty");
+        return;
+    }
+    store_wait(c, &r, NULL);
+}
+
+static void api_store_zip(client_t *c, const char *what, const char *q)
+{
+    char v[16], id[32], rel[ST_PATH], pre[40], top[160], ver[40] = "", p[ST_PATH + 64], name[200];
+    const char *why = NULL;
+    uint64_t len = 0;
+    const int state = !strcmp(what, "state");
+    long k = qparam(q, "k", v, sizeof v) == 0 ? atol(v) : -1, s = qparam(q, "slot", v, sizeof v) == 0 ? atol(v) : 0;
+    if (k < 0 || k > 31 || (state && store_slot_id((int)s, id, sizeof id) != 0)) {
+        fs_err(c, "404 Not Found", state ? "no such state (an empty slot?)" : "no such project");
+        return;
+    }
+    if (state) {
+        snprintf(rel, sizeof rel, "states/%s", id);
+        snprintf(pre, sizeof pre, "state-%02ld.", k);
+        snprintf(p, sizeof p, "%s/%s/state-%02ld.json", st_root(), rel, k);
+        pm_json_str(p, "version", ver, sizeof ver);
+        snprintf(top, sizeof top, "%s%s%s-state-%02ld", id, ver[0] ? "-" : "", ver, k + 1);
+        snprintf(p, sizeof p, "%s/%s/state-%02ld.bin", st_root(), rel, k);
+    } else {
+        snprintf(rel, sizeof rel, "move/projects");
+        snprintf(pre, sizeof pre, "move-project-%02ld.", k + 1);
+        snprintf(top, sizeof top, "move-project-%02ld", k + 1);
+        snprintf(p, sizeof p, "%s/%s/move-project-%02ld.rfmmove", st_root(), rel, k + 1);
+    }
+    if (access(p, F_OK) != 0) {
+        fs_err(c, "404 Not Found", state ? "that state is empty" : "that project is empty");
+        return;
+    }
+    if (!(c->zip = files_zip_plan_sel(st_root(), rel, pre, top, &len, &why))) {
+        fs_err(c, "500 Internal Server Error", why ? why : "no zip");
+        return;
+    }
+    snprintf(name, sizeof name, "%s.zip", top);
+    stream_head(c, "application/zip", len, name);
+    c->closing = 0;
+    fprintf(stderr, "web: %s as a file (%llu bytes)\n", top, (unsigned long long)len);
+}
+
+static int store_put_start(client_t *c, const char *q, long want)
+{
+    char v[16], kind[16] = "";
+    const size_t ql = strcspn(q, " #");
+    char qq[1024];
+    eng_store_t *r = &c->up_sr;
+    snprintf(qq, sizeof qq, "%.*s", (int)(ql < sizeof qq ? ql : sizeof qq - 1), q);
+    memset(r, 0, sizeof *r);
+    qparam(qq, "kind", kind, sizeof kind);
+    r->k = qparam(qq, "k", v, sizeof v) == 0 ? atoi(v) : -1;
+    r->slot = qparam(qq, "slot", v, sizeof v) == 0 ? atoi(v) : 0;
+    r->flags = (qparam(qq, "replace", v, sizeof v) == 0 && v[0] == '1' ? ENG_STF_REPLACE : 0) |
+               (qparam(qq, "load", v, sizeof v) == 0 && v[0] == '1' ? ENG_STF_LOAD : 0);
+    if (strcmp(kind, "state") && strcmp(kind, "project")) {
+        fs_err(c, "400 Bad Request", "kind=state or kind=project");
+        return 1;
+    }
+    r->op = kind[0] == 's' ? ENG_ST_IMPORT : ENG_PJ_IMPORT;
+    if (r->k < 0 || r->k > 31) {
+        fs_err(c, "400 Bad Request", "k: 0..31");
+        return 1;
+    }
+    if (r->op == ENG_ST_IMPORT && store_slot_id(r->slot, r->id, sizeof r->id) != 0) {
+        fs_err(c, "409 Conflict", "that slot is empty: a state goes to the firmware it was saved from");
+        return 1;
+    }
+    if (want <= 0) {
+        fs_err(c, "411 Length Required", "the file, with its Content-Length");
+        return 1;
+    }
+    if ((uint64_t)want > STORE_UP_MAX) {
+        fs_err(c, "413 Payload Too Large", "at most 256 MB");
+        return 1;
+    }
+    if ((uint64_t)want + FS_RESERVE > disk_free()) {
+        fs_err(c, "507 Insufficient Storage", "not enough room on the Move (64 MB stay free)");
+        return 1;
+    }
+    snprintf(c->up_tmp, sizeof c->up_tmp, "%s/.store-up-%d.part", st_root(), ++g_store_up);
+    c->up_fd = open(c->up_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (c->up_fd <= 0) {
+        c->up_fd = -1;
+        fs_err(c, "500 Internal Server Error", "cannot write on the Move");
+        return 1;
+    }
+    c->up_store = 1, c->up_fs = 1, c->up_magic = 0;
+    memset(c->up_head, 0, sizeof c->up_head);
+    c->up_left = c->up_total = (uint64_t)want;
+    return 1;
+}
+
+/* the names in dir: 0 each one passes ok(name), else -1 with the first that does not in *bad */
+typedef int (*name_ok_t)(const char *name, const char *stem);
+static int dir_names(const char *dir, name_ok_t ok, const char *stem, char *bad, size_t cap)
+{
+    DIR *d = opendir(dir);
+    struct dirent *e;
+    int rc = 0;
+    if (!d)
+        return -1;
+    while ((e = readdir(d)) && !rc)
+        if (e->d_name[0] != '.' && !ok(e->d_name, stem))
+            snprintf(bad, cap, "%s", e->d_name), rc = -1;
+    closedir(d);
+    return rc;
+}
+static int is_state_name(const char *n, const char *stem)   /* stem "state-NN" */
+{
+    const size_t l = strlen(stem);
+    return !strncmp(n, stem, l) && (!strcmp(n + l, ".bin") || !strcmp(n + l, ".json") || !strcmp(n + l, ".mem"));
+}
+static int is_proj_name(const char *n, const char *stem)    /* stem "move-project-NN" (or any .rfmmove's) */
+{
+    const size_t l = strlen(stem);
+    const char *t = n + l;
+    if (strncmp(n, stem, l))
+        return 0;
+    return !strcmp(t, ".rfmmove") || !strcmp(t, ".fx.json") ||
+           (!strncmp(t, ".fw", 3) && t[3] >= '1' && t[3] <= '3' && (!strcmp(t + 4, ".bin") || !strcmp(t + 4, ".json") ||
+                                                                     !strcmp(t + 4, ".mem")));
+}
+/* the one name in dir ending in suffix (its stem into stem): 0, -1 none or more than one */
+static int one_stem(const char *dir, const char *suffix, char *stem, size_t cap)
+{
+    DIR *d = opendir(dir);
+    struct dirent *e;
+    int n = 0;
+    const size_t sl = strlen(suffix);
+    if (!d)
+        return -1;
+    while ((e = readdir(d))) {
+        const size_t l = strlen(e->d_name);
+        if (e->d_name[0] != '.' && l > sl && !strcmp(e->d_name + l - sl, suffix)) {
+            if (n++ == 0)
+                snprintf(stem, cap, "%.*s", (int)(l - sl), e->d_name);
+        }
+    }
+    closedir(d);
+    return n == 1 ? 0 : -1;
+}
+/* an image's and its .mem's hashes as its .json names them: NULL right (or not named), else why */
+static const char *hashes_ok(const char *bin, const char *json)
+{
+    char want[80] = "", got[65], mp[ST_PATH + 80];
+    size_t n = 0;
+    uint8_t *b;
+    if (pm_json_str(json, "hash", want, sizeof want) == 0 && want[0]) {
+        if (!(b = st_read(bin, &n)))
+            return "its flash image could not be read";
+        pm_hash_hex(b, (uint32_t)n, got);
+        free(b);
+        if (strcmp(want, got))
+            return "its flash image is damaged (its checksum does not match its .json)";
+    }
+    ms_path(mp, sizeof mp, bin);
+    if (pm_json_str(json, "mem", want, sizeof want) == 0 && want[0] && (b = st_read(mp, &n))) {
+        pm_hash_hex(b, (uint32_t)n, got);
+        free(b);
+        if (strcmp(want, got))
+            return "its working memory is damaged (its checksum does not match its .json)";
+    }
+    return NULL;
+}
+static int ren(const char *dir, const char *from, const char *to)
+{
+    char a[ST_PATH + 300], b[ST_PATH + 300];
+    snprintf(a, sizeof a, "%s/%s", dir, from);
+    snprintf(b, sizeof b, "%s/%s", dir, to);
+    return access(a, F_OK) != 0 ? 0 : rename(a, b);
+}
+/* a state file: one state-NN.bin with its .json (and .mem), the slot's firmware's. NULL ok (named s.*), else why */
+static const char *check_state(const char *dir, const eng_store_t *r, char *why, size_t cap)
+{
+    char stem[300], bad[300] = "", bin[ST_PATH + 300], js[ST_PATH + 300], id[64] = "", ver[40] = "", a[320], b[64];
+    const char *w;
+    if (one_stem(dir, ".rfmmove", stem, sizeof stem) == 0)
+        return "this is a project file: upload it under Projects";
+    if (one_stem(dir, ".bin", stem, sizeof stem) != 0 || strncmp(stem, "state-", 6))
+        return "not a state file: it holds no state-NN.bin, or more than one";
+    if (dir_names(dir, is_state_name, stem, bad, sizeof bad) != 0) {
+        snprintf(why, cap, "not a state file: it holds %s", bad);
+        return why;
+    }
+    snprintf(bin, sizeof bin, "%s/%s.bin", dir, stem);
+    snprintf(js, sizeof js, "%s/%s.json", dir, stem);
+    if (pm_json_id(js, id, sizeof id) != 0)
+        return "not a state file: its .json names no firmware";
+    pm_json_str(js, "version", ver, sizeof ver);
+    if (strcmp(id, r->id)) {
+        fw_name(id, a, sizeof a);
+        fw_name(r->id, b, sizeof b);
+        snprintf(why, cap, "this is a state of %s%s%s, and slot %d runs %s: a state loads only into its own firmware", a,
+                 ver[0] ? " " : "", ver, r->slot + 1, b);
+        return why;
+    }
+    if ((w = hashes_ok(bin, js)))
+        return w;
+    snprintf(a, sizeof a, "%s.mem", stem);
+    if (ren(dir, a, "s.mem"))
+        return "the file could not be unpacked";
+    snprintf(a, sizeof a, "%s.json", stem);
+    if (ren(dir, a, "s.json"))
+        return "the file could not be unpacked";
+    snprintf(a, sizeof a, "%s.bin", stem);
+    return ren(dir, a, "s.bin") ? "the file could not be unpacked" : NULL;
+}
+/* a project file: one .rfmmove, and its .fx.json and .fwN.* beside it. NULL ok (named p.*), else why */
+static const char *check_project(const char *dir, char *why, size_t cap)
+{
+    static const char *const SUF[] = { ".rfmmove", ".fx.json", ".fw1.bin", ".fw1.json", ".fw1.mem", ".fw2.bin", ".fw2.json",
+                                       ".fw2.mem", ".fw3.bin", ".fw3.json", ".fw3.mem" };
+    char stem[300], bad[300] = "", a[ST_PATH + 300], b[ST_PATH + 300];
+    const char *w;
+    int k;
+    if (one_stem(dir, ".rfmmove", stem, sizeof stem) != 0)
+        return one_stem(dir, ".bin", stem, sizeof stem) == 0 && !strncmp(stem, "state-", 6)
+                   ? "this is a state file: upload it under States, into a slot running its firmware"
+                   : "not a project file: it holds no .rfmmove project, or more than one";
+    if (dir_names(dir, is_proj_name, stem, bad, sizeof bad) != 0) {
+        snprintf(why, cap, "not a project file: it holds %s", bad);
+        return why;
+    }
+    for (k = 1; k <= 3; k++) {
+        snprintf(a, sizeof a, "%s/%s.fw%d.bin", dir, stem, k);
+        snprintf(b, sizeof b, "%s/%s.fw%d.json", dir, stem, k);
+        if (access(a, F_OK) == 0 && access(b, F_OK) != 0) {
+            snprintf(why, cap, "its firmware %d's copy has no .json naming the firmware", k);
+            return why;
+        }
+        if (access(a, F_OK) == 0 && (w = hashes_ok(a, b))) {
+            snprintf(why, cap, "firmware %d: %s", k, w);
+            return why;
+        }
+    }
+    for (k = 0; k < (int)(sizeof SUF / sizeof SUF[0]); k++) {
+        snprintf(a, sizeof a, "%s%s", stem, SUF[k]);
+        snprintf(b, sizeof b, "p%s", SUF[k]);
+        if (ren(dir, a, b))
+            return "the file could not be unpacked";
+    }
+    return NULL;
+}
+
+static void store_put_done(client_t *c)
+{
+    char dir[ST_PATH + 64], whyb[400];
+    const char *why = NULL;
+    uint8_t head[4] = { 0 };
+    int fd;
+    c->up_store = 0;
+    snprintf(dir, sizeof dir, "%s/.store-up-%d", st_root(), g_store_up);
+    files_rmtree(dir);
+    if (mkdir(dir, 0755) != 0)
+        why = "cannot unpack it on the Move";
+    else if ((fd = open(c->up_tmp, O_RDONLY | O_CLOEXEC)) < 0 || read(fd, head, 4) != 4 || close(fd) != 0)
+        why = "the file could not be read";
+    else if (!memcmp(head, "PK\3\4", 4)) {
+        if (files_unzip(c->up_tmp, dir, 16, STORE_UP_MAX, &why) < 0 && !why)
+            why = "not a .zip file";
+    } else if (!memcmp(head, "RMVP", 4) && c->up_sr.op == ENG_PJ_IMPORT) {   /* (a lone project: the web player's) */
+        char p[ST_PATH + 80];
+        snprintf(p, sizeof p, "%s/move-project.rfmmove", dir);
+        if (rename(c->up_tmp, p) != 0)
+            why = "the file could not be read";
+    } else
+        why = c->up_sr.op == ENG_ST_IMPORT ? "not a state file (a .zip the page downloaded from a Move)"
+                                           : "not a project file (a .zip the page downloaded from a Move, or a .rfmmove)";
+    unlink(c->up_tmp);
+    if (!why)
+        why = c->up_sr.op == ENG_ST_IMPORT ? check_state(dir, &c->up_sr, whyb, sizeof whyb) : check_project(dir, whyb, sizeof whyb);
+    if (why) {
+        char m[400];
+        files_rmtree(dir);
+        snprintf(m, sizeof m, "%s", why);
+        m[0] = (char)(m[0] >= 'a' && m[0] <= 'z' ? m[0] - 32 : m[0]);
+        fprintf(stderr, "web: a %s file refused: %s\n", c->up_sr.op == ENG_ST_IMPORT ? "state" : "project", m);
+        fs_err(c, "422 Unprocessable Entity", m);
+        return;
+    }
+    snprintf(c->up_sr.dir, sizeof c->up_sr.dir, "%s", dir);
+    store_wait(c, &c->up_sr, dir);
+}
+
+/* a request under way: answered once the engine has done it (2 minutes at most) */
+static void store_poll(client_t *c, uint64_t ms)
+{
+    char msg[220], esc[460], b[600];
+    const int st = engine_store_done(c->sreq, msg, sizeof msg);
+    if (st == 0 && ms - c->sreq_ms < 120000u) {
+        c->born = ms;   /* (not a request that never came whole) */
+        return;
+    }
+    if (st != 0 && c->sdir[0])   /* (the file's folder: what the storage thread left of it) */
+        files_rmtree(c->sdir);
+    c->sdir[0] = 0;
+    c->sreq = 0;
+    mj_escape(st == 0 ? "the Move did not answer in time" : st == -2 ? "the Move lost the request" : msg, esc, sizeof esc);
+    if (st == 1) {
+        snprintf(b, sizeof b, "{\"ok\":true,\"message\":\"%s\"}", esc);
+        json_reply(c, "200 OK", b);
+    } else {
+        snprintf(b, sizeof b, "{\"ok\":false,\"error\":\"%s\"}", esc);
+        json_reply(c, st == 0 ? "504 Gateway Timeout" : "409 Conflict", b);
+    }
+}
+
 static void request(client_t *c, const char *body)
 {
     char path[4096] = "", key[64], query[4096] = "";
@@ -1026,6 +1444,8 @@ static void request(client_t *c, const char *body)
     if (post) {
         if (!strcmp(path, "/api/load"))
             api_load(c, body);
+        else if (!strcmp(path, "/api/store"))
+            api_store(c, body);
         else if (!strcmp(path, "/api/edit"))
             api_edit(c, body, 0);
         else if (!strcmp(path, "/api/download"))
@@ -1163,6 +1583,13 @@ static void request(client_t *c, const char *body)
         api_fs_get(c, query);
     else if (!strcmp(path, "/api/fs/zip"))
         api_fs_zip(c, query);
+    else if (!strcmp(path, "/api/store")) {
+        char *j = engine_store_json();
+        json_reply(c, "200 OK", j ? j : "{\"ver\":0,\"open\":-1,\"pending\":-1,\"loading\":0,\"used\":0,\"dirty\":0,"
+                                        "\"projects\":[],\"slots\":[null,null,null]}");
+        free(j);
+    } else if (!strcmp(path, "/api/store/state") || !strcmp(path, "/api/store/project"))
+        api_store_zip(c, path + 11, query);
     else if (!strncmp(path, "/api/", 5) || !safe_path(path) || !g_site[0])
         http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
     else {   /* the site (scripts/build_site.sh: RemoteFM1's web/site for the Move) */
@@ -1480,6 +1907,8 @@ static void *web_main(void *arg)
                 continue;
             if (c->ws && !c->closing)
                 push(c);
+            else if (c->sreq > 0)   /* a States or projects request: answered once the engine has done it */
+                store_poll(c, ms);
             else if (c->dl_fd > 0 || c->zip) {   /* a download under way: more while the page takes it */
                 stream_fill(c);
                 if (ms > c->born && ms - c->born > 30000u)
@@ -1534,6 +1963,18 @@ int web_start(int port, const char *site)
     fcntl(fd, F_SETFD, FD_CLOEXEC);
     g_listen = fd;
     snprintf(g_site, sizeof g_site, "%s", site ? site : "");
+    {   /* (a state or project file a page sent before a stop, never put in place: gone) */
+        DIR *d = opendir(st_root());
+        struct dirent *e;
+        while (d && (e = readdir(d)))
+            if (!strncmp(e->d_name, ".store-up-", 10)) {
+                char p[ST_PATH + 300];
+                snprintf(p, sizeof p, "%s/%s", st_root(), e->d_name);
+                files_rmtree(p);
+            }
+        if (d)
+            closedir(d);
+    }
     for (i = 0; i < MAXC; i++)
         g_c[i].fd = -1;
     g_run = 1;

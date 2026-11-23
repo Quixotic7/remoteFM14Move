@@ -536,6 +536,176 @@ files_zip_t *files_zip_plan(const char *root, const char *rel, uint64_t *length,
     return z;
 }
 
+files_zip_t *files_zip_plan_sel(const char *root, const char *rel, const char *prefix, const char *top,
+                                uint64_t *length, const char **why)
+{
+    files_zip_t *z = calloc(1, sizeof *z);
+    char dir[FILES_PATH_MAX + 600], tz[FILES_SEG_MAX + 2];
+    struct stat st;
+    uint64_t total = 22;
+    ent_t *v = NULL;
+    int n, i, rc = 0, got = 0;
+    if (!z) {
+        *why = "no memory";
+        return NULL;
+    }
+    z->fd = -1;
+    snprintf(dir, sizeof dir, "%s%s%s", root, *rel ? "/" : "", rel);
+    if (lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode) || (n = scan(dir, &v)) < 0) {
+        *why = "no such folder";
+        free(z);
+        return NULL;
+    }
+    snprintf(tz, sizeof tz, "%s/", top);
+    total += 30 + 46 + 2 * strlen(tz);
+    rc = zadd(z, tz, dir, 0, (long)st.st_mtime, 1);
+    for (i = 0; i < n && !rc; i++) {
+        char *p, *zn;
+        if (v[i].dir || strncmp(v[i].name, prefix, strlen(prefix)))
+            continue;
+        p = malloc(strlen(dir) + strlen(v[i].name) + 2), zn = malloc(strlen(tz) + strlen(v[i].name) + 1);
+        if (!p || !zn)
+            rc = -1;
+        else {
+            sprintf(p, "%s/%s", dir, v[i].name);
+            sprintf(zn, "%s%s", tz, v[i].name);
+            if (v[i].size > 0xFFFFFFFFull - 65536 || zadd(z, zn, p, v[i].size, v[i].mtime, 0) != 0)
+                rc = -1;
+            total += 30 + 46 + 2 * strlen(zn) + v[i].size + 16;
+            got++;
+        }
+        free(p), free(zn);
+    }
+    scan_free(v, n);
+    if (rc || !got || total > 0xFFFFFFFFull - 65536) {
+        *why = rc ? "no memory" : !got ? "nothing there" : "more than 4 GB";
+        files_zip_free(z);
+        return NULL;
+    }
+    *length = total;
+    *why = NULL;
+    record(z);
+    return z;
+}
+
+/* ---- a .zip read (store only): the central directory, then each entry's bytes into dir */
+static uint32_t rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
+static uint32_t rd32(const uint8_t *p) { return rd16(p) | rd16(p + 2) << 16; }
+int files_unzip(const char *zip, const char *dir, int max, uint64_t max_bytes, const char **why)
+{
+    int fd = open(zip, O_RDONLY | O_CLOEXEC), n = 0, i, count;
+    struct stat st;
+    uint8_t *cd = NULL, tail[22 + 65535], hdr[30];
+    uint64_t sz, total = 0;
+    uint32_t cd_off, cd_size, at;
+    long tn;
+    *why = NULL;
+    if (fd < 0 || fstat(fd, &st) != 0) {
+        *why = "the file could not be read";
+        goto fail;
+    }
+    sz = (uint64_t)st.st_size;
+    tn = (long)(sz < sizeof tail ? sz : sizeof tail);
+    if (tn < 22 || pread(fd, tail, (size_t)tn, (off_t)(sz - (uint64_t)tn)) != tn) {
+        *why = "not a .zip file";
+        goto fail;
+    }
+    for (i = (int)tn - 22; i >= 0 && rd32(tail + i) != 0x06054b50; i--) {}
+    if (i < 0) {
+        *why = "not a .zip file";
+        goto fail;
+    }
+    count = (int)rd16(tail + i + 10), cd_size = rd32(tail + i + 12), cd_off = rd32(tail + i + 16);
+    if (count > max || (uint64_t)cd_off + cd_size > sz || cd_size > 1024 * 1024) {
+        *why = count > max ? "more files in it than a state or a project has" : "a damaged .zip file";
+        goto fail;
+    }
+    if (!(cd = malloc(cd_size ? cd_size : 1)) || pread(fd, cd, cd_size, cd_off) != (ssize_t)cd_size) {
+        *why = "a damaged .zip file";
+        goto fail;
+    }
+    for (at = 0, i = 0; i < count; i++) {
+        uint32_t method, csz, usz, nl, xl, kl, lo, crc, left, c = 0;
+        char name[FILES_SEG_MAX + 1], path[FILES_PATH_MAX + 600];
+        const char *base, *w;
+        int out;
+        if (at + 46 > cd_size || rd32(cd + at) != 0x02014b50) {
+            *why = "a damaged .zip file";
+            goto fail;
+        }
+        method = rd16(cd + at + 10), crc = rd32(cd + at + 16), csz = rd32(cd + at + 20), usz = rd32(cd + at + 24);
+        nl = rd16(cd + at + 28), xl = rd16(cd + at + 30), kl = rd16(cd + at + 32), lo = rd32(cd + at + 42);
+        if (at + 46 + nl > cd_size || nl == 0 || nl > FILES_SEG_MAX * 2) {
+            *why = "a damaged .zip file";
+            goto fail;
+        }
+        {   /* (its name's last segment; a folder's entry is skipped) */
+            char full[2 * FILES_SEG_MAX + 1];
+            memcpy(full, cd + at + 46, nl);
+            full[nl] = 0;
+            at += 46 + nl + xl + kl;
+            if (full[nl - 1] == '/' || !strncmp(full, "__MACOSX/", 9))
+                continue;
+            base = strrchr(full, '/');
+            base = base ? base + 1 : full;
+            if (base[0] == '.')   /* (a computer's own: .DS_Store) */
+                continue;
+            if (strlen(base) > FILES_SEG_MAX || files_rel_ok(base, 1, &w) != 0) {
+                *why = "a file in it has a name this Move does not take";
+                goto fail;
+            }
+            snprintf(name, sizeof name, "%s", base);
+        }
+        if (method != 0 || csz != usz) {
+            *why = "a compressed .zip (the Move reads the .zip files it makes: download it from the page again)";
+            goto fail;
+        }
+        if ((total += usz) > max_bytes) {
+            *why = "too big for a state or a project";
+            goto fail;
+        }
+        if ((uint64_t)lo + 30 > sz || pread(fd, hdr, 30, lo) != 30 || rd32(hdr) != 0x04034b50) {
+            *why = "a damaged .zip file";
+            goto fail;
+        }
+        lo += 30 + rd16(hdr + 26) + rd16(hdr + 28);
+        if ((uint64_t)lo + usz > sz) {
+            *why = "a damaged .zip file (cut short)";
+            goto fail;
+        }
+        snprintf(path, sizeof path, "%s/%s", dir, name);
+        if ((out = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644)) < 0) {
+            *why = errno == EEXIST ? "two files of the same name in it" : "the file could not be unpacked";
+            goto fail;
+        }
+        for (left = usz; left;) {
+            uint8_t b[65536];
+            const size_t want = left < sizeof b ? left : sizeof b;
+            const ssize_t r = pread(fd, b, want, (off_t)lo + (usz - left));
+            if (r <= 0 || write(out, b, (size_t)r) != r) {
+                close(out);
+                *why = "the file could not be unpacked";
+                goto fail;
+            }
+            c = files_crc32(c, b, (size_t)r);
+            left -= (uint32_t)r;
+        }
+        if (close(out) != 0 || c != crc) {
+            *why = c != crc ? "a damaged .zip file (a checksum is wrong)" : "the file could not be unpacked";
+            goto fail;
+        }
+        n++;
+    }
+    free(cd);
+    close(fd);
+    return n;
+fail:
+    free(cd);
+    if (fd >= 0)
+        close(fd);
+    return -1;
+}
+
 static void le16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v, p[1] = (uint8_t)(v >> 8); }
 static void le32(uint8_t *p, uint32_t v) { le16(p, v & 0xFFFF), le16(p + 2, v >> 16); }
 

@@ -312,6 +312,16 @@ static int g_activate = -1;                  /* a page's load that makes its slo
 static int g_nwload;
 static char g_fail_id[RFM_MOVE_FW_ID_MAX];   /* the last firmware that failed to load, and how many failed so far */
 static uint32_t g_fail_seq;
+/* the page's States and projects (engine_store): its requests (g_vmu), their outcomes (g_vmu: a ring the web thread
+ * reads), the ones under way (the engine's thread), the States and projects as JSON (g_vmu) and its version */
+static struct { eng_store_t r; int id; } g_sq[8];
+static int g_nsq, g_sq_next;
+static struct { int id, st; char msg[200]; } g_sdone[32];
+static int g_sdone_at;
+typedef struct { int id, op, slot, k, to, flags; char err[200]; } spend_t;
+static spend_t g_spend[16];
+static char *g_store_json;
+static uint32_t g_store_ver;
 
 static uint32_t now_ms(void)
 {
@@ -1872,6 +1882,91 @@ static void pfw_want(int s, int p, const char *id)
     rfm_move_proj_fw(&S->core, s, 10);
 }
 
+static void store_watch(uint32_t now, int force);
+/* ---- the page's States and projects: a request's outcome for the web thread (st 1 done, -1 refused or failed) */
+static void store_fin(int id, int st, const char *msg)
+{
+    int i;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < (int)(sizeof g_sdone / sizeof g_sdone[0]); i++)
+        if (g_sdone[i].id == id)
+            break;
+    if (i == (int)(sizeof g_sdone / sizeof g_sdone[0]))
+        i = g_sdone_at++ % (int)(sizeof g_sdone / sizeof g_sdone[0]);
+    g_sdone[i].id = id, g_sdone[i].st = st;
+    snprintf(g_sdone[i].msg, sizeof g_sdone[i].msg, "%s", msg ? msg : "");
+    pthread_mutex_unlock(&g_vmu);
+    if (st < 0)
+        fprintf(stderr, "engine: the page's request %d: %s\n", id, msg ? msg : "refused");
+}
+static spend_t *store_pend(int id)
+{
+    int i;
+    for (i = 0; id && i < (int)(sizeof g_spend / sizeof g_spend[0]); i++)
+        if (g_spend[i].id == id)
+            return &g_spend[i];
+    return NULL;
+}
+static void store_failed(int id, const char *why)   /* (a job's failure: the request says it when it is answered) */
+{
+    spend_t *p = store_pend(id);
+    if (p && !p->err[0])
+        snprintf(p->err, sizeof p->err, "%s", why);
+}
+/* every job of request id is back: what it asked for is checked against what the Move has now */
+static void store_synced(int id)
+{
+    spend_t *p = store_pend(id);
+    const rfm_move_t *m = &S->core;
+    char why[200] = "", ok[64] = "Done";
+    int k, s;
+    if (!p)
+        return;
+    k = p->k, s = p->slot;
+    if (p->err[0])
+        snprintf(why, sizeof why, "%s", p->err);
+    else
+        switch (p->op) {
+        case ENG_ST_SAVE:
+        case ENG_ST_IMPORT:
+            if (!(m->fw.st_used[s] >> k & 1))
+                snprintf(why, sizeof why, "state %d was not written", k + 1);
+            else if ((p->flags & ENG_STF_LOAD) && SL[s].st_cur != k)
+                snprintf(why, sizeof why, "state %d was written but did not load", k + 1);
+            snprintf(ok, sizeof ok, "State %d saved", k + 1);
+            break;
+        case ENG_ST_LOAD:
+            if (!SL[s].on || SL[s].st_cur != k)
+                snprintf(why, sizeof why, "state %d did not load", k + 1);
+            snprintf(ok, sizeof ok, "State %d loaded", k + 1);
+            break;
+        case ENG_ST_DELETE:
+            if (m->fw.st_used[s] >> k & 1)
+                snprintf(why, sizeof why, "state %d is still there", k + 1);
+            snprintf(ok, sizeof ok, "State %d deleted", k + 1);
+            break;
+        case ENG_PJ_OPEN:
+            if (rfm_move_project_slot(m) != k)
+                snprintf(why, sizeof why, "project %d did not open", k + 1);
+            snprintf(ok, sizeof ok, "Project %d open", k + 1);
+            break;
+        case ENG_PJ_DELETE:
+            if (m->seq.proj_used >> k & 1)
+                snprintf(why, sizeof why, "project %d is still there", k + 1);
+            snprintf(ok, sizeof ok, "Project %d deleted", k + 1);
+            break;
+        default:   /* (ENG_PJ_SAVE, _DUP, _IMPORT: the project there now) */
+            k = p->op == ENG_PJ_DUP ? p->to : k;
+            if (!(m->seq.proj_used >> k & 1))
+                snprintf(why, sizeof why, "project %d was not written", k + 1);
+            snprintf(ok, sizeof ok, "%s", p->op == ENG_PJ_SAVE ? "Saved" : "Project saved");
+            break;
+        }
+    store_watch(now_ms(), 1);   /* (what the page reads next is what is done) */
+    store_fin(id, why[0] ? -1 : 1, why[0] ? why : ok);
+    p->id = 0;
+}
+
 static void page_edit(int op, int a, int b);
 static void do_deferred(void)
 {
@@ -2147,8 +2242,12 @@ static void do_results(void)
                 ann_say(ANN_EVENT, "State %d %s", j->index + 1, j->kind == J_STATE_SAVE ? "saved" : "deleted");
             break;
         case J_STATE_PASTE:
+        case J_STATE_IMPORT:   /* (the page's state file: as a paste) */
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id))
                 rfm_move_fw_states(&S->core, s, j->used);
+            if (j->kind == J_STATE_IMPORT && j->ok)
+                fprintf(stderr, "engine: %s: state %d from the page's file%s\n", j->id, j->index + 1,
+                        j->value ? ", loaded" : "");
             if (!j->value) {
                 fw_inst_free(j->ptr);
                 break;
@@ -2159,7 +2258,7 @@ static void do_results(void)
             /* a state (STA_LOAD, a paste onto the active one), a fresh memory (STA_NEW) or the one New kept
              * (STA_UNDO) into the same firmware: a new instance of its object, booted with it */
             const int fresh = j->kind == J_STATE_LOAD && j->act == STA_NEW;
-            const int k = j->kind == J_STATE_PASTE || j->act == STA_LOAD ? j->index : j->act == STA_UNDO ? j->value : -1;
+            const int k = j->kind != J_STATE_LOAD || j->act == STA_LOAD ? j->index : j->act == STA_UNDO ? j->value : -1;
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->ptr && (j->data || fresh)) {
                 const int pp = SL[s].pc_proj;
                 uint8_t *keep = SL[s].undo;   /* (New's undo survives its own restart) */
@@ -2170,6 +2269,7 @@ static void do_results(void)
                     mem_new(s, pp, k, 1, 0);
                     if (!fresh)   /* (README "The working memory": the working memory, or why the flash alone) */
                         fprintf(stderr, "engine: slot %d: %s %d: %s%s\n", s + 1, j->kind == J_STATE_PASTE ? "pasted state" :
+                                j->kind == J_STATE_IMPORT ? "the page's state" :
                                 j->act == STA_UNDO ? "undo to state" : "state", k + 1,
                                 SL[s].restored ? "its working memory restored" : "its flash only: ",
                                 SL[s].restored ? "" : j->memwhy[0] ? j->memwhy : "the snapshot was refused");
@@ -2294,9 +2394,14 @@ static void do_results(void)
             rfm_move_project_dir(&S->core, j->used);
             rfm_move_project_info(&S->core, j->index, j->data, j->len);
             break;
+        case J_SYNC:   /* (a page's request: everything it asked of the storage thread is done) */
+            store_synced(j->req);
+            break;
         default:
             break;
         }
+        if (j->req && j->err[0])   /* (a page's request: its job's failure, said when it is answered) */
+            store_failed(j->req, j->err);
         st_job_free(j);
         do_deferred();
     }
@@ -2433,9 +2538,9 @@ static void mix_json(void)
     int n = 0, s, k, kind;
 #define PUT(...) do { if (n < (int)sizeof tmp) n += snprintf(tmp + n, sizeof tmp - (size_t)n, __VA_ARGS__); } while (0)
     PUT("{\"type\":\"mix\",\"ver\":%u,\"active\":%d,\"page\":%d,\"focus\":%d,\"fxpages\":%d,\"mixpar\":%d,\"fxopen\":%d,"
-        "\"sounding\":%d,\"slots\":[", g_mix_ver, g_active, S->core.s.fx_page, S->core.fw.fx_focus, S->core.fw.fx_pages,
-        S->core.fw.mix_par,
-        S->core.fw.fx && S->core.seq.projects, rfm_move_fw_sounding(&S->core));
+        "\"sounding\":%d,\"store_ver\":%u,\"slots\":[", g_mix_ver, g_active, S->core.s.fx_page, S->core.fw.fx_focus,
+        S->core.fw.fx_pages, S->core.fw.mix_par,
+        S->core.fw.fx && S->core.seq.projects, rfm_move_fw_sounding(&S->core), g_store_ver);
     for (s = 0; s < NSLOT; s++) {
         const slot_t *sl = &SL[s];
         const uint8_t *c = PAL[slot_color(s)];
@@ -2640,6 +2745,306 @@ static void page_edit(int op, int a, int b)
         return;
     }
     rfm1cs_session_redraw(S, now_ms());   /* (the Move's screen: the view shows the new value) */
+}
+
+/* ---- the page's States and projects (engine_store): on the engine thread, outside any core callback. A state is
+ * asked for as its pad asks (rfm1cs projfw.c st_pad: the action deferred and done by do_deferred, the core's st_used /
+ * st_cur as the pad leaves them, New's undo gone); a project as the project grid does (project.c: rfmv_proj_open's
+ * save-then-load, the cut of the open one); what no pad does (a delete that keeps the Move's buffer, a copy into an
+ * empty slot, a file from the page) by the storage thread's own jobs, the store told as for any save. rfm1cs 0.13.0
+ * has no call for these (README "The page's States and projects": the entry points it would take), so its public
+ * fields are written here as its own handlers write them, as page_edit does for FX setup. */
+static void store_defer(int kind, int s, int k)
+{
+    defer_t *d;
+    if (g_ndefer >= (int)(sizeof g_defer / sizeof g_defer[0]))
+        do_deferred();
+    d = &g_defer[g_ndefer++];
+    memset(d, 0, sizeof *d);
+    d->a.kind = (uint8_t)kind, d->a.slot = (uint8_t)s, d->a.index = (uint8_t)k;
+    snprintf(d->id, sizeof d->id, "%s", SL[s].fw.id);
+    do_deferred();   /* (its job posted now: the request's J_SYNC goes after it) */
+}
+static void store_run(const eng_store_t *r, int id)
+{
+    rfm_move_t *m = &S->core;
+    const int s = r->slot, k = r->k, cur = rfm_move_project_slot(m);
+    char why[200] = "";
+    st_job_t *j;
+    spend_t *p = NULL;
+    int i;
+    for (i = 0; i < (int)(sizeof g_spend / sizeof g_spend[0]) && !p; i++)
+        if (!g_spend[i].id)
+            p = &g_spend[i];
+    if (!p)
+        snprintf(why, sizeof why, "the Move is busy with the page's last requests: try again");
+    else if (k < 0 || k >= RFM_MOVE_FW_STATES)
+        snprintf(why, sizeof why, "no such %s", r->op <= ENG_ST_IMPORT ? "state" : "project");
+    else if (r->op >= ENG_ST_SAVE && r->op <= ENG_ST_IMPORT) {
+        const int used = s >= 0 && s < NSLOT ? (int)(m->fw.st_used[s] >> k & 1) : 0;
+        const int act = s >= 0 && s < NSLOT ? m->fw.st_cur[s] : -1;
+        if (s < 0 || s >= NSLOT || !SL[s].on)
+            snprintf(why, sizeof why, "slot %d is empty", s + 1);
+        else if (strcmp(SL[s].fw.id, r->id))
+            snprintf(why, sizeof why, "slot %d runs %s now", s + 1, SL[s].fw.name);
+        else if (rfm_move_proj_fw_loading(m))
+            snprintf(why, sizeof why, "a project is loading on the Move: try again in a moment");
+        else if (r->op == ENG_ST_SAVE) {
+            if (used && !(r->flags & ENG_STF_REPLACE))
+                snprintf(why, sizeof why, "state %d holds a sound already", k + 1);
+            else {
+                store_defer(RFM_MOVE_ACT_STATE_SAVE, s, k);
+                m->fw.st_used[s] |= 1u << k;
+                rfm_move_fw_state_cur(m, s, k);
+            }
+        } else if (r->op == ENG_ST_LOAD) {
+            if (!used)
+                snprintf(why, sizeof why, "state %d is empty", k + 1);
+            else {
+                store_defer(RFM_MOVE_ACT_STATE_LOAD, s, k);
+                rfm_move_fw_state_cur(m, s, k);
+            }
+        } else if (r->op == ENG_ST_DELETE) {
+            if (!used)
+                snprintf(why, sizeof why, "state %d is empty", k + 1);
+            else {   /* (as Delete + its pad, but the Move's state buffer left as it is: the page asked, not a cut) */
+                j = st_job_new(J_STATE_DELETE);
+                if (SL[s].st_cur == k)
+                    SL[s].st_cur = -1;   /* (the firmware keeps what it holds; no state is active) */
+                j->slot = s, j->index = k, j->value = 1;
+                snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                st_post(j);
+                m->fw.st_used[s] &= ~(1u << k);
+                if (act == k)
+                    rfm_move_fw_state_cur(m, s, -1);
+            }
+        } else {   /* ENG_ST_IMPORT: as a paste (STATE_PASTE): onto the active one, loaded too */
+            const int onto = act == k || SL[s].st_cur == k;
+            if (used && !(r->flags & ENG_STF_REPLACE))
+                snprintf(why, sizeof why, "state %d holds a sound already", k + 1);
+            else if (onto && !(r->flags & ENG_STF_LOAD))
+                snprintf(why, sizeof why, "state %d is the active state: it can only be replaced and loaded at once", k + 1);
+            else {
+                j = st_job_new(J_STATE_IMPORT);
+                j->slot = s, j->index = k, j->req = id, j->total = SL[s].fw.flash_size;
+                j->value = r->flags & ENG_STF_LOAD ? 1 : 0;
+                snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                snprintf(j->path, sizeof j->path, "%s", r->dir);
+                if (j->value) {
+                    if (!onto)   /* (the active state as it is left, as a state load writes it) */
+                        slot_write(s, 1, 0, 1, NULL);
+                    else
+                        SL[s].st_cur = -1;   /* (no autosave into it until the file is in) */
+                    fw_obj_ref(SL[s].fw.obj);
+                    j->obj = SL[s].fw.obj;
+                }
+                st_post(j);
+            }
+        }
+        if (!why[0] && r->op != ENG_ST_LOAD) {   /* (a state function: New's undo gone, as after any pad; a load's
+                                                  * own result drops the host's) */
+            if (m->fw.undo == s + 1)
+                m->fw.undo = 0;
+            undo_drop(s);
+        } else if (!why[0] && m->fw.undo == s + 1)
+            m->fw.undo = 0;
+    } else {
+        const uint32_t used = m->seq.proj_used;
+        if (m->seq.proj_pending >= 0 || rfm_move_proj_fw_loading(m))
+            snprintf(why, sizeof why, "a project is loading on the Move: try again in a moment");
+        else if (r->op == ENG_PJ_OPEN) {
+            if (k != cur && !(used >> k & 1))
+                snprintf(why, sizeof why, "project %d is empty", k + 1);
+            else if (k != cur) {   /* (rfmv_proj_open: the open one stored first, then the slot asked for) */
+                rfm_move_act_t a;
+                rfm_move_project_flush(m);
+                m->seq.proj_pending = (int8_t)k;
+                memset(&a, 0, sizeof a);
+                a.kind = RFM_MOVE_ACT_PROJECT_LOAD, a.index = (uint8_t)k;
+                emit(&a);
+            }
+        } else if (r->op == ENG_PJ_SAVE) {
+            if (k != cur)
+                snprintf(why, sizeof why, "project %d is not the open one", k + 1);
+            else {   /* (its autosave now, changed or not: the blob, its FX state, and its firmware copies with
+                      * the working memory as it is now, synced: "Saved" is the sound now, not the last autosave's) */
+                for (i = 0; i < NSLOT; i++)
+                    if (SL[i].on && SL[i].pc_proj == k)
+                        slot_write(i, 1, 0, 1, NULL);
+                m->seq.dirty = 1;
+                rfm_move_project_flush(m);
+            }
+        } else if (r->op == ENG_PJ_DUP) {
+            const int to = r->to;
+            if (to < 0 || to >= RFM_MOVE_PROJECTS || to == k)
+                snprintf(why, sizeof why, "no such project to copy it into");
+            else if (!(used >> k & 1))
+                snprintf(why, sizeof why, "project %d is empty", k + 1);
+            else if ((used >> to & 1) || to == cur)
+                snprintf(why, sizeof why, "project %d is not empty", to + 1);
+            else {
+                if (k == cur) {   /* (the open one as it is now, its copies too: as a copy of it on the Move) */
+                    rfm_move_project_flush(m);
+                    for (i = 0; i < NSLOT; i++)
+                        if (SL[i].on && SL[i].pc_proj == k)
+                            slot_write(i, 1, 0, 1, NULL);
+                }
+                j = st_job_new(J_PROJECT_DUP);
+                j->index = k, j->value = to, j->req = id;
+                st_post(j);
+            }
+        } else if (r->op == ENG_PJ_DELETE) {
+            if (!(used >> k & 1) && !(k == cur && m->seq.dirty))
+                snprintf(why, sizeof why, "project %d is empty", k + 1);
+            else {   /* (the project grid's Delete + pad: gone, and the open one an empty project there; the
+                      * Move's project buffer left as it is) */
+                rfm_move_act_t a;
+                memset(&a, 0, sizeof a);
+                a.kind = RFM_MOVE_ACT_PROJECT_DELETE, a.index = (uint8_t)k;
+                emit(&a);
+                m->seq.proj_used &= ~(1u << k);
+                rfm_move_project_info(m, k, NULL, 0);
+                if (k == cur) {
+                    rfm1cs_session_project_answer(S, now_ms(), k, NULL, 0);
+                    m->seq.proj_used &= ~(1u << k);
+                }
+            }
+        } else if (r->op == ENG_PJ_IMPORT) {
+            if (k == cur || k == g_proj_open)
+                snprintf(why, sizeof why, "project %d is open on the Move: open another project first", k + 1);
+            else if ((used >> k & 1) && !(r->flags & ENG_STF_REPLACE))
+                snprintf(why, sizeof why, "project %d holds a project already", k + 1);
+            else {
+                j = st_job_new(J_PROJECT_IMPORT);
+                j->index = k, j->req = id;
+                snprintf(j->path, sizeof j->path, "%s", r->dir);
+                st_post(j);
+            }
+        } else
+            snprintf(why, sizeof why, "not a request this Move knows");
+    }
+    if (why[0]) {
+        why[0] = (char)(why[0] >= 'a' && why[0] <= 'z' ? why[0] - 32 : why[0]);
+        store_fin(id, -1, why);
+        return;
+    }
+    memset(p, 0, sizeof *p);
+    p->id = id, p->op = r->op, p->slot = s, p->k = k, p->to = r->to, p->flags = r->flags;
+    j = st_job_new(J_SYNC);   /* (back once everything above is done: then the page hears) */
+    j->req = id;
+    st_post(j);
+    g_mix_ver++;
+    rfm1cs_session_redraw(S, now_ms());   /* (the Move's pads and screen show it) */
+}
+
+/* the States and projects as JSON (engine_store_json), made when what it says changed (looked at every 100 ms) */
+static void store_watch(uint32_t now, int force)
+{
+    static uint32_t last, sig_was;
+    const rfm_move_t *m = &S->core;
+    uint32_t h = 2166136261u;
+    char *t;
+    int n = 0, s, k, first = 1;
+    const size_t cap = 16384;
+#define MIX(v) (h = (h ^ (uint32_t)(v)) * 16777619u)
+    if (!force && now - last < 100u && g_store_json)
+        return;
+    last = now;
+    MIX(m->seq.proj_used), MIX(rfm_move_project_slot(m)), MIX(m->seq.proj_pending), MIX(rfm_move_proj_fw_loading(m));
+    MIX(m->seq.dirty);
+    for (s = 0; s < NSLOT; s++) {
+        MIX(SL[s].on), MIX(SL[s].on ? SL[s].serial : 0), MIX(m->fw.st_used[s]), MIX(m->fw.st_cur[s] + 1);
+        MIX(slot_color(s));
+    }
+    for (k = 0; k < RFM_MOVE_PROJECTS; k++) {
+        const rfm_move_proj_info_t *in = &m->seq.info[k];
+        const char *c;
+        MIX(in->ok), MIX(in->color), MIX(in->bpm10), MIX(in->clips);
+        for (s = 0; s < RFM_MOVE_FW_SLOTS; s++)
+            for (c = in->fw[s]; *c; c++)
+                MIX(*c);
+    }
+#undef MIX
+    if (h == sig_was && g_store_json)
+        return;
+    sig_was = h;
+    if (!(t = malloc(cap)))
+        return;
+    g_store_ver++;
+#define PUT(...) do { if (n < (int)cap) n += snprintf(t + n, cap - (size_t)n, __VA_ARGS__); } while (0)
+    PUT("{\"ver\":%u,\"open\":%d,\"pending\":%d,\"loading\":%d,\"used\":%u,\"dirty\":%d,\"projects\":[", g_store_ver,
+        rfm_move_project_slot(m), m->seq.proj_pending, rfm_move_proj_fw_loading(m), m->seq.proj_used, m->seq.dirty ? 1 : 0);
+    for (k = 0; k < RFM_MOVE_PROJECTS; k++) {
+        const rfm_move_proj_info_t *in = &m->seq.info[k];
+        const uint8_t *c = PAL[(in->color ? in->color - 1 : k % RFM_MOVE_PROJ_COLORS) % 16];
+        if (!(m->seq.proj_used >> k & 1))
+            continue;
+        PUT("%s{\"k\":%d,\"color\":\"#%02x%02x%02x\",\"bpm\":%.1f,\"clips\":%d,\"fw\":[\"%s\",\"%s\",\"%s\"]}",
+            first ? "" : ",", k, c[0], c[1], c[2], in->ok ? in->bpm10 / 10.0 : 0.0, in->ok ? in->clips : 0,
+            in->ok ? in->fw[0] : "", in->ok ? in->fw[1] : "", in->ok ? in->fw[2] : "");
+        first = 0;
+    }
+    PUT("],\"slots\":[");
+    for (s = 0; s < NSLOT; s++) {
+        char nm[160];
+        const uint8_t *c = PAL[slot_color(s)];
+        if (!SL[s].on) {
+            PUT("%snull", s ? "," : "");
+            continue;
+        }
+        mj_escape(SL[s].fw.name, nm, sizeof nm);
+        PUT("%s{\"id\":\"%s\",\"name\":\"%s\",\"version\":\"%s\",\"used\":%u,\"cur\":%d,\"color\":\"#%02x%02x%02x\"}",
+            s ? "," : "", SL[s].fw.id, nm, SL[s].fw.version, m->fw.st_used[s], m->fw.st_cur[s], c[0], c[1], c[2]);
+    }
+    PUT("]}");
+#undef PUT
+    pthread_mutex_lock(&g_vmu);
+    free(g_store_json);
+    g_store_json = t;
+    pthread_mutex_unlock(&g_vmu);
+    g_mix_ver++;   /* (its version in the mix JSON: the page reads it again) */
+}
+
+int engine_store(const eng_store_t *r)
+{
+    int id = -1;
+    pthread_mutex_lock(&g_vmu);
+    if (g_nsq < (int)(sizeof g_sq / sizeof g_sq[0])) {
+        int i;
+        id = ++g_sq_next;
+        g_sq[g_nsq].r = *r;
+        g_sq[g_nsq].r.id[sizeof g_sq[g_nsq].r.id - 1] = 0;
+        g_sq[g_nsq].r.dir[sizeof g_sq[g_nsq].r.dir - 1] = 0;
+        g_sq[g_nsq++].id = id;
+        i = g_sdone_at++ % (int)(sizeof g_sdone / sizeof g_sdone[0]);   /* (under way) */
+        g_sdone[i].id = id, g_sdone[i].st = 0, g_sdone[i].msg[0] = 0;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return id;
+}
+
+int engine_store_done(int req, char *msg, int cap)
+{
+    int i, st = -2;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < (int)(sizeof g_sdone / sizeof g_sdone[0]); i++)
+        if (g_sdone[i].id == req) {
+            st = g_sdone[i].st;
+            if (msg && cap > 0)
+                snprintf(msg, (size_t)cap, "%s", g_sdone[i].msg);
+            break;
+        }
+    pthread_mutex_unlock(&g_vmu);
+    return st;
+}
+
+char *engine_store_json(void)
+{
+    char *r;
+    pthread_mutex_lock(&g_vmu);
+    r = g_store_json ? strdup(g_store_json) : NULL;
+    pthread_mutex_unlock(&g_vmu);
+    return r;
 }
 
 char *engine_fx_modules(void)
@@ -3878,6 +4283,18 @@ static void *engine_main(void *arg)
         }
         do_deferred();
         do_results();
+        {   /* the page's States and projects (engine_store) */
+            struct { eng_store_t r; int id; } sq[8];
+            int n, i;
+            pthread_mutex_lock(&g_vmu);
+            n = g_nsq;
+            memcpy(sq, g_sq, sizeof sq[0] * (size_t)n);
+            g_nsq = 0;
+            pthread_mutex_unlock(&g_vmu);
+            for (i = 0; i < n; i++)
+                store_run(&sq[i].r, sq[i].id);
+            store_watch(now_ms(), 0);
+        }
         {   /* the page's panel input */
             struct { int op, a, b; } pin[256];
             int n, i;

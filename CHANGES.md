@@ -2,6 +2,25 @@
 
 ## Not released
 
+- **The page's States and projects** (the owner's "the local webpage still has no way of saving or changing states on
+  a firmware, and there is no way to save or load a project"; README "The page's States and projects"). The header's
+  States and Projects caps (the phone's slot menu; "States of slot n" in a slot's load menu) open one panel: a slot's
+  32 States and the 32 projects as the Move's pads, empty / stored / the active state or open project in white. States:
+  load, save the sound into one (over a stored one asked first), download, upload (another firmware's state refused in
+  plain words; over the active one only replaced and loaded), delete (asked first); the other slots one tap away.
+  Projects: open, save (a tap on the open one says "Saved"), duplicate into an empty slot, download with its firmware
+  copies, upload, delete (asked first). Live with the Move (the mix JSON's `store_ver`). Each action goes the way the
+  Move's pads go (the core's `STATE_*` / `PROJECT_*` actions through the host's own handling, the core told what its
+  pad would set), so the Move's pads, its active state's autosave and the working memory stay right; what no pad does
+  (a delete that leaves the Move's buffers alone, a copy into an empty slot, a file from the page) is the storage
+  thread's own jobs. New: `GET /api/store`, `POST /api/store`, `GET /api/store/state`, `/api/store/project`, `POST
+  /api/store/put` (a store-only .zip: a state's image, working memory and .json; a project's .rfmmove, FX state and
+  firmware copies; checked whole, unpacked into a hidden folder, put in place by renames), `files_zip_plan_sel`,
+  `files_unzip`, js/movestore.js, `tests/store_e2e.sh` (the API, ChoralRoot's voicing read back: a state and a project
+  downloaded, deleted, uploaded, loaded, the sound back) and the panel's checks in `tests/page_e2e.mjs`
+  (`tests/fx_e2e.sh` leaves `store_ver` out of its mix comparison). rfm1cs 0.13.0 has no entry point for a state or
+  project function from outside: the Move shows no popup for the page's, and the page makes no new project (README:
+  the calls a cleaner job would take).
 - **States and projects hold the firmware as it was** (the owner's "States are not saving or loading. Always loads the
   same."; README "The working memory"). A state was a copy of the firmware's flash image only, and most firmwares
   write their flash on their own schedule (ChoralRoot once it has been quiet a while), so a state saved after a change

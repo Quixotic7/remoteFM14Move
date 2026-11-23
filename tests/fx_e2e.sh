@@ -40,7 +40,7 @@ stop() { cmd quit; wait $HOST; RC=$?; }
 # (Session / Menu)
 view() { press "cc 43"; press "cc 43"; sleep 0.3; }
 # the mix JSON without what moves by itself (CPU, counters, versions)
-mixstate() { mix | sed -E 's/,"fm1":\{[^}]*\}//' | sed -E 's/"(ver|cpu|run|busy|notes|err|sounding|active|fxopen|page|focus|fxpages|mixpar|pg)":("[^"]*"|[0-9.]+),?//g'; }
+mixstate() { mix | sed -E 's/,"fm1":\{[^}]*\}//' | sed -E 's/"(ver|store_ver|cpu|run|busy|notes|err|sounding|active|fxopen|page|focus|fxpages|mixpar|pg)":("[^"]*"|[0-9.]+),?//g'; }
 # an audio FX slot's part of the mix JSON (0..2), its values (comma-separated), one of them (slot, index), its page
 afx() { mix | sed -E 's/.*"afx":\[//' | awk -v s="$1" 'BEGIN { RS = "\"mod\":" } NR == s + 2 { print }'; }
 afxvals() { afx "$1" | sed -E 's/.*"vals":\[([^]]*)\].*/\1/'; }

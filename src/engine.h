@@ -130,6 +130,41 @@ enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOA
        ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_MROUTE, ENG_OP_LAST = ENG_OP_MROUTE };
 /* the installed FX modules, fx.h fx_lib_json (malloc'd copy), or NULL */
 char *engine_fx_modules(void);
+
+/* the page's States and projects (web.c /api/store; README "The page's States and projects"): each request done on the
+ * engine's thread as the Move's pads ask for it (the same actions through on_action and the deferred work, the same
+ * storage jobs), the core told what changed (rfm_move_fw_states / _fw_state_cur, the project's directory and info) so
+ * the Move's screen and pads show it. A request is answered once the storage thread has done its part:
+ *   ENG_ST_SAVE    slot, k: the firmware's sound now into state k (a stored one: ENG_STF_REPLACE); then the active one
+ *   ENG_ST_LOAD    slot, k: state k loaded (the active state's memory written first, as from its pad)
+ *   ENG_ST_DELETE  slot, k: state k gone (not into the Move's state buffer: a Copy + pad there pastes what it holds)
+ *   ENG_ST_IMPORT  slot, k, dir: a state file (dir: s.bin, s.json, s.mem, web.c checked it is this firmware's) as state
+ *                  k (a stored one: ENG_STF_REPLACE; the active one only with ENG_STF_LOAD, which also loads it)
+ *   ENG_PJ_OPEN    k: that stored project opened (the open one saved first, as from its pad in the project grid)
+ *   ENG_PJ_SAVE    k: the open project saved now, its firmware copies with it
+ *   ENG_PJ_DUP     k, to: a stored project copied into the empty slot to, with its firmware copies
+ *   ENG_PJ_DELETE  k: a project gone with its copies (the open one: an empty project there, as a cut of it)
+ *   ENG_PJ_IMPORT  k, dir: a project file (dir: p.rfmmove, p.fx.json, p.fwK.*) as project k (a stored one:
+ *                  ENG_STF_REPLACE; never the open one)
+ * id: the firmware the page means (a state request for a slot running another one now is refused). */
+enum { ENG_ST_SAVE = 1, ENG_ST_LOAD, ENG_ST_DELETE, ENG_ST_IMPORT, ENG_PJ_OPEN, ENG_PJ_SAVE, ENG_PJ_DUP, ENG_PJ_DELETE,
+       ENG_PJ_IMPORT };
+#define ENG_STF_REPLACE 1
+#define ENG_STF_LOAD 2
+typedef struct {
+    int op, slot, k, to, flags;
+    char id[32];
+    char dir[512];
+} eng_store_t;
+/* queued: the request's number (> 0), or -1 (the queue is full) */
+int engine_store(const eng_store_t *r);
+/* a request's outcome: 0 under way, 1 done, -1 refused or failed (msg: why, the page's words), -2 unknown (too old) */
+int engine_store_done(int req, char *msg, int cap);
+/* the States and projects as the Move has them (GET /api/store; its "ver" also in the mix JSON's "store_ver" so a page
+ * reads it again when it moved): {"ver", "open", "pending", "loading", "used", "dirty", "projects": [{"k", "color",
+ * "bpm", "fw": [3 ids]}] (the stored ones), "slots": [{"id", "name", "version", "used", "cur", "color"} or null]}, a
+ * malloc'd copy, or NULL */
+char *engine_store_json(void);
 /* tests (engine_cfg_t.test_api): a sequencer MIDI message on track 1..16, as rfm_move_seq_advance gives it. 0 queued */
 int engine_test_midi(int track, int b0, int b1, int b2);
 /* tests: whole messages for Out (midiout_send), sent from the engine's next block. 0 queued, -1 no room or no test API */

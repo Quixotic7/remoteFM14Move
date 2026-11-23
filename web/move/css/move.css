@@ -83,6 +83,8 @@
 @media (max-width: 1360px) { .mv-chip { width: 170px; } }
 @media (max-width: 1280px) { .mv-chip { width: 150px; } .mv-vr { display: none; } .mv-kbd-cap { display: none; } }
 @media (max-width: 1180px) { .mv-filesbtn > span:not(.mv-ic) { display: none; } .mv-filesbtn { padding: 0 10px; } }
+/* (the States and Projects caps, js/movestore.js: their words first to go, their icons and tooltips stay) */
+@media (max-width: 1400px) { .mv-statesbtn > span:not(.mv-ic), .mv-projectsbtn > span:not(.mv-ic) { display: none; } .mv-statesbtn, .mv-projectsbtn { padding: 0 10px; } }
 @media (max-width: 1080px) { .mv-chip { width: 128px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
 
 /* ---- phone: the slot button (the iOS app's top-left pill) and its menu */

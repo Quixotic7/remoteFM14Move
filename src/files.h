@@ -50,6 +50,14 @@ char *files_list_json(const char *root, const char *rel);
  * sent). Names inside start with the folder's own name ("states/..."; the root: "RemoteFM1/") */
 typedef struct files_zip files_zip_t;
 files_zip_t *files_zip_plan(const char *root, const char *rel, uint64_t *length, const char **why);
+/* the same for the files directly in rel whose names start with prefix (a state's, a project's: web.c /api/store),
+ * inside a folder named top; NULL with why ("nothing there": none) */
+files_zip_t *files_zip_plan_sel(const char *root, const char *rel, const char *prefix, const char *top,
+                                uint64_t *length, const char **why);
+/* a .zip as files_zip_* writes it (store only; folders inside ignored, each file by its own name, __MACOSX/ and
+ * hidden names skipped) unpacked into the folder dir (made by the caller, empty): at most max files and max_bytes in
+ * all, each CRC checked, no name twice. The count, or -1 with why (the page's words) */
+int files_unzip(const char *zip, const char *dir, int max, uint64_t max_bytes, const char **why);
 /* up to cap bytes of the archive into buf: how many; 0 the end; -1 a read failed (the archive is cut) */
 long files_zip_read(files_zip_t *z, uint8_t *buf, size_t cap);
 void files_zip_free(files_zip_t *z);
