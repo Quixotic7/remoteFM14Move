@@ -78,7 +78,7 @@
 
 int mr_plat_main(int argc, char **argv);
 
-#define VERSION "0.2.0"
+#define VERSION "0.3.0"
 
 int main(int argc, char **argv)
 {

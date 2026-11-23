@@ -356,9 +356,16 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   if (TC) {
     const cat = await api("catalog");
     const byId = Object.fromEntries((cat.firmwares || []).map((f) => [f.id, f]));
-    ok(cat.firmwares.length === 5 && byId.ripple && byId.ripple.virtual && byId.amb && byId.amb.installed === "" && byId.amb.indexed && byId.choralroot.installed === "0.43" && byId.choralroot.version === "0.43"
+    // ChoralRoot: 0.43 is installed here (build/in, the bundle of 0.2.0); the test catalog is built from the site's
+    // catalog of the day (0.42 once, 0.44 since 2026-11-22), so whether it offers an update follows the two versions:
+    // the listed version is the newer of the two, and UPDATE shows only when the index's is the newer one
+    const verNum = (v) => String(v || "").split(".").map((x) => parseInt(x, 10) || 0);
+    const verCmp = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; } return 0; };
+    const crHere = byId.choralroot && byId.choralroot.installed, crListed = byId.choralroot && byId.choralroot.version;
+    const crUp = verCmp(crListed, crHere) > 0;
+    ok(cat.firmwares.length === 5 && byId.ripple && byId.ripple.virtual && byId.amb && byId.amb.installed === "" && byId.amb.indexed && crHere === "0.43" && verCmp(crListed, crHere) >= 0
       && cat.firmwares.every((f) => f.thumb && f.thumb.length === 684) && Array.isArray(cat.favorites),
-      `GET /api/catalog: the index's 5 (AMB-1 and the Fantasy CFWs not installed, ChoralRoot 0.43 here (bundled, 0.2.0), newer than the index's 0.42: listed as 0.43), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length}); ChoralRoot ${byId.choralroot && byId.choralroot.installed}/${byId.choralroot && byId.choralroot.version}, ${cat.firmwares.length} firmwares`);
+      `GET /api/catalog: the index's 5 (AMB-1 and the Fantasy CFWs not installed, ChoralRoot 0.43 here, listed as ${crListed}: ${crUp ? "an update" : "no update"}), each with its 64 x 64 thumbnail, the favourites (${cat.favorites.length}); ${cat.firmwares.length} firmwares`);
     await altDigit(3);
     ok(await until(`document.querySelector(".mv-pop .mv-pop-item[data-id='choralroot'] .mv-th img") && document.querySelector(".mv-pop [data-browse='2']")`, 5000, "the menu's thumbnails"),
       "slot 3's load menu: each row with its thumbnail, and Browse all");
@@ -372,14 +379,14 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
         slot: document.querySelector("#mv-browse .mv-br-slot.on").dataset.slot, favOff: document.querySelector('#mv-browse .fb-chip[data-v="fav"]').disabled }; })()`);
     ok(th.ambRich && (LIVE_IMAGES || (/amb\.svg/.test(th.amb) && th.bits && /pixelated|crisp/.test(th.px))),
       `AMB-1: RemoteFM1FW's catalog image; ChoralRoot and Felucca: the Move's 1-bit thumbnails, 64 x 64, ${th.px}`);
-    ok(!th.up && th.get && th.slot === "2", "marks: no UPDATE on ChoralRoot (0.43 here is newer than the index's 0.42), a download arrow on AMB-1; the head says slot 3");
+    ok(th.up === crUp && th.get && th.slot === "2", `marks: ${crUp ? "UPDATE" : "no UPDATE"} on ChoralRoot (0.43 here, ${crListed} listed), a download arrow on AMB-1; the head says slot 3`);
     ok(th.favOff, "no favourites on the Move: the Favourites chip is off, All shows");
     const tiles = () => js(`[...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).join(",")`);
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="out"]');
     ok((await tiles()).split(",").sort().join(",") === "amb,elasticat,ripple", "Not installed: AMB-1, Elasticat, Ripple");
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="in"]');
     const inst = await js(`({ ids: [...document.querySelectorAll("#mv-browse .fb-tile")].map((t) => t.dataset.id).sort().join(","), n: (document.querySelector('#mv-browse .fb-chip[data-v="in"] .fb-n') || {}).textContent || "" })`);
-    ok(inst.ids === "choralroot,felucca" && !/update/.test(inst.n), `Installed: ChoralRoot and Felucca, no update, "${inst.n}"`);
+    ok(inst.ids === "choralroot,felucca" && /update/.test(inst.n) === crUp, `Installed: ChoralRoot and Felucca, ${crUp ? "one update" : "no update"}, "${inst.n}"`);
     await click('#mv-browse .fb-chips[aria-label="Installed or not"] .fb-chip[data-v="any"]');
     const catChip = await js(`[...document.querySelectorAll('#mv-browse .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v).find((c) => c !== "All")`);
     await click(`#mv-browse .fb-chips[aria-label="Category"] .fb-chip[data-v="${catChip}"]`);
@@ -411,7 +418,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
         into: document.querySelector(".sheet .mv-sh-into").textContent, big: !!document.getElementById("mv-sh-big"),
         chips: [...document.querySelectorAll('.sheet .fb-chips[aria-label="Category"] .fb-chip')].map((c) => c.dataset.v) }; })()`);
     ok(sh.get && sh.fan, "the firmwares not installed (Elasticat, Ripple): their thumbnails, the download mark, FANTASY");
-    ok(!sh.up && sh.cur && /slot 3/.test(sh.into) && sh.big, `ChoralRoot: no UPDATE (0.43 here); AMB-1 (playing in slot 3) outlined; "${sh.into}"; Bigger view`);
+    ok(sh.up === crUp && sh.cur && /slot 3/.test(sh.into) && sh.big, `ChoralRoot: ${crUp ? "UPDATE" : "no UPDATE"} (0.43 here, ${crListed} listed); AMB-1 (playing in slot 3) outlined; "${sh.into}"; Bigger view`);
     ok(sh.chips.includes("Fantasy CFW"), "the Fantasy CFW filter");
     await sleep(500);   // (the sheet slides in)
     await click('.sheet .fb-chip[data-v="Fantasy CFW"]');
