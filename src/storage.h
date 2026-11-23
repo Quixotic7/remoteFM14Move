@@ -4,12 +4,14 @@
  *   firmwares/   <id>-<version>.rfm1m (the compiled firmware), .json (its manifest: the .rfm1's, with the SHA-256 of
  *                that file), .licenses.txt (the .rfm1's credits and licence sections)
  *   states/<id>/ flash.bin (the firmware's flash as it was left), state-NN.bin (the 32 state slots), each with a
- *                .json beside it (id, version, sha256, saved)
+ *                .json beside it (id, version, sha256, saved; "hash" the image's, "mem" the .mem's when there is one),
+ *                and beside a state its working memory, state-NN.mem (memsnap.h: the firmware as it was, restored
+ *                exactly; only for a module snapsafe.h knows, and only when its image is the .bin beside it)
  *   move/        settings.bin (rfm1cs's settings image), library.rmvl (its library blob), open-project (the slot),
  *                projects/move-project-NN.rfmmove (rfm1cs's project files, RMVP), and beside each
  *                move-project-NN.fx.json: its FX modules' own state (get_param "state"; R_PROJECT_LOADED's text),
  *                move-project-NN.fwK.bin / .json: its own copy of firmware slot K's memory (rfm1cs 0.13.0;
- *                projmem.h), .clip.fwK.*: the project buffer's
+ *                projmem.h) and .fwK.mem its working memory (as a state's), .clip.fwK.*: the project buffer's
  *   audio/       a Fantasy CFW's shared samples (FM1VST docs/VIRTUAL-CARTS.md section 3: every cart reads them; the
  *                page puts WAVs here, web.c /api/files/audio)
  *   code/<id>/   a cart's own scripts and assets (read), data/<id>/ its own files (read and write): fsvc.c
@@ -55,12 +57,17 @@ int st_vercmp(const char *a, const char *b);
 /* ---- the storage thread: jobs in, results out (the engine drains them on its own thread) */
 enum {
     J_WRITE = 1,          /* path, data/len: written (no result); also to aux_path and path2 when set; text: the
-                           * .json beside each (with the image's "hash" when text is set) */
+                           * .json beside each (with the image's "hash" when text is set); act: bit k (0 path, 1
+                           * aux_path, 2 path2) that target's .mem too: snap written there (its "mem" in the .json),
+                           * or none: an older .mem there removed */
     J_FW_OPEN,            /* slot, id, path (the .rfm1m), aux_path (flash.bin): back with ptr (the instance made, its
                            * memory and data: fw_instantiate) + data (the flash, or none) */
-    J_STATE_SAVE,         /* slot, index, id, data/len (the image), text (its .json): back with used bits */
-    J_STATE_LOAD,         /* slot, index, id, obj: back with data (the image; none: a failure) and ptr (an instance);
-                           * act STA_NEW: no file (a fresh memory, data none), STA_UNDO: data given (kept) */
+    J_STATE_SAVE,         /* slot, index, id, data/len (the image), text (its .json), snap (its working memory, or
+                           * none): back with used bits */
+    J_STATE_LOAD,         /* slot, index, id, obj: back with data (the image; none: a failure), snap (its working
+                           * memory, when the state has one for this very module and image; else none, why in memwhy)
+                           * and ptr (an instance); act STA_NEW: no file (a fresh memory, data none), STA_UNDO: data and
+                           * snap given (kept) */
     J_STATE_DELETE,       /* slot, index, id: back with used bits ((rfm1cs 0.13.0) the state moved into the state
                            * buffer first) */
     J_STATE_SCAN,         /* slot, id: back with used bits */
@@ -87,13 +94,14 @@ enum {
     /* (rfm1cs 0.13.0) the state buffer (one, the storage thread's, with its firmware id) and a project's firmwares */
     J_STATE_COPY,         /* slot, index, id: that state into the buffer: back with used bits */
     J_STATE_PASTE,        /* slot, index, id, text (the .json), value 1: also loaded (obj: an instance made, back with
-                           * data and ptr as J_STATE_LOAD's): the buffer stored as that state; back with used bits, ok
-                           * 0 nothing pasted (no buffer, or another firmware's) */
+                           * data, snap and ptr as J_STATE_LOAD's): the buffer (a state's image and .mem) stored as
+                           * that state; back with used bits, ok 0 nothing pasted (no buffer, or another firmware's) */
     J_PFW_OPEN,           /* slot, index (the project), value (a generation), id, path (the .rfm1m) or obj (the same
                            * firmware's object: only its memory swapped), aux_path (the project's copy), path2
                            * (flash.bin): back with ptr (the instance; NULL with err), data (the copy when its json
-                           * names id, else flash.bin, else none), ok (2 the copy, 1 flash.bin, 0 a fresh memory) and
-                           * match (the stored state equal to it, -1 none) */
+                           * names id, else flash.bin, else none), snap (the copy's working memory, as a state's), ok (2
+                           * the copy, 1 flash.bin, 0 a fresh memory) and match (the stored state equal to it, its
+                           * working memory too, -1 none) */
 };
 enum { STA_LOAD = 0, STA_NEW = 1, STA_UNDO = 2 };   /* J_STATE_LOAD's act */
 typedef struct st_job {
@@ -108,6 +116,8 @@ typedef struct st_job {
     void *obj;                        /* J_STATE_LOAD: the running instance's fw_obj_t (a reference, given up by the job) */
     void *ptr;                        /* J_FW_OPEN, J_STATE_LOAD: back with the instance made (fw_inst_t; NULL with
                                        * err); J_FW_FREE's; R_*: the cat_t */
+    void *snap;                       /* a working memory (memsnap.h ms_snap_t: the job holds a reference) */
+    char memwhy[96];                  /* (a state or copy loaded without its working memory: why, "" none) */
     uint64_t total;
     int ok;
     char err[300];

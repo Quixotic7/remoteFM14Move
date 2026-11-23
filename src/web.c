@@ -1058,6 +1058,30 @@ static void request(client_t *c, const char *body)
             else
                 json_reply(c, "202 Accepted", "{\"ok\":true}");
         }
+        else if (!strcmp(path, "/api/test/peek")) {   /* (--test-api) {"slot", "off", "n"} or {"slot", "lcd": 1}: hex / sum */
+            long sl = -1, off = 0, n = 0, lcd = 0;
+            uint8_t b[64];
+            uint32_t sum = 0;
+            char out[200];
+            int k, o;
+            if (!body || mj_int(body, "slot", &sl) || ((mj_int(body, "lcd", &lcd) || !lcd) &&
+                                                       (mj_int(body, "off", &off) || mj_int(body, "n", &n) || off < 0 ||
+                                                        n < 1 || n > 64)))
+                json_reply(c, "400 Bad Request", "{\"ok\":false}");
+            else if (engine_test_peek((int)sl, lcd ? 1 : 0, (uint32_t)off, (uint32_t)n, b, &sum) != 0)
+                json_reply(c, "403 Forbidden", "{\"ok\":false}");
+            else {
+                if (lcd)
+                    snprintf(out, sizeof out, "{\"ok\":true,\"sum\":\"%08x\"}", sum);
+                else {
+                    o = snprintf(out, sizeof out, "{\"ok\":true,\"hex\":\"");
+                    for (k = 0; k < n; k++)
+                        o += snprintf(out + o, sizeof out - (size_t)o, "%02x", b[k]);
+                    snprintf(out + o, sizeof out - (size_t)o, "\"}");
+                }
+                json_reply(c, "200 OK", out);
+            }
+        }
         else if (!strncmp(path, "/api/fs/", 8))
             api_fs_post(c, path + 8, query);
         else if (!strncmp(path, "/api/fm1/wifi/", 14))

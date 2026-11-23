@@ -58,6 +58,23 @@ char *pm_json_hash(const char *text, const uint8_t *b, uint32_t n)
     return o;
 }
 
+char *pm_json_add(const char *text, const char *key, const char *val)
+{
+    const char *end;
+    char *o;
+    size_t k, cap;
+    if (!text)
+        return NULL;
+    if (!(end = strrchr(text, '}')))
+        return strdup(text);
+    k = (size_t)(end - text);
+    cap = strlen(text) + strlen(key) + strlen(val) + 16;
+    if (!(o = malloc(cap)))
+        return NULL;
+    snprintf(o, cap, "%.*s%s\"%s\":\"%s\"%s", (int)k, text, k > 1 && text[k - 1] != '{' ? "," : "", key, val, end);
+    return o;
+}
+
 static uint8_t *read_all(const char *path, size_t *n)
 {
     FILE *f = fopen(path, "rb");
@@ -92,29 +109,45 @@ int pm_json_id(const char *json_path, char *id, size_t cap)
     return r ? -1 : 0;
 }
 
-int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t n)
+int pm_json_str(const char *json_path, const char *key, char *out, size_t cap)
 {
-    char hex[65], p[1024], h[80];
+    size_t n;
+    char *t = (char *)read_all(json_path, &n);
+    int r = t ? mj_string(t, key, out, cap) : -1;
+    free(t);
+    if (r)
+        out[0] = 0;
+    return r ? -1 : 0;
+}
+
+int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t n, const char *mem)
+{
+    char hex[65], p[1024], h[80], m[80];
     int k;
     if (!b || !n || !id || !id[0])
         return -1;
     pm_hash_hex(b, n, hex);
     for (k = 0; k < RFM_MOVE_FW_STATES; k++) {
-        size_t m;
+        size_t mn;
         char *t;
         uint8_t *s;
         int same;
         snprintf(p, sizeof p, "%s/states/%s/state-%02d.json", root, id, k);
-        if ((t = (char *)read_all(p, &m))) {
+        m[0] = 0;
+        if ((t = (char *)read_all(p, &mn))) {
             const int has = mj_string(t, "hash", h, sizeof h) == 0;
+            if (mj_string(t, "mem", m, sizeof m))
+                m[0] = 0;
             free(t);
             if (has && strcmp(h, hex))
                 continue;   /* (its hash says another image: not read) */
         }
+        if (strcmp(m, mem ? mem : ""))
+            continue;   /* (another working memory, or one where the other has none) */
         snprintf(p, sizeof p, "%s/states/%s/state-%02d.bin", root, id, k);
-        if (!(s = read_all(p, &m)))
+        if (!(s = read_all(p, &mn)))
             continue;
-        same = m == n && !memcmp(s, b, n);
+        same = mn == n && !memcmp(s, b, n);
         free(s);
         if (same)
             return k;

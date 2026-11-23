@@ -12,6 +12,7 @@
 #                     default ~/.config/remotefm14move/catalog-signing-key.pem; the files a release at the base URL holds)
 #   make site         build/site: the page (RemoteFM1's web/site for the Move, scripts/build_site.sh; part of make)
 #   make sim-run      the host on the simulator in the image, its page on http://localhost:7730/
+#   make snapsafe     src/snapsafe.h again (tools/snapsafe.py): the firmwares whose States hold their working memory
 #   make wifisim      RemoteFM1 Wi-Fi's own simulator for linux/arm64 (build/sim/remotefm1-wifi_host, for
 #                     tests/fm1wifi_e2e.sh): its sources from RemoteFM1 (scripts/wifisim_src.sh: RFM1_WIFI_DIR, default
 #                     third_party/RemoteFM1 with its base submodule), compiled in the image
@@ -31,7 +32,7 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim snapsafe
 all: image inputs site
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -74,6 +75,14 @@ testcat: all
 testcat-v: all
 	python3 tools/build_move_catalog.py --only elasticat,ripple --out build/testcat-v --jobs 2
 	python3 tools/sign_index.py --key build/testkey/test-key.pem build/testcat-v/index.json
+
+# README "The working memory": src/snapsafe.h, the modules whose working memory a snapshot captures whole, from every .rfm1 at hand
+# (the inputs, the test fixtures, the catalog's cache tools/build_move_catalog.py keeps); committed, run when the
+# catalog gains firmwares (one not in it keeps the flash-only states)
+.PHONY: snapsafe
+snapsafe:
+	python3 tools/snapsafe.py --header src/snapsafe.h $(wildcard build/in/*.rfm1 build/in-test/*.rfm1 build/catalog-cache/rfm1/*.rfm1) \
+	    tests/cpu2fix/cpu2fix-1.0.rfm1 tests/tkdemo/tkdemo-1.0.rfm1 | grep -v '^safe' || true
 
 # the release's version: src/main.c's VERSION; module/module.json and release.json must say the same (make package)
 VERSION := $(shell sed -n 's/^\#define VERSION "\(.*\)"/\1/p' src/main.c)
@@ -120,7 +129,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c p
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
+HOST_SRC := src/main.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
             src/fmwords.c src/fmreader.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
@@ -172,10 +181,11 @@ build/obj/wasm-rt-impl.o: build/gen/w2c/wasm-rt-impl.c
 	mkdir -p build/obj
 	$(CC) $(CFLAGS) -fPIC $(W2C_DEFS) -Dwasm_rt_grow_memory=w2c_rt_grow_memory -I$(W2C_RT) -c $< -o $@
 
-build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/fsvc.c src/fsvc.h src/minijson.c src/wav.c src/wav.h build/obj/wasm-rt-impl.o
+build/tools/fwrun: tools/fwrun.c src/fwrt.c src/fwrt.h src/rfm1m.h src/snapsafe.h src/memsnap.c src/memsnap.h src/sha256.c \
+                   src/fsvc.c src/fsvc.h src/minijson.c src/wav.c src/wav.h build/obj/wasm-rt-impl.o
 	mkdir -p build/tools
-	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_MT) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/fsvc.c src/minijson.c src/wav.c \
-	    build/obj/wasm-rt-impl.o -ldl -lm -lpthread
+	$(CC) $(CFLAGS) $(WARN) $(W2C_DEFS) -I$(W2C_MT) -I$(W2C_RT) -rdynamic -o $@ tools/fwrun.c src/fwrt.c src/memsnap.c src/sha256.c \
+	    src/fsvc.c src/minijson.c src/wav.c build/obj/wasm-rt-impl.o -ldl -lm -lpthread
 
 build/fw/%.rfm1m: build/in/%.rfm1 tools/build_fw.sh tools/w2c_mt.sh fw/fwglue.c src/rfm1m.h build/tools/rfm1info
 	tools/build_fw.sh $< build/fw build/w2c >/dev/null
@@ -232,10 +242,11 @@ build/move/remotefm1-heal: $(MR)/device/heal.c
 
 build/tools/unit: tests/unit.c src/minijson.c src/mdns.c src/sha256.c src/engine_dsp.h src/fx.c src/fx.h src/catsig.c \
                   src/ed25519.c src/catsig.h src/ed25519.h src/catalog_key.h build/testkey/catalog_test_key.h src/fsvc.c src/fsvc.h \
-                  src/files.c src/files.h src/fmwords.c src/fmwords.h src/projmem.c src/projmem.h
+                  src/files.c src/files.h src/fmwords.c src/fmwords.h src/projmem.c src/projmem.h src/memsnap.c src/memsnap.h
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -Isrc $(CS_INC) -I$(SW) -DFX_UNIT $(TEST_BUILD) -rdynamic -o $@ tests/unit.c src/minijson.c \
-	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c src/fsvc.c src/files.c src/fmwords.c src/projmem.c -lm -lpthread -ldl
+	    src/mdns.c src/sha256.c src/fx.c src/catsig.c src/ed25519.c src/fsvc.c src/files.c src/fmwords.c src/projmem.c \
+	    src/memsnap.c -lm -lpthread -ldl
 
 # the tests' catalog signing key (never the real one: that is on the owner's Mac only, outside the repo): made once
 # under build/, its public half a header for the test build

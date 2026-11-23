@@ -140,6 +140,8 @@ typedef struct fw {
     uint32_t ain_buf, ain_state, ain_lat, ain_blocks;
     int ain_said;                     /* (rfm1_audio_in_info was called at least once) */
     int ain_peak;
+    uint32_t n_in;                     /* a player's input applied (keys, buttons, encoders, MIDI but the clock, the
+                                        * takeover's): the host's autosave of the working memory looks at it */
     /* the cost: nanoseconds spent in the module */
     uint64_t ns_total;
     uint64_t ns_audio, ns_tick, ns_frame;   /* of ns_total: rfm1_audio's, tick + idle's, frame's (n_frame calls) */
@@ -266,5 +268,33 @@ void fw_tk_input(fw_t *fw, uint32_t pkt);
 void fw_tk_state(fw_t *fw, uint32_t on, uint32_t claims, uint32_t flags);
 /* ui_info into buf */
 void fw_ui_info(fw_t *fw, char *buf, uint32_t n);
+
+/* ---- snapshots (README "The working memory"): an instance as it is between two calls, its working memory and the
+ * host's view of it, and the same brought back into a new instance of the same module, exactly (no rfm1_init: nothing
+ * re-applied from its flash). Only for a module known to be made of its memory and its globals (src/snapsafe.h,
+ * tools/snapsafe.py: keyed by the .rfm1's SHA-256, with the globals' place in the instance; a Fantasy CFW never):
+ * fw_snap_able */
+#define FW_SNAP_GMAX 64
+typedef struct {
+    char sha256[65];                  /* the .rfm1's (the object's): restored only into the same */
+    uint64_t mem_size;
+    uint32_t g_off, g_len, tg_len;    /* the globals in the instance (and the core-1 twin's: tg_len 0 none) */
+    uint8_t g[FW_SNAP_GMAX], tg[FW_SNAP_GMAX];
+    uint32_t scratch, c1_stack;       /* the host's own allocations in the memory: the same in the new instance */
+    uint32_t ms, last_frame, frame_ms;
+    uint64_t frames_done, due;
+    uint32_t tk_ptr, rd_ptr, rd_asked, ain_buf, ain_state, ain_lat, ain_said, keys_held, btns_held;
+    uint32_t qn;                      /* the input queued, not applied yet (fw_t.q) */
+    struct { uint64_t due; uint8_t op, a; int16_t b; uint32_t c; } q[256];
+} fw_snap_t;
+/* 1: this instance's snapshots come back exactly (booted, alive, a known module, its globals where the table says) */
+int fw_snap_able(fw_t *fw);
+/* the snapshot now (the engine's thread, between two calls; core 1's job in flight finished first): h filled, the
+ * memory (h->mem_size bytes) copied into mem. 0, or -1 (not able) */
+int fw_snap_take(fw_t *fw, fw_snap_t *h, uint8_t *mem);
+/* instead of fw_boot: an instance fw_create_from made, given the snapshot's memory and globals and the host's view.
+ * 0 (booted), or -1 (nothing changed: another module, size, place of the host's allocations; fw->err says, and fw_boot
+ * may still be called) */
+int fw_snap_restore(fw_t *fw, const fw_snap_t *h, const uint8_t *mem);
 
 #endif

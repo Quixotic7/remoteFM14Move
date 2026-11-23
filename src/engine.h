@@ -137,5 +137,9 @@ int engine_test_midiout(const uint8_t *msgs, int n);
 /* tests: byte off of slot 0..2's firmware memory (its flash image) set to val on the engine's thread, the slot's memory
  * then taken as changed (its autosave). 0 queued, -1 no test API, a bad slot or no room */
 int engine_test_poke(int slot, uint32_t off, int val);
+/* tests (README "The working memory"): slot 0..2's firmware read on the engine's thread between two blocks, the caller
+ * waiting (2 s at most): lcd 0: n (<= 64) bytes of its working memory at off into out; lcd 1: the FNV-1a of its screen
+ * (240 x 240 RGB565) into *sum. 0, -1 (no test API, no firmware there, out of its memory, no answer) */
+int engine_test_peek(int slot, int lcd, uint32_t off, uint32_t n, uint8_t *out, uint32_t *sum);
 
 #endif

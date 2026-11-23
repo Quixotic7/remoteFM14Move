@@ -18,6 +18,7 @@
 #include "catalog.h"
 #include "fsvc.h"
 #include "fwrt.h"
+#include "memsnap.h"
 #include "minijson.h"
 #include "projmem.h"
 #include "rfm1cs/store.h"
@@ -482,6 +483,7 @@ void st_job_free(st_job_t *j)
 {
     if (!j)
         return;
+    ms_free(j->snap);
     free(j->data);
     free(j->text);
     free(j);
@@ -567,17 +569,103 @@ static void net_progress(void *ctx, int pct)
     post_result(r);
 }
 
-/* (rfm1cs 0.13.0) the state buffer: one state's bytes and its firmware's id (STATE_COPY, STATE_DELETE; STATE_PASTE) */
-static uint8_t *g_sbuf;
+/* (rfm1cs 0.13.0) the state buffer: one state's bytes and its firmware's id (STATE_COPY, STATE_DELETE; STATE_PASTE),
+ * and its working memory's file as it was (memsnap.h; NULL none) */
+static uint8_t *g_sbuf, *g_sbuf_mem;
 static uint32_t g_sbuf_n;
+static size_t g_sbuf_mem_n;
 static char g_sbuf_id[RFM_MOVE_FW_ID_MAX];
 
-static void unlink_copy(const char *bin)   /* a copy and its .json */
+static void unlink_copy(const char *bin)   /* a copy, its .json and its working memory */
 {
     char p[ST_PATH + 8];
     unlink(bin);
     pm_json_path(p, sizeof p, bin);
     unlink(p);
+    ms_path(p, sizeof p, bin);
+    unlink(p);
+}
+
+/* ---- the working memory beside an image (memsnap.h, README "The working memory") */
+/* a .mem file's bytes (b, n) for an instance of the module sha (its .rfm1's SHA-256) booting the image img: decoded,
+ * or NULL with why (not this module's, not this image's: the .bin was written without it since, damaged) */
+static ms_snap_t *mem_take(const uint8_t *b, size_t n, const char *sha, const uint8_t *img, uint32_t in, char *why,
+                           size_t cap)
+{
+    char msha[65], fhex[65], ihex[65];
+    ms_snap_t *m = NULL;
+    if (!b)
+        snprintf(why, cap, "no working memory saved with it");
+    else if (ms_peek(b, n, msha, fhex) != 0)
+        snprintf(why, cap, "its .mem is not a working memory this host reads");
+    else if (!sha || strcmp(msha, sha))
+        snprintf(why, cap, "its working memory is another build's (%.12s)", msha);
+    else if (pm_hash_hex(img, in, ihex), strcmp(fhex, ihex))
+        snprintf(why, cap, "its working memory goes with another flash image");
+    else if (!(m = ms_decode(b, n, fhex)))
+        snprintf(why, cap, "its working memory is damaged");
+    else
+        why[0] = 0;
+    return m;
+}
+/* the .mem beside bin, read and taken (mem_take) */
+static ms_snap_t *mem_read(const char *bin, const char *sha, const uint8_t *img, uint32_t in, char *why, size_t cap)
+{
+    char p[ST_PATH + 8];
+    size_t n = 0;
+    uint8_t *b;
+    ms_snap_t *m;
+    ms_path(p, sizeof p, bin);
+    b = st_read(p, &n);
+    m = mem_take(b, n, sha, img, in, why, cap);
+    free(b);
+    return m;
+}
+/* an image and its working memory's file (enc NULL: none, an older .mem there removed) written as bin and .mem, and
+ * the .json: js (with the image's hash; NULL none), jm the same with the .mem's (used when the .mem was written). 0, -1
+ * (the image not written) */
+static int image_write(const char *bin, const uint8_t *img, uint32_t n, const uint8_t *enc, size_t en, const char *js,
+                       const char *jm)
+{
+    char p[ST_PATH + 8];
+    int with = 0;
+    ms_path(p, sizeof p, bin);
+    if (enc && st_write(p, enc, en) == 0)
+        with = 1;
+    else
+        unlink(p);
+    if (st_write(bin, img, n) != 0) {
+        fprintf(stderr, "storage: cannot write %s: %s\n", bin, strerror(errno));
+        return -1;
+    }
+    if (js) {
+        const char *t = with && jm ? jm : js;
+        pm_json_path(p, sizeof p, bin);
+        st_write(p, t, strlen(t));
+    }
+    return 0;
+}
+/* the .json texts for image_write: text with the image's hash (*js), and with the .mem's too (*jm, when enc) */
+static void image_json(const char *text, const uint8_t *img, uint32_t n, const uint8_t *enc, size_t en, char **js,
+                       char **jm)
+{
+    char mh[65];
+    *js = text ? pm_json_hash(text, img, n) : NULL;
+    *jm = NULL;
+    if (*js && enc) {
+        pm_hash_hex(enc, en, mh);
+        *jm = pm_json_add(*js, "mem", mh);
+    }
+}
+/* a snapshot as its file, for the image img (NULL snapshot: none) */
+static uint8_t *mem_encode(const ms_snap_t *m, const uint8_t *img, uint32_t n, size_t *en)
+{
+    char ih[65];
+    *en = 0;
+    if (!m)
+        return NULL;
+    pm_hash_hex(img, n, ih);
+    return ms_encode(m, ih, en);
 }
 static int copy_file(const char *from, const char *to)   /* (st_copy without its chmod) 0, -1 */
 {
@@ -590,13 +678,19 @@ static int copy_file(const char *from, const char *to)   /* (st_copy without its
     free(b);
     return rc;
 }
-static void copy_pair(const char *from, const char *to)   /* a copy and its .json: from replaces to (none: to gone) */
+static void copy_pair(const char *from, const char *to)   /* a copy, its .json and .mem: from replaces to (none: to gone) */
 {
     char fj[ST_PATH + 8], tj[ST_PATH + 8];
     pm_json_path(fj, sizeof fj, from);
     pm_json_path(tj, sizeof tj, to);
     if (copy_file(from, to) != 0 || copy_file(fj, tj) != 0)
         unlink_copy(to);
+    else {   /* (the working memory, when the copy has one) */
+        ms_path(fj, sizeof fj, from);
+        ms_path(tj, sizeof tj, to);
+        if (copy_file(fj, tj) != 0)
+            unlink(tj);
+    }
 }
 /* a project's firmware copies (projmem.h) with the project buffer: a delete drops them, a cut moves them into the
  * buffer, a copy copies them there, a paste writes the buffer's for the target; a save drops the copy of a slot the
@@ -643,20 +737,27 @@ static void run_job(st_job_t *j)
     switch (j->kind) {
     case J_WRITE: {
         const char *to[3] = { j->path, j->aux_path, j->path2 };
-        char *js = j->text ? pm_json_hash(j->text, j->data, j->len) : NULL;   /* (the image's hash in its .json) */
+        size_t en = 0;
+        uint8_t *enc = j->act & 7 ? mem_encode(j->snap, j->data, j->len, &en) : NULL;   /* (one file for each) */
+        char *js, *jm;
         int k;
+        image_json(j->text, j->data, j->len, enc, en, &js, &jm);
         for (k = 0; k < 3; k++) {
             if (!to[k][0])
                 continue;
-            if (st_write(to[k], j->data, j->len) != 0)
+            if (j->act >> k & 1)   /* (the image and its working memory: a state, a project's copy) */
+                image_write(to[k], j->data, j->len, enc, en, js, jm);
+            else if (st_write(to[k], j->data, j->len) != 0)
                 fprintf(stderr, "storage: cannot write %s: %s\n", to[k], strerror(errno));
-            else if (js) {   /* (a .json beside it) */
+            else if (js) {   /* (a .json beside it, with the image's hash) */
                 char p[ST_PATH + 8];
                 pm_json_path(p, sizeof p, to[k]);
                 st_write(p, js, strlen(js));
             }
         }
         free(js);
+        free(jm);
+        free(enc);
         st_job_free(j);
         return;
     }
@@ -697,18 +798,22 @@ static void run_job(st_job_t *j)
         return;
     case J_STATE_SAVE: {
         char p[ST_PATH];
+        size_t en = 0;
+        uint8_t *enc = mem_encode(j->snap, j->data, j->len, &en);
+        char *js, *jm;
+        image_json(j->text, j->data, j->len, enc, en, &js, &jm);
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
-        if (st_write(p, j->data, j->len) != 0)
+        if (image_write(p, j->data, j->len, enc, en, js, jm) != 0)
             snprintf(j->err, sizeof j->err, "cannot write %s", p);
-        else if (j->text) {
-            char *js = pm_json_hash(j->text, j->data, j->len);
-            st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
-            if (js)
-                st_write(p, js, strlen(js));
-            free(js);
-        }
+        free(js);
+        free(jm);
+        j->ok = enc != NULL;   /* (with its working memory) */
+        j->total = en;
+        free(enc);
         free(j->data);
         j->data = NULL, j->len = 0;
+        ms_free(j->snap);
+        j->snap = NULL;
         j->used = st_states_used(j->id);
         break;
     }
@@ -719,6 +824,8 @@ static void run_job(st_job_t *j)
             st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
             j->data = st_read(p, &n);
             j->len = (uint32_t)n;
+            if (j->data && j->obj)   /* (its working memory, for this very module and image) */
+                j->snap = mem_read(p, ((fw_obj_t *)j->obj)->vt->sha256, j->data, j->len, j->memwhy, sizeof j->memwhy);
         }
         if (!j->data && j->act != STA_NEW)
             snprintf(j->err, sizeof j->err, "no state %d for %s", j->index + 1, j->id);
@@ -736,17 +843,19 @@ static void run_job(st_job_t *j)
         uint8_t *b;
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
         if ((b = st_read(p, &n))) {
+            char mp[ST_PATH + 8];
             free(g_sbuf);
+            free(g_sbuf_mem);
             g_sbuf = b, g_sbuf_n = (uint32_t)n;
             snprintf(g_sbuf_id, sizeof g_sbuf_id, "%s", j->id);
+            ms_path(mp, sizeof mp, p);   /* (its working memory, as it is) */
+            g_sbuf_mem = st_read(mp, &g_sbuf_mem_n);
         }
         if (j->kind == J_STATE_COPY) {
             j->used = st_states_used(j->id);
             break;
         }
-        unlink(p);
-        st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
-        unlink(p);
+        unlink_copy(p);
         j->used = st_states_used(j->id);
         break;
     }
@@ -757,17 +866,20 @@ static void run_job(st_job_t *j)
         char p[ST_PATH];
         j->ok = 0;
         if (g_sbuf && !strcmp(g_sbuf_id, j->id)) {
+            char *js, *jm;
+            int w;
             st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
-            if (st_write(p, g_sbuf, g_sbuf_n) == 0) {
-                char *js = pm_json_hash(j->text, g_sbuf, g_sbuf_n);
+            image_json(j->text, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, &js, &jm);
+            w = image_write(p, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, js, jm);   /* (and its .mem) */
+            free(js);
+            free(jm);
+            if (w == 0) {
                 j->ok = 1;
-                st_path(p, sizeof p, "states/%s/state-%02d.json", j->id, j->index);
-                if (js)
-                    st_write(p, js, strlen(js));
-                free(js);
                 if (j->value && j->obj && (j->data = malloc(g_sbuf_n))) {   /* (onto the active one: loaded too) */
                     memcpy(j->data, g_sbuf, g_sbuf_n);
                     j->len = g_sbuf_n;
+                    j->snap = mem_take(g_sbuf_mem, g_sbuf_mem_n, ((fw_obj_t *)j->obj)->vt->sha256, g_sbuf, g_sbuf_n,
+                                       j->memwhy, sizeof j->memwhy);
                     if (!(j->ptr = fw_instantiate(j->obj)))
                         snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
                 }
@@ -782,8 +894,9 @@ static void run_job(st_job_t *j)
     }
     case J_PFW_OPEN: {
         size_t n = 0;
-        char jp[ST_PATH + 8], id[RFM_MOVE_FW_ID_MAX];
+        char jp[ST_PATH + 8], id[RFM_MOVE_FW_ID_MAX], sha[65] = "", mh[80] = "";
         if (j->obj) {   /* (the same firmware: a new instance of its object) */
+            snprintf(sha, sizeof sha, "%s", ((fw_obj_t *)j->obj)->vt->sha256);
             if (!(j->ptr = fw_instantiate(j->obj)))
                 snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
             fw_obj_close(j->obj);
@@ -791,6 +904,7 @@ static void run_job(st_job_t *j)
         } else {
             fw_obj_t *obj = fw_obj_open(j->path, j->err, sizeof j->err);
             if (obj) {
+                snprintf(sha, sizeof sha, "%s", obj->vt->sha256);
                 if (!(j->ptr = fw_instantiate(obj)))
                     snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
                 fw_obj_close(obj);
@@ -799,13 +913,16 @@ static void run_job(st_job_t *j)
         j->ok = 0, j->match = -1;
         if (j->ptr) {
             pm_json_path(jp, sizeof jp, j->aux_path);   /* the project's copy, when its json names this firmware */
-            if (pm_json_id(jp, id, sizeof id) == 0 && !strcmp(id, j->id) && (j->data = st_read(j->aux_path, &n)))
+            if (pm_json_id(jp, id, sizeof id) == 0 && !strcmp(id, j->id) && (j->data = st_read(j->aux_path, &n))) {
                 j->ok = 2;
-            else if (j->path2[0] && (j->data = st_read(j->path2, &n)))   /* (else its last memory anywhere) */
+                j->snap = mem_read(j->aux_path, sha, j->data, (uint32_t)n, j->memwhy, sizeof j->memwhy);
+                if (j->snap)   /* (its working memory's hash: the active state is the one with the same) */
+                    pm_json_str(jp, "mem", mh, sizeof mh);
+            } else if (j->path2[0] && (j->data = st_read(j->path2, &n)))   /* (else its last memory anywhere) */
                 j->ok = 1;
             j->len = (uint32_t)n;
             if (j->data)   /* the stored state it equals (the active one), compared here, off the engine */
-                j->match = pm_state_match(g_root, j->id, j->data, j->len);
+                j->match = pm_state_match(g_root, j->id, j->data, j->len, mh);
         }
         break;
     }

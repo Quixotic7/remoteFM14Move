@@ -250,6 +250,16 @@ make test
   deleted; restarted with ChoralRoot removed: missing, the project keeps its name and its copy; a version 8 project
   (made from a stored one) leaves the firmwares alone and is version 9, with its copies, after its next save; the open
   project cut moves its copies into the buffer (hidden `.clip.fwK.*`) and a paste writes them for the new slot.
+- `tests/states_e2e.sh` (the States and projects hold the working memory, "The working memory" below): first offline,
+  `fwrun --snap-test`: each built firmware (ChoralRoot with core 1, Felucca, the core-1 and takeover fixtures; every
+  published one in `dist/move-catalog` when it is there) snapshotted mid-chord, written and read back, restored into a
+  second instance: the next 1102 blocks of both the same bit for bit. Then on the simulator, ChoralRoot 0.43 with core
+  1 PLAYED: its voicing turned with the takeover's knob 1 and read back with the knob only touched (its popup's words,
+  through the fake TTS); state 1 saved at +3 at once, state 2 at +7 (their flash images the same bytes), each loaded
+  back at its value; New: 0, New + Undo: +7; Copy / paste with the .mem; a state as an older host saved it (no .mem)
+  and a .mem beside another image load from the flash; Felucca (one core) in slot 2: its PRESETS turned, its screen
+  back with its state; no late block; the active state written again while played (every 4 s here) and not while left
+  alone; project 1 / project 2 each bring their ChoralRoot back at its own voicing; quit and restart: as left.
 - `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
   takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
   Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume
@@ -476,13 +486,64 @@ Move (the core's README, "Projects that hold their firmwares; States").
   behind. Before another state loads, the memory is synced into the active one. Copy and Delete put a state's bytes in
   one buffer (RAM, one firmware's; Delete removes the file), a paste writes it (onto the active one: loaded too). Step
   14 New keeps the memory and the active state in RAM (one per slot) and restarts the firmware with a fresh memory, no
-  state active; Undo puts both back. The undo goes when the firmware in the slot changes.
+  state active; Undo puts both back. The undo goes when the firmware in the slot changes. Since the working memory
+  (below) a state and a project's copy are the firmware as it was, not only its flash.
 - Status (`/api/status`): `proj_open` (the project whose copies the slots' memories are), `proj_cur` (the core's open
   project), `pfw_loading`, `pfw_shown` / `pfw_ended` (its loading screen came / went), `projects`, `states_open`, and
   per slot `pcproj<s>`, `stcur<s>` (the active state the host autosaves), `cstcur<s>` (the core's), `want<s>` (the
   open project's firmware), `undo<s>`.
 - Upgrading from an earlier host: nothing in `states/` is deleted or rewritten; the projects load as they were (a
   version 8 project keeps the firmwares that are loaded) and get their copies at their next save.
+
+## The working memory
+
+A firmware's flash image alone is not the firmware as it is: most firmwares write their flash on their own schedule
+(ChoralRoot only once nothing changed for a while and nothing sounds; its session only on SAVE held), so a state saved
+right after a change held the old sound, every state of the owner's ChoralRoot and Melodee loaded "the same", and a
+load re-applied whatever the flash last held (ChoralRoot's session: its voicing among it). So a state and a project's
+copy also hold the firmware's working memory, and loading brings that back exactly.
+
+- **What is kept** (`src/fwrt.h` `fw_snap_t`, `src/memsnap.h`): the module's whole linear memory (8 or 16 MB: the
+  flash image is in it too), its globals (wasm2c's instance struct; the core-1 twin's too), and the host's view of the
+  instance: its device clock, the takeover's and readout's records, the input queued and not applied yet, the keys
+  held, the place of the host's own allocations in its memory (the scratch block, core 1's stack: the same in every
+  instance, checked). Taken on the engine's thread between two blocks (core 1's job in flight finished first); a
+  restore replaces `fw_boot` on a new instance of the same object (`_initialize`, the layout, the scratch, core 1's
+  stack as always, then the memory and globals copied over: no `rfm1_init`, nothing re-applied from the flash). After
+  it the firmware's takeover is told it is not shown (as after a boot, until rfm1cs shows it), and what was held when
+  it was taken is let go (the panel's keys and buttons; CC 123 on every channel, the host's All Notes Off).
+- **Which firmwares** (`src/snapsafe.h`, made by `tools/snapsafe.py`, `make snapsafe`): a snapshot of the memory and
+  the globals is the whole state of a module whose tables and data segments never change after start-up; the tool
+  reads each .rfm1 (its instructions) and keeps the SHA-256 of those that qualify, with their globals' place in
+  wasm2c 1.0.32's instance struct (the host also checks, at each snapshot, that the memory's own record follows them
+  there). Every published firmware but the two Fantasy CFWs qualifies: 116 of the catalog's 118; Elasticat and
+  Ripple (`rfm1_host_1`: their open files live in the host) keep the flash-only states, as does any module the table
+  does not know (a firmware published after this host: `make snapsafe` from the catalog's cache, then a release).
+  No `.rfm1m` changes.
+- **The files**: `state-NN.bin` stays the flash image (an older host loads it as before); beside it `state-NN.mem`
+  (and `move-project-NN.fwK.mem` beside a project's copy, `.clip.fwK.mem` in the project buffer), its `.json` gains
+  `"mem"` (the .mem's SHA-256). The .mem names the module's SHA-256 and the SHA-256 of the image it goes with: it is
+  restored only into that very module booting that very image (else the flash alone, and the log says why: no .mem,
+  another build, another image, damaged). Its pages: all-zero ones a byte, the rest LZ4's block format (our own
+  encoder and decoder, `src/memsnap.c`; no third-party code), a checksum at the end. Sizes (the build's `fwrun
+  --snap-test` mid-chord): ChoralRoot 0.43 8 MB as ~230-340 KB, Felucca 1.8.2 8 MB as ~250-430 KB, Melodee 1.6.1 16 MB
+  as ~200 KB; the 116 published (and ChoralRoot 0.42, still in `dist/move-catalog`): 41 KB .. 1.06 MB, median 290 KB.
+- **When the active state and the open project's copy are written** (with the memory): (a) before another state or
+  project is loaded over it (and before a Copy or Delete of the active state, New, a project copied or cut); (b) when
+  the firmware leaves its slot or the host quits; (c) when the firmware writes its flash, as before (the 2 s
+  autosave); (d) every 30 s at most (`MEM_AUTOSAVE_MS`) while the firmware is being played (a player's input since the
+  last write: keys, buttons, knobs, MIDI but its clock, the takeover's input) and nothing else wrote it: a firmware
+  left alone, or a loop playing by itself, writes nothing. Saving another state is not a load: the active one keeps
+  what it holds unless (c) or (d). A project's own save writes its copies when they are behind on the flash, as
+  before.
+- **No late block**: a snapshot copies the whole memory on the engine's thread (on the simulator 0.5-2 ms for 8 MB;
+  on the Move's A72 a few ms, twice that for 16 MB), so the ring is first filled ahead by twice what the last copy took
+  (at least 1.5 GB/s's worth), as `preroll` does before a start; the file is made on the storage thread. A restore's
+  copy comes after a load's preroll (~80 ms of the other slots' sound). The slot itself is silent for as long as a
+  load always was.
+- Status: per slot `snaps<s>` (snapshots taken), `snapus<s>` (the last one's cost), `restored<s>` (the running instance
+  came from one), `snapable<s>`; `snap_max_us`, `restore_max_us`. `POST /api/test/peek` (--test-api): bytes of a slot's
+  memory, or the FNV-1a of its screen.
 
 ## Threads
 

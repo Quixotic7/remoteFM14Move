@@ -6,8 +6,9 @@
  *   move/projects/move-project-NN.fwK.bin   project NN's copy of slot K's firmware memory (K 1..3; the flash image the
  *                                           host keeps, 1 MB), and beside it .fwK.json (id, version, sha256 of the
  *                                           .rfm1, saved, flash, hash: the SHA-256 of the image)
+ *   move/projects/move-project-NN.fwK.mem   its working memory (memsnap.h; "mem" in the .json: its SHA-256)
  *   move/projects/.clip.fwK.bin / .json     the project buffer's copies (a project cut or copied; hidden: not listed,
- *                                           not exported)
+ *                                           not exported), .clip.fwK.mem
  *   states/<id>/state-KK.json               a state's json now has "hash" too (written by this host; an older one
  *                                           without it is compared byte for byte) */
 #ifndef RFM14_PROJMEM_H
@@ -30,11 +31,16 @@ void pm_hash_hex(const uint8_t *b, uint32_t n, char hex[65]);
 /* text (a JSON object, "{...}\n") with "hash" (the image's SHA-256) added before its last '}': malloc'd; NULL text:
  * NULL */
 char *pm_json_hash(const char *text, const uint8_t *b, uint32_t n);
+/* text with "key":"val" added before its last '}': malloc'd (NULL text: NULL) */
+char *pm_json_add(const char *text, const char *key, const char *val);
 /* the "id" of a .json file into id: 0, -1 none */
 int pm_json_id(const char *json_path, char *id, size_t cap);
+/* a string field of a .json file into out: 0, -1 none (out "") */
+int pm_json_str(const char *json_path, const char *key, char *out, size_t cap);
 /* the stored state of firmware id that holds exactly these bytes: 0..31, -1 none (n 0: none). A state's json "hash"
- * ruled out first when it has one; a candidate is always compared byte for byte */
-int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t n);
+ * ruled out first when it has one; a candidate is always compared byte for byte. mem: the working memory's hash that
+ * goes with the bytes (a .json's "mem", memsnap.h; "" or NULL none): the state's must be the same (none: none) */
+int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t n, const char *mem);
 /* the firmware ids a project blob holds (its version 9 part; rfm1cs projfw.c's layout): 1 and ids filled; 0 a blob
  * of version 1..8 (or too short: no firmwares) */
 int pm_blob_ids(const uint8_t *b, uint32_t n, char ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX]);

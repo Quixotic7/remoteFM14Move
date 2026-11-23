@@ -1123,6 +1123,9 @@ static void apply(fw_t *fw, int op, int a, int b, uint32_t c)
         fw_log_t *l = &fw->log[fw->log_n++];
         l->ms = fw->ms, l->op = (uint8_t)op, l->a = (uint8_t)a, l->b = (int16_t)b, l->c = c;
     }
+    if (op == FWI_KEY || op == FWI_LEAN || op == FWI_BTN || op == FWI_ENC || op == FWI_TK_INPUT ||
+        (op == FWI_MIDI && (c & 0xF) != 0xF))   /* (a player's input: not the clock, the master, the screen's rate) */
+        fw->n_in++;
     switch (op) {
     case FWI_KEY:
         if (a < 0 || a >= FW_NKEY)
@@ -1344,6 +1347,7 @@ static void feed_ms(fw_t *fw)
             break;   /* (no room: the rest at the next ms) */
         fw->mq_tail++;
         fw->mq_fed++;
+        fw->n_in++;
         if (fw->log && fw->log_n < fw->log_cap) {   /* (the replay gives it as an FWI_MIDI at the same ms) */
             fw_log_t *l = &fw->log[fw->log_n++];
             l->ms = fw->ms, l->op = FWI_MIDI, l->a = 0, l->b = 0, l->c = p;
@@ -1596,4 +1600,129 @@ void fw_ui_info(fw_t *fw, char *buf_, uint32_t n_)
     memset(fw->mem + fw->scratch + S_STR, 0, n);
     CALL(fw, "rfm1_ui_info", fw->obj->vt->ui_info(fw->inst, fw->scratch + S_STR, n));
     rdstr(fw, fw->scratch + S_STR, buf, n);
+}
+
+/* ------------------------------------------------------------------ snapshots (README "The working memory") --- */
+#include "snapsafe.h"
+
+/* the module's entry in snapsafe.h, NULL: not known */
+static const snapsafe_t *snap_entry(const fw_obj_t *o)
+{
+    size_t i;
+    if (!o || !o->vt->sha256 || !o->vt->wasm2c || strcmp(o->vt->wasm2c, "1.0.32") || o->fs1 || o->virt)
+        return NULL;
+    for (i = 0; i < sizeof SNAPSAFE / sizeof SNAPSAFE[0]; i++)
+        if (!strcmp(SNAPSAFE[i].sha256, o->vt->sha256))
+            return &SNAPSAFE[i];
+    return NULL;
+}
+
+/* the globals of a wasm2c instance (inst: the module's instance struct) at g_off, g_len bytes, checked: the memory's
+ * own record (its data pointer, its size) follows them where wasm2c puts it. NULL: not as the table says */
+static uint8_t *snap_globals(const fw_t *fw, void *inst, const snapsafe_t *e)
+{
+    const uint32_t mo = ((uint32_t)e->g_off + e->g_len + 7u) & ~7u;
+    uint8_t *const b = inst;
+    uint8_t *data;
+    uint32_t size;
+    if (!inst || e->g_len > FW_SNAP_GMAX)
+        return NULL;
+    memcpy(&data, b + mo, sizeof data);
+    memcpy(&size, b + mo + sizeof data + 8, 4);   /* (wasm_rt_memory_t: data, pages, max_pages, size) */
+    return data == fw->mem && size == fw->mem_size ? b + e->g_off : NULL;
+}
+
+int fw_snap_able(fw_t *fw)
+{
+    const snapsafe_t *e = fw->obj ? snap_entry(fw->obj) : NULL;
+    if (!e || !fw->booted || fw->dead || fw->wasi->fs || !snap_globals(fw, fw->inst, e))
+        return 0;
+    if (fw->c1 && !snap_globals(fw, fw->c1->twin, e))
+        return 0;
+    return 1;
+}
+
+int fw_snap_take(fw_t *fw, fw_snap_t *h, uint8_t *mem)
+{
+    const snapsafe_t *e;
+    struct fw_c1 *c = fw->c1;
+    int i;
+    if (!fw_snap_able(fw))
+        return -1;
+    e = snap_entry(fw->obj);
+    if (c && c->pending) {   /* (core 1's job in flight: done first; the module's wait still finds it done) */
+        const uint32_t want = c->post;
+        uint32_t d;
+        while ((d = __atomic_load_n(&c->done, __ATOMIC_ACQUIRE)) != want)
+            fu_wait(&c->done, d);
+    }
+    memset(h, 0, sizeof *h);
+    snprintf(h->sha256, sizeof h->sha256, "%s", fw->obj->vt->sha256);
+    h->mem_size = fw->mem_size;
+    h->g_off = e->g_off, h->g_len = e->g_len;
+    memcpy(h->g, snap_globals(fw, fw->inst, e), e->g_len);
+    if (c) {
+        h->tg_len = e->g_len;
+        memcpy(h->tg, snap_globals(fw, c->twin, e), e->g_len);
+        h->c1_stack = c->stack;
+    }
+    h->scratch = fw->scratch;
+    h->ms = fw->ms, h->last_frame = fw->last_frame, h->frame_ms = fw->frame_ms;
+    h->frames_done = fw->frames_done, h->due = fw->due;
+    h->tk_ptr = fw->tk_ptr, h->rd_ptr = fw->rd_ptr, h->rd_asked = (uint32_t)fw->rd_asked;
+    h->ain_buf = fw->ain_buf, h->ain_state = fw->ain_state, h->ain_lat = fw->ain_lat, h->ain_said = (uint32_t)fw->ain_said;
+    h->keys_held = fw->keys_held, h->btns_held = fw->btns_held;
+    h->qn = (uint32_t)fw->qn;
+    for (i = 0; i < fw->qn; i++) {
+        h->q[i].due = fw->q[i].due, h->q[i].op = fw->q[i].op, h->q[i].a = fw->q[i].a;
+        h->q[i].b = fw->q[i].b, h->q[i].c = fw->q[i].c;
+    }
+    memcpy(mem, fw->mem, fw->mem_size);
+    return 0;
+}
+
+int fw_snap_restore(fw_t *fw, const fw_snap_t *h, const uint8_t *mem)
+{
+    const snapsafe_t *e = fw->obj ? snap_entry(fw->obj) : NULL;
+    uint8_t *g, *tg = NULL;
+    uint32_t i;
+    const char *why = NULL;
+    if (fw->dead || fw->booted)
+        why = "not a new instance";
+    else if (!e || strcmp(h->sha256, fw->obj->vt->sha256))
+        why = "another module";
+    else if (h->mem_size != fw->mem_size)
+        why = "another memory size";
+    else if (h->g_off != e->g_off || h->g_len != e->g_len || !(g = snap_globals(fw, fw->inst, e)))
+        why = "its globals are not where the table says";
+    else if (!!h->tg_len != !!fw->c1 || (fw->c1 && (!(tg = snap_globals(fw, fw->c1->twin, e)) || h->tg_len != e->g_len)))
+        why = "core 1 on in one and not the other";
+    else if (h->scratch != fw->scratch || h->c1_stack != (fw->c1 ? fw->c1->stack : 0))
+        why = "the host's allocations moved";
+    else if (h->qn > sizeof fw->q / sizeof fw->q[0])
+        why = "a bad input queue";
+    if (why) {
+        snprintf(fw->err, sizeof fw->err, "snapshot refused: %s", why);
+        return -1;
+    }
+    memcpy(fw->mem, mem, fw->mem_size);   /* (no module code runs: the twin has no job before the first call) */
+    memcpy(g, h->g, h->g_len);
+    if (tg)
+        memcpy(tg, h->tg, h->tg_len);
+    fw->ms = h->ms, fw->last_frame = h->last_frame, fw->frame_ms = h->frame_ms;
+    fw->frames_done = h->frames_done, fw->due = h->due;
+    fw->tk_ptr = h->tk_ptr && in_mem(fw, h->tk_ptr, FW_TK_SIZE) && fw->obj->tk1 ? h->tk_ptr : 0;
+    fw->rd_ptr = h->rd_ptr && in_mem(fw, h->rd_ptr, 48) ? h->rd_ptr : 0;
+    fw->rd_asked = (int)h->rd_asked;
+    fw->rd_seen = 0;
+    fw->ain_buf = h->ain_buf && in_mem(fw, h->ain_buf, FW_BLOCK * 4u) ? h->ain_buf : 0;
+    fw->ain_state = h->ain_state, fw->ain_lat = h->ain_lat, fw->ain_said = (int)h->ain_said;
+    fw->keys_held = h->keys_held, fw->btns_held = h->btns_held;
+    fw->qn = (int)h->qn;
+    for (i = 0; i < h->qn; i++) {
+        fw->q[i].due = h->q[i].due, fw->q[i].op = h->q[i].op, fw->q[i].a = h->q[i].a;
+        fw->q[i].b = h->q[i].b, fw->q[i].c = h->q[i].c;
+    }
+    fw->booted = 1;
+    return 0;
 }

@@ -23,6 +23,7 @@
 #include "files.h"
 #include "fmwords.h"
 #include "projmem.h"
+#include "memsnap.h"
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -837,7 +838,8 @@ static void filesapi(void)
           "files: the open project's files (project 3) stay");
     CHECK(NO("move/projects/move-project-03.fw1.bin", FILES_DELETE) && NO("move/projects/move-project-03.fw3.json", FILES_REPLACE) &&
           NO("move/projects/move-project-03.fw2.bin", FILES_RENAME) && !NO("move/projects/move-project-04.fw1.bin", FILES_DELETE) &&
-          !NO("move/projects/move-project-03.fw2.bin", FILES_PUT),
+          !NO("move/projects/move-project-03.fw2.bin", FILES_PUT) && NO("move/projects/move-project-03.fw2.mem", FILES_DELETE) &&
+          !NO("move/projects/move-project-04.fw2.mem", FILES_DELETE),
           "files: the open project's firmware copies (rfm1cs 0.13.0) stay too; another project's change");
     CHECK(NO("states/elasticat/state-00.bin", FILES_DELETE) && NO("states/elasticat/new.bin", FILES_PUT) && NO("states/choralroot", FILES_RENAME) &&
           strstr((files_refuse("states/elasticat/x", FILES_PUT, &u, w, sizeof w), w), "slot 1") &&
@@ -994,22 +996,22 @@ static void projmem(void)
         snprintf(p, sizeof p, "%s/states/fw", root), mkdir(p, 0755);
         snprintf(p, sizeof p, "%s/states/fw/state-02.bin", root), wr(p, other, sizeof other);
         snprintf(p, sizeof p, "%s/states/fw/state-02.json", root), wr(p, "{\"id\":\"fw\"}\n", 12);
-        CHECK(pm_state_match(root, "fw", img, sizeof img) == -1, "projmem: no stored state holds the image: -1");
+        CHECK(pm_state_match(root, "fw", img, sizeof img, "") == -1, "projmem: no stored state holds the image: -1");
         snprintf(p, sizeof p, "%s/states/fw/state-05.bin", root), wr(p, img, sizeof img);
         snprintf(p, sizeof p, "%s/states/fw/state-05.json", root);
         wr(p, "{\"id\":\"fw\",\"hash\":\"00\"}\n", 24);
-        CHECK(pm_state_match(root, "fw", img, sizeof img) == -1, "projmem: a state whose json hash says otherwise is not read");
+        CHECK(pm_state_match(root, "fw", img, sizeof img, "") == -1, "projmem: a state whose json hash says otherwise is not read");
         snprintf(p, sizeof p, "%s/states/fw/state-09.bin", root), wr(p, img, sizeof img);
-        CHECK((k = pm_state_match(root, "fw", img, sizeof img)) == 9, "projmem: a state with no json, the same bytes: %d", k);
-        CHECK(pm_state_match(root, "fw", other, sizeof other) == 2, "projmem: an older json (no hash): compared byte for byte");
-        CHECK(pm_state_match(root, "fw", img, sizeof img - 1) == -1 && pm_state_match(root, "fw", NULL, 0) == -1 &&
-              pm_state_match(root, "nofw", img, sizeof img) == -1, "projmem: another size, no image, another firmware: -1");
+        CHECK((k = pm_state_match(root, "fw", img, sizeof img, "")) == 9, "projmem: a state with no json, the same bytes: %d", k);
+        CHECK(pm_state_match(root, "fw", other, sizeof other, "") == 2, "projmem: an older json (no hash): compared byte for byte");
+        CHECK(pm_state_match(root, "fw", img, sizeof img - 1, "") == -1 && pm_state_match(root, "fw", NULL, 0, "") == -1 &&
+              pm_state_match(root, "nofw", img, sizeof img, "") == -1, "projmem: another size, no image, another firmware: -1");
         snprintf(p, sizeof p, "%s/states/fw/state-09.bin", root), unlink(p);
         j = pm_json_hash("{\"id\":\"fw\"}\n", img, sizeof img);
         snprintf(p, sizeof p, "%s/states/fw/state-12.json", root), wr(p, j, strlen(j));
         free(j);
         snprintf(p, sizeof p, "%s/states/fw/state-12.bin", root), wr(p, img, sizeof img);
-        CHECK(pm_state_match(root, "fw", img, sizeof img) == 12, "projmem: a state with the image's hash: found");
+        CHECK(pm_state_match(root, "fw", img, sizeof img, "") == 12, "projmem: a state with the image's hash: found");
         CHECK(pm_json_id(p, id, sizeof id) == -1, "projmem: no json: no id");
         snprintf(p, sizeof p, "%s/states/fw/state-12.json", root);
         CHECK(pm_json_id(p, id, sizeof id) == 0 && !strcmp(id, "fw"), "projmem: a copy's json names its firmware");
@@ -1025,6 +1027,68 @@ static void projmem(void)
     blob[4] = 8;
     CHECK(pm_blob_ids(blob, sizeof blob, ids) == 0 && !ids[0][0], "projmem: a version 8 blob holds no firmwares");
     CHECK(pm_blob_ids(blob, 10, ids) == 0 && pm_blob_ids(NULL, 0, ids) == 0, "projmem: a short blob, none: no firmwares");
+}
+
+/* README "The working memory": a working memory's file (memsnap.h) back as it was written; a damaged one refused */
+static void memsnap(void)
+{
+    const uint64_t sz = 64u * MS_PAGE + 100u;   /* (a last page shorter than the others) */
+    ms_snap_t *m = ms_new(sz), *d;
+    uint8_t *enc, *bad;
+    size_t en = 0, i;
+    uint32_t r = 12345;
+    char fh[65], sha[65], hex[65];
+    int same;
+    memset(fh, 'a', 64), fh[64] = 0;
+    memset(m->mem, 0, sz);
+    for (i = 0; i < 3 * MS_PAGE; i++)   /* pages 1..3: noise */
+        m->mem[MS_PAGE + i] = (uint8_t)((r = r * 1103515245u + 12345u) >> 16);
+    for (i = 0; i < MS_PAGE; i++)       /* page 5: a pattern, page 7: a run, the last: a few bytes */
+        m->mem[5 * MS_PAGE + i] = (uint8_t)(i % 7), m->mem[7 * MS_PAGE + i] = 0x5A;
+    memcpy(m->mem + 64u * MS_PAGE + 90, "tail", 4);
+    snprintf(m->h.sha256, sizeof m->h.sha256, "%s", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    m->h.g_off = 8, m->h.g_len = 12, m->h.tg_len = 12, m->h.g[0] = 1, m->h.g[11] = 2, m->h.tg[3] = 9;
+    m->h.scratch = 4096, m->h.c1_stack = 8192, m->h.ms = 70000, m->h.frames_done = 3087000, m->h.due = 3087000;
+    m->h.tk_ptr = 2048, m->h.keys_held = 5, m->h.qn = 2;
+    m->h.q[0].due = 3087100, m->h.q[0].op = 4, m->h.q[0].a = 3, m->h.q[0].b = -2;
+    m->h.q[1].due = 3087200, m->h.q[1].op = 6, m->h.q[1].c = 0x7F3C9009u;
+    enc = ms_encode(m, fh, &en);
+    d = enc ? ms_decode(enc, en, hex) : NULL;
+    same = d && d->h.mem_size == sz && !memcmp(d->mem, m->mem, sz) && !strcmp(d->h.sha256, m->h.sha256) &&
+           !strcmp(hex, fh) && d->h.g_len == 12 && !memcmp(d->h.g, m->h.g, 12) && !memcmp(d->h.tg, m->h.tg, 12) &&
+           d->h.scratch == 4096 && d->h.c1_stack == 8192 && d->h.ms == 70000 && d->h.frames_done == 3087000 &&
+           d->h.tk_ptr == 2048 && d->h.keys_held == 5 && d->h.qn == 2 && d->h.q[0].b == -2 &&
+           d->h.q[1].c == 0x7F3C9009u;
+    CHECK(same && en < 4 * MS_PAGE + 4096, "memsnap: %llu bytes of memory (zeros, noise, a pattern, a run) as a %zu-byte "
+          "file and back, the header too", (unsigned long long)sz, en);
+    CHECK(enc && ms_peek(enc, en, sha, hex) == 0 && !strcmp(sha, m->h.sha256) && !strcmp(hex, fh),
+          "memsnap: the module and the image it goes with read without decoding");
+    ms_free(d);
+    if (enc && (bad = malloc(en))) {
+        memcpy(bad, enc, en);
+        bad[en / 2] ^= 0x40;
+        d = ms_decode(bad, en, hex);
+        CHECK(!d, "memsnap: a byte changed: refused");
+        ms_free(d);
+        d = ms_decode(enc, en - 9, hex);
+        CHECK(!d && !ms_decode(enc, 10, hex) && !ms_decode((const uint8_t *)"RFM1MEM0xxxxxxxxxxxxxxxx", 24, hex),
+              "memsnap: cut short, another magic: refused");
+        ms_free(d);
+        free(bad);
+    }
+    {
+        char p[64];
+        ms_path(p, sizeof p, "/r/states/fw/state-03.bin");
+        CHECK(!strcmp(p, "/r/states/fw/state-03.mem"), "memsnap: a state's working memory beside it: %s", p);
+    }
+    {
+        ms_snap_t *r2 = ms_ref(m);   /* (CHECK evaluates its condition twice: no side effect in it) */
+        CHECK(r2 == m && m->refs == 2, "memsnap: a second reference");
+        ms_free(r2);
+        CHECK(m->refs == 1, "memsnap: given back: one left");
+        ms_free(m);
+    }
+    free(enc);
 }
 
 int main(int argc, char **argv)
@@ -1044,6 +1108,7 @@ int main(int argc, char **argv)
     filesapi();
     fmwords();
     projmem();
+    memsnap();
     printf("unit: %d checks, %d failed\n", g_n, g_fail);
     return g_fail ? 1 : 0;
 }

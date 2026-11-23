@@ -20,6 +20,12 @@
  *   fwrun FW.rfm1m --replay LOG --frames N [--flash-in IMG] --pcm OUT.raw
  *       the host's input log (remotefm1-host --log-inputs) replayed: N frames rendered with every logged input put
  *       in before the same device ms. The host's own capture of that instance must be the same bytes.
+ *   fwrun FW.rfm1m ... --snap-test MS [--snap-out F.mem]
+ *       README "The working memory": at device ms MS (after the block that reaches it) a snapshot of the instance
+ *       (fw_snap_take),
+ *       written as the host writes it (memsnap.h: F.mem when given) and read back, restored into a second instance of
+ *       the same object (fw_snap_restore); from then on both are rendered, the same input given to both, and every
+ *       block compared: the line says the sizes, the times and how many blocks were the same (exit 1: one was not).
  * Prints one line: id version, the chord's RMS and peak, LCD writes, x real time, worst block, load and boot. */
 #include <math.h>
 #include <stdio.h>
@@ -31,6 +37,8 @@
 
 #include "../src/fsvc.h"
 #include "../src/fwrt.h"
+#include "../src/memsnap.h"
+#include "../src/sha256.h"
 #include "../src/wav.h"
 #include "wasm-rt.h"
 
@@ -78,6 +86,105 @@ static const int16_t *ain_next(const int16_t *pcm, uint32_t n, uint32_t *pos, in
     return blk;
 }
 
+/* --snap-test: the second instance, restored from a snapshot of the first, and what it did */
+static fw_t g_fw2;
+static int g_snapped, g_snap_bad;
+static uint64_t g_snap_same;
+static uint32_t g_snap_at;
+static const char *g_snap_out;
+
+static void snap_now(fw_t *fw)
+{
+    ms_snap_t *s = ms_new(fw->mem_size), *d;
+    uint8_t *enc;
+    size_t en = 0, zp = 0, i;
+    char fhex[65] = "", dhex[65];
+    double t0, t_take, t_enc, t_dec, t_rest;
+    const uint8_t *img = fw_flash(fw);
+    g_snapped = 1;
+    if (!s) {
+        g_snap_bad = 1;
+        return;
+    }
+    if (img) {
+        sha256_t h;
+        uint8_t dg[32];
+        sha256_init(&h);
+        sha256_update(&h, img, fw->flash_size);
+        sha256_final(&h, dg);
+        for (i = 0; i < 32; i++)
+            snprintf(fhex + 2 * i, 3, "%02x", dg[i]);
+    }
+    t0 = now_s();
+    if (fw_snap_take(fw, &s->h, s->mem) != 0) {
+        printf("  snapshot at ms %u: this module's snapshots are not known to be whole (flash only)\n", fw->ms);
+        ms_free(s);
+        g_snap_bad = 1;
+        return;
+    }
+    t_take = now_s() - t0;
+    for (i = 0; i < fw->mem_size; i += MS_PAGE) {
+        size_t k = 0;
+        while (k < MS_PAGE && !s->mem[i + k])
+            k++;
+        zp += k == MS_PAGE;
+    }
+    t0 = now_s();
+    enc = ms_encode(s, fhex, &en);
+    t_enc = now_s() - t0;
+    if (enc && g_snap_out) {
+        FILE *f = fopen(g_snap_out, "wb");
+        if (f) {
+            fwrite(enc, 1, en, f);
+            fclose(f);
+        }
+    }
+    t0 = now_s();
+    d = enc ? ms_decode(enc, en, dhex) : NULL;
+    t_dec = now_s() - t0;
+    if (!d || memcmp(d->mem, s->mem, fw->mem_size) || strcmp(dhex, fhex)) {
+        printf("  snapshot at ms %u: the file did not read back as written\n", fw->ms);
+        g_snap_bad = 1;
+        free(enc), ms_free(s), ms_free(d);
+        return;
+    }
+    fw_obj_ref(fw->obj);
+    if (fw_create(&g_fw2, fw->obj) != 0) {
+        printf("  snapshot: a second instance: %s\n", g_fw2.err);
+        g_snap_bad = 1;
+    } else {
+        t0 = now_s();
+        if (fw_snap_restore(&g_fw2, &d->h, d->mem) != 0) {
+            printf("  snapshot: %s\n", g_fw2.err);
+            g_snap_bad = 1;
+        }
+        t_rest = now_s() - t0;
+        printf("  snapshot at ms %u: memory %llu bytes (%zu of %llu pages zero), file %zu bytes; take %.0f us, "
+               "encode %.1f ms, decode %.1f ms, restore %.0f us\n", fw->ms, (unsigned long long)fw->mem_size, zp,
+               (unsigned long long)(fw->mem_size / MS_PAGE), en, t_take * 1e6, t_enc * 1e3, t_dec * 1e3, t_rest * 1e6);
+    }
+    fw_obj_close(fw->obj);
+    free(enc), ms_free(s), ms_free(d);
+}
+/* after each block of the first instance: the second's, compared */
+static void snap_block(fw_t *fw, const int16_t *blk, const int16_t *in)
+{
+    int16_t b2[FW_BLOCK * 2];
+    if (!g_snapped) {
+        if (g_snap_at && fw->ms >= g_snap_at)
+            snap_now(fw);
+        return;
+    }
+    if (g_snap_bad || !g_fw2.booted)
+        return;
+    fw_render_in(&g_fw2, b2, in);
+    if (memcmp(b2, blk, sizeof b2)) {
+        printf("  snapshot: the restored instance's block %llu after it differs\n", (unsigned long long)g_snap_same);
+        g_snap_bad = 1;
+    } else
+        g_snap_same++;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = NULL, *pcm_path = NULL, *replay = NULL, *flash_in = NULL, *folder = NULL;
@@ -118,6 +225,10 @@ int main(int argc, char **argv)
             ain_once = 1;
         else if (!strcmp(argv[i], "--ui"))
             want_ui = 1;
+        else if (!strcmp(argv[i], "--snap-test") && i + 1 < argc)
+            g_snap_at = (uint32_t)strtoul(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--snap-out") && i + 1 < argc)
+            g_snap_out = argv[++i];
         else if (!strcmp(argv[i], "--press") && i + 1 < argc && npress < 16) {
             const char *a = argv[++i], *at = strchr(a, '@'), *plus;
             if (!at || at == a || at - a >= 16)
@@ -231,10 +342,14 @@ int main(int argc, char **argv)
                 if (log[k].ms > fw.ms + 4u)   /* (only the next few ms: a block is at most 3) */
                     break;
                 fw_in(&fw, log[k].op, log[k].a, log[k].b, log[k].c, due);
+                if (g_fw2.booted)
+                    fw_in(&g_fw2, log[k].op, log[k].a, log[k].b, log[k].c, due);
                 k++;
             }
             int16_t ib[FW_BLOCK * 2];
-            fw_render_in(&fw, blk, ain_next(ain, ain_frames, &ain_pos, ain_once, ib));
+            const int16_t *inb = ain_next(ain, ain_frames, &ain_pos, ain_once, ib);
+            fw_render_in(&fw, blk, inb);
+            snap_block(&fw, blk, inb);
             for (i = 0; i < FW_BLOCK * 2; i++) {
                 const double v = blk[i] / 32768.0;
                 sumsq += v * v;
@@ -261,7 +376,9 @@ int main(int argc, char **argv)
             int16_t blk[FW_BLOCK * 2];
             const int on = fw.ms > settle && fw.ms <= up;   /* (the chord's blocks: rendered after a ms in it) */
             int16_t ib[FW_BLOCK * 2];
-            fw_render_in(&fw, blk, ain_next(ain, ain_frames, &ain_pos, ain_once, ib));
+            const int16_t *inb = ain_next(ain, ain_frames, &ain_pos, ain_once, ib);
+            fw_render_in(&fw, blk, inb);
+            snap_block(&fw, blk, inb);
             if (on || (fw.ms - 1 >= settle && fw.ms - 1 < up)) {
                 for (i = 0; i < FW_BLOCK * 2; i++) {
                     const double v = blk[i] / 32768.0;
@@ -312,9 +429,18 @@ int main(int argc, char **argv)
         fw_ui_info(&fw, ui, sizeof ui);
         printf("  ui: %s\n", ui);
     }
+    if (g_snap_at) {
+        if (!g_snapped)
+            printf("  snapshot: the run ended before ms %u\n", g_snap_at), g_snap_bad = 1;
+        else if (!g_snap_bad)
+            printf("  snapshot: the restored instance rendered the same %llu blocks as the first, bit for bit\n",
+                   (unsigned long long)g_snap_same);
+        if (g_fw2.inst)
+            fw_destroy(&g_fw2);
+    }
     if (fw.dead)
         fprintf(stderr, "fwrun: %s\n", fw.err);
     fw_destroy(&fw);
     free(ain);
-    return fw.halted || chord_frames == 0 ? 1 : 0;
+    return fw.halted || chord_frames == 0 || g_snap_bad ? 1 : 0;
 }
