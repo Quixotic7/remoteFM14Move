@@ -1,0 +1,8977 @@
+{
+ "format": "ableton-move-designer",
+ "version": 3,
+ "name": "RemoteFM1 for the Move: the sampler's screens, proposal 4",
+ "items": [
+  {
+   "id": "vz564vh3uqd3",
+   "x": 0,
+   "y": 0,
+   "w": 4652,
+   "h": 2860,
+   "type": "group",
+   "title": "PROPOSAL, round 4 (not built): the sampler with icons, rows, tabs and popups (2026-11-24)",
+   "color": "#ffb000"
+  },
+  {
+   "id": "0wu9bqpe2rui",
+   "x": 60,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "A. One row",
+   "description": "The source's sound and its level; under them the one setting the jog is on: an icon and its value. The marks show where it is among the seven.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next setting; past the first one: the tabs. Click: the setting's popup; on the tabs: the next tab"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Sampler, Record",
+      "function": "Tabs, the source's sign, wave, level, one setting"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAAAAAAAAAAAPwHwAz+AAAAAAAAAAAAAAMDD+AM/gAAAAAAAAAAAAADAx/wAAAAAAAAAAAAAAAAAAMf8Az+AAAAAAAAAAAAAAADH/AM/gAAAAAAAAAAAAAADB/wAAAAAAAAAAAAAAAAAAwf8Az+AAAAAAAAAAAAAAAwD+AM/gAAAAAAAAAAAAAAMAfAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAD/z/4AAAAAAAAAAAAAAAAA/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAgAAAAAAAAIAAAAAAAAAAAKAAAAAAAACAAAAAAAAAAACgAAAAAAAAoAAAACAAAAAAoAAAAAAAAKAAAAAiAAAAAqAgAAoAAACgAAAAAgAAIAKgIAAKAAACoAAgAAIAACAioCICKgIAgqiAIIAigAAiIqKiqioKAIqogCCAIoAIIiqioqoqqiCKqIAogAKoCCIqoqqqKqogiqigqIH6qioqKqKqqqqqoqqooKiB+qqqqqqqqqqqqqqqqqqqgfqqqqqqqqqqqqqqqqqqqoH6qioqKqKqqqqqoqqooKiB+qgIIiqiqqoqqiCKqKCogfqACCIqoqKqKqogiqiAKIH6gAAiIqKiqioKAIqogCCB+gAAICKgIgIqAgCCqIAgn/4AACACoCAACgAAAqAAIAH6AAAAAqAgAAoAAACgAAAB+AAAAACgAAAAAAAAoAAAAfgAAAAAoAAAAAAAAKAAAAH4AAAAAKAAAAAAAACAAAAB+AAAAACAAAAAAAAAgAAAAfgAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAB+AAAAAAAAAAAAAAAAAAAAAAAAB/+AAAAAAAAAAAAAAAAf/gf/gf/gf/gf/gf/gf/gAAAH/4AAAAAAAAAAAAAAAP////////////////////////AP////////////////4+PwD////////////////+/78/P////////////////v+/Pz////////////////73vz88DzD8D//////////+478/PA8w/A///////////uO/AP/zDzP///////////73vwD/8w8z///////////+/78/PAM//A///////////v+/PzwDP/wP//////////4+Pz8z8z//8/////////////8/M/M///P/////////////APwDP/AP/////////////wD8Az/wD//////////w=="
+  },
+  {
+   "id": "iqqmhfyjz7yj",
+   "x": 60,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "Top left: the tabs (record, takes). Top right: the source.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "hhlu4p88osj0",
+   "x": 1208,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "B. Three rows",
+   "description": "The same list with three settings showing; no wave until a take runs; the level a line on top.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next setting; past the first one: the tabs. Click: the setting's popup; on the tabs: the next tab"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Sampler, Record",
+      "function": "Tabs, level, three settings"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAAAAAAAAAAAPwHwAz+AAAAAAAADAAAAAMDD+AM/gAAAAAAAAwAAAADAx/wAAAAAAAAAAAMAAAAAAMf8Az+AA/////ADAAAAAADH/AM/gAP////wAwAAAAADB/wAAAAD////8zMzMAAAAwf8Az+AA/////ADAAAAAAwD+AM/gAP////wAwAAAAAMAfAAAAAAAAAAAAMAAAAAMAAAAAAAAAAAAAADAAAAADAAAAAAAAAAAAAAAwAAAAD/z/4AAAAAAAAAAAAAAAAA/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8PAAAMAAAPwAAAAAAABgD/DwAADAAAD8AAAAAAAEYDAAMAAAwAADAwAAAAAAAmAwADAAAMAAAwMAAAAAAAFgMAAwD8PwAAADAAAAAAB/YDAAMA/D8AAAAwAAAAAAf2APwDAwMMAAAAwAAAAAAAFgD8AwMDDAAAAMAAAAAAACYAAwMDAwwAAAMAAAAAAABGAAMDAwMMAAADAAAAAAAABgADAwMDDDAADAAAAAAAAAAAAwMDAwwwAAwAAAAAAAAAA/wPwPwDwAA/8AAAAAAAAAP8D8D8A8AAP/AAAAAAAAAAAAAAAAAAAAAAAAAAAD////////////////////////wD////////////////+Pj8A/////////////////v+/Pz////////////////7/vz8////////////////+978/PA8w/A///////////uO/PzwPMPwP//////////7jvwD/8w8z///////////+978A//MPM////////////v+/PzwDP/wP//////////7/vz88Az/8D//////////+Pj8/M/M///P/////////////PzPzP//z/////////////wD8Az/wD/////////////8A/AM/8A//////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAD/AAAAAAAAAAAAAAAAAwAA/wAAAAAAAAAAAAAAAA8AAMDAAAAAAAAAAAABAEAPAADAwAAAAAAAAAAAAQBAMwAAwMPwzwPwAAAAAAEAQDMAAMDD8M8D8AAAAAAB/8DDAAD/AAzwzAAAAAAAAQBAwwAA/wAM8MwAAAAAAAEAQP/AAMDD/MAD8AAAAAABAED/wADAw/zAA/AAAAAAAAAAAwAAwMwMwAAMAAAAAAAAAAMAAMDMDMAADAAAAAAAAAADAAD/A/zAD/AAAAAAAAAAAwAA/wP8wA/wAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "knp42x2fo0vk",
+   "x": 1208,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "The other way to show the list.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "znnz6nna16nn",
+   "x": 2356,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "C. The tabs",
+   "description": "Scrolled up past the first setting: the jog is on the tabs.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next setting; past the first one: the tabs. Click: the setting's popup; on the tabs: the next tab"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Sampler, Record",
+      "function": "The tabs chosen"
+     }
+    }
+   },
+   "screen": "//4AAAAAAAAAAAAAAAAA/P/+AAAAAAAAAAAAAAAAAPz4Pgz+AAAAAAAAAAAAAAMD8B4M/gAAAAAAAAAAAAADA+AOAAAAAAAAAAAAAAAAAAPgDgz+AAAAAAAAAAAAAAAD4A4M/gAAAAAAAAAAAAAADOAOAAAAAAAAAAAAAAAAAAzgDgz+AAAAAAAAAAAAAAAw8B4M/gAAAAAAAAAAAAAAMPg+AAAAAAAAAAAAAAAAAMD//gAAAAAAAAAAAAAAAADA//4AAAAAAAAAAAAAAAAD///+AAAAAAAAAAAAAAAAA/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAgAAAAAAAAIAAAAAAAAAAAKAAAAAAAACAAAAAAAAAAACgAAAAAAAAoAAAACAAAAAAoAAAAAAAAKAAAAAiAAAAAqAgAAoAAACgAAAAAgAAIAKgIAAKAAACoAAgAAIAACAioCICKgIAgqiAIIAigAAiIqKiqioKAIqogCCAIoAIIiqioqoqqiCKqIAogAKoCCIqoqqqKqogiqigqIACqioqKqKqqqqqoqqooKiAIqqqqqqqqqqqqqqqqqqqgCKqqqqqqqqqqqqqqqqqqoH6qioqKqKqqqqqoqqooKiB+qgIIiqiqqoqqiCKqKCogfqACCIqoqKqKqogiqiAKIH6gAAiIqKiqioKAIqogCCB+gAAICKgIgIqAgCCqIAgn/4AACACoCAACgAAAqAAIAH6AAAAAqAgAAoAAACgAAAB+AAAAACgAAAAAAAAoAAAAfgAAAAAoAAAAAAAAKAAAAH4AAAAAKAAAAAAAACAAAAB+AAAAACAAAAAAAAAgAAAAfgAAAAAAAAAAAAAAAAAAAH4AAAAAAAAAAAAAAAAAAAB+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/gf/gf/gf/gf/gf/gf/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8PAAAMAAAPwAAAAAAABgD/DwAADAAAD8AAAAAAAEYDAAMAAAwAADAwAAAAAAAmAwADAAAMAAAwMAAAAAAAFgMAAwD8PwAAADAAAAAAB/YDAAMA/D8AAAAwAAAAAAf2APwDAwMMAAAAwAAAAAAAFgD8AwMDDAAAAMAAAAAAACYAAwMDAwwAAAMAAAAAAABGAAMDAwMMAAADAAAAAAAABgADAwMDDDAADAAAAAAAAAAAAwMDAwwwAAwAAAAAAAAAA/wPwPwDwAA/8AAAAAAAAAP8D8D8A8AAP/AAAAAAA=="
+  },
+  {
+   "id": "hc535yj2r4mm",
+   "x": 3504,
+   "y": 60,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "D. A value changes",
+   "description": "The jog's click on a setting: its name and value fill the screen while it changes.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the value. Click or Back: done"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Popup",
+      "function": "Threshold, the level under it"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB/5gAAAAAABgAAAeAAYAAAf+YAAAAAAAYAAAHgAGAAAAYGAAAAAAAGAAAAYABgAAAGBgAAAAAABgAAAGAAYAAABgZ4Z4H4H4Z4H4BgHmAAAAYGeGeB+B+GeB+AYB5gAAAGB4Z4ZgZgB4ZgYGBh4AAABgeGeGYGYAeGYGBgYeAAAAYGBmAH/h+GBmBgYGBgAAAGBgZgB/4fhgZgYGBgYAAABgYGYAYAAGYGYGBgYGAAAAYGBmAGAABmBmBgYGBgAAAGBgZgAfh/hgYfgfgf4AAABgYGYAH4f4YGH4H4H+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/8AAA8AAAAAAAAAAAAAAA//AAAPAAAAAAAAAAAAAAAP/wAADwAAAAAAAAAAAAAAD/8AAA8AAAAAAAAAAAAAAPAA8AD/AAAAAAAAAAAAAADwAPAA/wAAAAAAAAAAAAAA8ADwAP8AAAAAAAAAAAAAAPAA8AD/AAAAAAAAAAAAAAAAAPAPDwAAAAAAAAAAAAAAAADwDw8AAAAAAAAAAAAAAAAA8A8PAAAAAAAAAAAAAAAAAPAPDwAAAAAAAAAA///wAA8A8A8AAAAAAAAAAP//8AAPAPAPAAAAAAAAAAD///AADwDwDwAAAAAAAAAA///wAA8A8A8AAAAAAAAAAAAAAADwAP//8AAAAAAAAAAAAAAA8AD///AAAAAAAAAAAAAAAPAA///wAAAAAAAAAAAAAADwAP//8AAAAAAAAAAAAAAPAAAADwAAAAAAAAAAAAAADwAAAA8AAAAAAAAAAAAAAA8AAAAPAAAAAAAAAAAAAAAPAAAADwAAAAAAAAAAAAAA///wAA8AAAAAAAAAAAAAAP//8AAPAAAAAAAAAAAAAAD///AADwAAAAAAAAAAAAAA///wAA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAA//////8AAADAAAAAAAAAAP//////AAAAwAAAAAAAAAD//////8zMzMzMzMzMzAAA//////8AAADAAAAAAAAAAP//////AAAAwAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAA=="
+  },
+  {
+   "id": "o39t7a8llay1",
+   "x": 3504,
+   "y": 700,
+   "w": 1048,
+   "h": 160,
+   "type": "note",
+   "text": "The only place a setting's name is written.",
+   "color": "#cfe3ff"
+  },
+  {
+   "id": "ex0ykpo4ga30",
+   "x": 60,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "E. A take runs",
+   "description": "Bars done / wanted, the take's wave, the level.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next setting; past the first one: the tabs. Click: the setting's popup; on the tabs: the next tab"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ff0000"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Recording",
+      "function": ""
+     }
+    }
+   },
+   "screen": "AAAD8AAAMAAAAAAAAAAA/AAAA/AAADAAAAAAAAAAAPwHwAwMAMDwAAAAAAAAAAMDD+AMDADA8AAAAAAAAAADAx/wAAwDAzAAAAAAAAAAAAMf8AAMAwMwAAAAAAAAAAADH/AAMAwMMAAAAAAAAAAADB/wADAMDDAAAAAAAAAAAAwf8ADAMA/8AAAAAAAAAAAwD+AAwDAP/AAAAAAAAAAAMAfAAwDAADAAAAAAAAAAAMAAAAMAwAAwAAAAAAAAAADAAAAP/AAAMAAAAAAAAAAD/wAAD/wAADAAAAAAAAAAA/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAABAAAACAAAAEAAAAACAAAAAQgAAAgAAABAAAAAAAAAAAAIAAAAAAAAAAAAAAAgAAAACAAAAAAAAAAAAAACKAAAAQgAAAgAAABAAAAAAigAAAEoAAgIAAAAQAAAAAAogAAAKAAIAAAAAAAAAAAAKoAAACgAiAAAAAAAAAAAAiqAAAGoAIgIAAAAQAAAAB+qiAIBqIKICAAAAEAAAAAfqqgCAKiCiAAAAAAAAAAAH6qqAgCogogAAAAAAAAAAB+qqiKLqoKICAAAAEAAAAAfqqqiq6qiiAgAAABAAAAAH6qqoqqqqogAAAAAAAAAAB+qqqqqqqqoAAAAAAAAAAAfqqqqq6qqqqqqqqrqqqqoH6qqoquqqogIAAAAQAAAAB+qqqKqqqKIAAAAAAAAAAAfqqoiiqqCiAAAAAAAAAAAH6qqAgGogogIAAAAQAAAAB+qqAIBqIKICAAAAEAAAAAfqogCAKiCiAAAAAAAAAAAH6qAAACoAIgAAAAAAAAAAB+qgAABKACICAAAAEAAAAAfqIAAASgACAgAAABAAAAAH6gAAAAoAAgAAAAAAAAAAB+oAAAACAAAAAAAAAAAAAAAIAAAAQgAAAgAAABAAAAAAAAAAAEIAAAIAAAAQAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAIAAAAQAAAAAAAAAABAAAACAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAP///+AAAAAAAAAAAAAAAAD////gAAAAAAAAAAA////8////5////5////wAA=="
+  },
+  {
+   "id": "oriiwn5v7y85",
+   "x": 1208,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "F. The takes",
+   "description": "Three rows, no file names: the source's sign, the length, the wave as a small picture.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next take or folder. Click: what to do with it (a folder: opens)"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The folders"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + the jog's click: the take deleted (Undo: back)"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Sampler, Takes",
+      "function": ""
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwAz+AAAAAAAAAAAAAAAAD+AM/gAAAAAAAAAAAAAAAB/wAAAAAAAAAAAAAAAAAAAf8Az+AAAAAAAAAAAAAAAAH/AM/gAAAAAAAAAAAAAAAB/wAAAAAAAAAAAAAAAAAAAf8Az+AAAAAAAAAAAAAAAAD+AM/gAAAAAAAAAAAAAAAAfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4AAMAAP8AAAAAAAAAAAAB+AADAAD/AAAAAAAEABAABgYADwAAwMAAAAAABAAQAAYGAA8AAMDAAAAAAARQUAAABgAzAADAw/DPA/AFVFBVAAYAMwAAwMPwzwPwBVVVVQAYAMMAAP8ADPDMAAVVVVUAGADDAAD/AAzwzAAFVFBVAGAA/8AAwMP8wAPwBFBQAABgAP/AAMDD/MAD8AQAEAABgAADAADAzAzAAAwEABAAAYAAAwAAwMwMwAAMAAAAAAf+AAMAAP8D/MAP8AAAAAAH/gADAAD/A/zAD/AAAAAAAAAAAAAAAAAAAAAAAAAAAD/////////////////////+B//8//8A/////////////gf//P//AP/////////v7/n5//D//z8///////+/7+/5+f/w//8/P///////qu/v//n/zP//PzwPMPwP/6rvq//5/8z//z88DzD8D/qqqqr/5/88//8A//MPM//6qqqq/+f/PP//AP/zDzP//6rvq/+f/wA//z88Az/8D/+q7+//n/8AP/8/PAM//A//v+/v/n///P//PzPzP//z///v7/5///z//z8z8z//8//////4Af/8//8A/AM/8A//////+AH//P//APwDP/AP/////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgYAPwAA/wAAAAAAAAAAAAYGAD8AAP8AAAAAAAAAABAHngDAwADAwAAAAAAAAEAQB54AwMAAwMAAAAAAAABBEAZmAMDAAMDD8M8D8AAVQVEGZgDAwADAw/DPA/AFVVVVBmYAPwAA/wAM8MwABVVVVQZmAD8AAP8ADPDMAAAVQVEGBgDAwADAw/zAA/AAAEEQBgYAwMAAwMP8wAPwAABAEAYGAMDAAMDMDMAADAAAABAGBgDAwADAzAzAAAwAAAAABgYAPwAA/wP8wA/wAAAAAAYGAD8AAP8D/MAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "w70uhg4p7k8k",
+   "x": 2356,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "G. A take's actions",
+   "description": "Icons: play, trim, to a kit pad, to the looper, delete. The chosen one's name is the only word.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "The takes"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: play, trim, to a kit pad, to the looper, delete. Click: does it"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "A take",
+      "function": "Its wave, five actions"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAKAAAACgAAAAAAAAAAAAAACgAAAAoAAAAgAAAAAAAAAAoAAAAKAAAAIgAAAIgAAAAKAIAAigAAACIAAACIAAAACgCiAIoiAIgiAgAgioAAIAoAogCKooKIIgIgIoqAoiKqgKoAiqqCiCIiqCqKgqIiqoiqoIqqioqiIqiqqoqqIqqoqqCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqoqqioqiIqiqqoqqIqqoqqCKqoKIIiKoKoqCoiKqiKqgiqKCiCICICKKgKIiqoCqAIoiAIgiAgAgioAAIAoAogCKAAAAIgAAAIgAAAAKAKIACgAAACIAAACIAAAACgCAAAoAAAAgAAAAAAAAAAoAAAAKAAAAAAAAAAAAAAAKAAAACgAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/8AAAAAAAAAAAAAAAAAAH//AAAAAAAAAAAAAAAAAABn8wAAAAAA+AAAAAAADAAAb/sADzwAAQQAAYMAAA8AAG/7AA88AAICAADGAAAPwABt2wAPPAACAgAAbAAAD/AAacsADzwAAgIAADgAAA/wAGnLAAAAAAIPAAA4AAAPwABt2wAPPAACBwAAbAAADwAAb/sADzwAAQIAAMYAAAwAAG/7AA88AADgAAGDAAAAAABn8wAPPAAAAAAAAAAAAAAAf/8AAAAAAAAAAAAAAAAAAH//AAAAAAAAAAAAAAAAAAB//wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/gAAYAAAAAAAAAAAAAAAB/4AAGAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAGBngeB5gAAAAAAAAAAAAABgZ4HgeYAAAAAAAAAAAAAAYHhgYGZgAAAAAAAAAAAAAGB4YGBmYAAAAAAAAAAAAABgYABgZmAAAAAAAAAAAAAAYGAAYGZgAAAAAAAAAAAAAGBgAGBgYAAAAAAAAAAAAABgYABgYGAAAAAAAAAAAAAAYGAB+GBgAAAAAAAAAAAAAGBgAfhgYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "7qn1nglqsph3",
+   "x": 3504,
+   "y": 980,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "H. Trim",
+   "description": "What is kept is the white block. Icons: start, end, play, keep. The value shows while a marker moves.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "Moving a marker: done. Else: the take as it was"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: start, end, play, keep. Click: move a marker (the view zooms in on it), play, or keep"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "Start"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": "#591900"
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "End"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": "#fe4700"
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "Dark and dead while trimming"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Trim",
+      "function": ""
+     }
+    }
+   },
+   "screen": "DAAAPwAwAAAAAAAAAAAAAAwAAD8AMAAAAAAAAAAAAAA8AADAwPAAAAAAAAAAAAAAPAAAwMDwAAAAAAAAAAAAAAwAAMDDMAAD8AAAAAAAAAAMAADAwzAAA/AAAAAAAAAADAAAPwwwAAwAAAAAAAAAAAwAAD8MMAAMAAAAAAAAAAAMAADAz/wAA/AAAAAAAAAADAAAwM/8AAPwAAAAAAAAAAwDwMDAMAAADAAAAAAAAAAMA8DAwDAAAAwAAAAAAAAAPwPAPwAwAA/wAAAAAAAAAD8DwD8AMAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf//////////////4AAAAAH//////////////8AAAACB///////////////AAAAAgf///X//////////wAAAAIH/3/1//////////8AAAACB/9/9f//f/f////3AAAAAgf/f/Xf93/3////9wAAAAIH/3913/Vf9////9cIAAACB/9/dd/1X/f//f/XCCAAAod/fVXf9V/33/3f1wggIAKFX31V13Vfddfd19cIICACpV9dVddVX3XX3VXXCKAgAq1fVVVXVVVVVV1V1yigIIqtVVVVVVVVVVVVVVUqqqqqrVVVVVVVVVVVVVVVKqqqoq1fVVVXVVVVVV1V1yigIIKlX11V11VfddfdVdcIoCAChV99Vdd1X3XX3dfXCCAgAod/fVXf9V/33/3f1wggIAIH/3913/Vf9//9/9cIIAACB/9/dd/1X/f////XCAAAAgf/f/Xf93/3////9wAAAAIH/3/1//9/9/////cAAAACB/9/9f//////////AAAAAgf///X//////////wAAAAIH//////////////8AAAAAB///////////////AAAAAAf//////////////4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB//wAAAAAAAAAAAAAAAAAAf/8AAAAAAAAAAAAADAAAAH/zAAAAAAAAAAAAAAgAAAB/+wAADAAAAAAQAAAIQAAAf3sAAA8AAAAAMAAACMAAAH87AAAPwAAAAGAAAAn+AABgGwAAD/AAAADAAAAJ/gAAYBsAAA/wAABhgAAACMAAAH87AAAPwAAAMwAAAAhAAAB/ewAADwAAAB4AAAAIAAAAf/sAAAwAAAAMAAAADAAAAH/zAAAAAAAAAAAAAAAAAAB//wAAAAAAAAAAAAAAAAAAf/8AAAAAAAAAAAAAAAAAAH//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "uo9d09sa51ro",
+   "x": 60,
+   "y": 1900,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "I. The days",
+   "description": "Left arrow from the takes: a folder a day.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "Held + Sample: the app opens with that firmware as the source (nothing records yet)"
+     },
+     "led": {
+      "color": "#272727"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "A popup: done. Else: closes the app"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Turn: the next take or folder. Click: what to do with it (a folder: opens)"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "The folders"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler. In it: record / stop. White: the app is open. Red: recording"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": "#00ff3c"
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "Held + the jog's click: the take deleted (Undo: back)"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": null
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app (the app takes no knob)"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#2777fe"
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The layer under the app: the firmware's note layout, played as before"
+     },
+     "led": {
+      "color": "#0a2045"
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#1f5dc7"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The clip's steps, as before"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Sampler, Takes",
+      "function": "Folders"
+     }
+    }
+   },
+   "screen": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwAz+AAAAAAAAAAAAAAAAD+AM/gAAAAAAAAAAAAAAAB/wAAAAAAAAAAAAAAAAAAAf8Az+AAAAAAAAAAAAAAAAH/AM/gAAAAAAAAAAAAAAAB/wAAAAAAAAAAAAAAAAAAAf8Az+AAAAAAAAAAAAAAAAD+AM/gAAAAAAAAAAAAAAAAfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////////////////////////AD///z///////////////wA///8/////////////D//z////P////////////vB/8////z////////////7/v/P8D8M8Dz8////////+/7/z/A/DPA8/P////////v+/8/PzPD/zPz////////7/v/Pz8zw/8z8////////+/7/z8/M/PAM/P////////gA/8/PzPzwDPz////////////Pz8z8z88A////////////z8/M/M/PAP///////////8/wPwDwD/z////////////P8D8A8A/8////////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8P/AAMDAAAAAAAAAAAAAA/D/wADAwAAAAAAAAAAPAAwMAwAAwMAAAAAAAAAAEPgMDAMAAMDAAAAAAAAAABAEAAwMAADww/DAwAAAAAAQBAAMDAAA8MPwwMAAAAAAEAQAMAMAAMzMDMDAAAAAABAEADADAADMzAzAwAAAAAAQBADAAMAAw8wMwMAAAAAAH/wAwADAAMPMDMDAAAAAAAAAAwDAwADAzAwzAAAAAAAAAAMAwMAAwMwMMwAAAAAAAAAP/D8AAMDD8AwAAAAAAAAAD/w/AADAw/AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/A/AADAwAAAAAAAAAAAAAPwPwAAwMAAAAAAAAAADwAMDMDAAMDAAAAAAAAAABD4DAzAwADAwAAAAAAAAAAQBAAMAMAA8MPwwMAAAAAAEAQADADAAPDD8MDAAAAAABAEADADAADMzAzAwAAAAAAQBAAwAwAAzMwMwMAAAAAAEAQAwAwAAMPMDMDAAAAAAB/8AMAMAADDzAzAwAAAAAAAAAMAMAAAwMwMMwAAAAAAAAADADAAAMDMDDMAAAAAAAAAD/z/wADAw/AMAAAAAAAAAA/8/8AAwMPwDAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "id": "llyn8giisiy4",
+   "x": 1208,
+   "y": 1900,
+   "w": 1048,
+   "h": 616,
+   "type": "layout",
+   "name": "J. A kit pad",
+   "description": "Its number and its sample with start and end. No grid of settings: a touched knob says its name and value.",
+   "scope": [
+    "screen",
+    "knob-1",
+    "knob-2",
+    "knob-3",
+    "knob-4",
+    "knob-5",
+    "knob-6",
+    "knob-7",
+    "knob-8",
+    "knobled-1",
+    "knobled-2",
+    "knobled-3",
+    "knobled-4",
+    "knobled-5",
+    "knobled-6",
+    "knobled-7",
+    "knobled-8",
+    "volume",
+    "wheel",
+    "back",
+    "menu",
+    "track-1",
+    "track-2",
+    "track-3",
+    "track-4",
+    "pad-1-1",
+    "pad-1-2",
+    "pad-1-3",
+    "pad-1-4",
+    "pad-1-5",
+    "pad-1-6",
+    "pad-1-7",
+    "pad-1-8",
+    "pad-2-1",
+    "pad-2-2",
+    "pad-2-3",
+    "pad-2-4",
+    "pad-2-5",
+    "pad-2-6",
+    "pad-2-7",
+    "pad-2-8",
+    "pad-3-1",
+    "pad-3-2",
+    "pad-3-3",
+    "pad-3-4",
+    "pad-3-5",
+    "pad-3-6",
+    "pad-3-7",
+    "pad-3-8",
+    "pad-4-1",
+    "pad-4-2",
+    "pad-4-3",
+    "pad-4-4",
+    "pad-4-5",
+    "pad-4-6",
+    "pad-4-7",
+    "pad-4-8",
+    "capture",
+    "sample",
+    "loop",
+    "mute",
+    "delete",
+    "copy",
+    "undo",
+    "shift",
+    "play",
+    "record",
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+    "step-9",
+    "step-10",
+    "step-11",
+    "step-12",
+    "step-13",
+    "step-14",
+    "step-15",
+    "step-16",
+    "stepicon-1",
+    "stepicon-2",
+    "stepicon-3",
+    "stepicon-4",
+    "stepicon-5",
+    "stepicon-6",
+    "stepicon-7",
+    "stepicon-8",
+    "stepicon-9",
+    "stepicon-10",
+    "stepicon-11",
+    "stepicon-12",
+    "stepicon-13",
+    "stepicon-14",
+    "stepicon-15",
+    "stepicon-16",
+    "left",
+    "right",
+    "up",
+    "down",
+    "power"
+   ],
+   "controls": {
+    "track-1": {
+     "meta": {
+      "label": "FW 1",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#3b1c00"
+     }
+    },
+    "track-2": {
+     "meta": {
+      "label": "FW 2",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#091c3b"
+     }
+    },
+    "track-3": {
+     "meta": {
+      "label": "FW 3",
+      "function": "A firmware's slot: orange, blue, yellow"
+     },
+     "led": {
+      "color": "#3b2e00"
+     }
+    },
+    "track-4": {
+     "meta": {
+      "label": "MIX",
+      "function": "The kit"
+     },
+     "led": {
+      "color": "#ff3ca0"
+     }
+    },
+    "menu": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "back": {
+     "meta": {
+      "label": "BACK",
+      "function": "As everywhere"
+     }
+    },
+    "shift": {
+     "meta": {
+      "label": "SHIFT",
+      "function": "The Shift layer"
+     }
+    },
+    "wheel": {
+     "meta": {
+      "label": "",
+      "function": "Click: pick the chosen pad's sample"
+     }
+    },
+    "volume": {
+     "meta": {
+      "label": "MASTER",
+      "function": "The master volume"
+     }
+    },
+    "left": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "right": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "up": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "down": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "capture": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     }
+    },
+    "sample": {
+     "meta": {
+      "label": "",
+      "function": "Opens the sampler"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "record": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "play": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "loop": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "mute": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "delete": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "copy": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "undo": {
+     "meta": {
+      "label": "",
+      "function": "As in the layer under this one"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "knob-1": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-1": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-2": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-2": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-3": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-3": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-4": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-4": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-5": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-5": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-6": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-6": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-7": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-7": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "knob-8": {
+     "meta": {
+      "label": "",
+      "function": "The chosen pad's settings; a touch says the name and value"
+     }
+    },
+    "knobled-8": {
+     "led": {
+      "color": "#771c4b"
+     }
+    },
+    "pad-1-1": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-1-2": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-3": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-4": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-5": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-6": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-7": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-1-8": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-1": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-2-2": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-2-3": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-2-4": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-2-5": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-6": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-7": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-2-8": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-1": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#ffffff"
+     }
+    },
+    "pad-3-2": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-3-3": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-4": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-5": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-6": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-7": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-3-8": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-1": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-4-2": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-4-3": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": "#591538"
+     }
+    },
+    "pad-4-4": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-5": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-6": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-7": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "pad-4-8": {
+     "meta": {
+      "label": "",
+      "function": "The kit's 16 pads, bottom-left 4 x 4. A press plays its sample and selects it (white). Dark: empty"
+     },
+     "led": {
+      "color": null
+     }
+    },
+    "step-1": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#c72e7d"
+     }
+    },
+    "stepicon-1": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-2": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-2": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-3": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-3": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-4": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-4": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-5": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#c72e7d"
+     }
+    },
+    "stepicon-5": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-6": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-6": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-7": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-7": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-8": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-8": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-9": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#c72e7d"
+     }
+    },
+    "stepicon-9": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-10": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-10": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-11": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#c72e7d"
+     }
+    },
+    "stepicon-11": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-12": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-12": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-13": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#c72e7d"
+     }
+    },
+    "stepicon-13": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-14": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-14": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-15": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-15": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "step-16": {
+     "meta": {
+      "label": "",
+      "function": "The kit's track: its steps"
+     },
+     "led": {
+      "color": "#0f0f0f"
+     }
+    },
+    "stepicon-16": {
+     "led": {
+      "brightness": 0.0
+     }
+    },
+    "screen": {
+     "meta": {
+      "label": "Kit pad",
+      "function": ""
+     }
+    }
+   },
+   "screen": "AAAP/AAAAAAAAAAAAAAAAAAAD/wAAAAAAAAAAAAAAAA88AwAAAAAAAAAAAAAAAAAPPAMAAAAAAAAAAAAAAAAADzwD/AAAAAAAAAAAAAAAAA88A/wAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAADzwAAwAAAAAAAAAAAAAAAA88AAMAAAAAAAAAAAAAAAAPPAADAAAAAAAAAAAAAAAADzwDAwAAAAAAAAAAAAAAAAAAAwMAAAAAAAAAAAAAAAAAAAD8AAAAAAAAAAAAAAAAAAAA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//////////////AAAAAAAP/////f////f//wAAAAAAD/////3////3//8ACAAAAA/////9////9///AAgAAAAP/////f////f//wAIAAAAr/////3////X/98ACAAAAK3////9////1//fAAoAggCt//X//f///9f/3wAKAIoArf/1//3/1//X/98AigCKAKX/9d/9/9f/1//fAIoCioCl//Xfdf3XV9ff3wCKAoqCpf/13XV91VfXX98IiiKKoqX99d11XdVXVV/fKKoqiqKl3fXddV3VV1VfXyiqKoqqpd11XXVV1VdVXV2oqqqqqqXVVV11VVVXVVVVqqqqqqqlVVVVVVVVVVVVVaqqqqqqpVVVVVVVVVVVVVWqqqqqqqXVVV11VVVXVVVVqqqqqqql3XVddVXVV1VdXaiqqqqqpd313XVd1VdVX18oqiqKqqX99d11XdVXVV/fKKoqiqKl//XddX3VV9df3wiKIoqipf/133X911fX398AigKKgqX/9d/9/9f/1//fAIoCioCt//X//f/X/9f/3wCKAIoArf/1//3////X/98ACgCKAK3////9////1//fAAoAggCv/////f///9f/3wAIAAAAD/////3////3//8ACAAAAA/////9////9///AAgAAAAP/////f////f//wAIAAAAD/////3////3//8AAAAAAA//////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+  }
+ ]
+}
