@@ -1,6 +1,8 @@
 # Changes
 
-## Not released
+## 0.4.0 (2026-11-24)
+
+rfm1cs-abletonmove 0.14.0 (tag v0.14.0, 1004f14).
 
 - **Engine parameters (ep1)**, stages 1 and 2 of the ENGINE knob page (the owner's of 2026-11-24: "add a page after
   the FM-1 knobs for Engine parameters ... you reach that page, then click the jogwheel, now you can scroll and select

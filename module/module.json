@@ -1,7 +1,7 @@
 {
     "id": "remotefm1",
     "name": "RemoteFM1",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "api_version": 2,
     "author": "Quixotic7",
     "description": "FM-1 firmwares (.rfm1) running on the Move itself, played from its pads, knobs and buttons; the panel at http://remotefm1.local:7730/",
