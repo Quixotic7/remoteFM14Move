@@ -7,93 +7,161 @@ typedef struct { const char *sha256; unsigned short g_off, g_len; } snapsafe_t;
 static const snapsafe_t SNAPSAFE[] = {
     { "00d89917170bbaa68d939bfbe1c87453c4c15d36f62637e44a6340513ec4b7f1", 8, 4 },   /* yehnah-0.1.0.rfm1 */
     { "028c766799aaaafe50e64042a4e393ee85296b73a23098254bc6de7374de42a3", 8, 12 },   /* conductor-1.0.rfm1 */
+    { "02974deeb1def5f78e0d99dd64bb505b681800cfc298269ae02115c07203f570", 8, 4 },   /* coralflower-0.7.1.rfm1 */
     { "02a4444e5907fb91825cfb6aa8fdfeaecc2ddfeb53a59ab5d71fa524d0129ce0", 8, 12 },   /* mvsynth2-1.3.rfm1 */
+    { "0370cbf8a175d0327e275bd1e83e75a92e2c11212b3ce261dea92936cb4a4df4", 8, 12 },   /* x0x-1.3.rfm1 */
     { "04b10e04b09f517071271bf0de3439069b06c83035c64c3e84d7857ee9617469", 8, 12 },   /* tekstuur-2.0.rfm1 */
     { "0543eb551bb54c7bb90a51ca8a9b6bbdbe07aded1a6914fd86f870b701031c1c", 8, 4 },   /* fomni-0.4.1.rfm1 */
+    { "0562007d3116b19f63bdad03cfc53b8e0b963629ea661ebf2ed4848902e9dcd0", 8, 4 },   /* fomni-0.5.rfm1 */
     { "08dabc4ad05c6db5ac27264497180dd2ce3d83c2ad6d49b007d1ac2b52aedcdc", 8, 4 },   /* morse-0.6.rfm1 */
+    { "09f3830d04d2e7290333a2715f6e7844d339ba0dc7e29266db4a2c270be1c197", 8, 12 },   /* mvance-2.7.1.rfm1 */
     { "0b1f232c1e3a67113923caf2e3f81a564908d718eb0c064c8db92745e7a7201d", 8, 4 },   /* niagaradrift-0.3.rfm1 */
     { "125a66e476de4c19f03d1ab94d3b8760924b9a85fe3b2410790d7f4cd5980393", 8, 4 },   /* viscera-2.6.0.rfm1 */
+    { "14f2befb256582ea01b3c38388645c358a8c0af3dc1d56dbf24851788029e1e4", 8, 12 },   /* grimm-2.0.2.rfm1 */
     { "176af4831a1ecea7fafa8bd68ce7ba4451b5530118fb812a2185b5c43ad20943", 8, 4 },   /* fartmachine-1.1.0.rfm1 */
+    { "17ecd1f42d40a3021d2d544998ab9388f27e488d9f7c2c01c6ca5eee2b2cb7e9", 8, 4 },   /* quartz-0.10.rfm1 */
     { "1b847ad53c6886d03f90151f0f8e1177731fee2b9e8b74a9e8813ed0b90048da", 8, 4 },   /* fizz-0.13.0.rfm1 */
     { "1db3e8f9bec459638582bc955c4c60dc88b1d0426299b376f0318d8e04dd59bb", 8, 12 },   /* fmel1-1.3.rfm1 */
+    { "1dd7f20abdb65c7b627f2e2050ae828b04349dff40ff818c9cbbe6e0de741f8e", 8, 12 },   /* sidou-2.0.0.rfm1 */
+    { "1f0e998aed248bbcd777b8e5ebebc99db9a7ac1fc08c30b9e2d3e4724e8b7419", 8, 12 },   /* fmkick-0.5.1.rfm1 */
+    { "21e06d1fd3698955b4ade5d21aeb72928336ea98f6cbfcf2e6173c9f104277a2", 8, 12 },   /* matryoshka-1.24.1.rfm1 */
+    { "22331fdc510ca5dc6d068e1d11b57878b58d2594bd38401a7142999057fe0dda", 8, 4 },   /* h1-0.3.0.rfm1 */
     { "23f483c1873ef144854ca420882fd25f3fbe9d168e4ec04c4cf41115221fd286", 8, 4 },   /* quartz-0.6.rfm1 */
+    { "248e2567fa6ea45188ccdc58528d437eadb5e517ed72a2a77e358a6d45cfb13a", 8, 4 },   /* fmini-2.6.0.rfm1 */
     { "2622c5a3f52b628ae822586108af4c154f7b592f78a608727255cadcc3d6ee76", 8, 4 },   /* kris_jangle-0.14.rfm1 */
+    { "265cb3ef80212715dd93d5d2e01cba9c4b1c44e47ee0520b779d16a4b6e41bf7", 8, 4 },   /* pingos1-1.0.1.rfm1 */
+    { "2673b9232c567cafced7984fcff3a215597ab8cc923518521b4323baea3606c6", 8, 4 },   /* mightyarp-1.5.rfm1 */
     { "268baf8dc7769ec5ebc86f4fd9c2bca0aa3f2fd40ae529ab93aedd0ed6b7f565", 8, 4 },   /* mono2k-1.11.rfm1 */
     { "27f9a07d1d822696e9966261c29ed2a06b18ccebef41fbc768bb48ecc6eb3307", 8, 12 },   /* fmav1-0.5.1.rfm1 */
     { "29357b2810867914a0fc2be194c0b023e49116b33d524f0797b44652847ada78", 8, 4 },   /* rhythmer-0.1.0-beta.2.rfm1 */
     { "2a394b521c0d29b325a853cf2f5e0db1cd9621b9bcba4e0777abbf526f9f2ec6", 8, 12 },   /* rupture-1.93.rfm1 */
+    { "2a8a3fd8a269f0c43679aec4231961ff265b0022bbdef877254f3b103213ae22", 8, 4 },   /* duell-1.3.6.rfm1 */
     { "2cca4cb90b79e7556cc8ef727c5f000d17b1aa5811e6399b05f25c68e22afe6b", 8, 4 },   /* nomansky-0.9.rfm1 */
+    { "2ce7d23b54d0d52108fa42ffcee1cd3314cc9cecb3a2962e229d1827490aa756", 8, 4 },   /* loom-0.18.2.rfm1 */
+    { "2d78ad7e52a5823f80a619468300fe0af494c01d3f9badce8aca065955ced03c", 8, 12 },   /* orgigs-1.1.rfm1 */
+    { "2dc924909534c841c15a19468338b46ef4be420709c7231971ef49684804e014", 8, 4 },   /* clipper-1.3.1.rfm1 */
     { "3040c99416ed985f8751f364f89a8ce6715cf783a0a2281c0d23e7f139859a6a", 8, 4 },   /* ghoulbox-2.4.rfm1 */
     { "322dd407d2ed4ab2dcae3b330fbe1460ae89bccd8ccd729fecd1f9d8effb6919", 8, 4 },   /* dub-1.4.3.rfm1 */
+    { "326d9a9835c9c62dc7425eb26ae3a1b00c2818c19cabb039a20ad86556b874c3", 8, 4 },   /* mope1-0.5.0.rfm1 */
+    { "3460b5569be72634b659e4f984cff1378e48915a37cb297fc32144ce62bee8bd", 8, 12 },   /* rupture-2.0.14.rfm1 */
+    { "372a4cd371ece32165be962dd5cd1a02e113feea3fe9282518831f9f919a1ff3", 8, 4 },   /* dungeontracker-1.5.rfm1 */
+    { "3a0f897e9cf78cf34a1e82a73d924ab6bd07bc831dd05f2c7b9eaf527e6a8676", 8, 12 },   /* aurora-0.8.0.rfm1 */
+    { "3a8f4ea4da743ca9fa7ebc7fc870ad16931177b1c0ca7fe3116b78d68f586766", 8, 12 },   /* golf-1.0.rfm1 */
     { "3ad5d7a7719904ee18dc36d9d7bc08e653e81cd2e99561801cafeae38ccfcd10", 8, 4 },   /* coralflower-0.7.1.rfm1 */
     { "3aec66d8ac139c56e992a6f27fc8c36fb48788136a94efda3ca5a15d84b19ef3", 8, 12 },   /* patchwerk-1.0.3.rfm1 */
+    { "3bc3023fcaf6c061d38acb1dd36577d5304ba038f95a74190372f7fc22ee21df", 8, 4 },   /* carnacos-0.9.6.rfm1 */
     { "3c9caf0ec5391ad4bb5ae294da7356ebfbd79684bc16770a9822e5967b6c3afa", 8, 4 },   /* chimeravocal-0.8.0.rfm1 */
     { "3cb7dd1540a97b4f355193320f64b747f39bc76d226a76708034f32eb7067841", 0, 4 },   /* tkdemo-1.0.rfm1 */
     { "3ed8f87e60b2b1b00bd5a0efc4dedccf8eee58dfd545f2fbcbeb34c0ff6a11b7", 8, 4 },   /* speak37-1.0.rfm1 */
     { "3ee8c1b4ae4693ea8bec2c56a51cac84a362be99f5232ebcce1ac146721f8605", 8, 12 },   /* cultbox-1.2.rfm1 */
     { "3f4561e5f1448077d9121a50c30297e7dec903cf1a45cb2949fb8ddcd6e8d598", 8, 12 },   /* etch-1.88.rfm1 */
     { "419a675d458df372cee1e738ed12b707308d7673616dd24da73edb3f0f22a1e4", 8, 4 },   /* skiff-2.7.rfm1 */
+    { "41b3deae728ff094e54ab84a43cf754479e5b33a8985658e27e7c6debd364486", 8, 4 },   /* penumbra-1.9.rfm1 */
     { "41fa595ac1709419aa064a1304144e44d324cf2216440419804781dd933df05a", 8, 12 },   /* fmkick-0.5.1.rfm1 */
     { "44d8325987d6617c5b36a83c53e73707d2035f02d9e59dc91f317d6e276b40cf", 8, 4 },   /* csfm1-0.18.5.rfm1 */
     { "489345ddb2037f4e7e36bf8c41491a7cdbc9cebf1efc5bfae047e4fc19483899", 8, 4 },   /* guitchordi-0.1.0-beta.1.rfm1 */
+    { "4b5f6ba72476ccc48b1bd90a8a9ce021eb5797ee4839cdf3763a9223b74d3068", 8, 4 },   /* niagaradrift-0.3.1.rfm1 */
     { "4d46201cd31dfdbd6c9cea584b8b1d4c037aba69d4ef2c576c4dad313a1a5d26", 8, 4 },   /* choralroot-0.41.rfm1 */
     { "4d97e7ca4546fa91811720bdfed16ff342148c7fc3867befeaaaa5fdf13eda1c", 8, 4 },   /* carnacos-0.9.6.rfm1 */
     { "4e7375d7e6848b6a5989b9e71ec36b22fb0d439a202b0ad3141c8d8759c11de4", 8, 4 },   /* fizz-0.12.0-beta.19.rfm1 */
     { "4f4d979c5aad355fbfb862dac22d0b84d28d72398a693754bf3d63b11b5cbe5f", 8, 4 },   /* golana-1.3.rfm1 */
+    { "503176db2db1be886de30d5a69f3451175724a46f23cba4f504dcb3d3d497632", 8, 4 },   /* speak37-1.0.rfm1 */
     { "5120912d77ad6b880b5d7a643978f47bc0a8363cd6d79eafb5024931fdb43b89", 8, 4 },   /* modularkoi-0.1.rfm1 */
+    { "5339a9d0abbf5845da822cd2b9f8dfdd9470914d1527584f90b1732e4fb06dff", 8, 4 },   /* nachtfahrt-1.0.2.rfm1 */
     { "539d6d246884957e5fec8dcc09746fe598ad3b25cf49debeb724fdc07f701627", 8, 4 },   /* hyp1-1.5.54.rfm1 */
     { "54842a791d5b15abe713166a0130decec1ab925dd2f73ac47e406c6f2f81e954", 8, 4 },   /* orbit-1.0.0.rfm1 */
     { "55cb83f189304f4a604f4ecb49e4de86f932326a307fda6914fc004ee02926ac", 8, 12 },   /* bytemania-1.3.2.rfm1 */
     { "59700d353af7ec4affaa96d79c4f3580eca6865ce0b8570c9b28c4f22842a1a4", 8, 4 },   /* modularkoi-0.0.rfm1 */
     { "5a244532372459d27aa00899ce6d87d68f275fad86bebb15d539e2c9eb7332e2", 8, 4 },   /* loafbreaker-0.9.68.rfm1 */
+    { "5ce056b5b4cde183af9fcf5083394189c2721675c097c6c87cbc0af4a1f32468", 8, 12 },   /* arcticscream-2.1.4.rfm1 */
     { "5d8cd60fe8196b6bf28676ff586ebd5c31f4985e70fe225ea9abdef2decccfcd", 8, 4 },   /* dungeontracker-1.5.rfm1 */
     { "5db539a06e451b2573ede3e4a520bd8959827167d01e5d8b4ff8ec866a6cb8d0", 8, 4 },   /* penumbra-1.6.rfm1 */
     { "5e45e1227193dbce465a196499e5eeaf9e31aa38bbde2e6312a5b202512b53af", 8, 12 },   /* aurora-0.8.0.rfm1 */
     { "5fda084b2c6b0dba1a52c799cac254fc1ddcb8569f6808d20acdc0513ac2d928", 8, 12 },   /* kwasub-1.1.03.rfm1 */
+    { "600a8c87823b9eb6c626066e5c7cf2836fde60907b2057651675a25ea546f175", 8, 12 },   /* bytemania-1.3.2.rfm1 */
     { "605b2dc9bfe4839e51b1681c78b2ee9c56e335ab7eda55169fc720db393ca764", 8, 12 },   /* glitch-2.0.2.rfm1 */
+    { "612e1b26971d401f85c0906fe1aabae90fd0af2f741acb9f200bcfc0a91a90e9", 8, 12 },   /* fmel1-1.3.rfm1 */
     { "61dd1c4e37b4cc3fb4aae0c6d90a2c5ed8fb1fe301584ba0e66ed6bc237b210e", 8, 12 },   /* x0x-1.2.2.rfm1 */
     { "622ff423224774d143a89c16b98779d5f7e243e6cd284e84fd8d0e0769866742", 8, 4 },   /* duell-1.3.1.rfm1 */
     { "632c5a7d7742ea4c630da498efc36ec4ea108dc521fa8a1ff5bc38100c615a68", 8, 4 },   /* evilgenius-0.1.3.rfm1 */
+    { "65ab49ff5946d00e400e02e79dd3c235c6b8659a7ea146df156cf85b327f4bbd", 8, 4 },   /* chordism-0.9.rfm1 */
     { "67442dedfae47236e4c716fe798dee71689edb71dfcac5ccf378aca76be0212c", 8, 4 },   /* samsara-1.0.0.rfm1 */
     { "69e6231d5f82a3943e8d09d235b2cdcc4ab92b2e4b8622d321d7eb2e33ff46f3", 8, 12 },   /* orgigs-1.0.2.rfm1 */
+    { "6b226e18ba54e16b891991bc499f69bc7ace894e3f1b657234ef2b41ee8517c0", 8, 4 },   /* stallion-1.1.rfm1 */
     { "6c00974b505196831b812fb15acbe111290240bee7b45fd0c10a172c2eca28e4", 8, 4 },   /* hawkchua-2.1.7.rfm1 */
     { "6cd4f1e8de02faa6fa9aae5b9054ec8b83683aeb01bdd1cf33416874c4a695a6", 8, 12 },   /* chipbox-1.5.5.rfm1 */
     { "6cf63557fecefbe1bd0a658269cbf457d612296ccbed6f64cb0c732cc406a275", 8, 12 },   /* smileyface-1.1.5.rfm1 */
+    { "6de3e6d93a9970fa76554cd25a5e401c191f2c4195e93f9e600ff4d04fec0180", 8, 4 },   /* spellbox-0.3.rfm1 */
     { "70639a9e88f510b7e149fc7447da1bdefe43b3fcba602bff019f0203dc1f2b77", 8, 4 },   /* minitone-1.0.5.rfm1 */
     { "727a109d84093f46d1e1b92a36af4da68ae5f702c2da7eb6f81b37549f47a146", 8, 4 },   /* modelar-0.3.rfm1 */
     { "72dc23f3e9600efe642b9e41d35948a17bdac82187fb5d139e737fe25e6c26d3", 8, 4 },   /* choralroot-0.42.rfm1 */
     { "735705419c024123f655077fb6de4f95472984a0f962856e1902145994d6960c", 8, 4 },   /* berlinan-0.5.1.rfm1 */
     { "73ea53c65f316a5de9f291776665e95f108814803fbd2cd25ea694ecbeefe4e5", 8, 4 },   /* fmini-2.6.0.rfm1 */
+    { "7491f6c3409abdac2643a91e4dd2f7ec210cbe2d168c1bc3cda10d2be261a460", 8, 12 },   /* melodee-1.6.1.rfm1 */
     { "767b62acbbb61a30d3dd251b408b771f911ca7f2e822280a2721863fa007c356", 8, 4 },   /* dx747-0.1.rfm1 */
+    { "794794eaed75eda266812dc53261c30293fa491fafbb01364c90fa9b75d81dc0", 8, 12 },   /* sloop3-3.4.0.rfm1 */
+    { "7bc98ccc7e12187c9e9ca0728e7443a8f88772406b27a9dab64e820da320b7f9", 8, 4 },   /* hyp1-1.5.54.rfm1 */
     { "7d73165fee5e5b9da961ebb96da8a964a41aec726354e90e2ae5d5c70f772862", 8, 12 },   /* s1vave-2.0.1.rfm1 */
     { "7e1dfb784611c1a930ac1ae39ed732299a49c07547f81f1a7ec64f75a7a3a58b", 8, 4 },   /* sloop-2.8.5.rfm1 */
     { "7fff26fdb8f96841c16398ca0ab1d64cb6edf3808fadcacca3aa4486de5da7f5", 8, 4 },   /* vector37-0.3.2.rfm1 */
+    { "80f7ad84c1bd8737ba64d5cda110021dc2452e539533197fb16e2ae784fd8111", 8, 4 },   /* ruido-0.7.2.rfm1 */
+    { "8264bd8b3aaaf8839d9592393aa737d20db2ed371ce8c0a911bbaf9a60cd4806", 8, 4 },   /* perf1-0.17.0.rfm1 */
     { "82a39c12839ac72d8c76b486d29bd98fa8773da46ac528b94ce16a02cfd1eadb", 8, 12 },   /* obervave-3.5.2.rfm1 */
+    { "82ec2e2ad256604e0af7c6fbe8913d3509fc81a9890995b987592432919fe84e", 8, 4 },   /* sidj-1.5.1.rfm1 */
+    { "845a60c917a293f712d20b693d09a0c6109277757230fb631bf6cc372edf6217", 8, 12 },   /* tekstuur-2.0.rfm1 */
+    { "84d3adee34011ef2dd8228f8ff7a57a54581e696a9b23a8fad15af0ede9b618e", 8, 4 },   /* kris_jangle-0.15.rfm1 */
     { "88ad69dc04b65752bd176bdadec72119003f5223ad790d7ada5d8c4e3cbad1cd", 8, 4 },   /* hortator-1.0.1.rfm1 */
     { "8a5014a6dbb556774efe0faac6ed46c7da2cc2d8c257723d027364b491242936", 8, 4 },   /* amb-1.3.2.rfm1 */
     { "8b2340e688b0ec639c18221c03a841fc6e10941e3ab2c5644cfcc624dbafd573", 8, 4 },   /* choralroot-0.44.rfm1 */
     { "8d640b40c203949dd261e4069dbb1b0bc9158c93c1a9aa142a6d8d9ef46a74c7", 8, 4 },   /* clipper-1.3.1.rfm1 */
+    { "8dfb1016ffaa47b0ccfaa6ff608dff668925b9e60973045098fb5530e6508299", 8, 4 },   /* obssynth-0.2.0.rfm1 */
     { "8f6e0943409261c314edab970c9972c5e861b805d1ca6e61815586774eb72bc0", 8, 4 },   /* dabke-0.18.rfm1 */
+    { "92ad91022eb601307580b42a6f1eb43e6e47ceb30216da08769612374cbc0100", 8, 4 },   /* fartmachine-1.1.0.rfm1 */
+    { "95d8e3f292a8c31befbc3f98c64998c10a544caa7d6500aea60f11969e658511", 8, 4 },   /* modularkoi-0.1.rfm1 */
     { "95ee39842a6a48be6767bb7f066b658263b9d8726d12e5c1d4c8271fdec4fe76", 8, 12 },   /* tonitor-0.55.rfm1 */
+    { "971ccf466df7e1bdf47e5dd34d09d2d626112d530399cce7c5180a8aca960790", 8, 4 },   /* minitone-1.0.5.rfm1 */
     { "974948f62b5196be1976afbf47a28ceb8e8a00acfdce89e34c1b4c451b6c83ca", 8, 4 },   /* pigeon-0.4.1.rfm1 */
     { "98b70b6feca1f1117d8b0900dc3c31c52648a1353aaf322bf1c1a26f6a5be693", 8, 12 },   /* sidou-1.20.0.rfm1 */
     { "9b27c074ae976a041b9f91bebe90d5f41661e7e412dd96133f5fee71ccaf3a3b", 8, 12 },   /* sid1-1.0.1.rfm1 */
     { "9eb5956bf56297540182973a2d9c5a849663796fa18bd0b115f316d2ec0ea553", 8, 4 },   /* pond-0.1.2.rfm1 */
     { "9f677611109af4be093e21e342b1f7b81b5ddb37f0427af2b9d50a1cf09362b4", 8, 4 },   /* mightyarp-1.5.rfm1 */
     { "a0bbfefd6ae06bccee894aede8b968437adb565170701267c45744295d9aefb5", 8, 4 },   /* ctl-1.0.3.rfm1 */
+    { "a1ba1711a868e2658385d547213bb1c686079b82212310565fac005d843d9417", 8, 4 },   /* berlinan-0.5.1.rfm1 */
+    { "a5c3fea9be40bcbe6fdd150e106193acfe43d480d36e7522dea4cfce373e8c4c", 8, 4 },   /* zen1-1.2.rfm1 */
     { "a91a7305355c5eb5ffe25981abf1a591bfd612c3748dfae8227cb7b738301fe3", 8, 4 },   /* frasil-3.3.1.rfm1 */
+    { "a9f696bf56ee4df239732b03a1f9a51996631489b0a2cf4197c2d727649c4a8e", 8, 4 },   /* fimba-0.7.0.rfm1 */
     { "ab32f4af9c00ed77f73ca4decca744cd31181f1eaafd56e806f2b31be77210f8", 8, 4 },   /* amenity-2.1.1.rfm1 */
+    { "ae0914a4d2b22b40fa6e1d85e69e747fbad67db28beffedb51b92ea1c141847f", 8, 4 },   /* karma-3.1.5.rfm1 */
+    { "ae3b23f908f121b89d75dcef10a812cde4d1042c283849308029ba93e2c0c7b9", 8, 12 },   /* sid1-1.0.1.rfm1 */
+    { "ae90bf75b85e9774ba3d2b094ab997fa41168efaee1e06597b5432aaf726ba1d", 8, 4 },   /* chimeravocal-0.9.0.rfm1 */
     { "b007da6a5549051520eef6dfde49df9c6ea18cb22ddd47ff79c7e395209b160b", 8, 4 },   /* choralroot-0.43.rfm1 */
     { "b0286c98270061d89f59aaef4971d31edb0c41220292204a8693fdb8ce74a162", 8, 4 },   /* hadal1-1.0.1.rfm1 */
+    { "b349982ffaae0b7d4164c5a23b3f6c863feb3454b4d2800e032be5736f9f5e46", 8, 4 },   /* a22-0.1.0.rfm1 */
+    { "b4b5836b9ee1ff6e6a10773688e4411b2e9f72206a64b22f0c36b914777029f5", 8, 12 },   /* jamesos-1.0b.rfm1 */
     { "b790c47766b054cc39796c2fee7ec9719f0b25002f7b9c1bb33e059e4846ae49", 8, 12 },   /* sid-0.3.rfm1 */
+    { "b8d4431e890e1a4977159de051d4176de8c3c4c1eff6f30c6ac4695f603357bb", 8, 12 },   /* fmav1-0.6.4.rfm1 */
     { "b9e527e1c0dbf2fd6b3ac179f9c882d5d50dd38346f5a3d17b6c81b282f8cff8", 8, 4 },   /* loom-0.16.3.rfm1 */
+    { "bca9aab8ce8fb818a441b2182de9fb41d07bf34b42558ec59cb1c309bcb2d62b", 8, 4 },   /* csfm1-0.20.0.rfm1 */
+    { "bcf3deea2e89ec1ef946427ca88bea310e7d8645a3da51f9ff83168a0d9dc675", 8, 4 },   /* choralroot-0.46.rfm1 */
     { "bdb6ea7efbd8f1e35a3db0c65d24c313a1d1c76be9001dfb5ec3e1877a1e6d1b", 8, 4 },   /* ruido-0.7.1.rfm1 */
+    { "bf145d01db8a041ba8c1a2a1750826fa9ded901fbbdc7c87990b5d0babe720ef", 8, 4 },   /* mpyre-1.0.3.rfm1 */
+    { "bf48cec7e486570daa01145475ca891acf4d5f6fa04a88d7d44c441a309aa2ca", 8, 4 },   /* caravel-1.1.0.rfm1 */
     { "c0e4924f28a2624d7f998f5ed78ebb2d3423e290e70778e5b55fbcc4c1aa7c2c", 8, 4 },   /* vesper-2.0.2.rfm1 */
+    { "c1c44a2acec98e27b5e073d2fe3d71100fb79859c997329fa2499d9a0eaacbc4", 8, 12 },   /* glitch-2.0.2.rfm1 */
+    { "c3723e4f35c053cd53b6270da1c5950637157af41ff6ee150249f1a8eb6333e7", 8, 4 },   /* golana-1.3.rfm1 */
     { "c3a96135fa2ed4445145cf29a32f2252cae008beb9b066a0778ca6a5ec78b3f7", 8, 4 },   /* spellbox-0.3.rfm1 */
     { "c6bece3cf862e7223d5a00288e2e79f3c235c9fa4aeefd76f72e255efe8d917f", 8, 12 },   /* echofield-0.2.13.rfm1 */
+    { "c6e59e80e4081c685cf3f21eaff9f683c7b27dea21116483c75911b686ada0db", 8, 4 },   /* ravel-1.45.0.rfm1 */
     { "c7d232ba239a527b08c92e84ee18397802a3bc8589da8c324013309c1d097ba4", 8, 12 },   /* mutabledreams-2.3.rfm1 */
+    { "c8d2595a859d72a9d0a0cc566c8038be464da40d61b0758578bb7596449463ec", 8, 4 },   /* evilgenius-0.1.4.rfm1 */
+    { "c9006aa96eff7abc66eba3c4ba611be00d79a26714222fac66b73d0668c1bc7d", 8, 12 },   /* mvsynth2-1.5.2.rfm1 */
+    { "c9333c369286a4fb223c9a77887f326b7639948586f65ddf9dc7e7b9f0126f92", 8, 4 },   /* felucca-1.8.2.rfm1 */
     { "cadc8bcc8484a6b1ef2e0234423b6d39cbf1abacf2ca1011c853874b4b765bc0", 8, 4 },   /* cpu2fix-1.0.rfm1 */
     { "caebbe9a7d847017aaf967360c05aeb616a282598459ebf6a68f0a5edda41d9a", 8, 4 },   /* ravel-1.41.2.rfm1 */
+    { "cb20e791d2e1ea1bd04c50f8c0482b0c3121ac1d6df6c8b37567d15341e3e9cf", 8, 4 },   /* dabke-0.18.rfm1 */
+    { "cca042e9b45134098399d071cadfc23606b65fe8149b17a516c64557c1fe9f6a", 8, 12 },   /* tessera-3.7.5.rfm1 */
+    { "cd75758a42df65e9445ea7a56d82af7de35f4560257e666c9b115a370940c871", 8, 4 },   /* mono2k-1.13.rfm1 */
+    { "cff346418b00f2c4ff73d4cb0e5b9bc4a41b53e1423e15cc7755a206728fc3a2", 8, 4 },   /* frasil-3.4.rfm1 */
     { "d023be8af8000791dcde971401f7dc74c0053b4f534cffcb7e966b25eb62e53a", 8, 4 },   /* drift-0.9.6.rfm1 */
     { "d0f576be129977aee3b271be7f7d53a9d21558ab3fbedd685dc8014db1c2cbfd", 8, 4 },   /* caravel-0.13.0.rfm1 */
     { "d116593a411a5b43350f792cbf1478a3e9e4ab167a8b6ba642789533f3806378", 8, 12 },   /* drumlab-0.1.3-beta.rfm1 */
@@ -103,25 +171,35 @@ static const snapsafe_t SNAPSAFE[] = {
     { "d44e7f4cb0f836c5597cf9255a4f116ae640a3b7f117bacd15aeeabc388cc93e", 8, 4 },   /* trapstationos-1.1.0.2.rfm1 */
     { "d4fd46bcbc59bc1df7820b519c42e95425115af0728f4c0432483bb72241061c", 8, 4 },   /* zen1-1.2.rfm1 */
     { "d6e96ac176cde899c7d406319afeae9a4c5f202e41ce5a3b0d400415e7acf05e", 8, 12 },   /* golf-1.0.rfm1 */
+    { "d7e9245c34bbbdb1f0784d51aea91e4885cab178dcc5d19dfd1230c1880c8ce2", 8, 4 },   /* morse-0.8.rfm1 */
     { "d815e3aaf5b4a926917f6c0420ab63b6b1ef9f87720636a7971ef5e7134f4758", 8, 12 },   /* sloop3-3.4.0.rfm1 */
     { "d8c9349802da4b5e37922c11a1be2e76eb5de87b33f7fe0fb8287efce16f5fb2", 8, 4 },   /* dubwise-0.4.2.rfm1 */
     { "dafa23720d07923f85daf5c6b6e4238cb29d72f9954881b0c6b6a4538247e75d", 8, 4 },   /* h1-0.2.1.rfm1 */
     { "dbb6e9a8cda4e0d41fb5035a27c781578a0bb6cbfc808750e8705f7967d9cd09", 8, 4 },   /* purplemonkey-0.12.rfm1 */
+    { "dbc2fd498f2f337f69cff653f9deb0d463c3d3be7d0b9e5327ffdd2bf3f80dfd", 8, 4 },   /* viscera-2.9.2.rfm1 */
     { "dc3e44e6b81e22f81ffb427c7d0168f48c1a3c70377abfcb690821daede4865c", 8, 4 },   /* perf1-0.17.0.rfm1 */
     { "dceb7a2132c6fb993cc9291c089bbfcf6316001ff6317068ea55fab070163650", 8, 12 },   /* matryoshka-1.18.1.rfm1 */
+    { "df28fbebf06c1014492ef6191c9cf0a130898e0f1488e3f1ce1486bfded22d22", 8, 12 },   /* cultbox-1.2.rfm1 */
     { "e10d1e6c8c666b7c11a4c6f7c827e20a9e897d7098c47543b96b15c2c266d03d", 8, 4 },   /* fmlarynx-0.4.2.rfm1 */
+    { "e208f8a623f774134718d43374273c66b08dc3cda12358ee83a41301d82805bf", 8, 4 },   /* ghoulbox-2.4.rfm1 */
     { "e37ac1af179a29c1445a4c876d134e4f37d6b4a6b4cde2661282c5e5857d9247", 8, 4 },   /* felucca-1.8.2.rfm1 */
     { "e43a2424b19dda8829f20ccc47b45a0815d0f47bad4fcd49d712fb9fef669cd7", 8, 4 },   /* sy1-0.4.0.rfm1 */
     { "e7bbfb787c78d4799c726b6150efe3ed3f36c8ae07b1aa27d3ee982564a394b0", 8, 4 },   /* loom-0.16.2.rfm1 */
+    { "e8da05b81b5a77f70717fac718ddfdc3447c8ecdba3975e2c23667765d039c2b", 8, 4 },   /* sloop-2.8.5.rfm1 */
     { "eb4b86ed57532fe816bd0f30a952660893fb3200a7dc7b80ef998aa0d28522c7", 8, 4 },   /* remotefm1-0.3.6.rfm1 */
     { "ec70d0751975260fdef7321d6140dc2e366222a833cbe7bcaf112d1fa74ef845", 8, 4 },   /* fimba-0.7.0.rfm1 */
     { "ede12f6d5dddc92d8884de291d36ed7d84ebc12b3284c20f62fe09b5906f27c0", 8, 4 },   /* karma-3.1.4.rfm1 */
+    { "ee4af99e4564f0098dce4c518b8436f034fb11fb2154c1dcb4e00be8feb16e38", 8, 12 },   /* echofield-0.2.15.rfm1 */
+    { "eed0c3db84aac82d2ca669f75ec5059f6add56808db85beca9e0421a8e7bdc7c", 8, 4 },   /* yehnah-0.2.0.rfm1 */
     { "ef1ca2f8dcdcc7620dd70300b8ee08b39afd0bb4837758b1aaacb73e86585a4a", 8, 4 },   /* sidj-1.5.1.rfm1 */
     { "f13aa8ceba36bd6f27cfbc579cc27d5cb713d5e3606f518b6250e816454393f6", 8, 4 },   /* rainbow-1.1.5-rb.rfm1 */
     { "f295058e7d6d472f8d5c34b5c5d08e8e615a8ac771e9a664014e773a56dcac8c", 8, 4 },   /* mnm1-1.0.1.rfm1 */
+    { "f3118bd1747ee7ed04b93715e136720d3ecae6ed1b35befc5ff58c5943aa70b0", 8, 4 },   /* loafbreaker-0.9.73.rfm1 */
     { "f4fff8ee45d60fa30d0d66396819fd9b41ecd07f7d7f591b3db0c234c50cbb27", 8, 4 },   /* mpyre-1.0.3.rfm1 */
+    { "f51fd9abb6b62cf2791aa65367ad8134580709ce9a600aadda167b53dec15129", 8, 4 },   /* orbit-1.0.0.rfm1 */
     { "f558f84cd2f62bbeb9e2e9b843b207e176161b2bd86d3724c832769e2f80af4b", 8, 12 },   /* tessera-3.6.1.rfm1 */
     { "f5dbfd0a3158cd41a7c7a7968b965ebe02920c4d456a8f205d2f8fef486fc92e", 8, 12 },   /* arcticscream-2.1.1.rfm1 */
+    { "f602d6127688fcb8eb5c99c98a0126ec50fe36b74e670623726eb6db5091f106", 8, 4 },   /* sy1-1.0.0.rfm1 */
     { "f78143d285367cb3683f96249c6f8a45167b24bb6a850cfb3032cc6db13fca3c", 8, 4 },   /* choralroot-0.40.rfm1 */
     { "f7bc97c92cf06378252a5582dd0f19d1ba617ed35e98321c5221d4e9dc983721", 8, 4 },   /* quantumgammawave-4.1.0.rfm1 */
     { "f888bb81469e05779bb0383565073ae0c7bf7959ab8ec0f1c64a4ca5ac0da25e", 8, 4 },   /* obssynth-0.2.0.rfm1 */
@@ -129,5 +207,6 @@ static const snapsafe_t SNAPSAFE[] = {
     { "f9919ad46930578d273ceb9f3ffde55d56690bed08e75f3c95826d3847b6cfff", 8, 12 },   /* melodee-1.6.1.rfm1 */
     { "fa866372269400056c17dff09826ff62136a2b904232ba55eecf04fa71a87e7a", 8, 12 },   /* jamesos-1.0b.rfm1 */
     { "fbb27413c061480f5f1b25da57c150ae659b99df43ec75d995dc303e14f49ddb", 8, 4 },   /* trax-0.9.5.rfm1 */
+    { "ff0f88acb4b21eb815161170dcfb27f8ac2ec1dbdfb64fa41728bbc535ca21de", 8, 4 },   /* remotefm1-0.4.0.rfm1 */
     { "ffec9463d99907c96cb2cbb1bf623a4f8a76c367f48c6976421801353021f4cd", 8, 4 },   /* nachtfahrt-1.0.2.rfm1 */
 };
