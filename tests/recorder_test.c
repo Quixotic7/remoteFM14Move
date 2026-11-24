@@ -1016,6 +1016,93 @@ static void t_capture_stems_overlap(void)
     rec_free(S.r);
 }
 
+/* the song jumps back to bar 1 while it plays (Back + Play; the beat goes back, the transport never stops): the bar
+ * lines are the new song position's from that frame on */
+static void t_jump(void)
+{
+    sim_t S = { 0 };
+    rec_take_t t;
+    uint64_t pj;
+    S.r = mk("jump", NULL);
+    S.bpm = 120;
+    S.present = 1u << REC_ST_MASTER;
+    scene(1);
+    rec_set_mode(S.r, REC_MODE_BARS);
+    rec_set_length_bars(S.r, 1);
+    play(&S);
+    run_to(&S, barline(0, 120, 3) + 40000);   /* (in bar 4) */
+    pj = S.i;
+    S.beat = 0.0;                              /* back to bar 1, still playing */
+    run_to(&S, pj + 44100);
+    press(&S);
+    run_to(&S, barline(pj, 120, 2) + 20000);
+    if (takes(S.r, &t, 1, 5000) == 1)
+        expect_take(&t, REC_ST_MASTER, barline(pj, 120, 1), barline(pj, 120, 2) - barline(pj, 120, 1), 1,
+                    "Jump to bar 1 while playing: Bars starts on the new bar line");
+    else
+        check(0, "Jump to bar 1 while playing: no take");
+    rec_set_mode(S.r, REC_MODE_CAPTURE);
+    run_to(&S, barline(pj, 120, 3) + 30000);
+    press(&S);
+    block(&S);
+    if (takes(S.r, &t, 1, 5000) == 1)
+        expect_take(&t, REC_ST_MASTER, barline(pj, 120, 2), barline(pj, 120, 3) - barline(pj, 120, 2), 1,
+                    "Jump to bar 1 while playing: Capture 1 bar ends on the new bar line");
+    else
+        check(0, "Jump to bar 1 while playing: no capture");
+    /* a jump during a take: it still runs its bars from where it started */
+    rec_set_mode(S.r, REC_MODE_BARS);
+    rec_set_length_bars(S.r, 2);
+    block(&S);
+    press(&S);
+    run_to(&S, barline(pj, 120, 4) + 44096);   /* (the take began at bar line 4; half a bar in, on a block's edge) */
+    {
+        const uint64_t pk = S.i;
+        S.beat = 0.0;
+        run_to(&S, pk + 3 * 88200);
+        if (takes(S.r, &t, 1, 5000) == 1) {
+            const uint64_t first = barline(pj, 120, 4);
+            check(t.frames == 2 * 88200 && t.bars == 2, "A jump during a 2-bar take: still 2 bars long (%llu frames, %u bars)",
+                  (unsigned long long)t.frames, t.bars);
+            expect_take(&t, REC_ST_MASTER, first, 2 * 88200, 2, "A jump during a 2-bar take");
+        } else
+            check(0, "A jump during a 2-bar take: no take");
+    }
+    rec_free(S.r);
+}
+
+/* the tempo changes during a take: its bars are the song's bars */
+static void t_tempo_change(void)
+{
+    sim_t S = { 0 };
+    rec_take_t t;
+    uint64_t st;
+    S.r = mk("tempo", NULL);
+    S.bpm = 120;
+    S.present = 1u << REC_ST_MASTER;
+    scene(1);
+    rec_set_mode(S.r, REC_MODE_BARS);
+    rec_set_length_bars(S.r, 2);
+    play(&S);
+    run_to(&S, 30000);
+    press(&S);
+    st = barline(0, 120, 1);
+    run_to(&S, st + 60000);                    /* (in the take's first bar; the tempo halves at this block) */
+    S.bpm = 60;
+    {
+        const uint64_t c = S.i - st;           /* frames at 120: c / 22050 beats; the other beats of its 8 at 60 */
+        const uint64_t want = c + (uint64_t)llround((8.0 - c / 22050.0) * 44100.0);
+        run_to(&S, st + want + 20000);
+        if (takes(S.r, &t, 1, 5000) == 1)
+            check(t.bars == 2 && t.frames + 1 >= want && t.frames <= want + 1,
+                  "Tempo 120 -> 60 during a 2-bar take: 2 bars of the song (%llu frames, want %llu)",
+                  (unsigned long long)t.frames, (unsigned long long)want);
+        else
+            check(0, "Tempo change during a take: no take");
+    }
+    rec_free(S.r);
+}
+
 static void rmtree(const char *path)
 {
     DIR *d = opendir(path);
@@ -1060,6 +1147,8 @@ int main(void)
     t_bars_open();
     t_bars_stopped_arm();
     t_bars_transport_stop();
+    t_jump();
+    t_tempo_change();
     t_capture_auto();
     t_capture_n();
     t_capture_stopped();

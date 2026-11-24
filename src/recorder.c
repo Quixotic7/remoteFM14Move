@@ -115,7 +115,7 @@ struct rec {
     int state, was_playing, acc_pk;
     uint64_t mcount, gap_hi;
     uint64_t lines[NLINES];
-    double last_line;
+    double last_line, exp_beat;  /* (exp_beat: where the song is at the next block if it just plays on) */
     uint64_t seen[REC_NST];      /* one past the last frame each stream was present */
     unsigned present;
     /* the take (recording) and the arm */
@@ -466,6 +466,18 @@ static void chunk(rec_t *r, const int16_t *const *st, uint32_t n, int playing, d
             peak = mx;
     }
 
+    /* the song's position moved by itself while it plays (back to bar 1, a jump): the bar lines are the new
+     * position's from this frame on, the old ones are forgotten (Capture then reaches back to here at most); a running
+     * take keeps the beats it had left */
+    if (tempo && r->was_playing) {
+        const double d = beat - r->exp_beat;
+        if (d < -0.1 || d > 0.25) {
+            r->nl = 0;
+            r->start_beat += d;
+            r->end_beat += d;
+        }
+    }
+
     /* the bar lines in this block (the transport's first frame is one) */
     if (started) {
         r->nl = 0;
@@ -569,6 +581,7 @@ static void chunk(rec_t *r, const int16_t *const *st, uint32_t n, int playing, d
     r->mcount++;
     ST(&r->pos, f0 + n);
     r->was_playing = playing;
+    r->exp_beat = beat + (tempo ? n * bpm / 60.0 / r->fs : 0.0);
 
     /* the status */
     STX(&r->s_peak, peak);

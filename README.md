@@ -1227,3 +1227,9 @@ finished file with its frames, bars, BPM and why it ended (an error: disk low, a
 each stream a counter pattern, so every file is checked sample for sample against the frames fed (bar lines inside
 blocks at 120 and 97.3 BPM, every mode, stems, max length, a failing folder, disk low, settings mid-take, a slow
 writer, an overrun, the status).
+
+**The song's position jumping while it plays** (back to bar 1, a jump): when a block's `beat` is not where the last
+one left it (more than 0.1 beat back or 0.25 on), the bar lines are the new position's from that frame; the older
+lines are forgotten, so Capture reaches back to the jump at most; a take that runs keeps the beats it had left, so an
+N-bar take is still N bars long. The caller's `beat` must be the position at the block's FIRST frame, continuous to a
+frame (not rounded to the sequencer's ticks), or the cuts are late by as much.
