@@ -61,6 +61,10 @@ grep -q "Z_${ID}Z_rfm1_readout(" "$W/$ID.h" && AIN="$AIN -DRFM1M_RD1"
 # rfm1_tk_state gets rfm1m_tk1() (fwglue.c RFM1M_TK1); one with some of them only: none (rfm1_check refuses it)
 grep -q "Z_${ID}Z_rfm1_tk(" "$W/$ID.h" && grep -q "Z_${ID}Z_rfm1_tk_input(" "$W/$ID.h" \
     && grep -q "Z_${ID}Z_rfm1_tk_state(" "$W/$ID.h" && AIN="$AIN -DRFM1M_TK1"
+# ep1, engine parameters (engine-params/SPEC.md): a module that exports rfm1_ep, rfm1_ep_set and rfm1_ep_watch gets
+# rfm1m_ep1() (fwglue.c RFM1M_EP1); one with some of them only: none (rfm1_check refuses it)
+grep -q "Z_${ID}Z_rfm1_ep(" "$W/$ID.h" && grep -q "Z_${ID}Z_rfm1_ep_set(" "$W/$ID.h" \
+    && grep -q "Z_${ID}Z_rfm1_ep_watch(" "$W/$ID.h" && AIN="$AIN -DRFM1M_EP1"
 PAGES=$(grep -o "wasm_rt_allocate_memory([^,]*, [0-9]*" "$W/$ID.c" | head -1 | sed 's/.*, //')
 # threads (tools/w2c_mt.sh fw): the object counts its call depth in the host's thread-local counter, so instances
 # run on several threads at once, and rfm1m_caps says so (RFM1M_CAP_MT). The generated C is the same; only the

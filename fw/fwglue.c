@@ -188,6 +188,25 @@ const rfm1m_tk1_t *rfm1m_tk1(void)
 }
 #endif
 
+#ifdef RFM1M_EP1
+/* ep1, engine parameters (src/rfm1m.h rfm1m_ep1_t): the record's offset, a SET, the watched page */
+static uint32_t ep1_ep(void *i) { return X(rfm1_ep)(I); }
+static int32_t ep1_set(void *i, uint32_t op, uint32_t l, uint32_t p, uint32_t v) { return (int32_t)X(rfm1_ep_set)(I, op, l, p, v); }
+static void ep1_watch(void *i, uint32_t l, uint32_t p) { X(rfm1_ep_watch)(I, l, p); }
+__attribute__((visibility("default"))) const rfm1m_ep1_t *rfm1m_ep1(void);
+const rfm1m_ep1_t *rfm1m_ep1(void)
+{
+    static rfm1m_ep1_t t;
+    if (!t.abi) {
+        t.ep = ep1_ep;
+        t.set = ep1_set;
+        t.watch = ep1_watch;
+        t.abi = RFM1M_EP1_ABI;
+    }
+    return &t;
+}
+#endif
+
 /* threads (src/rfm1m.h RFM1M_CAP_MT): built against tools/w2c_mt.sh's header, the call depth is thread-local */
 __attribute__((visibility("default"))) uint32_t rfm1m_caps(void);
 uint32_t rfm1m_caps(void)

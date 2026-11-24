@@ -96,6 +96,20 @@ typedef struct {
 } rfm1m_tk1_t;
 typedef const rfm1m_tk1_t *(*rfm1m_tk1_fn)(void);
 
+/* ep1, engine parameters (engine-params/SPEC.md; FM1VST docs/RFM1.md "Engine parameters (ep1)"): a module that exports
+ * rfm1_ep, rfm1_ep_set and rfm1_ep_watch gets RFM1M_EP1_SYMBOL (fwglue.c RFM1M_EP1, built by tools/build_fw.sh only for
+ * such a module). ep: rfm1_ep() -> the record's offset in the module's memory (264 bytes: SPEC.md 4), 0 none; set:
+ * rfm1_ep_set(op, layer, pid, value) -> 0 done, < 0 refused; watch: rfm1_ep_watch(layer, page) (page -1 none) */
+#define RFM1M_EP1_ABI 1
+#define RFM1M_EP1_SYMBOL "rfm1m_ep1"
+typedef struct {
+    uint32_t abi;
+    uint32_t (*ep)(void *inst);
+    int32_t (*set)(void *inst, uint32_t op, uint32_t layer, uint32_t pid, uint32_t value);
+    void (*watch)(void *inst, uint32_t layer, uint32_t page);
+} rfm1m_ep1_t;
+typedef const rfm1m_ep1_t *(*rfm1m_ep1_fn)(void);
+
 /* Threads (README "Threads"): RFM1M_CAPS_SYMBOL, in every object tools/build_fw.sh builds since the threads (an older
  * object has none: the host runs every call into it under one lock, as its call depth is a process global) */
 #define RFM1M_CAPS_SYMBOL "rfm1m_caps"

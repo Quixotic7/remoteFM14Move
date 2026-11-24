@@ -2,6 +2,16 @@
 
 ## Not released
 
+- **Engine parameters (ep1)**, stages 1 and 2 of the ENGINE knob page (the owner's of 2026-11-24: "add a page after
+  the FM-1 knobs for Engine parameters ... you reach that page, then click the jogwheel, now you can scroll and select
+  from different pages for the synth engine ... Each page then supports up to 8 parameters on the knobs"). A firmware
+  that exports `rfm1_ep` / `rfm1_ep_set` / `rfm1_ep_watch` (FM1VST `WANTS ep1`; ChoralRoot 0.45 from FM1VST's
+  `rfm1-ep1`) has its record read after each block and its description, layers, values and watched cells given to
+  rfm1cs 0.14.0 (its ENGINE page); the core's `EP` / `EP_WATCH` actions become queued, logged inputs (`FWI_EP` 13,
+  `FWI_EP_WATCH` 14). `/api/status` per slot `ep1`. README "Engine parameters (ep1)"; `tests/ep1_e2e.sh`;
+  `tests/wsprobe.c --op` (a panel op at a time: OPT held while PRESETS turns). Firmwares without ep1: their objects
+  byte for byte as before. rfm1cs-abletonmove at its ENGINE page (local `session-view-fix`, bf898c5).
+
 - **The page's projects after a start** (seen on the owner's Move: every stored project but the open one listed with
   0 BPM, no clips, no firmwares). The core fills a stored project's brief only from a save or a paste in that session
   (`R_PROJECT_STORED`); nothing asked for the others, so the page, and the Move's own grid, showed them empty. The

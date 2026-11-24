@@ -323,6 +323,11 @@ fw_obj_t *fw_obj_open(const char *path, char *err, size_t cap)
         const rfm1m_tk1_t *t = tg ? tg() : NULL;
         o->tk1 = t && t->abi == RFM1M_TK1_ABI && t->tk && t->input && t->state ? t : NULL;
     }
+    {   /* ep1: rfm1m_ep1 (an object built with RFM1M_EP1: its module exports rfm1_ep, rfm1_ep_set, rfm1_ep_watch) */
+        const rfm1m_ep1_fn eg = (rfm1m_ep1_fn)(uintptr_t)dlsym(o->so, RFM1M_EP1_SYMBOL);
+        const rfm1m_ep1_t *e = eg ? eg() : NULL;
+        o->ep1 = e && e->abi == RFM1M_EP1_ABI && e->ep && e->set && e->watch ? e : NULL;
+    }
     {   /* ain1: rfm1m_ain (an object built with RFM1M_AIN1: its module exports rfm1_audio_in) */
         const rfm1m_ain_fn ag = (rfm1m_ain_fn)(uintptr_t)dlsym(o->so, RFM1M_AIN_SYMBOL);
         const rfm1m_ain_t *a = ag ? ag() : NULL;
@@ -1021,6 +1026,34 @@ static void tk_find(fw_t *fw)
     fw->tk_ptr = p;
 }
 
+/* ep1: the record's place, once after rfm1_init (it never moves); refused (no engine page) unless version 1, size at
+ * least FW_EP_SIZE, in memory, nlayers 1..8, its description inside the memory and at most 64 KiB */
+static void ep_find(fw_t *fw)
+{
+    volatile uint32_t p = 0;
+    const uint8_t *r;
+    uint16_t ver, size;
+    uint32_t dp, dl;
+    fw->ep_ptr = 0;
+    if (!fw->obj->ep1 || fw->dead)
+        return;
+    CALL(fw, "rfm1_ep", p = fw->obj->ep1->ep(fw->inst));
+    if (fw->dead || !p || !in_mem(fw, p, FW_EP_SIZE))
+        return;
+    r = fw->mem + p;
+    memcpy(&ver, r, 2);
+    memcpy(&size, r + 2, 2);
+    memcpy(&dp, r + FW_EP_DESC_PTR, 4);
+    memcpy(&dl, r + FW_EP_DESC_LEN, 4);
+    if (ver != 1 || size < FW_EP_SIZE || r[FW_EP_NLAYERS] < 1 || r[FW_EP_NLAYERS] > 8 || !dl || dl > 65536u ||
+        !in_mem(fw, dp, dl)) {
+        fprintf(stderr, "fwrt: %s: ep1 record version %u size %u layers %u description %u bytes refused\n", fw->id, ver,
+                size, r[FW_EP_NLAYERS], dl);
+        return;
+    }
+    fw->ep_ptr = p;
+}
+
 int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
 {
     const rfm1m_t *vt = fw->obj->vt;
@@ -1053,6 +1086,7 @@ int fw_boot(fw_t *fw, const uint8_t *flash, uint32_t n)
     fw->ms = 0;
     fw->frames_done = fw->due = 0;
     tk_find(fw);
+    ep_find(fw);
     return 0;
 }
 
@@ -1123,7 +1157,7 @@ static void apply(fw_t *fw, int op, int a, int b, uint32_t c)
         fw_log_t *l = &fw->log[fw->log_n++];
         l->ms = fw->ms, l->op = (uint8_t)op, l->a = (uint8_t)a, l->b = (int16_t)b, l->c = c;
     }
-    if (op == FWI_KEY || op == FWI_LEAN || op == FWI_BTN || op == FWI_ENC || op == FWI_TK_INPUT ||
+    if (op == FWI_KEY || op == FWI_LEAN || op == FWI_BTN || op == FWI_ENC || op == FWI_TK_INPUT || op == FWI_EP ||
         (op == FWI_MIDI && (c & 0xF) != 0xF))   /* (a player's input: not the clock, the master, the screen's rate) */
         fw->n_in++;
     switch (op) {
@@ -1193,6 +1227,12 @@ static void apply(fw_t *fw, int op, int a, int b, uint32_t c)
         break;
     case FWI_TK_STATE:
         fw_tk_state(fw, (uint32_t)a, (uint32_t)(uint16_t)b, c);
+        break;
+    case FWI_EP:       /* ep1: a parameter's value (engine-params/SPEC.md 5) */
+        (void)fw_ep_set(fw, (uint32_t)a, c >> 16, c & 0xFFFFu, b);
+        break;
+    case FWI_EP_WATCH:
+        fw_ep_watch(fw, a, b);
         break;
     case FWI_FRAMES:   /* the screen's rate (the next frame due a ms from the last one) */
         fw->frame_ms = a > 0 ? (uint32_t)a : FW_FRAME_MS;
@@ -1574,6 +1614,37 @@ void fw_tk_state(fw_t *fw, uint32_t on_, uint32_t claims_, uint32_t flags_)
     CALL(fw, "rfm1_tk_state", fw->obj->tk1->state(fw->inst, on, claims, flags));
 }
 
+const uint8_t *fw_ep(const fw_t *fw)
+{
+    return fw->booted && !fw->dead && fw->ep_ptr ? fw->mem + fw->ep_ptr : NULL;
+}
+
+const uint8_t *fw_ep_bytes(const fw_t *fw, uint32_t off, uint32_t n)
+{
+    return fw->booted && !fw->dead && fw->ep_ptr && n && in_mem(fw, off, n) ? fw->mem + off : NULL;
+}
+
+int fw_ep_set(fw_t *fw, uint32_t op_, uint32_t layer_, uint32_t pid_, int32_t value_)
+{
+    volatile uint32_t op = op_, layer = layer_, pid = pid_, value = (uint32_t)value_;
+    volatile int32_t r = -1;
+    if (!fw->booted || fw->dead || !fw->ep_ptr)
+        return -1;
+    CALL(fw, "rfm1_ep_set", r = fw->obj->ep1->set(fw->inst, op, layer, pid, value));
+    fw->ep_sets++;
+    if (r)
+        fw->ep_refused++;
+    return r;
+}
+
+void fw_ep_watch(fw_t *fw, int32_t layer_, int32_t page_)
+{
+    volatile uint32_t layer = (uint32_t)layer_, page = (uint32_t)page_;
+    if (!fw->booted || fw->dead || !fw->ep_ptr)
+        return;
+    CALL(fw, "rfm1_ep_watch", fw->obj->ep1->watch(fw->inst, layer, page));
+}
+
 const char *fw_label(fw_t *fw, int which)
 {
     static char buf[16];
@@ -1712,6 +1783,7 @@ int fw_snap_restore(fw_t *fw, const fw_snap_t *h, const uint8_t *mem)
     fw->ms = h->ms, fw->last_frame = h->last_frame, fw->frame_ms = h->frame_ms;
     fw->frames_done = h->frames_done, fw->due = h->due;
     fw->tk_ptr = h->tk_ptr && in_mem(fw, h->tk_ptr, FW_TK_SIZE) && fw->obj->tk1 ? h->tk_ptr : 0;
+    fw->ep_ptr = 0;   /* (ep1: asked again once booted, below: the record does not move, the snapshot does not say it) */
     fw->rd_ptr = h->rd_ptr && in_mem(fw, h->rd_ptr, 48) ? h->rd_ptr : 0;
     fw->rd_asked = (int)h->rd_asked;
     fw->rd_seen = 0;
@@ -1724,5 +1796,6 @@ int fw_snap_restore(fw_t *fw, const fw_snap_t *h, const uint8_t *mem)
         fw->q[i].b = h->q[i].b, fw->q[i].c = h->q[i].c;
     }
     fw->booted = 1;
+    ep_find(fw);   /* (ep1: rfm1_ep() is the module's own once open; a snapshot from before it opens it here) */
     return 0;
 }

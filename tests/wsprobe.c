@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* wsprobe: the page's WebSocket from the test's side. Connects to ws://127.0.0.1:PORT/ws, reads for MS ms, and
  * optionally plays a key (panel input: KEY down after 300 ms, up 300 ms before the end).
- *   wsprobe PORT MS [--key K] [--btn ID] [--sysex HEX]
+ *   wsprobe PORT MS [--key K] [--btn ID] [--sysex HEX] [--op OP:A:B@T]..
+ * --op: one panel op (fwrt.h FWI_KEY .. FWI_MASTER: 1 KEY a key b velocity, 3 BTN a matrix button b down, 4 ENC a
+ * matrix encoder b detents) sent T ms after the connection (the tests' FM-1 panel: a button held while a knob turns).
  * --sysex: MIDI bytes (hex, e.g. F07D464C01F7) sent as the page's MIDI (op 32) after 300 ms, in pieces of 5 bytes; the
  * firmware's MIDI out that comes back (op 5) is printed as hex ("wsprobe: midi out ...").
  * Prints what came: info messages, screen rows (and whether one whole screen came first), LED messages, the slot
@@ -53,6 +55,8 @@ int main(int argc, char **argv)
     static uint8_t sx[4096], mo[65536];
     size_t nsx = 0, nmo = 0;
     int sx_sent = 0;
+    struct { int op, a, b; long at; int sent; } ops[64];
+    int nops = 0;
     if (argc < 3)
         return 2;
     port = atoi(argv[1]);
@@ -62,7 +66,10 @@ int main(int argc, char **argv)
             key = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--btn"))
             btn = atoi(argv[i + 1]);
-        else if (!strcmp(argv[i], "--sysex")) {
+        else if (!strcmp(argv[i], "--op") && nops < 64) {
+            if (sscanf(argv[i + 1], "%d:%d:%d@%ld", &ops[nops].op, &ops[nops].a, &ops[nops].b, &ops[nops].at) == 4)
+                ops[nops++].sent = 0;
+        } else if (!strcmp(argv[i], "--sysex")) {
             const char *h = argv[i + 1];
             while (h[0] && h[1] && nsx < sizeof sx) {
                 char b[3] = { h[0], h[1], 0 };
@@ -97,6 +104,13 @@ int main(int argc, char **argv)
             send_frame(fd, m, 4);
             down_at = 1000000;
         }
+        for (i = 0; i < nops; i++)
+            if (!ops[i].sent && t >= ops[i].at) {
+                const uint8_t m[4] = { (uint8_t)ops[i].op, (uint8_t)ops[i].a, (uint8_t)(ops[i].b & 0xFF),
+                                       (uint8_t)((ops[i].b >> 8) & 0xFF) };
+                send_frame(fd, m, 4);
+                ops[i].sent = 1;
+            }
         if (nsx && !sx_sent && t >= 300) {   /* the page's MIDI: op 32 + bytes, in pieces of 5 */
             size_t k;
             for (k = 0; k < nsx; k += 5) {

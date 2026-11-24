@@ -785,6 +785,35 @@ slot's takeover until told). The other slots keep running; MIDI routing is uncha
 `tests/tk_e2e.sh` runs tkdemo (`tests/tkdemo/tkdemo-1.0.rfm1`: FM1VST's `tools/rfm1/tkdemo`, GPL-3.0-only, kept in git
 like `tests/cpu2fix`, built into `build/tkdemo` by `make`).
 
+## Engine parameters (ep1)
+
+A firmware built with FM1VST's `WANTS ep1` describes its sound engines' parameters (engine-params/SPEC.md, the
+protocol ep1; FM1VST docs/RFM1.md "Engine parameters (ep1)"): its layers (ChoralRoot: Chord, Bass), its engines, each
+engine's pages of up to eight parameters, every parameter by a frozen id with its range and its words. rfm1cs 0.14.0
+shows them as the track view's **ENGINE** knob page (after FM-1; its README "The ENGINE knob page"): the jog's click
+opens the page list, the knobs set the values absolutely.
+
+The module exports `rfm1_ep`, `rfm1_ep_set` and `rfm1_ep_watch`; `tools/build_fw.sh` builds such a module with
+`RFM1M_EP1` (fwglue.c `rfm1m_ep1`). After `rfm1_init` fwrt asks for the record once (`fw_boot`, and after a snapshot is
+restored: version 1, size at least 264, 1..8 layers, its description inside the memory and at most 64 KiB; else no
+engine page). The engine reads each slot's record after every block it rendered and on its boot (`ep_poll`, memory
+reads only), and tells rfm1cs what moved: the description (`desc_seq`: `rfm_move_ep_describe`, then every layer and
+value again), the layers' engines and MIDI channels (`lay_seq`: `rfm_move_ep_layers`), the values (`val_seq`:
+`rfm_move_ep_values`, a layer at a time), the watched page's cells (`cell_seq`: `rfm_move_ep_cells`). The core's `EP`
+and `EP_WATCH` actions go to the slot's `rfm1_ep_set` / `rfm1_ep_watch` as queued inputs (`FWI_EP` 13: a the op, b the
+value, c layer << 16 | pid, due at the block's first frame plus the action's; `FWI_EP_WATCH` 14), in time order with
+its ticks and logged for `fwrun --replay`. A firmware unloaded or replaced: `rfm_move_ep_describe(NULL)` first.
+`/api/status`: each slot's `ep1` (`desc` its length, `acts` / `watches` the actions given to it, `sets` / `refused`
+its `rfm1_ep_set` answers, `poll_us` the mean cost of a poll, `layers` [engine, channel], `wlayer`, `wpage` and the
+`cells` [pid, name, words]).
+
+`tests/ep1_e2e.sh` (an ep1 build of ChoralRoot among the development builds: `make DEV_FIRMWARES=.../choralroot-<v>.rfm1`
+from FM1VST's branch `rfm1-ep1`; skipped without one): the description at boot, the engine picker and BASS on the
+page's FM-1 panel (`tests/wsprobe.c --op`), the jog to ENGINE (the chord's VA), the page list and its knobs, Cutoff
+and Env amt turned (coarse and with Shift), track 2 on the bass layer (Auto by channel), the chord's engine switched
+on the FM-1 while ENGINE shows (FM TONE's FILTER by name), no late blocks, and ChoralRoot's blocks replayed offline from
+the host's input log bit for bit.
+
 ## Screen reader
 
 RemoteFM1 speaks with Schwung's screen reader (Global Settings > Screen Reader: on, before RemoteFM1 is launched; its

@@ -44,6 +44,7 @@ typedef struct fw_obj {
     const rfm1m_ain_t *ain;
     const rfm1m_rd1_t *rd1;            /* rd1: the module exports rfm1_readout (readouts), else NULL */
     const rfm1m_tk1_t *tk1;            /* tk1: the module exports rfm1_tk, _tk_input, _tk_state (the takeover), else NULL */
+    const rfm1m_ep1_t *ep1;            /* ep1: the module exports rfm1_ep, _ep_set, _ep_watch (engine parameters), else NULL */
     /* threads: built with a thread-local call depth (rfm1m_caps RFM1M_CAP_MT); core 1 (rfm1m_cpu2: NULL none) */
     int mt;
     const rfm1m_cpu2_t *cpu2;
@@ -88,6 +89,8 @@ enum {
     FWI_TAKE = 9,     /* a: how many packets midi_out_take gave (the replay takes as many) */
     FWI_TK_INPUT = 11,  /* c a Move surface packet (rfm1_tk_input: tk1, the takeover) */
     FWI_TK_STATE = 12,  /* a on 1 / off 0, b the claims granted, c the flags (rfm1_tk_state) */
+    FWI_EP = 13,      /* ep1: a the op (1 SET), b the value, c layer << 16 | pid (rfm1_ep_set) */
+    FWI_EP_WATCH = 14,  /* ep1: a the layer, b the page (-1 none) (rfm1_ep_watch) */
     FWI_FRAMES = 10,  /* a: frame() every a device ms from now (1..255; FW_FRAME_MS the ABI's), idle() between: the
                        * host's screen rate (README "Frames"); logged, so a replay calls frame() as the host did */
 };
@@ -135,6 +138,8 @@ typedef struct fw {
     uint32_t rd_ptr, rd_seen;          /* rd1: the readout record (0: none / not asked yet), the seq last taken */
     int rd_asked;
     uint32_t tk_ptr;                   /* tk1: the takeover record (fw_boot: checked once after rfm1_init), 0 none */
+    uint32_t ep_ptr;                   /* ep1: the engine parameters' record (fw_boot: checked once after rfm1_init), 0 none */
+    uint32_t ep_sets, ep_refused;      /* ep1: rfm1_ep_set calls, those it refused (the status) */
     /* ain1: the input buffer in the module's memory (rfm1_alloc'd at the first fw_ain_info(1, ..)), the state and
      * latency the module was last told (rfm1_audio_in_info), the blocks fed; ain_peak: the last block's peak */
     uint32_t ain_buf, ain_state, ain_lat, ain_blocks;
@@ -266,6 +271,29 @@ const char *fw_label(fw_t *fw, int which);
 const uint8_t *fw_tk(const fw_t *fw);
 void fw_tk_input(fw_t *fw, uint32_t pkt);
 void fw_tk_state(fw_t *fw, uint32_t on, uint32_t claims, uint32_t flags);
+/* ep1, engine parameters (engine-params/SPEC.md 4-5): its record, rfm1_ep() asked once after rfm1_init (fw_boot; and
+ * after a snapshot's restore) and kept when it is version 1, size >= FW_EP_SIZE, nlayers 1..8, its description inside
+ * the memory and at most 64 KiB. fw_ep: the record now (a pointer into the module's memory: read it on the instance's
+ * thread, between its calls), NULL: none. fw_ep_bytes: off..off + n of the memory, NULL when outside it (the record's
+ * description and values). fw_ep_set / fw_ep_watch call the exports now, under the trap guard (in time order with the
+ * ticks: fw_in FWI_EP / FWI_EP_WATCH, which call these) */
+#define FW_EP_SIZE 264
+#define FW_EP_DESC_SEQ 4
+#define FW_EP_DESC_PTR 8
+#define FW_EP_DESC_LEN 12
+#define FW_EP_LAY_SEQ 16
+#define FW_EP_NLAYERS 20
+#define FW_EP_LAY 24                  /* 8 x {engine, midi_ch, flags, 0} */
+#define FW_EP_VAL_SEQ 56
+#define FW_EP_VAL_PTR 60
+#define FW_EP_CELL_SEQ 64
+#define FW_EP_WPAGE 68
+#define FW_EP_WLAYER 70
+#define FW_EP_CELLS 72                /* 8 x {u16 pid, char name[11], char text[11]} */
+const uint8_t *fw_ep(const fw_t *fw);
+const uint8_t *fw_ep_bytes(const fw_t *fw, uint32_t off, uint32_t n);
+int fw_ep_set(fw_t *fw, uint32_t op, uint32_t layer, uint32_t pid, int32_t value);
+void fw_ep_watch(fw_t *fw, int32_t layer, int32_t page);
 /* ui_info into buf */
 void fw_ui_info(fw_t *fw, char *buf, uint32_t n);
 

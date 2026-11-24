@@ -185,6 +185,11 @@ typedef struct {
     uint32_t tk_claims, tk_scr, tk_led, tk_say;
     char tk_name[16];
     uint32_t tk_in, tk_states;           /* TK_INPUT / TK_STATE actions given to it (the status: tests) */
+    /* ep1, engine parameters (engine-params/SPEC.md 8): the record's seqs last passed to rfm1cs (ep_poll) */
+    int ep_known;                        /* rfm_move_ep_describe was given a description for this firmware */
+    uint32_t ep_dseq, ep_lseq, ep_vseq, ep_cseq, ep_dlen;
+    uint32_t ep_acts, ep_watches;        /* EP / EP_WATCH actions given to it (the status: tests) */
+    uint64_t ep_ns, ep_polls;            /* the time ep_poll took (the status: its cost) */
     /* (rfm1cs 0.13.0, RFM_MOVE_CAP_PROJFW) whose memory this is (projmem.h): every write of it (slot_write) also goes
      * to that project's copy and to the active state, when they are behind it */
     int pc_proj;                         /* the project whose copy (move-project-NN.fwK.bin) it is, -1 none */
@@ -986,6 +991,16 @@ static void on_action(const rfm1cs_event_t *ev)
         if (a->slot < NSLOT && SL[a->slot].on && ++SL[a->slot].tk_states)
             fw_in(&SL[a->slot].fw, FWI_TK_STATE, a->down ? 1 : 0, a->down ? a->tk_claims : 0, a->tk_flags, 0);
         break;
+    case RFM_MOVE_ACT_EP:   /* (rfm1cs 0.14.0) an engine parameter of the slot's firmware: rfm1_ep_set, queued at the
+                             * block's first frame + the action's (engine-params/SPEC.md 8) */
+        if (a->slot < NSLOT && SL[a->slot].on && ++SL[a->slot].ep_acts)
+            fw_in(&SL[a->slot].fw, FWI_EP, a->op, a->value, (uint32_t)a->layer << 16 | a->pid,
+                  SL[a->slot].fw.frames_done + a->frame);
+        break;
+    case RFM_MOVE_ACT_EP_WATCH:   /* .. the page whose cells the core shows (-1 none): rfm1_ep_watch */
+        if (a->slot < NSLOT && SL[a->slot].on && ++SL[a->slot].ep_watches)
+            fw_in(&SL[a->slot].fw, FWI_EP_WATCH, a->layer, a->value, 0, SL[a->slot].fw.frames_done);
+        break;
     case RFM_MOVE_ACT_MASTER: {   /* the volume knob: the master of every firmware */
         int s;
         g_master = a->value < 0 ? 0 : a->value > 1023 ? 1023 : a->value;
@@ -1508,6 +1523,101 @@ static void tk_poll(int s, int fresh)
         rfm1cs_session_flush_leds(S);
 }
 
+/* ------------------------------------------------------------------ engine parameters (ep1) --- */
+/* engine-params/SPEC.md 8, rfm1cs 0.14.0 (README "Engine parameters"): each slot's record (fw_ep) read after every
+ * block it rendered and on its boot; what moved goes to rfm1cs: the description (desc_seq: copied, checked by the
+ * core; then every layer and value again), the layers (lay_seq), the values (val_seq: each layer's row), the watched
+ * page's cells (cell_seq). The core sends back EP and EP_WATCH (on_action: queued to the slot's firmware, logged, so a
+ * replay is the same). A firmware gone or replaced: rfm_move_ep_describe(NULL) first */
+static void ep_clear(int s)
+{
+    if (!SL[s].ep_known)
+        return;
+    SL[s].ep_known = 0;
+    rfm_move_ep_describe(&S->core, s, NULL, 0);
+    rfm1cs_session_redraw(S, now_ms());
+    rfm1cs_session_flush_leds(S);
+}
+
+static void ep_poll(int s, int fresh)
+{
+    slot_t *sl = &SL[s];
+    fw_t *fw = &sl->fw;
+    const uint8_t *r = sl->on ? fw_ep(fw) : NULL;
+    const uint64_t t0 = now_ns();
+    uint32_t dseq, lseq, vseq, cseq, dp, dl, vp;
+    int nl, l, np, redraw = 0;
+    const uint8_t *d;
+    if (!r) {   /* (no ep1, or the firmware died) */
+        ep_clear(s);
+        return;
+    }
+    memcpy(&dseq, r + FW_EP_DESC_SEQ, 4);
+    memcpy(&lseq, r + FW_EP_LAY_SEQ, 4);
+    memcpy(&vseq, r + FW_EP_VAL_SEQ, 4);
+    memcpy(&cseq, r + FW_EP_CELL_SEQ, 4);
+    memcpy(&dp, r + FW_EP_DESC_PTR, 4);
+    memcpy(&dl, r + FW_EP_DESC_LEN, 4);
+    memcpy(&vp, r + FW_EP_VAL_PTR, 4);
+    nl = r[FW_EP_NLAYERS] > 8 ? 8 : r[FW_EP_NLAYERS];
+    d = fw_ep_bytes(fw, dp, dl);
+    np = d && dl >= 32 ? d[8] | d[9] << 8 : 0;
+    if (fresh || !sl->ep_known || dseq != sl->ep_dseq) {
+        sl->ep_dseq = dseq;
+        sl->ep_dlen = dl;
+        if (!d || rfm_move_ep_describe(&S->core, s, d, dl) < 0) {
+            fprintf(stderr, "engine: slot %d: %s: its engine parameters' description (%u bytes) refused\n", s + 1,
+                    fw->id, dl);
+            rfm_move_ep_describe(&S->core, s, NULL, 0);
+            sl->ep_known = 0;
+            return;
+        }
+        sl->ep_known = 1;
+        sl->ep_lseq = lseq - 1u, sl->ep_vseq = vseq - 1u, sl->ep_cseq = cseq - 1u;   /* (all again after it) */
+        redraw = 1;
+    }
+    if (lseq != sl->ep_lseq) {
+        uint8_t eng[8], ch[8];
+        sl->ep_lseq = lseq;
+        for (l = 0; l < nl; l++)
+            eng[l] = r[FW_EP_LAY + 4 * l], ch[l] = r[FW_EP_LAY + 4 * l + 1];
+        rfm_move_ep_layers(&S->core, s, nl, eng, ch);
+        redraw = 1;
+    }
+    if (vseq != sl->ep_vseq) {
+        const uint8_t *v = np ? fw_ep_bytes(fw, vp, 2u * (uint32_t)np * (uint32_t)nl) : NULL;
+        sl->ep_vseq = vseq;
+        for (l = 0; v && l < nl; l++) {
+            static int16_t row[RFM_MOVE_EP_PARAMS];   /* (a copy: aligned, the module's memory untouched) */
+            memcpy(row, v + 2u * (uint32_t)np * (uint32_t)l, 2u * (uint32_t)np);
+            rfm_move_ep_values(&S->core, s, l, row, np);
+        }
+        redraw = 1;
+    }
+    if (cseq != sl->ep_cseq) {
+        rfm_move_ep_cell_t c[8];
+        int16_t pg;
+        int k;
+        sl->ep_cseq = cseq;
+        memcpy(&pg, r + FW_EP_WPAGE, 2);
+        for (k = 0; k < 8; k++) {
+            const uint8_t *q = r + FW_EP_CELLS + 24 * k;
+            memcpy(&c[k].pid, q, 2);
+            memcpy(c[k].name, q + 2, 11);
+            memcpy(c[k].text, q + 13, 11);
+            c[k].name[10] = c[k].text[10] = 0;
+        }
+        rfm_move_ep_cells(&S->core, s, r[FW_EP_WLAYER], pg, c);
+        redraw = 1;
+    }
+    if (redraw && rfm_move_ep_has(&S->core, s)) {
+        rfm1cs_session_redraw(S, now_ms());
+        rfm1cs_session_flush_leds(S);
+    }
+    sl->ep_ns += now_ns() - t0;
+    sl->ep_polls++;
+}
+
 static void slot_unload(int s, int save)
 {
     fw_inst_t *pre;
@@ -1515,6 +1625,7 @@ static void slot_unload(int s, int save)
     if (!SL[s].on)
         return;
     tk_clear(s);   /* (its takeover closed first: the firmware gets its releases and rfm1_tk_state(0) queued) */
+    ep_clear(s);   /* (ep1: its engine page gone) */
     if (save) {   /* (no rendering ahead for its snapshot: a block would read its takeover's record again) */
         g_nest++;
         slot_save(s, 1);
@@ -1837,6 +1948,10 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n, co
     sl->tk_known = 0;
     sl->tk_in = sl->tk_states = 0;
     tk_poll(s, 1);   /* (tk1: its takeover's claims and name to rfm1cs, or none) */
+    sl->ep_acts = sl->ep_watches = 0;
+    sl->ep_ns = sl->ep_polls = 0;
+    ep_clear(s);     /* (ep1: a firmware replaced: the old description gone first, then the new one's) */
+    ep_poll(s, 1);
     fprintf(stderr, "engine: slot %d: %s %s (%s)\n", s + 1, sl->fw.name, sl->fw.version,
             restored == 2 ? "its saved working memory; the Move stopped: Stop sent" : restored
             ? "its saved working memory" : flash && n ? "its saved flash" : "a fresh flash");
@@ -3988,8 +4103,10 @@ static void render_block_(uint32_t now)
         }
         render_slots(mask, ain);
         for (s = 0; s < NSLOT; s++)   /* tk1: each record after the block (its frames, its rfm1_tk_input calls) */
-            if (mask >> s & 1)
+            if (mask >> s & 1) {
                 tk_poll(s, 0);
+                ep_poll(s, 0);   /* ep1: its record after the block (its frames, its rfm1_ep_set calls) */
+            }
         for (s = 0; s < NSLOT; s++) {   /* the mix, in slot order */
             slot_t *sl = &SL[s];
             const int16_t *sb = RT[s].blk;
@@ -4234,6 +4351,38 @@ static void housekeeping(uint32_t now)
                 if (fw_has_ain(&sl->fw))   /* ain1: the state told, its latency, the blocks fed, the last block's peak */
                     n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ain\":%u,\"ain_lat\":%u,\"ain_blocks\":%u,"
                                   "\"ain_peak\":%d", sl->fw.ain_state, sl->fw.ain_lat, sl->fw.ain_blocks, sl->fw.ain_peak);
+                if (sl->ep_known) {   /* ep1: the description, the layers (engine, channel), the watched page's cells
+                                       * and their values, what the core gave it, the polls' cost */
+                    const uint8_t *r = fw_ep(&sl->fw);
+                    int l, k;
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"ep1\":{\"desc\":%u,\"acts\":%u,\"watches\":%u,"
+                                  "\"sets\":%u,\"refused\":%u,\"poll_us\":%.2f,\"layers\":[", sl->ep_dlen, sl->ep_acts,
+                                  sl->ep_watches, sl->fw.ep_sets, sl->fw.ep_refused,
+                                  sl->ep_polls ? (double)sl->ep_ns / (double)sl->ep_polls / 1000.0 : 0.0);
+                    for (l = 0; r && l < r[FW_EP_NLAYERS] && l < 8; l++)
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%s[%d,%d]", l ? "," : "",
+                                      r[FW_EP_LAY + 4 * l] == 0xFF ? -1 : r[FW_EP_LAY + 4 * l],
+                                      r[FW_EP_LAY + 4 * l + 1] == 0xFF ? -1 : r[FW_EP_LAY + 4 * l + 1]);
+                    if (r) {
+                        int16_t pg;
+                        memcpy(&pg, r + FW_EP_WPAGE, 2);
+                        n += snprintf(tmp + n, sizeof tmp - (size_t)n, "],\"wlayer\":%u,\"wpage\":%d,\"cells\":[",
+                                      r[FW_EP_WLAYER], pg);
+                        for (k = 0; k < 8; k++) {
+                            const uint8_t *q = r + FW_EP_CELLS + 24 * k;
+                            char nm[12], tx[12];
+                            uint16_t pid;
+                            memcpy(&pid, q, 2);
+                            memcpy(nm, q + 2, 11), memcpy(tx, q + 13, 11);
+                            nm[11] = tx[11] = 0;
+                            mj_escape(nm, esc[0], sizeof esc[0]);
+                            mj_escape(tx, esc[1], sizeof esc[1]);
+                            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%s[%u,\"%s\",\"%s\"]", k ? "," : "", pid,
+                                          esc[0], esc[1]);
+                        }
+                    }
+                    n += snprintf(tmp + n, sizeof tmp - (size_t)n, "]}");
+                }
                 if (sl->tk_known) {   /* tk1: the takeover's claims (0: none now), its name, what the core gave it */
                     mj_escape(sl->tk_name, esc[0], sizeof esc[0]);
                     n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"tk\":%u,\"tk_name\":\"%s\",\"tk_in\":%u,"
