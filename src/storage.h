@@ -111,6 +111,8 @@ enum {
                            * renames, one file system); back as J_STATE_PASTE's (err on a failure) */
     J_PROJECT_DUP,        /* index (a stored project), value (an empty slot): its FX state and firmware copies copied
                            * there, then its blob through the store (R_PROJECT_STORED); back with err on a failure */
+    J_PROJECT_INFO,       /* index: that stored project's blob read (as the store reads it): back with data/len (none:
+                           * nothing there), value -1 the file unreadable, -2 a newer project file than this host reads */
     J_PROJECT_IMPORT,     /* index, path (a folder: p.rfmmove, p.fx.json, p.fwK.bin / .json / .mem): the project
                            * there replaced (the old one gone first, the blob last, through the store); back with err */
 };

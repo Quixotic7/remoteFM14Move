@@ -2,6 +2,14 @@
 
 ## Not released
 
+- **The page's projects after a start** (seen on the owner's Move: every stored project but the open one listed with
+  0 BPM, no clips, no firmwares). The core fills a stored project's brief only from a save or a paste in that session
+  (`R_PROJECT_STORED`); nothing asked for the others, so the page, and the Move's own grid, showed them empty. The
+  host now reads each stored project's file at start on the storage thread and gives the core its brief
+  (`rfm_move_project_info`). A file this host cannot read says so in `/api/store` (`"read":"damaged"` or `"newer"`)
+  and on the panel, is kept as stored so nothing is made over it, and is logged. `tests/store_e2e.sh` restarts the
+  host and checks the first listing.
+
 - **States: pad 1 is the project's own sound, pads 2..32 a library** (the owner's of 2026-11-24: "a project should
   keep it's own unique firmware state which then shows up as slot 1, so slot 1 always means project state, a unique
   state per project", and "You should be able to reset a state by holding the state and pressing delete"; the host's

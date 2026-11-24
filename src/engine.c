@@ -320,6 +320,9 @@ static struct { int id, st; char msg[200]; } g_sdone[32];
 static int g_sdone_at;
 typedef struct { int id, op, slot, k, to, flags; char err[200]; } spend_t;
 static spend_t g_spend[16];
+/* (the page's projects) what reading each stored project's file at start found */
+enum { PR_NONE, PR_OK, PR_NEWER, PR_DAMAGED };
+static uint8_t g_proj_read[RFM_MOVE_PROJECTS];
 static char *g_store_json;
 static uint32_t g_store_ver;
 
@@ -2492,6 +2495,23 @@ static void do_results(void)
         case R_PROJECT_STORED:
             rfm_move_project_dir(&S->core, j->used);
             rfm_move_project_info(&S->core, j->index, j->data, j->len);
+            if (j->index >= 0 && j->index < RFM_MOVE_PROJECTS)
+                g_proj_read[j->index] = j->data ? PR_OK : PR_NONE;
+            break;
+        case J_PROJECT_INFO:   /* (at start) a stored project's brief for the grid and the page */
+            if (j->index >= 0 && j->index < RFM_MOVE_PROJECTS && j->index != rfm_move_project_slot(&S->core)) {
+                const int k = j->index;
+                if (j->data && rfm_move_project_info(&S->core, k, j->data, j->len) == 0)
+                    g_proj_read[k] = PR_OK;
+                else if (j->data)   /* (the blob: a newer version than this core reads, or damaged) */
+                    g_proj_read[k] = j->len > 5 && !memcmp(j->data, "RMSQ", 4) && j->data[4] > RFM_MOVE_PROJECT_VERSION
+                                     ? PR_NEWER : PR_DAMAGED;
+                else
+                    g_proj_read[k] = j->value == -2 ? PR_NEWER : j->value < 0 ? PR_DAMAGED : PR_NONE;
+                if (g_proj_read[k] == PR_NEWER || g_proj_read[k] == PR_DAMAGED)
+                    fprintf(stderr, "engine: project %d: %s\n", k + 1, g_proj_read[k] == PR_NEWER
+                            ? "a newer project file than this host reads (left as it is)" : "its file cannot be read (left as it is)");
+            }
             break;
         case J_SYNC:   /* (a page's request: everything it asked of the storage thread is done) */
             store_synced(j->req);
@@ -3075,7 +3095,7 @@ static void store_watch(uint32_t now, int force)
     for (k = 0; k < RFM_MOVE_PROJECTS; k++) {
         const rfm_move_proj_info_t *in = &m->seq.info[k];
         const char *c;
-        MIX(in->ok), MIX(in->color), MIX(in->bpm10), MIX(in->clips);
+        MIX(in->ok), MIX(in->color), MIX(in->bpm10), MIX(in->clips), MIX(g_proj_read[k]);
         for (s = 0; s < RFM_MOVE_FW_SLOTS; s++)
             for (c = in->fw[s]; *c; c++)
                 MIX(*c);
@@ -3095,9 +3115,12 @@ static void store_watch(uint32_t now, int force)
         const uint8_t *c = PAL[(in->color ? in->color - 1 : k % RFM_MOVE_PROJ_COLORS) % 16];
         if (!(m->seq.proj_used >> k & 1))
             continue;
-        PUT("%s{\"k\":%d,\"color\":\"#%02x%02x%02x\",\"bpm\":%.1f,\"clips\":%d,\"fw\":[\"%s\",\"%s\",\"%s\"]}",
+        /* read: "ok" (its brief known), "reading" (not yet), "newer" (a newer project file than this host reads),
+         * "damaged" (its file cannot be read) */
+        PUT("%s{\"k\":%d,\"color\":\"#%02x%02x%02x\",\"bpm\":%.1f,\"clips\":%d,\"fw\":[\"%s\",\"%s\",\"%s\"],\"read\":\"%s\"}",
             first ? "" : ",", k, c[0], c[1], c[2], in->ok ? in->bpm10 / 10.0 : 0.0, in->ok ? in->clips : 0,
-            in->ok ? in->fw[0] : "", in->ok ? in->fw[1] : "", in->ok ? in->fw[2] : "");
+            in->ok ? in->fw[0] : "", in->ok ? in->fw[1] : "", in->ok ? in->fw[2] : "",
+            g_proj_read[k] == PR_NEWER ? "newer" : g_proj_read[k] == PR_DAMAGED ? "damaged" : in->ok ? "ok" : "reading");
         first = 0;
     }
     PUT("],\"slots\":[");
@@ -4670,7 +4693,8 @@ int engine_start(const engine_cfg_t *cfg)
     {
         const int nd = g_ndefer;
         int k;
-        rfm1cs_session_projects_init(S, now_ms(), used, open_slot, blob, nb);
+        if (rfm1cs_session_projects_init(S, now_ms(), used, open_slot, blob, nb) < 0 && (used >> open_slot & 1))
+            g_proj_read[open_slot] = PR_DAMAGED;   /* (it starts empty there; the stored file stays) */
         /* (rfm1cs 0.13.0) a version 9 project asked for its firmwares (PROJECT_FW, deferred): the engine's loop loads
          * them as for any project (pfw_want: its copies, the loading screen); the library's slots are not restored
          * then. Older (or none): the library's, as before, and they are the open project's from now on */
@@ -4678,6 +4702,16 @@ int engine_start(const engine_cfg_t *cfg)
             pfw_start |= g_defer[k].a.kind == RFM_MOVE_ACT_PROJECT_FW;
     }
     free(blob);
+    {   /* every other stored project's brief (its tempo, clips, firmwares) for the Move's grid and the page, read on
+         * the storage thread now (the core fills it only from a save or a paste otherwise) */
+        int k;
+        for (k = 0; k < RFM_MOVE_PROJECTS; k++)
+            if ((used >> k & 1) && k != open_slot) {
+                st_job_t *j = st_job_new(J_PROJECT_INFO);
+                j->index = k;
+                st_post(j);
+            }
+    }
     if (st_worker_start(used) != 0)
         return -1;
     g_active = rfm_move_fw_active(&S->core);

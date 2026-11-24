@@ -21,7 +21,9 @@
 #     the file uploaded as project 3 and opened: +5 (the copy restored); project 1 again: +7; project 3 duplicated into
 #     6 (its copies too), opened: +5; project 6 deleted (its copies gone); an upload over the open project refused;
 #     a new empty project from the page (project-new) in an empty slot, refused over a stored one;
-#   - no late block meanwhile.
+#   - no late block meanwhile;
+#   - restarted (a damaged project file and a newer one added): the first GET /api/store lists every stored project
+#     with its tempo, clips and firmwares, the two said "damaged" and "newer" (and in the log).
 #   tests/store_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -259,6 +261,31 @@ cmd "cc 51 127"; cmd "cc 51 0"
 late=$(field late)
 [ "$late" = "$late0" ] && ok "no late block while states and projects went in and out ($late)" || bad "late blocks: $late0 -> $late"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
+stop
+# ---- after a start, the panel's first listing complete: every stored project's tempo, clips and firmwares (read on
+# the storage thread at start, as the Move's grid needs them too); a damaged file and a newer one said in a word
+cp "$P/move-project-03.rfmmove" "$P/move-project-20.rfmmove"
+printf 'Z' | dd of="$P/move-project-20.rfmmove" bs=1 seek=60 conv=notrunc 2>/dev/null
+cp "$P/move-project-03.rfmmove" "$P/move-project-21.rfmmove"
+printf '\013' | dd of="$P/move-project-21.rfmmove" bs=1 seek=22 conv=notrunc 2>/dev/null
+start || { bad "the host did not start again"; tail -20 "$T/host.log"; exit 1; }
+curl -s "$U/api/store" > "$T/store1.json"
+# (the projects' array, one object a line: k, bpm, read and the first firmware)
+sed 's/.*"projects":\[//; s/\],"slots".*//; s/},{/}\n{/g' "$T/store1.json" > "$T/projs"
+r=$(awk -F'"' '
+    { k = $0; sub(/.*"k":/, "", k); sub(/,.*/, "", k); bpm = $0; sub(/.*"bpm":/, "", bpm); sub(/,.*/, "", bpm)
+      rd = $0; sub(/.*"read":"/, "", rd); sub(/".*/, "", rd); fw = $0; sub(/.*"fw":\["/, "", fw); sub(/".*/, "", fw); n++
+      if (k == 19) { if (rd != "damaged") bad = bad " 20:" rd; next }
+      if (k == 20) { if (rd != "newer") bad = bad " 21:" rd; next }
+      if (rd != "ok" || bpm + 0 <= 0) bad = bad " " k + 1 ":" rd "/" bpm
+      if (k == 2 && fw != "choralroot") bad = bad " 3:fw " fw }
+    END { print bad != "" ? "bad" bad : "ok " n }' "$T/projs")
+case "$r" in
+    ok*) ok "restarted: the first GET /api/store lists every stored project (${r#ok } of them) with its tempo, clips and firmwares; project 20 \"damaged\", 21 \"newer\"" ;;
+    *) bad "the first listing after a start: $r ($(head -c 400 "$T/store1.json"))" ;;
+esac
+grep -q "project 20: its file cannot be read" "$T/host.log" && grep -q "project 21: a newer project file" "$T/host.log" \
+    && [ "$(field late)" = 0 ] && ok "...said in the log; no late block" || bad "the log or late blocks ($(field late))"
 stop
 rm -f "/dev/shm/rfm14-sv-$$"
 mv "$T" "$T.done" 2>/dev/null

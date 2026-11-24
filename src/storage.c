@@ -509,6 +509,16 @@ uint32_t st_projects_scan(int open_slot, uint8_t **blob, uint32_t *n)
     io.stored = NULL;
     rfm1cs_store_init(&s, &io, 0);
     len = rfm1cs_store_scan(&s, open_slot, &used);
+    {   /* a project file this host cannot read (damaged, or a newer one) is kept as stored: the grid and the page say
+         * so, and nothing is made or pasted over it */
+        int k;
+        for (k = 0; k < RFM1CS_SLOTS; k++) {
+            char p[ST_PATH];
+            proj_path(p, sizeof p, k);
+            if (!(used >> k & 1) && access(p, F_OK) == 0)
+                used |= 1u << k;
+        }
+    }
     *blob = NULL, *n = 0;
     if (len > 0 && (*blob = malloc((size_t)len))) {
         memcpy(*blob, s.buf, (size_t)len);
@@ -1143,6 +1153,26 @@ static void run_job(st_job_t *j)
                 j->ok = 1;
             j->len = (uint32_t)n;   /* (rfm1cs 0.14.0: no state is active, none is matched) */
         }
+        break;
+    }
+    case J_PROJECT_INFO: {   /* (the page's and the grid's brief of a stored project, at start) */
+        uint8_t *b = malloc(RFM_MOVE_PROJECT_MAX);
+        const int len = b ? io_read(NULL, j->index, b, RFM_MOVE_PROJECT_MAX) : -1;
+        j->value = 0;
+        if (len > 0)
+            j->data = b, j->len = (uint32_t)len, b = NULL;
+        else if (len < 0) {   /* (the container itself: a newer one is a word, a broken one another) */
+            char p[ST_PATH];
+            size_t n = 0;
+            uint8_t *raw;
+            proj_path(p, sizeof p, j->index);
+            raw = st_read(p, &n);
+            /* (the file's version, or its one project's: "RMVP", its version, ..., the blob at 18 with its at 22) */
+            j->value = raw && n > 5 && !memcmp(raw, "RMVP", 4) &&
+                       (raw[4] > 1 || (n > 23 && !memcmp(raw + 18, "RMSQ", 4) && raw[22] > RFM_MOVE_PROJECT_VERSION)) ? -2 : -1;
+            free(raw);
+        }
+        free(b);
         break;
     }
     case J_SYNC:

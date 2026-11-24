@@ -346,7 +346,7 @@ export class StoreView {
     const grid = h("div", { class: "mv-sv-grid", role: "grid", "aria-label": "Projects" }, [...Array(32).keys()].map((i) => {
       const p = by.get(i), full = used >>> i & 1, isOpen = i === open, free = !full && i !== open;
       return this.pad(i, { cls: `${full ? "full" : ""} ${isOpen ? "cur" : ""} ${dup != null && free ? "target" : ""} ${isOpen && Date.now() - this.savedAt < 1600 ? "saved" : ""} ${(this.busyK === i && this.tab === "projects") || (loading && i === (d.pending >= 0 ? d.pending : open)) ? "busy" : ""}`,
-        color: p ? p.color : null, tag: isOpen ? "open" : "", selected: i === k && dup == null,
+        color: p ? p.color : null, tag: isOpen ? "open" : p && (p.read === "newer" || p.read === "damaged") ? p.read : "", selected: i === k && dup == null,
         label: `Project ${i + 1}: ${isOpen ? "open" : full ? "stored" : "empty"}`,
         onclick: () => this.projectTap(i) });
     }));
@@ -380,6 +380,9 @@ export class StoreView {
     const fws = p ? p.fw.map((id, i) => (id ? `${i + 1} ${this.fwName(id)}` : "")).filter(Boolean) : [];
     const title = h("h4", {}, `Project ${k + 1}`, isOpen ? h("span", { class: "badge" }, "Open") : null);
     const meta = h("div", { class: "meta" }, !full ? (isOpen ? "Open on the Move, not saved yet." : "Empty.")
+      : p && p.read === "newer" ? "Newer: a project file this Move's RemoteFM1 does not read yet (left as it is)."
+      : p && p.read === "damaged" ? "Damaged: its file cannot be read (left as it is)."
+      : p && p.read === "reading" ? "Reading…"
       : `${p ? `${p.bpm} BPM · ${p.clips} clip${p.clips === 1 ? "" : "s"}` : ""}${fws.length ? ` · firmwares: ${fws.join(", ")}` : p ? " · no firmwares" : ""}`);
     let acts;
     const q = this.inline;

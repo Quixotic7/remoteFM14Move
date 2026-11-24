@@ -1083,6 +1083,13 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   saved first); Upload (a project file into an empty or, asked first, a stored slot; never the open one); Delete
   (asked first; the open one: the Move goes on with an empty project there, as after Delete + its pad). No names in
   this round: numbered as the Move numbers them.
+- **Every stored project's brief from the start:** the core fills a stored project's tempo, clip count and firmwares
+  (`seq.info[]`, through `rfm_move_project_info`) only from a save or a paste (`R_PROJECT_STORED`), so after a start
+  every project but the open one read as empty, on the page and in the Move's grid. The host now reads each stored
+  project's file at start on the storage thread (`J_PROJECT_INFO`, the store's own read) and gives the core its brief;
+  each project's `read` says `ok`, `reading`, `newer` (a project file newer than this host reads) or `damaged` (its
+  file cannot be read), and the panel shows the word. Such a file is kept as stored (the core's grid shows the slot
+  taken, so no new project is made or pasted over it) and the log says so.
 - **Live:** the mix JSON's `store_ver` moves whenever what the panel shows changes on the Move (a pad, an autosave, a
   project opened, a firmware loaded), and the panel reads `GET /api/store` again.
 - **The same path as the Move's pads.** A state save / load / pad 1's reset is the core's `STATE_SAVE` /
@@ -1114,7 +1121,7 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   copy into an empty slot, and a save that says "Saved"). A new empty project has its own call since 0.14.0
   (`rfm_move_project_new`).
 - **The API:** `GET /api/store` (`{"ver", "open", "pending", "loading", "used", "dirty", "projects": [{"k", "color",
-  "bpm", "clips", "fw"}], "slots": [{"id", "name", "version", "used" (library states 1..31, bit 0 clear), "cur" (0
+  "bpm", "clips", "fw", "read"}], "slots": [{"id", "name", "version", "used" (library states 1..31, bit 0 clear), "cur" (0
   always: pad 1 is the project's), "proj" (the project whose copy it is), "undo", "color"} or null]}`); `POST
   /api/store {"op", "slot", "k", "to", "id", "replace"}` with op `state-save`, `state-load`, `state-delete` (k 1..31),
   `state-reset` (k 0: New; 1..31: the firmware as first installed stored there), `project-open`, `project-save`,
