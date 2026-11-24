@@ -152,7 +152,8 @@ const active = async () => { const st = await status(); return st ? st.active : 
 const dv = (sel) => js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return e ? e.dataset.v : null; })()`);
 
 // ---- States and projects (js/movestore.js, src/web.c /api/store): every action from the panel, checked on the Move's
-// side (/api/store, the status, the files through /api/fs, the host's log), the Move's own pads seen by the page, a
+// side (/api/store, the status, the files through /api/fs, the host's log), the Move's own pads seen by the page, Reset to
+// default (a stored state, the active one, an empty one), a
 // state and a project downloaded, deleted, uploaded and loaded again (their working memory restored); screenshots in
 // build/ (move-page-states.png, move-page-projects.png)
 const expect4xx = [];   // (requests the test makes fail on purpose: a refusal the page shows)
@@ -306,6 +307,37 @@ async function storeChecks() {
   ok(opened && await until(`document.querySelector('${pad(7)}').classList.contains("cur")`, 8000, "state 8 from the Move"),
     "the Move's own pads: its States opened (Track held + pad 7), empty state 8 saved there; the page shows it stored and active at once");
   for (let i = 0; i < 3 && (await status()).states_open !== -1; i++) { await moveCmd("cc 51 127"); await moveCmd("cc 51 0"); await sleep(400); }
+  // Reset to default (the owner's): the state as the firmware first installed (step 14 New's: a fresh, erased flash, no
+  // working memory); asked first over a stored one; the active one restarts the firmware fresh and stays active; an
+  // empty one stores it at once
+  const erased = (b) => b.length > 0 && b.every((x) => x === 0xFF);
+  const boot2 = (await status())[`boot${cr}`];
+  await choose(2); await until(`document.querySelector('${act("reset")}')`, 3000, "state 3's Reset");
+  await tap(act("reset"));
+  ok(await until(`/Reset state 3 to default\\?/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"),
+    "Reset to default on a stored state: asked first");
+  await tap(act("yes"));
+  ok(await untilApi(async () => { const f = await ls(CRS); return f.has(sb("bin", 2)) && !f.has(sb("mem", 2)); }, 10000)
+    && erased(await bytes(`${CRS}/${sb("bin", 2)}`)) && (await status())[`boot${cr}`] === boot2 && (await status())[`cstcur${cr}`] === 7
+    && await until(`/State 3 reset to default/.test(document.querySelector("#mv-sv .mv-fs-foot [role=status]").textContent)`, 5000, "its answer")
+    && await until(`/as first installed/.test((document.querySelector('#mv-sv .mv-sv-sel[data-k="2"] .meta') || {}).textContent || "")`, 5000, "its row"),
+    "...yes: state 3 holds the firmware as first installed (an erased flash, no .mem; its row says so); the firmware untouched, state 8 still active");
+  await choose(7); await until(`document.querySelector('${act("reset")}')`, 3000, "state 8's Reset");
+  await tap(act("reset"));
+  ok(await until(`/restarts as first installed/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"),
+    "Reset to default on the active state: asked first, saying the firmware restarts");
+  await tap(act("yes"));
+  ok(await untilApi(async () => { const t = await status(), f = await ls(CRS);
+    return t[`boot${cr}`] > boot2 && t[`restored${cr}`] === 0 && t[`stcur${cr}`] === 7 && t[`cstcur${cr}`] === 7 && !f.has(sb("mem", 7)); }, 10000)
+    && erased(await bytes(`${CRS}/${sb("bin", 7)}`)) && await until(`document.querySelector('${pad(7)}').classList.contains("cur")`, 5000, "state 8 active"),
+    "...yes: the firmware restarted fresh (a new instance, nothing restored), state 8 holds that and is still the active one (on the Move and on the page)");
+  const boot3 = (await status())[`boot${cr}`];
+  await choose(10); await until(`document.querySelector('${act("reset")}')`, 3000, "state 11's Reset");
+  await tap(act("reset"));
+  ok(await untilApi(async () => (await ls(CRS)).has(sb("bin", 10)) && (await store()).slots[cr].used >>> 10 & 1, 10000)
+    && erased(await bytes(`${CRS}/${sb("bin", 10)}`)) && (await status())[`cstcur${cr}`] === 7 && (await status())[`boot${cr}`] === boot3
+    && await until(`document.querySelector('${pad(10)}').classList.contains("full")`, 5000, "pad 11 stored"),
+    "Reset to default on an empty state: stored at once (state 11, the fresh flash), state 8 still active, the firmware untouched");
   // another slot's States
   await tap(`#mv-sv .mv-sv-slot[data-slot="${fe}"]`);
   ok(await until(`document.querySelector('#mv-sv .mv-sv-slot[data-slot="${fe}"][aria-pressed="true"]') && document.querySelector('${pad(0)}').classList.contains("full")`, 3000, "Felucca's"),

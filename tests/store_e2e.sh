@@ -7,6 +7,9 @@
 #   - voicing +3, state 1 saved from the page (the Move's core has it stored and active: its pads show it); +7, state 2;
 #   - state 1 downloaded (a .zip: the image, the working memory, the .json), deleted, uploaded again (the same bytes),
 #     loaded: +3 (its working memory restored); state 2 loaded: +7;
+#   - Reset to default (state-reset): state 1 (stored, not active): an erased flash, no .mem, the firmware still +7;
+#     loaded: 0; the active state 2: the firmware restarts fresh (0), state 2 still active; the empty state 5: a fresh
+#     state stored there; refused: an empty slot, another firmware's id;
 #   - refused in plain words: Felucca's state into ChoralRoot's slot (nothing written), a file over the active state
 #     without load=1, a state file as a project, the file browser's own write into a running firmware's states/ (its
 #     guard as it was); over the active state with load=1: replaced and loaded (+3);
@@ -103,6 +106,37 @@ v=$(vo2)
     || bad "state 1 loaded: $code, voicing '$v' (want +3), restored '$(field restored0)'"
 store '{"op":"state-load","slot":0,"k":1}'; v=$(vo2)
 [ "$v" = +7 ] && ok "state 2 loaded from the page: voicing $v" || bad "state 2: voicing '$v' (want +7)"
+
+# ---- Reset to default (the owner's "an option to reset the selected state to default"): the firmware as first
+# installed (step 14 New's), a fresh (erased) flash and no working memory
+erased() { [ -s "$1" ] && [ "$(tr -d '\377' < "$1" | wc -c)" = 0 ]; }
+b0=$(field boot0)
+store '{"op":"state-reset","slot":0,"k":0,"id":"choralroot"}'; v=$(vo)
+[ "$code" = 200 ] && said_out | grep -q "State 1 reset to default" && erased "$CRS/state-00.bin" && [ ! -e "$CRS/state-00.mem" ] \
+    && [ "$(field boot0)" = "$b0" ] && [ "$v" = +7 ] && [ "$(field cstcur0)" = 1 ] \
+    && ok "state 1 (stored, not active) reset to default (\"$(said_out)\"): an erased flash, no .mem; the firmware untouched (voicing $v, state 2 active)" \
+    || bad "reset state 1: $code $(cat "$T/out"), voicing '$v', boot $b0 -> $(field boot0), cstcur0 '$(field cstcur0)'"
+store '{"op":"state-load","slot":0,"k":0}'; v=$(vo2)
+[ "$code" = 200 ] && [ "$v" = 0 ] && ok "state 1 loaded: voicing $v (the firmware as first installed)" || bad "state 1 after its reset: $code, voicing '$v' (want 0)"
+store '{"op":"state-load","slot":0,"k":1}'; v=$(vo2)
+[ "$v" = +7 ] || bad "state 2 again: voicing '$v' (want +7)"
+b0=$(field boot0)
+store '{"op":"state-reset","slot":0,"k":1,"id":"choralroot"}'; v=$(vo2)
+[ "$code" = 200 ] && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = 0 ] && [ "$(field cstcur0)" = 1 ] && [ "$(field restored0)" = 0 ] \
+    && erased "$CRS/state-01.bin" && [ ! -e "$CRS/state-01.mem" ] && grep -q "state 2 reset to default: the firmware restarted fresh" "$T/host.log" \
+    && ok "the active state 2 reset to default: the firmware restarted fresh (voicing $v), state 2 still active, its file the fresh flash" \
+    || bad "reset the active state: $code $(cat "$T/out"), voicing '$v', boot $b0 -> $(field boot0), cstcur0 '$(field cstcur0)', restored0 '$(field restored0)'"
+st=$(field states0)
+store '{"op":"state-reset","slot":0,"k":4,"id":"choralroot"}'; v=$(vo)
+[ "$code" = 200 ] && erased "$CRS/state-04.bin" && wait_for 3 '[ $(( $(field states0) >> 4 & 1 )) = 1 ]' && [ "$(field cstcur0)" = 1 ] && [ "$v" = 0 ] \
+    && ok "an empty state 5 reset to default: a fresh state stored there (states $st -> $(field states0)), state 2 still the active one" \
+    || bad "reset the empty state 5: $code $(cat "$T/out"), states0 '$(field states0)', cstcur0 '$(field cstcur0)'"
+store '{"op":"state-reset","slot":1,"k":0}'
+[ "$code" = 409 ] && said_out | grep -q "empty" && [ ! -d "$R/states/felucca" ] && ok "a reset in an empty slot refused: \"$(said_out)\"" \
+    || bad "reset in an empty slot: $code $(cat "$T/out")"
+store '{"op":"state-reset","slot":0,"k":2,"id":"felucca"}'
+[ "$code" = 409 ] && said_out | grep -q "runs ChoralRoot" && [ ! -e "$CRS/state-02.bin" ] && ok "a reset meant for another firmware refused: \"$(said_out)\"" \
+    || bad "reset for felucca in ChoralRoot's slot: $code $(cat "$T/out")"
 
 # ---- refusals, in plain words
 curl -s -o /dev/null -X POST --data '{"slot":1,"id":"felucca","activate":0}' "$U/api/load"

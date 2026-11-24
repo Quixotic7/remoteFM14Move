@@ -2,6 +2,13 @@
 
 ## Not released
 
+- **The page's States: Reset to default** (the owner's "Works but need an option to reset the selected state to
+  default"). A state's row has Reset to default: the state becomes the firmware as first installed, as the Move's step
+  14 New gives it (a fresh, erased flash, no working memory; its row says "as first installed"). Over a stored state
+  it is asked first; the active state's firmware restarts fresh and the state stays active; another stored state only
+  has its file replaced; an empty one stores it at once. `POST /api/store` op `state-reset`, answered when done, 409
+  with a plain reason when refused (an empty slot, another firmware). `tests/store_e2e.sh` reads the voicing back
+  (0 after a reset), `tests/page_e2e.mjs` clicks it in the panel.
 - **A project or a state opened while the Move is stopped is stopped** (the owner's "Loading a new project is starting
   playback when the Move's playback is stopped"). A firmware's working memory saved while its own loop or sequencer
   ran (a save, a duplicate or a project left while playing, the autosave while played) came back running: the Move's

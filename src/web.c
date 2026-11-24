@@ -1023,7 +1023,9 @@ static void api_fs_post(client_t *c, const char *what, const char *q)
  *   GET  /api/store                          engine_store_json: what is stored, the active state, the open project
  *   POST /api/store {"op", "slot", "k", "to", "id", "replace"}   op: state-save, state-load, state-delete (slot, k,
  *                                            id: the firmware the page means), project-open, project-save,
- *                                            project-dup (k into the empty to), project-delete (k). Answered when
+ *                                            project-dup (k into the empty to), project-delete (k), state-reset
+ *                                            (slot, k, id: the state as first installed, stored or empty; the active
+ *                                            one restarts the firmware fresh, still active). Answered when
  *                                            done: 200 {"ok":true,"message"}, or 409 {"ok":false,"error"}
  *   GET  /api/store/state?slot=S&k=K         state K of slot S's firmware as a file: a .zip (store only, as /api/fs/zip
  *                                            makes) of state-KK.bin, .json (id, version, sha256, the image's hash,
@@ -1085,7 +1087,7 @@ static void store_wait(client_t *c, const eng_store_t *r, const char *dir)
 static void api_store(client_t *c, const char *body)
 {
     static const char *const OPS[] = { "state-save", "state-load", "state-delete", "", "project-open", "project-save",
-                                       "project-dup", "project-delete" };
+                                       "project-dup", "project-delete", "", "state-reset" };   /* (ENG_ST_SAVE + i) */
     char op[32] = "";
     long slot = 0, k = -1, to = -1, rep = 0;
     eng_store_t r;
@@ -1095,8 +1097,8 @@ static void api_store(client_t *c, const char *body)
         fs_err(c, "400 Bad Request", "want {op, k}");
         return;
     }
-    for (i = 0; i < 8 && strcmp(OPS[i], op); i++) {}
-    if (i == 8 || !op[0]) {
+    for (i = 0; i < 10 && strcmp(OPS[i], op); i++) {}
+    if (i == 10 || !op[0]) {
         fs_err(c, "400 Bad Request", "no such op");
         return;
     }
@@ -1104,7 +1106,7 @@ static void api_store(client_t *c, const char *body)
     mj_int(body, "to", &to);
     mj_int(body, "replace", &rep);
     r.op = ENG_ST_SAVE + i, r.slot = (int)slot, r.k = (int)k, r.to = (int)to, r.flags = rep ? ENG_STF_REPLACE : 0;
-    if (r.op <= ENG_ST_DELETE && mj_string(body, "id", r.id, sizeof r.id) && store_slot_id(r.slot, r.id, sizeof r.id)) {
+    if ((r.op <= ENG_ST_DELETE || r.op == ENG_ST_RESET) && mj_string(body, "id", r.id, sizeof r.id) && store_slot_id(r.slot, r.id, sizeof r.id)) {
         fs_err(c, "409 Conflict", "that slot is empty");
         return;
     }

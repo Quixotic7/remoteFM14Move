@@ -7,8 +7,10 @@
 //     slot's colour) / the active one (white: the contrasting colour the Move gives it). A tap picks one; its row says
 //     which firmware and version saved it, when, whether with its working memory; Load, Save the sound here (over a
 //     stored one: asked first), Download (a .zip: its flash image, its working memory, its .json), Upload (a state
-//     file of this firmware: another firmware's is refused by the Move in plain words), Delete (asked first). The
-//     other two slots one tap away.
+//     file of this firmware: another firmware's is refused by the Move in plain words), Reset to default (the firmware
+//     as first installed, as the Move's step 14 New gives it: asked first over a stored one; the active one restarts
+//     the firmware fresh and stays active; an empty one stores it at once), Delete (asked first). The other two slots
+//     one tap away.
 //   - Projects: the sequencer's 32 projects (project 1 top left) in their colours, the open one white. A tap on the open
 //     one saves it ("Saved"); Open, Save, Duplicate (then a tap on an empty slot), Download (a .zip: the project, its
 //     FX state, its firmwares' copies, so it restores its sound on another Move), Upload (that .zip, or a .rfmmove
@@ -26,6 +28,7 @@ const IC = {
   copy: '<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.5c0-.6.4-1 1-1h7"/>',
   trash: '<path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/>', close: '<path d="M4 4l8 8M12 4l-8 8"/>',
   open: '<path d="M2.5 4.5h4l1.3 1.5h5.7v7H2.5z"/>', check: '<path d="M3 8.5l3 3 7-7"/>',
+  reset: '<path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3"/><path d="M4.5 2v3h3"/>',
 };
 const CSS = `
 .mv-sv .mv-fs-head { gap: 8px; }
@@ -235,17 +238,20 @@ export class StoreView {
     if (full && !m) this.readMeta(si.id, k);
     const title = h("h4", {}, `State ${k + 1}`, isCur ? h("span", { class: "badge" }, "Active") : null);
     const meta = h("div", { class: "meta", "data-meta": key },
-      !full ? "Empty." : m && !m.pending && m.id ? `${this.fwName(m.id || si.id)} ${m.version || "?"}${m.version && m.version !== si.version ? ` (this slot runs ${si.version})` : ""}${m.saved ? ` · saved ${when(m.saved)}` : ""}${m.mem ? " · with its working memory" : " · its flash only"}` : `${si.name}`);
+      !full ? "Empty." : m && !m.pending && m.id ? `${this.fwName(m.id || si.id)} ${m.version || "?"}${m.version && m.version !== si.version ? ` (this slot runs ${si.version})` : ""}${m.saved ? ` · saved ${when(m.saved)}` : ""}${m.fresh ? " · as first installed" : m.mem ? " · with its working memory" : " · its flash only"}` : `${si.name}`);
     let acts;
     const q = this.inline;
     if (q && q.k === k && q.tab === "states") {
       if (q.kind === "delete") acts = this.askRow(`Delete state ${k + 1}? It cannot be undone from the page.`, () => this.stateOp("state-delete", s, si, k), "Delete");
+      else if (q.kind === "reset") acts = this.askRow(isCur ? `Reset state ${k + 1} to default? The firmware restarts as first installed and the state holds that; its sound now is lost.`
+        : `Reset state ${k + 1} to default? It holds the firmware as first installed instead of its sound.`, () => this.stateOp("state-reset", s, si, k), "Reset it");
       else if (q.kind === "over") acts = this.askRow(`Save the sound as it is now over state ${k + 1}?`, () => this.stateOp("state-save", s, si, k, { replace: 1 }), "Save over it", "primary");
       else if (q.kind === "upload") acts = this.askRow(q.text, () => this.stateUpload(s, si, k, q.file, q.flags), q.yes || "Replace it", "primary");
     } else if (!full) {
       acts = h("div", { class: "mv-sv-acts" },
         this.pill("Save the sound here", IC.save, () => this.stateOp("state-save", s, si, k), "primary", { act: "save" }),
-        this.pill("Upload a state file…", IC.up, () => this.pickFile((f) => this.stateUpload(s, si, k, f, 0)), "", { act: "upload" }));
+        this.pill("Upload a state file…", IC.up, () => this.pickFile((f) => this.stateUpload(s, si, k, f, 0)), "", { act: "upload" }),
+        this.pill("Reset to default", IC.reset, () => this.stateOp("state-reset", s, si, k), "", { act: "reset", title: "Store the firmware as first installed here (as the Move's step 14 New)" }));
     } else {
       acts = h("div", { class: "mv-sv-acts" },
         isCur ? null : this.pill("Load", IC.load, () => this.stateOp("state-load", s, si, k), "primary", { act: "load" }),
@@ -253,6 +259,8 @@ export class StoreView {
         this.pill("Download", IC.down, () => this.stateDownload(s, si, k), "", { act: "download", title: "This state as a file: its flash image, its working memory, its .json" }),
         this.pill("Upload…", IC.up, () => this.pickFile((f) => { this.inline = { tab: "states", k, kind: "upload", file: f, flags: isCur ? 3 : 1, yes: isCur ? "Replace and load it" : "Replace it",
           text: isCur ? `State ${k + 1} is the active state: replace it with ${f.name} and load it?` : `Replace state ${k + 1} with ${f.name}?` }; this.render(); }), "", { act: "upload" }),
+        this.pill("Reset to default", IC.reset, () => { this.inline = { tab: "states", k, kind: "reset" }; this.render(); }, "", { act: "reset",
+          title: isCur ? "The firmware as first installed: it restarts fresh, this state holds that" : "This state holds the firmware as first installed" }),
         this.pill("Delete", IC.trash, () => { this.inline = { tab: "states", k, kind: "delete" }; this.render(); }, "danger", { act: "delete" }));
     }
     return h("div", { class: "mv-sv-sel", "data-k": k }, title, meta, acts);
@@ -275,10 +283,14 @@ export class StoreView {
     await this.refresh();
     return r;
   }
-  stateOp(op, s, si, k, extra = {}) {
-    const words = { "state-save": `Saving state ${k + 1}…`, "state-load": `Loading state ${k + 1}…`, "state-delete": `Deleting state ${k + 1}…` }[op];
+  async stateOp(op, s, si, k, extra = {}) {
+    const words = { "state-save": `Saving state ${k + 1}…`, "state-load": `Loading state ${k + 1}…`, "state-delete": `Deleting state ${k + 1}…`,
+      "state-reset": `Resetting state ${k + 1}…` }[op];
     this.meta.delete(`${si.id}:${k}`);
-    return this.run(words, k, () => ask({ op, slot: s, k, id: si.id, ...extra }));
+    const r = await this.run(words, k, () => ask({ op, slot: s, k, id: si.id, ...extra }));
+    this.meta.delete(`${si.id}:${k}`);   // (a row drawn meanwhile read the .json from before: read it again)
+    this.render();
+    return r;
   }
   async stateDownload(s, si, k) {
     // (the active state: the sound as it is now written into it first, as its autosave would)

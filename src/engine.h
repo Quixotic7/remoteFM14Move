@@ -146,9 +146,12 @@ char *engine_fx_modules(void);
  *   ENG_PJ_DELETE  k: a project gone with its copies (the open one: an empty project there, as a cut of it)
  *   ENG_PJ_IMPORT  k, dir: a project file (dir: p.rfmmove, p.fx.json, p.fwK.*) as project k (a stored one:
  *                  ENG_STF_REPLACE; never the open one)
+ *   ENG_ST_RESET   slot, k: state k the firmware as first installed (what step 14 New gives: a fresh, erased flash,
+ *                  no working memory), stored or empty; the active one: the firmware restarts fresh too, still active
  * id: the firmware the page means (a state request for a slot running another one now is refused). */
 enum { ENG_ST_SAVE = 1, ENG_ST_LOAD, ENG_ST_DELETE, ENG_ST_IMPORT, ENG_PJ_OPEN, ENG_PJ_SAVE, ENG_PJ_DUP, ENG_PJ_DELETE,
-       ENG_PJ_IMPORT };
+       ENG_PJ_IMPORT, ENG_ST_RESET };
+#define ENG_ST_STATE(op) (((op) >= ENG_ST_SAVE && (op) <= ENG_ST_IMPORT) || (op) == ENG_ST_RESET)   /* a state's */
 #define ENG_STF_REPLACE 1
 #define ENG_STF_LOAD 2
 typedef struct {

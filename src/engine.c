@@ -1956,6 +1956,13 @@ static void store_synced(int id)
                 snprintf(why, sizeof why, "state %d did not load", k + 1);
             snprintf(ok, sizeof ok, "State %d loaded", k + 1);
             break;
+        case ENG_ST_RESET:
+            if (!(m->fw.st_used[s] >> k & 1))
+                snprintf(why, sizeof why, "state %d was not written", k + 1);
+            else if ((p->flags & ENG_STF_LOAD) && (!SL[s].on || SL[s].st_cur != k))
+                snprintf(why, sizeof why, "state %d was reset but the firmware did not restart", k + 1);
+            snprintf(ok, sizeof ok, "State %d reset to default", k + 1);
+            break;
         case ENG_ST_DELETE:
             if (m->fw.st_used[s] >> k & 1)
                 snprintf(why, sizeof why, "state %d is still there", k + 1);
@@ -2246,16 +2253,21 @@ static void do_results(void)
             break;
         }
         case J_STATE_SAVE:
-            fprintf(stderr, "engine: %s: state %d saved, %s\n", j->id, j->index + 1,
-                    j->ok ? "with its working memory" : "its flash only (no working memory for this module)");
+            if (j->act == 1)   /* (the page's Reset to default) */
+                fprintf(stderr, "engine: %s: state %d reset to default (a fresh flash)\n", j->id, j->index + 1);
+            else
+                fprintf(stderr, "engine: %s: state %d saved, %s\n", j->id, j->index + 1,
+                        j->ok ? "with its working memory" : "its flash only (no working memory for this module)");
             /* fall through */
         case J_STATE_DELETE:
         case J_STATE_SCAN:
         case J_STATE_COPY:
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id))
                 rfm_move_fw_states(&S->core, s, j->used);
-            if (j->kind == J_STATE_SAVE || j->kind == J_STATE_DELETE)
+            if ((j->kind == J_STATE_SAVE && j->act != 1) || j->kind == J_STATE_DELETE)
                 ann_say(ANN_EVENT, "State %d %s", j->index + 1, j->kind == J_STATE_SAVE ? "saved" : "deleted");
+            else if (j->kind == J_STATE_SAVE)
+                ann_say(ANN_EVENT, "State %d reset", j->index + 1);
             break;
         case J_STATE_PASTE:
         case J_STATE_IMPORT:   /* (the page's state file: as a paste) */
@@ -2274,7 +2286,8 @@ static void do_results(void)
             /* a state (STA_LOAD, a paste onto the active one), a fresh memory (STA_NEW) or the one New kept
              * (STA_UNDO) into the same firmware: a new instance of its object, booted with it */
             const int fresh = j->kind == J_STATE_LOAD && j->act == STA_NEW;
-            const int k = j->kind != J_STATE_LOAD || j->act == STA_LOAD ? j->index : j->act == STA_UNDO ? j->value : -1;
+            /* (STA_NEW: index -1, New; a state, the page's Reset to default of the active one: it stays active) */
+            const int k = j->kind == J_STATE_LOAD && j->act == STA_UNDO ? j->value : j->index;
             if (SL[s].on && !strcmp(SL[s].fw.id, j->id) && j->ptr && (j->data || fresh)) {
                 const int pp = SL[s].pc_proj;
                 uint8_t *keep = SL[s].undo;   /* (New's undo survives its own restart) */
@@ -2289,10 +2302,14 @@ static void do_results(void)
                                 j->act == STA_UNDO ? "undo to state" : "state", k + 1,
                                 SL[s].restored ? "its working memory restored" : "its flash only: ",
                                 SL[s].restored ? "" : j->memwhy[0] ? j->memwhy : "the snapshot was refused");
+                    if (fresh && k >= 0)   /* (its J_STATE_SAVE said "State n reset") */
+                        fprintf(stderr, "engine: slot %d: state %d reset to default: the firmware restarted fresh\n", s + 1,
+                                k + 1);
                     if (fresh) {
                         SL[s].undo = keep, keep = NULL;
                         SL[s].undo_snap = keep_snap, keep_snap = NULL;
-                        ann_say(ANN_EVENT, "New state");
+                        if (k < 0)
+                            ann_say(ANN_EVENT, "New state");
                     } else if (j->kind == J_STATE_LOAD && j->act == STA_UNDO)
                         ann_say(ANN_EVENT, "Undo");
                     else
@@ -2788,15 +2805,15 @@ static void store_run(const eng_store_t *r, int id)
     char why[200] = "";
     st_job_t *j;
     spend_t *p = NULL;
-    int i;
+    int i, xflags = 0;   /* (ENG_STF_LOAD: a reset of the active state, checked as a load when back) */
     for (i = 0; i < (int)(sizeof g_spend / sizeof g_spend[0]) && !p; i++)
         if (!g_spend[i].id)
             p = &g_spend[i];
     if (!p)
         snprintf(why, sizeof why, "the Move is busy with the page's last requests: try again");
     else if (k < 0 || k >= RFM_MOVE_FW_STATES)
-        snprintf(why, sizeof why, "no such %s", r->op <= ENG_ST_IMPORT ? "state" : "project");
-    else if (r->op >= ENG_ST_SAVE && r->op <= ENG_ST_IMPORT) {
+        snprintf(why, sizeof why, "no such %s", ENG_ST_STATE(r->op) ? "state" : "project");
+    else if (ENG_ST_STATE(r->op)) {
         const int used = s >= 0 && s < NSLOT ? (int)(m->fw.st_used[s] >> k & 1) : 0;
         const int act = s >= 0 && s < NSLOT ? m->fw.st_cur[s] : -1;
         if (s < 0 || s >= NSLOT || !SL[s].on)
@@ -2833,6 +2850,41 @@ static void store_run(const eng_store_t *r, int id)
                 m->fw.st_used[s] &= ~(1u << k);
                 if (act == k)
                     rfm_move_fw_state_cur(m, s, -1);
+            }
+        } else if (r->op == ENG_ST_RESET) {
+            /* (the page's "Reset to default", asked there first) state k as step 14 New leaves the firmware: a fresh
+             * flash (erased: what the firmware boots as first installed), no working memory; stored over what it
+             * held, or into an empty one. The active state: the firmware restarts fresh too (as New, its undo gone)
+             * and the state stays active: the autosave carries on from the fresh firmware */
+            const int onto = act == k || SL[s].st_cur == k;
+            uint8_t *img = malloc(SL[s].fw.flash_size);
+            if (!img)
+                snprintf(why, sizeof why, "no memory for a fresh flash");
+            else {
+                memset(img, 0xFF, SL[s].fw.flash_size);
+                if (onto)
+                    SL[s].st_cur = -1;   /* (no autosave into it until the fresh firmware is in) */
+                j = st_job_new(J_STATE_SAVE);
+                j->slot = s, j->index = k, j->act = 1;   /* (act 1: a reset, said so when back) */
+                snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                j->data = img, j->len = SL[s].fw.flash_size;
+                {   /* (its .json says so: "fresh", the page's row shows it) */
+                    char *t = state_json(&SL[s].fw);
+                    j->text = pm_json_add(t, "fresh", "1");
+                    free(t);
+                }
+                st_post(j);
+                m->fw.st_used[s] |= 1u << k;
+                if (onto) {   /* (J_STATE_LOAD's STA_NEW with the state: do_results makes it the active one) */
+                    j = st_job_new(J_STATE_LOAD);
+                    j->slot = s, j->index = k, j->act = STA_NEW;
+                    snprintf(j->id, sizeof j->id, "%s", SL[s].fw.id);
+                    fw_obj_ref(SL[s].fw.obj);
+                    j->obj = SL[s].fw.obj;
+                    st_post(j);
+                    rfm_move_fw_state_cur(m, s, k);
+                    xflags = ENG_STF_LOAD;
+                }
             }
         } else {   /* ENG_ST_IMPORT: as a paste (STATE_PASTE): onto the active one, loaded too */
             const int onto = act == k || SL[s].st_cur == k;
@@ -2945,7 +2997,7 @@ static void store_run(const eng_store_t *r, int id)
         return;
     }
     memset(p, 0, sizeof *p);
-    p->id = id, p->op = r->op, p->slot = s, p->k = k, p->to = r->to, p->flags = r->flags;
+    p->id = id, p->op = r->op, p->slot = s, p->k = k, p->to = r->to, p->flags = r->flags | xflags;
     j = st_job_new(J_SYNC);   /* (back once everything above is done: then the page hears) */
     j->req = id;
     st_post(j);

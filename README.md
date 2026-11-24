@@ -193,14 +193,16 @@ make test
   memory restored), saved over (asked first), downloaded, uploaded into an empty one (the same bytes), Felucca's state
   refused in plain words, deleted (asked first), the active one downloaded, deleted, uploaded and loaded again (the
   host's log: its working memory restored), the Move's own pads (Track held + pad 7, an empty state) seen on the page,
-  the other slots' States; the open project saved by a tap ("Saved", its firmware copies), duplicated into an empty
+  Reset to default (a stored state asked first and its row "as first installed", the active one restarting the
+  firmware and staying active, an empty one stored at once), the other slots' States; the open project saved by a tap ("Saved", its firmware copies), duplicated into an empty
   slot, opened, downloaded, deleted, uploaded as another and opened (ChoralRoot's copy restored), an upload over the
   open one refused; the phone's States and Projects from the slot menu. Screenshots: `docs/move-page.png`,
   `move-page-editor.png`, `move-page-files.png` and the slots' and Mix & FX's (the States and projects' in build/);
 - `tests/store_e2e.sh` (the page's States and projects through their API, the sound read back as in
   `tests/states_e2e.sh`: ChoralRoot 0.43 with core 1, its voicing through its takeover): states saved from the page at
   +3 and +7 (the core's pads with them), state 1 downloaded, deleted, uploaded (the same bytes) and loaded: +3 again;
-  refusals in plain words (Felucca's state into ChoralRoot's slot, a file over the active state without `load=1`, a
+  Reset to default: a stored state (an erased flash, no .mem; loaded: 0), the active one (the firmware restarts: 0,
+  still active), an empty one (stored), refused for an empty slot or another firmware; refusals in plain words (Felucca's state into ChoralRoot's slot, a file over the active state without `load=1`, a
   state file as a project) and the file browser's own guard on a running firmware's states/; with `load=1` the
   active state replaced and loaded; the open project saved at +5 and downloaded, saved at +7, its file uploaded as
   project 3 and opened: +5 (its copy restored), project 1 again: +7, duplicated (its copies too) and opened: +5,
@@ -1015,8 +1017,11 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   its row says which firmware and version saved it, when, and whether with its working memory (its `.json`, read
   through `/api/fs/get`). Actions: Load; Save the sound here (over a stored one: asked first; the active one: Save
   now); Download (a `.zip`: the active one is saved first, as its autosave would); Upload (a state file of this
-  firmware into that state; over a stored one asked first; over the active one "replace it and load it"); Delete
-  (asked first).
+  firmware into that state; over a stored one asked first; over the active one "replace it and load it"); **Reset to
+  default** (the owner's "an option to reset the selected state to default": the state becomes the firmware as first
+  installed, what the Move's step 14 New gives; over a stored one asked first, as it replaces what the state holds:
+  the active one's firmware restarts fresh and the state stays active, another stored one only has its file
+  replaced, an empty one stores it at once); Delete (asked first).
 - **Projects:** the 32 projects (project 1 top left) in their colours, the open one white. A tap on the open one saves
   it and says "Saved" on its pad. Actions: Open; Save; Duplicate (then a tap on an empty slot); Download (the open one
   saved first); Upload (a project file into an empty or, asked first, a stored slot; never the open one); Delete
@@ -1038,8 +1043,13 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   state buffer alone (`J_STATE_DELETE` with value 1: Delete + pad on the Move is a cut into it, and the page must not
   change what the Move's Copy + pad pastes), a project copied into an empty slot without the Move's project buffer
   (`J_PROJECT_DUP`: its FX state and firmware copies, then its blob through the store, so the store's directory and
-  the core's grid follow), and the files the page sends (`J_STATE_IMPORT`, as a paste; `J_PROJECT_IMPORT`). A request
-  is answered once its jobs are back (a `J_SYNC` after them) and what it asked for is checked against the Move.
+  the core's grid follow), and the files the page sends (`J_STATE_IMPORT`, as a paste; `J_PROJECT_IMPORT`). Reset to
+  default (`ENG_ST_RESET`) is a `J_STATE_SAVE` of an erased flash image (`flash_size` bytes of 0xFF: the ABI's fresh
+  flash, what `rfm1_flash_stage(0, 0)` boots) with no working memory and `"fresh":"1"` in its `.json`, the core's
+  `fw.st_used` bit set; on the active state then the `J_STATE_LOAD` with `STA_NEW` that step 14 New posts, carrying
+  the state, so `do_results` makes it the active one again (New's undo dropped, as after any state function from the
+  page). A request is answered once its jobs are back (a `J_SYNC` after them) and what it asked for is checked against
+  the Move.
 - **What rfm1cs 0.13.0 does not offer** (the submodule is pinned; the host writes the core's public fields as its own
   handlers do, as page_edit does for FX setup): no call asks for a state function or a project function from outside,
   so the Move shows no popup ("State 3 saved") for the page's actions and the project grid's loading screen comes up
@@ -1050,7 +1060,8 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   host path at all, so the page offers no "new project": the Move makes them.
 - **The API:** `GET /api/store` (`{"ver", "open", "pending", "loading", "used", "dirty", "projects": [{"k", "color",
   "bpm", "clips", "fw"}], "slots": [{"id", "name", "version", "used", "cur", "color"} or null]}`); `POST /api/store
-  {"op", "slot", "k", "to", "id", "replace"}` with op `state-save`, `state-load`, `state-delete`, `project-open`,
+  {"op", "slot", "k", "to", "id", "replace"}` with op `state-save`, `state-load`, `state-delete`, `state-reset`,
+  `project-open`,
   `project-save`, `project-dup` (`k` into the empty `to`), `project-delete`, answered when done (200 `{"ok":true,
   "message"}`, 409 `{"ok":false,"error"}` in plain words); `GET /api/store/state?slot=S&k=K` and `GET
   /api/store/project?k=K` (the files); `POST /api/store/put?kind=state&slot=S&k=K[&replace=1][&load=1]` and
