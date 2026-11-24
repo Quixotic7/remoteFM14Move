@@ -10,7 +10,7 @@ CC=${CC:-cc}
 B=build/recorder-test
 mkdir -p "$B"
 SRC="tests/recorder_test.c src/recorder.c src/wav.c"
-FLAGS="-std=c99 -Wall -Wextra -O2 -g"
+FLAGS="-std=gnu11 -Wall -Wextra -O2 -g"   # (gnu11 as the Makefile: gcc on Linux wants it for the POSIX calls)
 fail=0
 run() {   # name, extra flags
     echo "== $1"
