@@ -152,8 +152,9 @@ const active = async () => { const st = await status(); return st ? st.active : 
 const dv = (sel) => js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return e ? e.dataset.v : null; })()`);
 
 // ---- States and projects (js/movestore.js, src/web.c /api/store): every action from the panel, checked on the Move's
-// side (/api/store, the status, the files through /api/fs, the host's log), the Move's own pads seen by the page, Reset to
-// default (a stored state, the active one, an empty one), a
+// side (/api/store, the status, the files through /api/fs, the host's log), the Move's own pads seen by the page,
+// (rfm1cs 0.14.0) pad 1 the project's own sound (its row, Download, Upload onto it, Reset), the library's Load into the
+// project and Reset to default (a stored state, an empty one), a new empty project in an empty slot, a
 // state and a project downloaded, deleted, uploaded and loaded again (their working memory restored); screenshots in
 // build/ (move-page-states.png, move-page-projects.png)
 const expect4xx = [];   // (requests the test makes fail on purpose: a refusal the page shows)
@@ -214,27 +215,30 @@ async function storeChecks() {
   await tap("#mv-statesbtn");
   ok(await until(`!document.getElementById("mv-sv").hidden && document.querySelectorAll("#mv-sv .mv-sv-pad").length === 32 && document.querySelector('#mv-sv .mv-sv-slot[data-slot="${cr}"][aria-pressed="true"]')`, 5000, "the States"),
     `States: the playing slot's firmware (ChoralRoot, slot ${cr + 1}), 32 pads as the Move's`);
-  // save the sound into an empty state (pad 3), then pad 5: each the active one, the Move's own active state too
+  // (rfm1cs 0.14.0, the owner's 2026-11-24) pad 1 is the open project's own sound (white, PROJECT); pads 2..32 a library
+  ok(await until(`document.querySelector('${pad(0)}').classList.contains("cur") && /project/i.test(document.querySelector('${pad(0)}').textContent)`, 3000, "pad 1"),
+    "pad 1: the project's own sound, white, marked PROJECT");
+  // save the sound into an empty state (pad 3), then pad 5: stored; nothing becomes active
   for (const k of [2, 4]) {
     await choose(k);
     await until(`document.querySelector('${act("save")}')`, 3000, "the empty state's row");
     await tap(act("save"));
     ok(await untilApi(async () => { const f = await ls(CRS), s = await store(), t = await status();
-      return f.has(sb("bin", k)) && f.has(sb("mem", k)) && f.has(sb("json", k)) && s.slots[cr].used >>> k & 1 && t[`cstcur${cr}`] === k && t[`stcur${cr}`] === k; }, 10000),
-      `Save the sound into empty state ${k + 1}: state-0${k}.bin, .mem, .json on the Move; the Move's core has it stored and active (its pads show it)`);
+      return f.has(sb("bin", k)) && f.has(sb("mem", k)) && f.has(sb("json", k)) && s.slots[cr].used >>> k & 1 && t[`cstcur${cr}`] === -1 && t[`stcur${cr}`] === -1; }, 10000),
+      `Save the sound into empty state ${k + 1}: state-0${k}.bin, .mem, .json on the Move; the Move's core has it stored, nothing active`);
   }
-  ok(await until(`document.querySelector('${pad(4)}').classList.contains("cur") && document.querySelector('${pad(2)}').classList.contains("full") && !document.querySelector('${pad(2)}').classList.contains("cur")`, 5000, "the pads"),
-    "the page: state 5 the active one (white), state 3 stored (the slot's colour), the rest empty");
-  // load a stored one
+  ok(await until(`document.querySelector('${pad(4)}').classList.contains("full") && !document.querySelector('${pad(4)}').classList.contains("cur") && document.querySelector('${pad(2)}').classList.contains("full") && document.querySelector('${pad(0)}').classList.contains("cur")`, 5000, "the pads"),
+    "the page: states 3 and 5 stored (the slot's colour), pad 1 still the only white one");
+  // load a stored one into the project
   const boot0 = (await status())[`boot${cr}`];
   await choose(2);
   await until(`document.querySelector('${act("load")}')`, 3000, "Load");
   const meta = await js(`(document.querySelector('#mv-sv .mv-sv-sel .meta') || {}).textContent || ""`);
   ok(/ChoralRoot 0\.43/.test(meta) && /working memory/.test(meta), `a stored state's row names its firmware and version, when saved, its working memory: "${meta}"`);
   await tap(act("load"));
-  ok(await untilApi(async () => { const t = await status(); return t[`stcur${cr}`] === 2 && t[`cstcur${cr}`] === 2 && t[`boot${cr}`] > boot0 && t[`restored${cr}`] === 1; }, 10000),
-    "Load: state 3 loaded on the Move (a new instance, its working memory restored; the core's active state 3)");
-  ok(await until(`document.querySelector('${pad(2)}').classList.contains("cur")`, 5000, "pad 3 active"), "the page shows state 3 active");
+  ok(await untilApi(async () => { const t = await status(); return t[`boot${cr}`] > boot0 && t[`restored${cr}`] === 1 && t[`undo${cr}`] === 1; }, 10000)
+    && await until(`/into the project/.test(document.querySelector("#mv-sv .mv-fs-foot [role=status]").textContent)`, 5000, "the result line"),
+    "Load into the project: state 3 loaded on the Move (a new instance, its working memory restored, the undo kept); the result line says so");
   // save over a stored one (asked first)
   const t5 = (await ls(CRS)).get(sb("json", 4)).mtime;
   await sleep(1100);
@@ -243,9 +247,8 @@ async function storeChecks() {
   await tap(act("save"));
   ok(await until(`/over state 5/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"), "Save over a stored state: asked first");
   await tap(act("yes"));
-  ok(await untilApi(async () => { const f = await ls(CRS); return f.get(sb("json", 4)).mtime > t5 && (await status())[`cstcur${cr}`] === 4; }, 10000),
-    "...yes: state 5 written again with the sound now, and it is the active one");
-  // download the active one (the sound now written into it first) and a stored one
+  ok(await untilApi(async () => (await ls(CRS)).get(sb("json", 4)).mtime > t5, 10000), "...yes: state 5 written again with the sound now");
+  // download a library state
   await choose(4);
   await until(`document.querySelector('${act("download")}')`, 3000, "Download");
   await tap(act("download"));
@@ -255,7 +258,7 @@ async function storeChecks() {
   const zj = zs.has(sb("json", 4)) ? JSON.parse(zs.get(sb("json", 4)).toString()) : {};
   ok(zs.has(sb("bin", 4)) && zs.has(sb("mem", 4)) && zj.id === "choralroot" && zj.version === "0.43" && /^[0-9a-f]{64}$/.test(zj.sha256 || "") && zj.hash && zj.mem,
     `the state's file: its flash image (${zs.get(sb("bin", 4)) && zs.get(sb("bin", 4)).length} bytes), its working memory, its .json (id ${zj.id}, version ${zj.version}, the .rfm1's sha256, the image's and the memory's hashes)`);
-  // upload it into an empty state (pad 8), then load that one
+  // upload it into an empty state (pad 8)
   await choose(7);
   await until(`document.querySelector('${act("upload")}')`, 3000, "pad 8's Upload");
   await tap(act("upload"));
@@ -264,10 +267,10 @@ async function storeChecks() {
     && (await bytes(`${CRS}/${sb("bin", 7)}`)).equals(zs.get(sb("bin", 4))) && (await bytes(`${CRS}/${sb("mem", 7)}`)).equals(zs.get(sb("mem", 4))),
     "Upload into empty state 8: its image and working memory on the Move, the same bytes as the file");
   // another firmware's state: refused in plain words
-  await fetch(API + "store", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "state-save", slot: fe, k: 0, id: "felucca" }) });
-  const zfe = join(tmp, "felucca-state-01.zip");
-  writeFileSync(zfe, Buffer.from(await (await fetch(`${API}store/state?slot=${fe}&k=0`)).arrayBuffer()));
-  await until(`FM1MoveStore.data && FM1MoveStore.data.slots[${fe}] && FM1MoveStore.data.slots[${fe}].used & 1`, 5000, "Felucca's state on the page");
+  await fetch(API + "store", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "state-save", slot: fe, k: 1, id: "felucca" }) });
+  const zfe = join(tmp, "felucca-state-02.zip");
+  writeFileSync(zfe, Buffer.from(await (await fetch(`${API}store/state?slot=${fe}&k=1`)).arrayBuffer()));
+  await until(`FM1MoveStore.data && FM1MoveStore.data.slots[${fe}] && FM1MoveStore.data.slots[${fe}].used & 2`, 5000, "Felucca's state on the page");
   expect4xx.push(`/api/store/put?kind=state&slot=${cr}&k=9`);
   await choose(9);
   await until(`document.querySelector('${act("upload")}')`, 3000, "pad 10's Upload");
@@ -283,65 +286,69 @@ async function storeChecks() {
   await until(`document.querySelector('${act("yes")}')`, 3000, "the question");
   await tap(act("yes"));
   ok(await untilApi(async () => !(await ls(CRS)).has(sb("bin", 7)) && !((await store()).slots[cr].used >>> 7 & 1), 10000), "Delete (asked first): state 8 gone from the Move");
-  // the round trip: the active state downloaded (above), deleted, uploaded again and loaded: its working memory back
-  await choose(4); await until(`document.querySelector('${act("delete")}')`, 3000, "Delete");
-  await tap(act("delete")); await until(`document.querySelector('${act("yes")}')`, 3000, "the question"); await tap(act("yes"));
-  ok(await untilApi(async () => { const t = await status(); return !(await ls(CRS)).has(sb("bin", 4)) && t[`cstcur${cr}`] === -1 && t[`stcur${cr}`] === -1; }, 10000),
-    "the active state 5 deleted: no state active now (the firmware keeps its sound)");
-  await choose(4); await until(`document.querySelector('${act("upload")}')`, 3000, "Upload");
+  // pad 1, the project's sound: its row, Download (the project's copy as a state file), Upload onto it (asked first:
+  // replaced and loaded), Reset to default (asked first: the firmware restarts fresh, the undo kept)
+  const pj = (await status())[`pcproj${cr}`];
+  await choose(0);
+  await until(`document.querySelector('${act("download")}')`, 3000, "pad 1's row");
+  ok(await js(`/Project ${pj + 1}'s sound/.test(document.querySelector('#mv-sv .mv-sv-sel h4').textContent) && /Project/.test(document.querySelector('#mv-sv .mv-sv-sel .badge').textContent)`),
+    `pad 1's row: "Project ${pj + 1}'s sound"`);
+  await tap(act("download"));
+  const zp0 = join(dl, `choralroot-0.43-project-${String(pj + 1).padStart(2, "0")}.zip`);
+  ok(await untilApi(async () => existsSync(zp0), 10000), `pad 1's Download (the project saved first): ${zp0.split("/").pop()}`);
+  const zpz = unzipStored(readFileSync(zp0)), pcp = `move/projects/move-project-${String(pj + 1).padStart(2, "0")}.fw${cr + 1}`;
+  ok(zpz.has("state-00.bin") && zpz.has("state-00.mem") && (await bytes(`${pcp}.mem`)).equals(zpz.get("state-00.mem")),
+    `...a state file of the project's copy of ChoralRoot (${[...zpz.keys()].join(", ")}), the same bytes as ${pcp}.mem`);
+  const boot1 = (await status())[`boot${cr}`];
+  await until(`!FM1MoveStore.busy`, 5000, "the panel idle"); await sleep(500);
+  await choose(0); await until(`document.querySelector('${act("upload")}') && !document.querySelector('${act("upload")}').disabled`, 3000, "pad 1's Upload");
   await tap(act("upload")); await pick(zst);
-  await untilApi(async () => (await ls(CRS)).has(sb("bin", 4)), 10000);
-  const boot1 = (await status())[`boot${cr}`], log0 = logNow().length;
-  await until(`document.querySelector('${act("load")}')`, 3000, "Load");
-  await tap(act("load"));
-  ok(await untilApi(async () => { const t = await status(); return t[`stcur${cr}`] === 4 && t[`boot${cr}`] > boot1 && t[`restored${cr}`] === 1; }, 10000)
-    && /state 5: its working memory restored/.test(logNow().slice(log0))
-    && (await bytes(`${CRS}/${sb("mem", 4)}`)).equals(zs.get(sb("mem", 4))),
-    "round trip: state 5 downloaded, deleted, uploaded and loaded: its working memory restored from the file (the host's log)");
-  // the Move's own pads: Track held + pad 7 (its States), an empty state's pad saves: the page shows it
+  ok(await until(`/and load it\\?/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"), "Upload onto pad 1: asked first (replace and load)");
+  await tap(act("yes"));
+  ok(await untilApi(async () => { const t = await status(); return t[`boot${cr}`] > boot1 && t[`restored${cr}`] === 1 && t[`undo${cr}`] === 1; }, 10000)
+    && !(await ls(CRS)).has(sb("bin", 0)),
+    "...yes: the file loaded as the project's sound (its working memory restored, the undo kept); no state file 0");
+  const boot2 = (await status())[`boot${cr}`];
+  await until(`!FM1MoveStore.busy`, 5000, "the panel idle"); await sleep(500);
+  await choose(0); await until(`document.querySelector('${act("reset")}') && !document.querySelector('${act("reset")}').disabled`, 3000, "pad 1's Reset");
+  await tap(act("reset"));
+  ok(await until(`/restarts as first installed/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"),
+    "Reset to default on pad 1: asked first, saying the firmware restarts");
+  await tap(act("yes"));
+  ok(await untilApi(async () => { const t = await status(); return t[`boot${cr}`] > boot2 && t[`restored${cr}`] === 0 && t[`undo${cr}`] === 1; }, 10000),
+    "...yes: the firmware restarted fresh (nothing restored), the undo kept for the Move's Undo");
+  // the Move's own pads: Track held + pad 7 (its States), an empty state's pad stores the sound: the page shows it
   for (let i = 0; i < 3 && ((await status()).projects || (await status()).states_open !== -1); i++) { await moveCmd("cc 51 127"); await moveCmd("cc 51 0"); await sleep(400); }
   await moveCmd(`cc ${43 - cr} 127`); await sleep(300); await moveCmd("note 98 100"); await sleep(80); await moveCmd("note 98 0"); await moveCmd(`cc ${43 - cr} 0`);
   const opened = await untilApi(async () => (await status()).states_open === cr, 3000);
   await sleep(600);
   await moveCmd("note 99 100"); await sleep(80); await moveCmd("note 99 0");   // (state 8: empty again)
-  ok(opened && await until(`document.querySelector('${pad(7)}').classList.contains("cur")`, 8000, "state 8 from the Move"),
-    "the Move's own pads: its States opened (Track held + pad 7), empty state 8 saved there; the page shows it stored and active at once");
+  ok(opened && await until(`document.querySelector('${pad(7)}').classList.contains("full")`, 8000, "state 8 from the Move"),
+    "the Move's own pads: its States opened (Track held + pad 7), empty state 8 stored there; the page shows it stored at once");
   for (let i = 0; i < 3 && (await status()).states_open !== -1; i++) { await moveCmd("cc 51 127"); await moveCmd("cc 51 0"); await sleep(400); }
-  // Reset to default (the owner's): the state as the firmware first installed (step 14 New's: a fresh, erased flash, no
-  // working memory); asked first over a stored one; the active one restarts the firmware fresh and stays active; an
-  // empty one stores it at once
+  // Reset to default of library states: a stored one asked first, an empty one at once; the firmware left alone
   const erased = (b) => b.length > 0 && b.every((x) => x === 0xFF);
-  const boot2 = (await status())[`boot${cr}`];
+  const boot3 = (await status())[`boot${cr}`];
   await choose(2); await until(`document.querySelector('${act("reset")}')`, 3000, "state 3's Reset");
   await tap(act("reset"));
   ok(await until(`/Reset state 3 to default\\?/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"),
     "Reset to default on a stored state: asked first");
   await tap(act("yes"));
   ok(await untilApi(async () => { const f = await ls(CRS); return f.has(sb("bin", 2)) && !f.has(sb("mem", 2)); }, 10000)
-    && erased(await bytes(`${CRS}/${sb("bin", 2)}`)) && (await status())[`boot${cr}`] === boot2 && (await status())[`cstcur${cr}`] === 7
+    && erased(await bytes(`${CRS}/${sb("bin", 2)}`)) && (await status())[`boot${cr}`] === boot3
     && await until(`/State 3 reset to default/.test(document.querySelector("#mv-sv .mv-fs-foot [role=status]").textContent)`, 5000, "its answer")
     && await until(`/as first installed/.test((document.querySelector('#mv-sv .mv-sv-sel[data-k="2"] .meta') || {}).textContent || "")`, 5000, "its row"),
-    "...yes: state 3 holds the firmware as first installed (an erased flash, no .mem; its row says so); the firmware untouched, state 8 still active");
-  await choose(7); await until(`document.querySelector('${act("reset")}')`, 3000, "state 8's Reset");
-  await tap(act("reset"));
-  ok(await until(`/restarts as first installed/.test((document.querySelector("#mv-sv .mv-sv-ask") || {}).textContent || "")`, 3000, "the question"),
-    "Reset to default on the active state: asked first, saying the firmware restarts");
-  await tap(act("yes"));
-  ok(await untilApi(async () => { const t = await status(), f = await ls(CRS);
-    return t[`boot${cr}`] > boot2 && t[`restored${cr}`] === 0 && t[`stcur${cr}`] === 7 && t[`cstcur${cr}`] === 7 && !f.has(sb("mem", 7)); }, 10000)
-    && erased(await bytes(`${CRS}/${sb("bin", 7)}`)) && await until(`document.querySelector('${pad(7)}').classList.contains("cur")`, 5000, "state 8 active"),
-    "...yes: the firmware restarted fresh (a new instance, nothing restored), state 8 holds that and is still the active one (on the Move and on the page)");
-  const boot3 = (await status())[`boot${cr}`];
+    "...yes: state 3 holds the firmware as first installed (an erased flash, no .mem; its row says so); the firmware untouched");
   await choose(10); await until(`document.querySelector('${act("reset")}')`, 3000, "state 11's Reset");
   await tap(act("reset"));
   ok(await untilApi(async () => (await ls(CRS)).has(sb("bin", 10)) && (await store()).slots[cr].used >>> 10 & 1, 10000)
-    && erased(await bytes(`${CRS}/${sb("bin", 10)}`)) && (await status())[`cstcur${cr}`] === 7 && (await status())[`boot${cr}`] === boot3
+    && erased(await bytes(`${CRS}/${sb("bin", 10)}`)) && (await status())[`boot${cr}`] === boot3
     && await until(`document.querySelector('${pad(10)}').classList.contains("full")`, 5000, "pad 11 stored"),
-    "Reset to default on an empty state: stored at once (state 11, the fresh flash), state 8 still active, the firmware untouched");
+    "Reset to default on an empty state: stored at once (state 11, the fresh flash), the firmware untouched");
   // another slot's States
   await tap(`#mv-sv .mv-sv-slot[data-slot="${fe}"]`);
-  ok(await until(`document.querySelector('#mv-sv .mv-sv-slot[data-slot="${fe}"][aria-pressed="true"]') && document.querySelector('${pad(0)}').classList.contains("full")`, 3000, "Felucca's"),
-    "the other slots one tap away: Felucca's States (its state 1)");
+  ok(await until(`document.querySelector('#mv-sv .mv-sv-slot[data-slot="${fe}"][aria-pressed="true"]') && document.querySelector('${pad(1)}').classList.contains("full")`, 3000, "Felucca's"),
+    "the other slots one tap away: Felucca's States (its state 2)");
   await sleep(300);
   await tap(`#mv-sv .mv-sv-slot[data-slot="${cr}"]`); await choose(2);
   await sleep(500);
@@ -404,6 +411,13 @@ async function storeChecks() {
   // never over the open project (the API, as the page offers no Upload there)
   const over = await fetch(`${API}store/put?kind=project&k=8&replace=1`, { method: "POST", body: readFileSync(zpj) });
   ok(over.status === 409 && /open on the Move/.test((await over.json()).error || ""), `an upload over the open project refused (${over.status})`);
+  // a new empty project in an empty slot (the owner's "no way to start new project in empty slot")
+  await choose(12);
+  await until(`document.querySelector('${act("new")}')`, 3000, "New project");
+  await tap(act("new"));
+  ok(await untilApi(async () => { const t = await status(), f = await ls(P); return t.proj_cur === 12 && !t.pfw_loading && f.has(pf(12, "rfmmove")) && (await store()).used >>> 12 & 1; }, 15000)
+    && await until(`document.querySelector('${pad(12)}').classList.contains("cur")`, 5000, "pad 13 open"),
+    "New project on empty slot 13: made and opened on the Move (stored, its slots empty), white on the page");
   await sleep(400);
   await cdp("Page.captureScreenshot", { format: "png" }).then((r) => { writeFileSync(join(ROOT, "build/move-page-projects.png"), Buffer.from(r.result.data, "base64")); console.log("  shot  build/move-page-projects.png"); });
   // back as it was: project 1 open, the panel closed (Esc)

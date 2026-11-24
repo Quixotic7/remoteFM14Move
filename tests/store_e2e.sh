@@ -4,18 +4,23 @@
 # on the simulator in the build image after make, through the API the page uses, the sound read back as
 # tests/states_e2e.sh reads it: ChoralRoot 0.43 in slot 1 with core 1 on, its voicing turned with knob 1 in its takeover
 # and read without a change (knob 1 touched: the screen reader's words, a fake TTS that logs them):
-#   - voicing +3, state 1 saved from the page (the Move's core has it stored and active: its pads show it); +7, state 2;
-#   - state 1 downloaded (a .zip: the image, the working memory, the .json), deleted, uploaded again (the same bytes),
-#     loaded: +3 (its working memory restored); state 2 loaded: +7;
-#   - Reset to default (state-reset): state 1 (stored, not active): an erased flash, no .mem, the firmware still +7;
-#     loaded: 0; the active state 2: the firmware restarts fresh (0), state 2 still active; the empty state 5: a fresh
-#     state stored there; refused: an empty slot, another firmware's id;
-#   - refused in plain words: Felucca's state into ChoralRoot's slot (nothing written), a file over the active state
-#     without load=1, a state file as a project, the file browser's own write into a running firmware's states/ (its
-#     guard as it was); over the active state with load=1: replaced and loaded (+3);
+# (rfm1cs 0.14.0, the owner's 2026-11-24: k 0, pad 1, the open project's own sound; k 1..31 the library)
+#   - voicing +3, state 2 (k 1) saved from the page (the Move's core has it stored; nothing active); +7, state 3; a
+#     save into pad 1 refused; state 2 downloaded (a .zip: the image, the working memory, the .json), deleted,
+#     uploaded again (the same bytes), loaded into the project: +3 (its working memory restored, the undo kept),
+#     played: the file byte for byte; state 3 loaded: +7;
+#   - pad 1: downloaded (the project's copy as a state file, state-00.* inside as in files from before 0.14.0) and
+#     uploaded into the library; reset to default (New: 0, the undo kept), Undo on the Move: +7; a state file uploaded
+#     onto pad 1: the project's sound replaced and loaded (+3), no state file 0;
+#   - Reset to default of library states: a stored one (an erased flash, no .mem, the firmware untouched; loaded: 0),
+#     an empty one (stored); refused: an empty slot, another firmware's id;
+#   - refused in plain words: Felucca's state into ChoralRoot's slot (nothing written), a file over a stored state
+#     without replace=1, a state file as a project, the file browser's own write into a running firmware's states/;
+#     with replace=1: stored, the firmware left alone; loaded: the file's sound;
 #   - projects: the open one saved (its firmware copy with its working memory) at +5 and downloaded; at +7 saved again;
 #     the file uploaded as project 3 and opened: +5 (the copy restored); project 1 again: +7; project 3 duplicated into
 #     6 (its copies too), opened: +5; project 6 deleted (its copies gone); an upload over the open project refused;
+#     a new empty project from the page (project-new) in an empty slot, refused over a stored one;
 #   - no late block meanwhile.
 #   tests/store_e2e.sh
 set -u
@@ -75,87 +80,121 @@ wait_for 10 '[ "$(field snapable0)" = 1 ]' && ok "ChoralRoot 0.43 in slot 1 (its
 sleep 2
 late0=$(field late)
 
-# ---- States from the page: saved, downloaded, deleted, uploaded, loaded
+# ---- States from the page (rfm1cs 0.14.0, the owner's 2026-11-24: k 0, pad 1, is the open project's own sound; k
+# 1..31 the library): saved, downloaded, deleted, uploaded, loaded into the project
 v=$(vo); [ "$v" = 0 ] || bad "the voicing at start: '$v'"
 turn 3; v=$(vo)
-store '{"op":"state-save","slot":0,"k":0,"id":"choralroot"}'
-[ "$code" = 200 ] && [ -s "$CRS/state-00.bin" ] && [ -s "$CRS/state-00.mem" ] && wait_for 3 '[ "$(field states0)" = 1 ] && [ "$(field cstcur0)" = 0 ]' \
-    && ok "voicing $v, state 1 saved from the page (\"$(said_out)\"): its image and working memory; the Move's core has it stored and active" \
+store '{"op":"state-save","slot":0,"k":1,"id":"choralroot"}'
+[ "$code" = 200 ] && [ -s "$CRS/state-01.bin" ] && [ -s "$CRS/state-01.mem" ] && wait_for 3 '[ "$(field states0)" = 2 ]' && [ "$(field cstcur0)" = -1 ] \
+    && ok "voicing $v, library state 2 (k 1) saved from the page (\"$(said_out)\"): its image and working memory; the Move's core has it stored, nothing active" \
     || bad "state-save: $code $(cat "$T/out"), states0 '$(field states0)', cstcur0 '$(field cstcur0)'"
 turn 4; v=$(vo)
+store '{"op":"state-save","slot":0,"k":2}'
+[ "$code" = 200 ] && wait_for 3 '[ "$(field states0)" = 6 ]' && ok "voicing $v, state 3 saved from the page" || bad "state 3: $code $(cat "$T/out")"
 store '{"op":"state-save","slot":0,"k":1}'
-[ "$code" = 200 ] && wait_for 3 '[ "$(field states0)" = 3 ] && [ "$(field cstcur0)" = 1 ]' && ok "voicing $v, state 2 saved from the page" || bad "state 2: $code $(cat "$T/out")"
-store '{"op":"state-save","slot":0,"k":0}'
 [ "$code" = 409 ] && ok "a save into a stored state without replace refused: \"$(said_out)\"" || bad "save over without replace: $code"
-get "state?slot=0&k=0" "$D/s1.zip"
-unzip1 "$D/s1.zip" state-00.bin "$D/s1.bin"; unzip1 "$D/s1.zip" state-00.mem "$D/s1.mem"; unzip1 "$D/s1.zip" state-00.json "$D/s1.json"
-[ "$code" = 200 ] && cmp -s "$D/s1.bin" "$CRS/state-00.bin" && cmp -s "$D/s1.mem" "$CRS/state-00.mem" && grep -q '"id":"choralroot","version":"0.43"' "$D/s1.json" \
-    && grep -q '"mem":"' "$D/s1.json" && ok "state 1 downloaded: a .zip of its image, working memory and .json (choralroot 0.43, the hashes)" \
-    || bad "state 1's file: $code, $(busybox unzip -l "$D/s1.zip" 2>&1 | tail -4)"
-store '{"op":"state-delete","slot":0,"k":0}'
-[ "$code" = 200 ] && [ ! -e "$CRS/state-00.bin" ] && [ ! -e "$CRS/state-00.mem" ] && wait_for 3 '[ "$(field states0)" = 2 ]' \
-    && ok "state 1 deleted from the page: its files gone, the core's pads with it" || bad "delete: $code $(cat "$T/out") $(ls "$CRS")"
-put "kind=state&slot=0&k=0" "$D/s1.zip"
-[ "$code" = 200 ] && cmp -s "$D/s1.bin" "$CRS/state-00.bin" && cmp -s "$D/s1.mem" "$CRS/state-00.mem" && wait_for 3 '[ "$(field states0)" = 3 ]' \
-    && ok "state 1's file uploaded again: the same bytes in place" || bad "upload: $code $(cat "$T/out")"
+store '{"op":"state-save","slot":0,"k":0}'
+[ "$code" = 409 ] && said_out | grep -q "project's own sound" && [ ! -e "$CRS/state-00.bin" ] \
+    && ok "a state save into pad 1 refused: \"$(said_out)\"" || bad "state-save k 0: $code $(cat "$T/out")"
+get "state?slot=0&k=1" "$D/s1.zip"
+unzip1 "$D/s1.zip" state-01.bin "$D/s1.bin"; unzip1 "$D/s1.zip" state-01.mem "$D/s1.mem"; unzip1 "$D/s1.zip" state-01.json "$D/s1.json"
+[ "$code" = 200 ] && cmp -s "$D/s1.bin" "$CRS/state-01.bin" && cmp -s "$D/s1.mem" "$CRS/state-01.mem" && grep -q '"id":"choralroot","version":"0.43"' "$D/s1.json" \
+    && grep -q '"mem":"' "$D/s1.json" && ok "state 2 downloaded: a .zip of its image, working memory and .json (choralroot 0.43, the hashes)" \
+    || bad "state 2's file: $code, $(busybox unzip -l "$D/s1.zip" 2>&1 | tail -4)"
+store '{"op":"state-delete","slot":0,"k":1}'
+[ "$code" = 200 ] && [ ! -e "$CRS/state-01.bin" ] && [ ! -e "$CRS/state-01.mem" ] && wait_for 3 '[ "$(field states0)" = 4 ]' \
+    && ok "state 2 deleted from the page: its files gone, the core's pads with it" || bad "delete: $code $(cat "$T/out") $(ls "$CRS")"
+put "kind=state&slot=0&k=1" "$D/s1.zip"
+[ "$code" = 200 ] && cmp -s "$D/s1.bin" "$CRS/state-01.bin" && cmp -s "$D/s1.mem" "$CRS/state-01.mem" && wait_for 3 '[ "$(field states0)" = 6 ]' \
+    && ok "state 2's file uploaded again: the same bytes in place" || bad "upload: $code $(cat "$T/out")"
 b0=$(field boot0)
-store '{"op":"state-load","slot":0,"k":0}'
+store '{"op":"state-load","slot":0,"k":1}'
 v=$(vo2)
-[ "$code" = 200 ] && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = +3 ] && [ "$(field restored0)" = 1 ] && [ "$(field cstcur0)" = 0 ] \
-    && ok "state 1 loaded from the page: voicing $v again, its working memory restored from the file (round trip)" \
-    || bad "state 1 loaded: $code, voicing '$v' (want +3), restored '$(field restored0)'"
-store '{"op":"state-load","slot":0,"k":1}'; v=$(vo2)
-[ "$v" = +7 ] && ok "state 2 loaded from the page: voicing $v" || bad "state 2: voicing '$v' (want +7)"
+[ "$code" = 200 ] && said_out | grep -q "into the project" && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = +3 ] && [ "$(field restored0)" = 1 ] \
+    && [ "$(field undo0)" = 1 ] && ok "state 2 loaded from the page (\"$(said_out)\"): voicing $v, its working memory restored from the file; the undo kept" \
+    || bad "state 2 loaded: $code $(cat "$T/out"), voicing '$v' (want +3), restored '$(field restored0)', undo '$(field undo0)'"
+turn 1; v=$(vo)
+cmp -s "$D/s1.mem" "$CRS/state-01.mem" && cmp -s "$D/s1.bin" "$CRS/state-01.bin" \
+    && ok "played after the load (voicing $v): library state 2 byte for byte as it was" || bad "library state 2 changed by playing"
+store '{"op":"state-load","slot":0,"k":2}'; v=$(vo2)
+[ "$v" = +7 ] && ok "state 3 loaded from the page: voicing $v" || bad "state 3: voicing '$v' (want +7)"
 
-# ---- Reset to default (the owner's "an option to reset the selected state to default"): the firmware as first
-# installed (step 14 New's), a fresh (erased) flash and no working memory
+# ---- pad 1, the project's own sound: downloaded (the project's copy as a state file), uploaded (replaces it and
+# loads it), reset to default (New: the firmware restarts fresh, the undo kept)
+open0=$(field proj_cur)
+store "{\"op\":\"project-save\",\"k\":$open0}"
+get "state?slot=0&k=0" "$D/p0.zip"
+unzip1 "$D/p0.zip" state-00.bin "$D/p0.bin"; unzip1 "$D/p0.zip" state-00.mem "$D/p0.mem"
+pc=$(printf '%s/move-project-%02d.fw1' "$P" $((open0 + 1)))
+[ "$code" = 200 ] && cmp -s "$D/p0.bin" "$pc.bin" && cmp -s "$D/p0.mem" "$pc.mem" \
+    && ok "pad 1 downloaded: project $((open0 + 1))'s copy of ChoralRoot as a state file (state-00.*, voicing +7)" \
+    || bad "pad 1's file: $code, $(busybox unzip -l "$D/p0.zip" 2>&1 | tail -4)"
+put "kind=state&slot=0&k=11" "$D/p0.zip"
+[ "$code" = 200 ] && cmp -s "$CRS/state-11.mem" "$D/p0.mem" && ok "...uploaded into the library (state 12): the same bytes (its state-00.* as in every file downloaded before 0.14.0)" || bad "pad 1's file as state 12: $code $(cat "$T/out")"
+b0=$(field boot0)
+store '{"op":"state-reset","slot":0,"k":0,"id":"choralroot"}'; v=$(vo2)
+[ "$code" = 200 ] && said_out | grep -q "project's sound reset" && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = 0 ] && [ "$(field undo0)" = 1 ] \
+    && [ ! -e "$CRS/state-00.bin" ] && ok "pad 1 reset to default from the page (\"$(said_out)\"): the firmware restarted fresh (voicing $v), the undo kept" \
+    || bad "pad 1 reset: $code $(cat "$T/out"), voicing '$v', undo '$(field undo0)'"
+cmd "cc 43 127"; cmd "note 98 100"; cmd "note 98 0"; cmd "cc 43 0"; wait_for 3 '[ "$(field states_open)" = 0 ]'; sleep 0.6
+b0=$(field boot0); cmd "cc 56 127"; cmd "cc 56 0"
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 0 ]'
+for i in 1 2 3; do [ "$(field states_open)" = -1 ] || { cmd "cc 51 127"; cmd "cc 51 0"; sleep 0.4; }; done
+v=$(vo2); [ "$v" = +7 ] && ok "...Undo on the Move (States, Undo): voicing $v back" || bad "Undo after the page's reset: voicing '$v' (want +7)"
+b0=$(field boot0)
+put "kind=state&slot=0&k=0" "$D/s1.zip"; v=$(vo2)
+[ "$code" = 200 ] && said_out | grep -q "project's sound replaced" && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = +3 ] && [ "$(field restored0)" = 1 ] \
+    && [ ! -e "$CRS/state-00.bin" ] && wait_for 8 'cmp -s "$pc.mem" "$D/s1.mem" || ! cmp -s "$pc.mem" "$D/p0.mem"' \
+    && ok "a state file uploaded onto pad 1: the project's sound replaced and loaded (\"$(said_out)\", voicing $v); no state file 0" \
+    || bad "upload onto pad 1: $code $(cat "$T/out"), voicing '$v'"
+store '{"op":"state-load","slot":0,"k":2}'; v=$(vo2)
+[ "$v" = +7 ] || bad "state 3 again: '$v'"
+
+# ---- Reset to default of library states (the owner's "an option to reset the selected state to default"): the
+# firmware as first installed stored there (an erased flash, no working memory), the firmware untouched
 erased() { [ -s "$1" ] && [ "$(tr -d '\377' < "$1" | wc -c)" = 0 ]; }
 b0=$(field boot0)
-store '{"op":"state-reset","slot":0,"k":0,"id":"choralroot"}'; v=$(vo)
-[ "$code" = 200 ] && said_out | grep -q "State 1 reset to default" && erased "$CRS/state-00.bin" && [ ! -e "$CRS/state-00.mem" ] \
-    && [ "$(field boot0)" = "$b0" ] && [ "$v" = +7 ] && [ "$(field cstcur0)" = 1 ] \
-    && ok "state 1 (stored, not active) reset to default (\"$(said_out)\"): an erased flash, no .mem; the firmware untouched (voicing $v, state 2 active)" \
-    || bad "reset state 1: $code $(cat "$T/out"), voicing '$v', boot $b0 -> $(field boot0), cstcur0 '$(field cstcur0)'"
-store '{"op":"state-load","slot":0,"k":0}'; v=$(vo2)
-[ "$code" = 200 ] && [ "$v" = 0 ] && ok "state 1 loaded: voicing $v (the firmware as first installed)" || bad "state 1 after its reset: $code, voicing '$v' (want 0)"
+store '{"op":"state-reset","slot":0,"k":1,"id":"choralroot"}'; v=$(vo)
+[ "$code" = 200 ] && said_out | grep -q "State 2 reset to default" && erased "$CRS/state-01.bin" && [ ! -e "$CRS/state-01.mem" ] \
+    && grep -q '"fresh":"1"' "$CRS/state-01.json" && [ "$(field boot0)" = "$b0" ] && [ "$v" = +7 ] \
+    && ok "stored state 2 reset to default (\"$(said_out)\"): an erased flash, no .mem; the firmware untouched (voicing $v)" \
+    || bad "reset state 2: $code $(cat "$T/out"), voicing '$v', boot $b0 -> $(field boot0)"
 store '{"op":"state-load","slot":0,"k":1}'; v=$(vo2)
-[ "$v" = +7 ] || bad "state 2 again: voicing '$v' (want +7)"
-b0=$(field boot0)
-store '{"op":"state-reset","slot":0,"k":1,"id":"choralroot"}'; v=$(vo2)
-[ "$code" = 200 ] && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = 0 ] && [ "$(field cstcur0)" = 1 ] && [ "$(field restored0)" = 0 ] \
-    && erased "$CRS/state-01.bin" && [ ! -e "$CRS/state-01.mem" ] && grep -q "state 2 reset to default: the firmware restarted fresh" "$T/host.log" \
-    && ok "the active state 2 reset to default: the firmware restarted fresh (voicing $v), state 2 still active, its file the fresh flash" \
-    || bad "reset the active state: $code $(cat "$T/out"), voicing '$v', boot $b0 -> $(field boot0), cstcur0 '$(field cstcur0)', restored0 '$(field restored0)'"
-st=$(field states0)
+[ "$code" = 200 ] && [ "$v" = 0 ] && ok "state 2 loaded: voicing $v (the firmware as first installed)" || bad "state 2 after its reset: $code, voicing '$v' (want 0)"
+store '{"op":"state-load","slot":0,"k":2}'; v=$(vo2)
+[ "$v" = +7 ] || bad "state 3 again: voicing '$v' (want +7)"
+st=$(field states0); b0=$(field boot0)
 store '{"op":"state-reset","slot":0,"k":4,"id":"choralroot"}'; v=$(vo)
-[ "$code" = 200 ] && erased "$CRS/state-04.bin" && wait_for 3 '[ $(( $(field states0) >> 4 & 1 )) = 1 ]' && [ "$(field cstcur0)" = 1 ] && [ "$v" = 0 ] \
-    && ok "an empty state 5 reset to default: a fresh state stored there (states $st -> $(field states0)), state 2 still the active one" \
-    || bad "reset the empty state 5: $code $(cat "$T/out"), states0 '$(field states0)', cstcur0 '$(field cstcur0)'"
-store '{"op":"state-reset","slot":1,"k":0}'
+[ "$code" = 200 ] && erased "$CRS/state-04.bin" && wait_for 3 '[ $(( $(field states0) >> 4 & 1 )) = 1 ]' && [ "$v" = +7 ] && [ "$(field boot0)" = "$b0" ] \
+    && ok "an empty state 5 reset to default: a fresh state stored there (states $st -> $(field states0)), the firmware untouched" \
+    || bad "reset the empty state 5: $code $(cat "$T/out"), states0 '$(field states0)'"
+store '{"op":"state-reset","slot":1,"k":3}'
 [ "$code" = 409 ] && said_out | grep -q "empty" && [ ! -d "$R/states/felucca" ] && ok "a reset in an empty slot refused: \"$(said_out)\"" \
     || bad "reset in an empty slot: $code $(cat "$T/out")"
-store '{"op":"state-reset","slot":0,"k":2,"id":"felucca"}'
-[ "$code" = 409 ] && said_out | grep -q "runs ChoralRoot" && [ ! -e "$CRS/state-02.bin" ] && ok "a reset meant for another firmware refused: \"$(said_out)\"" \
+store '{"op":"state-reset","slot":0,"k":3,"id":"felucca"}'
+[ "$code" = 409 ] && said_out | grep -q "runs ChoralRoot" && [ ! -e "$CRS/state-03.bin" ] && ok "a reset meant for another firmware refused: \"$(said_out)\"" \
     || bad "reset for felucca in ChoralRoot's slot: $code $(cat "$T/out")"
 
 # ---- refusals, in plain words
 curl -s -o /dev/null -X POST --data '{"slot":1,"id":"felucca","activate":0}' "$U/api/load"
 wait_for 15 '[ "$(field id1)" = felucca ]'; sleep 1
-store '{"op":"state-save","slot":1,"k":0}'
-get "state?slot=1&k=0" "$D/fe.zip"
+store '{"op":"state-save","slot":1,"k":1}'
+get "state?slot=1&k=1" "$D/fe.zip"
 put "kind=state&slot=0&k=5" "$D/fe.zip"
 [ "$code" = 422 ] && said_out | grep -q "state of Felucca 1.8.2, and slot 1 runs ChoralRoot" && [ ! -e "$CRS/state-05.bin" ] \
     && ok "Felucca's state into ChoralRoot's slot refused: \"$(said_out)\"" || bad "Felucca's state: $code $(cat "$T/out")"
-put "kind=state&slot=0&k=1&replace=1" "$D/s1.zip"
-[ "$code" = 409 ] && said_out | grep -q "active state" && ok "a file over the active state without load=1 refused: \"$(said_out)\"" || bad "over the active: $code $(cat "$T/out")"
+put "kind=state&slot=0&k=2" "$D/s1.zip"
+[ "$code" = 409 ] && said_out | grep -q "holds a sound" && ok "a file over a stored state without replace=1 refused: \"$(said_out)\"" || bad "over a stored one: $code $(cat "$T/out")"
 put "kind=project&k=4" "$D/s1.zip"
 [ "$code" = 422 ] && said_out | grep -q "a state file" && ok "a state file as a project refused: \"$(said_out)\"" || bad "a state as a project: $code $(cat "$T/out")"
 fc=$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary @"$D/s1.bin" "$U/api/fs/put?path=states/choralroot&name=state-09.bin")
-[ "$fc" = 403 ] && [ ! -e "$CRS/state-09.bin" ] && ok "the file browser still leaves a running firmware's states/ alone (403)" || bad "fs/put into states/choralroot: $fc"
+[ "$fc" = 403 ] && ok "the file browser still leaves a running firmware's states/ alone (403)" || bad "fs/put into states/choralroot: $fc"
 b0=$(field boot0)
-put "kind=state&slot=0&k=1&replace=1&load=1" "$D/s1.zip"; v=$(vo2)
-[ "$code" = 200 ] && [ "$(field boot0)" -gt "$b0" ] && [ "$v" = +3 ] && cmp -s "$D/s1.mem" "$CRS/state-01.mem" \
-    && ok "...with load=1: the active state 2 replaced by the file and loaded (voicing $v)" || bad "replace and load: $code $(cat "$T/out"), voicing '$v'"
+put "kind=state&slot=0&k=2&replace=1" "$D/s1.zip"; v=$(vo)
+[ "$code" = 200 ] && [ "$(field boot0)" = "$b0" ] && [ "$v" = +7 ] && cmp -s "$D/s1.mem" "$CRS/state-02.mem" \
+    && ok "...with replace=1: state 3 replaced by the file, the firmware left as it is (voicing $v)" || bad "replace: $code $(cat "$T/out"), voicing '$v'"
+store '{"op":"state-load","slot":0,"k":2}'; v=$(vo2)
+[ "$v" = +3 ] && ok "the replaced state 3 loaded: voicing $v (the file's)" || bad "the replaced state 3: '$v' (want +3)"
 
 # ---- projects from the page: saved, downloaded, uploaded, opened, duplicated, deleted
 open0=$(field proj_cur)
@@ -192,6 +231,17 @@ store '{"op":"project-delete","k":5}'
 [ "$code" = 200 ] && [ ! -e "$P/move-project-06.rfmmove" ] && [ ! -e "$P/move-project-06.fw1.bin" ] && [ ! -e "$P/move-project-06.fw1.mem" ] \
     && [ $(( $(sfield used) >> 5 & 1 )) = 0 ] && ok "project 6 deleted from the page: the project and its copies gone, the core's grid with it" \
     || bad "delete project 6: $code $(cat "$T/out")"
+# ---- a new empty project from the page (the owner's "no way to start new project in empty slot"; rfm1cs 0.14.0
+# rfm_move_project_new: as an empty pad's click on the Move)
+store '{"op":"project-new","k":2}'
+[ "$code" = 409 ] && said_out | grep -q "not empty" && ok "a new project over a stored one refused: \"$(said_out)\"" || bad "project-new over project 3: $code $(cat "$T/out")"
+store '{"op":"project-new","k":9}'; opened 9
+[ "$code" = 200 ] && said_out | grep -q "New project 10" && [ "$(field proj_cur)" = 9 ] && [ -z "$(field id0)" ] && [ -z "$(field id1)" ] \
+    && [ -s "$P/move-project-10.rfmmove" ] && [ -s "$P/$f1.fw1.mem" ] \
+    && ok "a new project from the page (\"$(said_out)\"): project 10 open and stored, its slots empty; project $((open0 + 1)) kept its copies" \
+    || bad "project-new: $code $(cat "$T/out"), proj_cur '$(field proj_cur)', slots '$(field id0)' '$(field id1)'"
+store "{\"op\":\"project-open\",\"k\":$open0}"; opened "$open0"; v=$(vo2)
+[ "$v" = "$v7" ] && ok "project $((open0 + 1)) again after the new one: voicing $v" || bad "project $((open0 + 1)) after project-new: '$v' (want $v7)"
 # ---- the Move's own "Saved" (rfm1cs 0.14.0, the owner's "Clicking the open project again should show Saved and save
 # it"): the projects' page (Track 4 held + step 1), the open project's pad clicked: its firmware copies written with
 # the sound as it is at the click (PROJECT_SAVE with value 1), nothing reloaded

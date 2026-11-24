@@ -344,11 +344,76 @@ int st_fw_scan(st_fw_t *out, int max)
 }
 
 /* ------------------------------------------------------------------ states --- */
+/* (rfm1cs 0.14.0, the owner's 2026-11-24: pad 1 is the open project's own sound, the library is state files 1..31)
+ * a state file 0 from before is moved once to the first free index 1..31 (none of its three files there), by renames:
+ * a journal (state-00.moving, the index) first, then the working memory, the .json and the image last, then the journal
+ * gone; a stop half way finishes at the next scan (the journal's index), nothing lost or overwritten. No free index:
+ * left as it is, never shown or written (the scan's bit 0 is always clear), said once */
+static void state0_paths(const char *id, int k, char bin[ST_PATH], char mem[ST_PATH + 8], char js[ST_PATH + 8])
+{
+    st_path(bin, ST_PATH, "states/%s/state-%02d.bin", id, k);
+    ms_path(mem, ST_PATH + 8, bin);
+    pm_json_path(js, ST_PATH + 8, bin);
+}
+static void state0_move(const char *id)
+{
+    static char said[8][RFM_MOVE_FW_ID_MAX];
+    char b0[ST_PATH], m0[ST_PATH + 8], j0[ST_PATH + 8], bk[ST_PATH], mk[ST_PATH + 8], jk[ST_PATH + 8], jr[ST_PATH];
+    char txt[16];
+    struct stat st;
+    size_t n = 0;
+    uint8_t *t;
+    int k = -1, i;
+    st_path(jr, sizeof jr, "states/%s/state-00.moving", id);
+    if ((t = st_read(jr, &n))) {   /* (a move begun before a stop: its index) */
+        snprintf(txt, sizeof txt, "%.*s", (int)(n < 15 ? n : 15), (const char *)t);
+        free(t);
+        k = atoi(txt);
+        if (k < 1 || k >= RFM_MOVE_FW_STATES)
+            k = -1;
+    }
+    state0_paths(id, 0, b0, m0, j0);
+    if (k < 0) {
+        if (stat(b0, &st) != 0)
+            return;
+        for (i = 1; i < RFM_MOVE_FW_STATES && k < 0; i++) {
+            state0_paths(id, i, bk, mk, jk);
+            if (stat(bk, &st) != 0 && stat(mk, &st) != 0 && stat(jk, &st) != 0)
+                k = i;
+        }
+        if (k < 0) {
+            for (i = 0; i < 8 && said[i][0] && strcmp(said[i], id); i++) {}
+            if (i < 8 && !said[i][0]) {
+                snprintf(said[i], sizeof said[i], "%s", id);
+                fprintf(stderr, "storage: %s: state-00 (made before pad 1 was the project's sound) left in place: no "
+                        "free state 2..32 to move it to; it is not shown or written\n", id);
+            }
+            return;
+        }
+        snprintf(txt, sizeof txt, "%d\n", k);
+        if (st_write(jr, txt, strlen(txt)) != 0) {
+            fprintf(stderr, "storage: %s: cannot write %s: %s\n", id, jr, strerror(errno));
+            return;
+        }
+    }
+    state0_paths(id, k, bk, mk, jk);
+    if ((stat(m0, &st) == 0 && stat(mk, &st) != 0 && rename(m0, mk) != 0) ||
+        (stat(j0, &st) == 0 && stat(jk, &st) != 0 && rename(j0, jk) != 0) ||
+        (stat(b0, &st) == 0 && stat(bk, &st) != 0 && rename(b0, bk) != 0)) {
+        fprintf(stderr, "storage: %s: moving state-00 to state-%02d: %s (finished at the next scan)\n", id, k,
+                strerror(errno));
+        return;
+    }
+    unlink(jr);
+    fprintf(stderr, "storage: %s: state-00 (made before pad 1 was the project's sound) moved to state %d (its pad %d)\n",
+            id, k, k + 1);
+}
 uint32_t st_states_used(const char *id)
 {
     uint32_t used = 0;
     int k;
-    for (k = 0; k < RFM_MOVE_FW_STATES; k++) {
+    state0_move(id);
+    for (k = 1; k < RFM_MOVE_FW_STATES; k++) {
         char p[ST_PATH];
         struct stat st;
         st_path(p, sizeof p, "states/%s/state-%02d.bin", id, k);
@@ -772,7 +837,15 @@ static void state_import(st_job_t *j)
     else if (j->total && n != j->total)
         snprintf(j->err, sizeof j->err, "its flash image is %zu bytes, the firmware's flash %llu", n,
                  (unsigned long long)j->total);
-    else {
+    else if (j->index == 0) {   /* (rfm1cs 0.14.0) pad 1, the project's sound: no state file, loaded from the file */
+        j->ok = 1;
+        if (j->obj) {
+            j->data = img, j->len = (uint32_t)n, img = NULL;
+            j->snap = mem_read(from, ((fw_obj_t *)j->obj)->vt->sha256, j->data, j->len, j->memwhy, sizeof j->memwhy);
+            if (!(j->ptr = fw_instantiate(j->obj)))
+                snprintf(j->err, sizeof j->err, "%s: %s", j->id, fw_inst_why());
+        }
+    } else {
         st_path(dir, sizeof dir, "states/%s", j->id);
         st_mkdirs(dir);
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
@@ -977,6 +1050,18 @@ static void run_job(st_job_t *j)
         char p[ST_PATH];
         size_t n = 0;
         uint8_t *b;
+        if (j->kind == J_STATE_COPY && j->data) {   /* (rfm1cs 0.14.0, index 0) the memory now, synced, with its working
+                                                    * memory: the engine's image and snapshot */
+            free(g_sbuf);
+            free(g_sbuf_mem);
+            g_sbuf_mem = mem_encode(j->snap, j->data, j->len, &g_sbuf_mem_n);
+            g_sbuf = j->data, g_sbuf_n = j->len, j->data = NULL, j->len = 0;
+            ms_free(j->snap);
+            j->snap = NULL;
+            snprintf(g_sbuf_id, sizeof g_sbuf_id, "%s", j->id);
+            j->used = st_states_used(j->id);
+            break;
+        }
         st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
         if (!(j->kind == J_STATE_DELETE && j->value) && (b = st_read(p, &n))) {   /* (the page's: not into it) */
             char mp[ST_PATH + 8];
@@ -1003,15 +1088,17 @@ static void run_job(st_job_t *j)
         j->ok = 0;
         if (g_sbuf && !strcmp(g_sbuf_id, j->id)) {
             char *js, *jm;
-            int w;
+            int w = 0;
             st_path(p, sizeof p, "states/%s/state-%02d.bin", j->id, j->index);
-            image_json(j->text, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, &js, &jm);
-            w = image_write(p, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, js, jm);   /* (and its .mem) */
-            free(js);
-            free(jm);
+            if (j->index > 0) {   /* (rfm1cs 0.14.0) index 0 is the project's sound: loaded only, no state file */
+                image_json(j->text, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, &js, &jm);
+                w = image_write(p, g_sbuf, g_sbuf_n, g_sbuf_mem, g_sbuf_mem_n, js, jm);   /* (and its .mem) */
+                free(js);
+                free(jm);
+            }
             if (w == 0) {
                 j->ok = 1;
-                if (j->value && j->obj && (j->data = malloc(g_sbuf_n))) {   /* (onto the active one: loaded too) */
+                if (j->index == 0 && j->obj && (j->data = malloc(g_sbuf_n))) {   /* (into the project: loaded) */
                     memcpy(j->data, g_sbuf, g_sbuf_n);
                     j->len = g_sbuf_n;
                     j->snap = mem_take(g_sbuf_mem, g_sbuf_mem_n, ((fw_obj_t *)j->obj)->vt->sha256, g_sbuf, g_sbuf_n,
@@ -1030,7 +1117,7 @@ static void run_job(st_job_t *j)
     }
     case J_PFW_OPEN: {
         size_t n = 0;
-        char jp[ST_PATH + 8], id[RFM_MOVE_FW_ID_MAX], sha[65] = "", mh[80] = "";
+        char jp[ST_PATH + 8], id[RFM_MOVE_FW_ID_MAX], sha[65] = "";
         if (j->obj) {   /* (the same firmware: a new instance of its object) */
             snprintf(sha, sizeof sha, "%s", ((fw_obj_t *)j->obj)->vt->sha256);
             if (!(j->ptr = fw_instantiate(j->obj)))
@@ -1052,13 +1139,9 @@ static void run_job(st_job_t *j)
             if (pm_json_id(jp, id, sizeof id) == 0 && !strcmp(id, j->id) && (j->data = st_read(j->aux_path, &n))) {
                 j->ok = 2;
                 j->snap = mem_read(j->aux_path, sha, j->data, (uint32_t)n, j->memwhy, sizeof j->memwhy);
-                if (j->snap)   /* (its working memory's hash: the active state is the one with the same) */
-                    pm_json_str(jp, "mem", mh, sizeof mh);
             } else if (j->path2[0] && (j->data = st_read(j->path2, &n)))   /* (else its last memory anywhere) */
                 j->ok = 1;
-            j->len = (uint32_t)n;
-            if (j->data)   /* the stored state it equals (the active one), compared here, off the engine */
-                j->match = pm_state_match(g_root, j->id, j->data, j->len, mh);
+            j->len = (uint32_t)n;   /* (rfm1cs 0.14.0: no state is active, none is matched) */
         }
         break;
     }

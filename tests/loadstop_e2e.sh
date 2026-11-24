@@ -6,7 +6,7 @@
 # simulator in the build image after make. ChoralRoot 0.43 in slot 1 with core 1 on, its loop PLAYED through its own
 # takeover (Track 1 held + pad 2: a key, step 1 gets the chord, Play) and heard in the host's log (its "chord:" lines,
 # a bar at 120 BPM: 2 s):
-#   - while its loop plays: project 1 saved and duplicated into project 4, states 2 and 1 saved (snapshots of a
+#   - while its loop plays: project 1 saved and duplicated into project 4, library state 2 saved (snapshots of a
 #     running loop); the loop stopped (Play again), the takeover left (Track 1 held + pad 3: the sequencer);
 #   - project 4 opened, stopped: restored with the loop (1 event) and stopped by the Stop ("loop: stop"), no chord for
 #     5 s, the Move's sequencer stopped; project 1 again (its copy written stopped as it was left): Stop sent, silent;
@@ -82,17 +82,16 @@ store "{\"op\":\"project-save\",\"k\":$open0}"; c1=$code
 for f in "$P"/move-project-0$((open0 + 1)).fw1.*; do cp "$f" "$KEEP/"; done
 store "{\"op\":\"project-dup\",\"k\":$open0,\"to\":3}"; c2=$code
 store '{"op":"state-save","slot":0,"k":1}'; c3=$code
-store '{"op":"state-save","slot":0,"k":0}'; c3=$c3$code
-[ "$c1$c2$c3" = 200200200200 ] && [ -s "$P/move-project-04.fw1.mem" ] && [ -s "$R/states/choralroot/state-01.mem" ] \
-    && ok "while it plays: project $((open0 + 1)) saved, duplicated into 4, states 2 and 1 saved (snapshots of a running loop)" \
+[ "$c1$c2$c3" = 200200200 ] && [ -s "$P/move-project-04.fw1.mem" ] && [ -s "$R/states/choralroot/state-01.mem" ] \
+    && ok "while it plays: project $((open0 + 1)) saved, duplicated into 4, library state 2 saved (snapshots of a running loop)" \
     || bad "saves while playing: $c1 $c2 $c3"
 mark; press 85; sleep 1
 since | grep -q "loop: stop" && [ "$(field seq_playing)" = 0 ] && ok "the loop stopped (Play), the Move stopped" || bad "stop: $(since | grep 'loop:' | tail -1), seq_playing $(field seq_playing)"
 cmd "cc 43 127"; cmd "note 94 100"; cmd "note 94 0"; cmd "cc 43 0"   # Track 1 held + pad 3: the sequencer (the takeover left)
 wait_for 4 '[ "$(field move_mode)" = 3 ]' || bad "the sequencer's mode: move_mode '$(field move_mode)'"
 
-# ---- opened while stopped: silent and stopped (project 1's copy and the active state 1 get the memory as it is,
-# stopped, before each load: what comes back running is project 4's copy and state 2)
+# ---- opened while stopped: silent and stopped (project 1's copy gets the memory as it is, stopped, before each load;
+# a library state is never written by playing: what comes back running is project 4's copy and state 2)
 mark; store '{"op":"project-open","k":3}'; opened 3; silent "project 4 opened" 1
 mark; store "{\"op\":\"project-open\",\"k\":$open0}"; opened "$open0"; silent "project $((open0 + 1)) opened again" 0
 mark; store '{"op":"state-load","slot":0,"k":1}'; silent "state 2 loaded" 1

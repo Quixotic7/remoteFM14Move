@@ -3,16 +3,16 @@
 // tabs, from the header's States and Projects caps (desktop), a slot's load menu ("States of slot n"), the phone's slot
 // menu. Everything acts on the Move's own States and projects through the host (src/web.c /api/store, engine.h
 // engine_store: the same work as the Move's pads), so the page and the Move always agree; nothing is kept in the browser.
-//   - States: a slot's firmware's 32 States as the Move's pads (4 rows of 8, state 1 top left), empty / stored (the
-//     slot's colour) / the active one (white: the contrasting colour the Move gives it). A tap picks one; its row says
-//     which firmware and version saved it, when, whether with its working memory; Load, Save the sound here (over a
-//     stored one: asked first), Download (a .zip: its flash image, its working memory, its .json), Upload (a state
-//     file of this firmware: another firmware's is refused by the Move in plain words), Reset to default (the firmware
-//     as first installed, as the Move's step 14 New gives it: asked first over a stored one; the active one restarts
-//     the firmware fresh and stays active; an empty one stores it at once), Delete (asked first). The other two slots
-//     one tap away.
+//   - States: a slot's firmware's 32 States as the Move's pads (4 rows of 8, state 1 top left). (rfm1cs 0.14.0, the
+//     owner's 2026-11-24) State 1 is the open project's own sound (white, PROJECT): Save now (the project's save),
+//     Download (the project's copy as a state file), Upload (replaces it and loads it: asked first), Reset to default
+//     (the firmware restarts as first installed: asked first; Undo on the Move). States 2..32 are a library shared by
+//     all projects, empty / stored (the slot's colour), never changed by playing: Load into the project, Save the
+//     sound here / over it (asked first), Download (a .zip: its flash image, its working memory, its .json), Upload (a
+//     state file of this firmware: another firmware's is refused by the Move in plain words), Reset to default (the
+//     firmware as first installed stored there), Delete (asked first). The other two slots one tap away.
 //   - Projects: the sequencer's 32 projects (project 1 top left) in their colours, the open one white. A tap on the open
-//     one saves it ("Saved"); Open, Save, Duplicate (then a tap on an empty slot), Download (a .zip: the project, its
+//     one saves it ("Saved"); an empty one: New project (rfm1cs 0.14.0's rfm_move_project_new) or Upload; Open, Save, Duplicate (then a tap on an empty slot), Download (a .zip: the project, its
 //     FX state, its firmwares' copies, so it restores its sound on another Move), Upload (that .zip, or a .rfmmove
 //     from RemoteFM1's web player), Delete (asked first).
 //   - live: the mix's store_ver (each change on the Move) reads GET /api/store again.
@@ -221,46 +221,74 @@ export class StoreView {
       this.info.textContent = "";
       return [slots, h("p", { class: "mv-sv-note" }, this.data ? "No firmware in this slot: load one from its chip, then its States are here." : "Reading the Move…")];
     }
-    const used = si.used >>> 0, cur = si.cur, k = this.sel.states;
+    // (rfm1cs 0.14.0, the owner's 2026-11-24) pad 1 is the open project's own sound; pads 2..32 a library shared by
+    // all projects (nothing in it changes by playing)
+    const used = (si.used >>> 0) & ~1, k = this.sel.states, pj = si.proj;
     const n = [...Array(32).keys()].filter((i) => used >>> i & 1).length;
-    this.info.textContent = `${si.name} ${si.version}: ${n} of 32 states stored`;
+    this.info.textContent = `${si.name} ${si.version}: ${pj >= 0 ? `project ${pj + 1}'s sound and ` : ""}${n} of 31 library states stored`;
     const grid = h("div", { class: "mv-sv-grid", role: "grid", "aria-label": `${si.name}'s States`, style: { "--c": si.color || "#9696a0" } },
       [...Array(32).keys()].map((i) => {
-        const full = used >>> i & 1, isCur = i === cur;
-        return this.pad(i, { cls: `${full ? "full" : ""} ${isCur ? "cur" : ""} ${this.busyK === i && this.tab === "states" ? "busy" : ""}`, tag: isCur ? "active" : "",
-          label: `State ${i + 1}: ${isCur ? "active" : full ? "stored" : "empty"}`, selected: i === k,
+        const full = i > 0 && used >>> i & 1;
+        if (i === 0)
+          return this.pad(0, { cls: `cur proj ${this.busyK === 0 && this.tab === "states" ? "busy" : ""}`, tag: "project",
+            label: `State 1: ${pj >= 0 ? `project ${pj + 1}'s` : "the project's"} own sound`, selected: k === 0,
+            onclick: () => { this.sel.states = 0; this.inline = null; this.render(); } });
+        return this.pad(i, { cls: `${full ? "full" : ""} ${this.busyK === i && this.tab === "states" ? "busy" : ""}`,
+          label: `State ${i + 1}: ${full ? "stored" : "empty"}`, selected: i === k,
           onclick: () => { this.sel.states = i; this.inline = null; this.render(); } });
       }));
-    return [slots, grid, k != null ? this.stateRow(s, si, k) : h("p", { class: "mv-sv-note" }, `Tap a state. As on the Move (${["Track 1", "Track 2", "Track 3"][s]} held + pad 7): an empty one takes the sound as it is now, a stored one loads; the active state (white) keeps saving itself as you play.`)];
+    return [slots, grid, k != null ? (k === 0 ? this.projRow(s, si) : this.stateRow(s, si, k))
+      : h("p", { class: "mv-sv-note" }, `Tap a state. State 1 (white) is the open project's own sound, saved as you play; states 2 to 32 are a library every project shares: an empty one takes the sound as it is now, a stored one loads into the project. As on the Move: ${["Track 1", "Track 2", "Track 3"][s]} held + pad 7.`)];
   }
+  // pad 1: the open project's own sound
+  projRow(s, si) {
+    const pj = si.proj, name = pj >= 0 ? `Project ${pj + 1}'s sound` : "The project's sound", lname = name.charAt(0).toLowerCase() + name.slice(1);
+    const title = h("h4", {}, name, h("span", { class: "badge" }, "Project"));
+    const meta = h("div", { class: "meta" }, `${si.name} ${si.version} as you play it in ${pj >= 0 ? `project ${pj + 1}` : "the open project"}: its own copy, saved with the project.${si.undo ? " Undo on the Move brings back the sound before the last load, paste or reset." : ""}`);
+    let acts;
+    const q = this.inline;
+    if (q && q.k === 0 && q.tab === "states") {
+      if (q.kind === "reset") acts = this.askRow(`Reset ${lname} to default? The firmware restarts as first installed (Undo on the Move brings it back).`,
+        () => this.stateOp("state-reset", s, si, 0), "Reset it");
+      else if (q.kind === "upload") acts = this.askRow(q.text, () => this.stateUpload(s, si, 0, q.file, 1), "Replace and load it", "primary");
+    } else {
+      acts = h("div", { class: "mv-sv-acts" },
+        this.pill("Save now", IC.save, () => this.projectSave(pj), "primary", { act: "save", disabled: pj < 0, title: "The project saved now, this sound with it" }),
+        this.pill("Download", IC.down, () => this.stateDownload(s, si, 0), "", { act: "download", disabled: pj < 0, title: "This project's copy of the firmware as a state file" }),
+        this.pill("Upload…", IC.up, () => this.pickFile((f) => { this.inline = { tab: "states", k: 0, kind: "upload", file: f,
+          text: `Replace ${lname} with ${f.name} and load it?` }; this.render(); }), "", { act: "upload", disabled: pj < 0 }),
+        this.pill("Reset to default", IC.reset, () => { this.inline = { tab: "states", k: 0, kind: "reset" }; this.render(); }, "", { act: "reset", disabled: pj < 0,
+          title: "The firmware as first installed: it restarts fresh" }));
+    }
+    return h("div", { class: "mv-sv-sel", "data-k": 0 }, title, meta, acts);
+  }
+  // pads 2..32: the library
   stateRow(s, si, k) {
-    const full = si.used >>> k & 1, isCur = k === si.cur, key = `${si.id}:${k}`, m = this.meta.get(key);
-    if (full && !m) this.readMeta(si.id, k);
-    const title = h("h4", {}, `State ${k + 1}`, isCur ? h("span", { class: "badge" }, "Active") : null);
+    const full = si.used >>> k & 1, key = `${si.id}:${k}`, m = this.meta.get(key);
+    if (full && !m && !this.busy) this.readMeta(si.id, k);   // (not while a request is under way: its file may not be there yet)
+    const title = h("h4", {}, `State ${k + 1}`);
     const meta = h("div", { class: "meta", "data-meta": key },
       !full ? "Empty." : m && !m.pending && m.id ? `${this.fwName(m.id || si.id)} ${m.version || "?"}${m.version && m.version !== si.version ? ` (this slot runs ${si.version})` : ""}${m.saved ? ` · saved ${when(m.saved)}` : ""}${m.fresh ? " · as first installed" : m.mem ? " · with its working memory" : " · its flash only"}` : `${si.name}`);
     let acts;
-    const q = this.inline;
+    const q = this.inline, pj = si.proj;
     if (q && q.k === k && q.tab === "states") {
       if (q.kind === "delete") acts = this.askRow(`Delete state ${k + 1}? It cannot be undone from the page.`, () => this.stateOp("state-delete", s, si, k), "Delete");
-      else if (q.kind === "reset") acts = this.askRow(isCur ? `Reset state ${k + 1} to default? The firmware restarts as first installed and the state holds that; its sound now is lost.`
-        : `Reset state ${k + 1} to default? It holds the firmware as first installed instead of its sound.`, () => this.stateOp("state-reset", s, si, k), "Reset it");
+      else if (q.kind === "reset") acts = this.askRow(`Reset state ${k + 1} to default? It holds the firmware as first installed instead of its sound.`, () => this.stateOp("state-reset", s, si, k), "Reset it");
       else if (q.kind === "over") acts = this.askRow(`Save the sound as it is now over state ${k + 1}?`, () => this.stateOp("state-save", s, si, k, { replace: 1 }), "Save over it", "primary");
-      else if (q.kind === "upload") acts = this.askRow(q.text, () => this.stateUpload(s, si, k, q.file, q.flags), q.yes || "Replace it", "primary");
+      else if (q.kind === "upload") acts = this.askRow(q.text, () => this.stateUpload(s, si, k, q.file, 1), "Replace it", "primary");
     } else if (!full) {
       acts = h("div", { class: "mv-sv-acts" },
         this.pill("Save the sound here", IC.save, () => this.stateOp("state-save", s, si, k), "primary", { act: "save" }),
         this.pill("Upload a state file…", IC.up, () => this.pickFile((f) => this.stateUpload(s, si, k, f, 0)), "", { act: "upload" }),
-        this.pill("Reset to default", IC.reset, () => this.stateOp("state-reset", s, si, k), "", { act: "reset", title: "Store the firmware as first installed here (as the Move's step 14 New)" }));
+        this.pill("Reset to default", IC.reset, () => this.stateOp("state-reset", s, si, k), "", { act: "reset", title: "Store the firmware as first installed here" }));
     } else {
       acts = h("div", { class: "mv-sv-acts" },
-        isCur ? null : this.pill("Load", IC.load, () => this.stateOp("state-load", s, si, k), "primary", { act: "load" }),
-        this.pill(isCur ? "Save now" : "Save the sound over it", IC.save, () => { if (isCur) this.stateOp("state-save", s, si, k, { replace: 1 }); else { this.inline = { tab: "states", k, kind: "over" }; this.render(); } }, isCur ? "primary" : "", { act: "save" }),
+        this.pill("Load into the project", IC.load, () => this.stateOp("state-load", s, si, k), "primary", { act: "load",
+          title: `Replaces ${pj >= 0 ? `project ${pj + 1}'s` : "the project's"} sound (Undo on the Move brings it back); this state is not changed by playing` }),
+        this.pill("Save the sound over it", IC.save, () => { this.inline = { tab: "states", k, kind: "over" }; this.render(); }, "", { act: "save" }),
         this.pill("Download", IC.down, () => this.stateDownload(s, si, k), "", { act: "download", title: "This state as a file: its flash image, its working memory, its .json" }),
-        this.pill("Upload…", IC.up, () => this.pickFile((f) => { this.inline = { tab: "states", k, kind: "upload", file: f, flags: isCur ? 3 : 1, yes: isCur ? "Replace and load it" : "Replace it",
-          text: isCur ? `State ${k + 1} is the active state: replace it with ${f.name} and load it?` : `Replace state ${k + 1} with ${f.name}?` }; this.render(); }), "", { act: "upload" }),
-        this.pill("Reset to default", IC.reset, () => { this.inline = { tab: "states", k, kind: "reset" }; this.render(); }, "", { act: "reset",
-          title: isCur ? "The firmware as first installed: it restarts fresh, this state holds that" : "This state holds the firmware as first installed" }),
+        this.pill("Upload…", IC.up, () => this.pickFile((f) => { this.inline = { tab: "states", k, kind: "upload", file: f, text: `Replace state ${k + 1} with ${f.name}?` }; this.render(); }), "", { act: "upload" }),
+        this.pill("Reset to default", IC.reset, () => { this.inline = { tab: "states", k, kind: "reset" }; this.render(); }, "", { act: "reset", title: "This state holds the firmware as first installed" }),
         this.pill("Delete", IC.trash, () => { this.inline = { tab: "states", k, kind: "delete" }; this.render(); }, "danger", { act: "delete" }));
     }
     return h("div", { class: "mv-sv-sel", "data-k": k }, title, meta, acts);
@@ -285,7 +313,7 @@ export class StoreView {
   }
   async stateOp(op, s, si, k, extra = {}) {
     const words = { "state-save": `Saving state ${k + 1}…`, "state-load": `Loading state ${k + 1}…`, "state-delete": `Deleting state ${k + 1}…`,
-      "state-reset": `Resetting state ${k + 1}…` }[op];
+      "state-reset": k === 0 ? "Resetting the project's sound…" : `Resetting state ${k + 1}…` }[op];
     this.meta.delete(`${si.id}:${k}`);
     const r = await this.run(words, k, () => ask({ op, slot: s, k, id: si.id, ...extra }));
     this.meta.delete(`${si.id}:${k}`);   // (a row drawn meanwhile read the .json from before: read it again)
@@ -293,20 +321,18 @@ export class StoreView {
     return r;
   }
   async stateDownload(s, si, k) {
-    // (the active state: the sound as it is now written into it first, as its autosave would)
-    if (k === si.cur) { const r = await this.run(`Saving state ${k + 1}…`, k, () => ask({ op: "state-save", slot: s, k, id: si.id, replace: 1 })); if (!r.ok) return; }
+    // (pad 1: the project saved first, so its copy is the sound as it is now)
+    if (k === 0) { const r = await this.projectSave(si.proj); if (!r.ok) return; }
     download(`api/store/state?slot=${s}&k=${k}`);
   }
   stateUpload(s, si, k, file, flags) {
-    const full = si.used >>> k & 1;
+    const full = k > 0 && si.used >>> k & 1;
     if (full && !(flags & 1)) {   // (asked first)
-      const isCur = k === si.cur;
-      this.inline = { tab: "states", k, kind: "upload", file, flags: isCur ? 3 : 1, yes: isCur ? "Replace and load it" : "Replace it",
-        text: isCur ? `State ${k + 1} is the active state: replace it with ${file.name} and load it?` : `Replace state ${k + 1} with ${file.name}?` };
+      this.inline = { tab: "states", k, kind: "upload", file, text: `Replace state ${k + 1} with ${file.name}?` };
       this.render(); return null;
     }
     this.meta.delete(`${si.id}:${k}`);
-    return this.run(`Sending ${file.name}…`, k, () => send(`kind=state&slot=${s}&k=${k}${flags & 1 ? "&replace=1" : ""}${flags & 2 ? "&load=1" : ""}`, file,
+    return this.run(`Sending ${file.name}…`, k, () => send(`kind=state&slot=${s}&k=${k}${full ? "&replace=1" : ""}`, file,
       (x) => { this.prog.style.width = `${(100 * x).toFixed(1)}%`; }));
   }
 
@@ -363,7 +389,9 @@ export class StoreView {
       else if (q.kind === "upload") acts = this.askRow(`Replace project ${k + 1} with ${q.file.name}?`, () => this.projectUpload(k, q.file, 1), "Replace it", "primary");
     } else if (!full && !isOpen) {
       acts = h("div", { class: "mv-sv-acts" },
-        this.pill("Upload a project file…", IC.up, () => this.pickFile((f) => this.projectUpload(k, f, 0)), "primary", { act: "upload" }));
+        this.pill("New project", IC.open, () => this.run(`Making project ${k + 1}…`, k, () => ask({ op: "project-new", k })), "primary",
+          { act: "new", disabled: loading, title: "A new empty project here, opened on the Move (as an empty pad's click there)" }),
+        this.pill("Upload a project file…", IC.up, () => this.pickFile((f) => this.projectUpload(k, f, 0)), "", { act: "upload" }));
     } else {
       acts = h("div", { class: "mv-sv-acts" },
         isOpen ? this.pill("Save", IC.save, () => this.projectSave(k), "primary", { act: "save" })

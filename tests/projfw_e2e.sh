@@ -7,13 +7,16 @@
 #   - an empty pad: a new project, its slots empty; Felucca loaded there and changed: project 2's copy differs;
 #   - project 1 again: its loading screen comes and goes, its firmwares back, Felucca's memory project 1's;
 #   - Copy held + project 1, then an empty pad: the copy carries the firmware copies;
-#   - States (Track 1 held + pad 7): an empty pad saves, the active one follows the memory (autosave), a stored one
-#     loads, Copy + a state then an empty one pastes, Delete cuts (pasted again), a paste onto the active one loads it,
-#     step 14 New and Undo;
+#   - States (Track 1 held + pad 7; rfm1cs 0.14.0, the owner's 2026-11-24: pad 1 the project's own sound, pads 2..32 a
+#     library): pad 1 saves the project; an empty pad stores the sound, and a library state is never written by
+#     playing (byte for byte); a stored one loads into the project (its copy at once), Undo; Copy + a state then an
+#     empty one pastes, Delete cuts (pasted again); Copy + pad 1 then an empty pad stores the sound now; a paste onto
+#     pad 1 loads into the project, Undo; step 14 New and Undo; a pad held + Delete resets that library state;
 #   - the page's Files: the copies are in the projects' zip, the open project's are not deleted;
 #   - restarted with ChoralRoot removed: project 1's slot 2 missing, the project keeps its name and its copy; an old
-#     (version 8) project leaves the firmwares alone and becomes version 9, with copies, at its next save; the open
-#     project cut: its copies into the buffer, pasted onto an empty pad with the project.
+#     (version 8) project leaves the firmwares alone and becomes version 10 (9 and up), with copies, at its next save; the open
+#     project cut: its copies into the buffer, pasted onto an empty pad with the project; an old state-00 moved once
+#     to the first free library index; with none free, left in place, not shown, said once.
 #   tests/projfw_e2e.sh
 set -u
 cd "$(dirname "$0")/.."
@@ -112,55 +115,81 @@ wait_for 8 '[ -s "$P/move-project-03.rfmmove" ] && [ -s "$(pcopy 3 1)" ] && [ -s
 [ "$(field proj_open)" = 0 ] && [ "$(field id1)" = choralroot ] && ok "the copy left project 1 open as it was" || bad "after the copy: proj_open '$(field proj_open)'"
 press 51; sleep 0.3
 
-# ---- States: Track 1 held + pad 7
+# ---- States: Track 1 held + pad 7. (rfm1cs 0.14.0, the owner's 2026-11-24) pad 1 is project 1's own sound (its copy),
+# pads 2..32 the library (state files 1..31), never written by playing
 cmd "cc 43 127"; sleep 0.3; hit 98; cmd "cc 43 0"
 wait_for 3 '[ "$(field states_open)" = 0 ]' && ok "Track 1 held + pad 7: Felucca's States" || bad "States: states_open '$(field states_open)'"
 sleep 1.2
+n0=$(grep -c "project 1 saved by its pad" "$T/host.log")
 hit 92
-wait_for 5 '[ -s "$(st 0)" ] && [ "$(field stcur0)" = 0 ] && [ "$(field cstcur0)" = 0 ]' && [ "$(byte "$(st 0)")" = 5a ] \
-    && grep -q '"hash":"' "$R/states/felucca/state-00.json" \
-    && ok "an empty pad: state 1 saved (state-00.bin, its hash), the active one" || bad "state 1: stcur '$(field stcur0)' '$(field cstcur0)'"
-poke 0 51
-wait_for 8 '[ "$(byte "$(st 0)")" = 33 ]' && ok "the memory changed (33): the active state 1 follows it (autosave)" \
-    || bad "autosave: state 1 byte '$(byte "$(st 0)")'"
+wait_for 5 '[ "$(grep -c "project 1 saved by its pad" "$T/host.log")" -gt "$n0" ]' && [ ! -e "$(st 0)" ] \
+    && ok "pad 1 clicked: project 1 saved (its own sound), no state file 0" || bad "pad 1: $(ls "$R/states/felucca" 2>/dev/null)"
 hit 93
-wait_for 5 '[ -s "$(st 1)" ] && [ "$(field stcur0)" = 1 ]' || bad "state 2: stcur '$(field stcur0)'"
+wait_for 5 '[ -s "$(st 1)" ] && [ "$(( $(field states0) & 3 ))" = 2 ]' && [ "$(byte "$(st 1)")" = 5a ] \
+    && grep -q '"hash":"' "$R/states/felucca/state-01.json" && [ "$(field stcur0)" = -1 ] \
+    && ok "the empty pad 2: the sound now stored as library state 1 (state-01.bin, 5a); nothing active, bit 0 clear" \
+    || bad "state 1: '$(byte "$(st 1)")', states0 '$(field states0)', stcur '$(field stcur0)'"
+cp "$(st 1)" "$T/lib1"
+poke 0 51
+wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 33 ]' && sleep 1 && cmp -s "$(st 1)" "$T/lib1" \
+    && ok "the memory changed (33): project 1's copy follows it; library state 1 does not (byte for byte)" \
+    || bad "after a change: copy '$(byte "$(pcopy 1 1)")', state 1 '$(byte "$(st 1)")'"
+hit 94
+wait_for 5 '[ -s "$(st 2)" ]' && [ "$(byte "$(st 2)")" = 33 ] || bad "state 2: '$(byte "$(st 2)")'"
 poke 0 68
-wait_for 8 '[ "$(byte "$(st 1)")" = 44 ]' && [ "$(byte "$(st 0)")" = 33 ] \
-    && ok "state 2 saved and active: it follows the memory (44), state 1 stays 33" \
-    || bad "state 2 '$(byte "$(st 1)")', state 1 '$(byte "$(st 0)")'"
+wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ]' || bad "the copy: '$(byte "$(pcopy 1 1)")'"
 b0=$(field boot0)
-hit 92
-wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field stcur0)" = 0 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 33 ]' \
-    && [ "$(byte "$(st 1)")" = 44 ] \
-    && ok "state 1 loaded (boot $b0 -> $(field boot0)): the memory 33 (the project's copy), state 2 kept its 44" \
-    || bad "state 1 load: stcur '$(field stcur0)', copy '$(byte "$(pcopy 1 1)")', state 2 '$(byte "$(st 1)")'"
-cmd "cc 60 127"; sleep 0.2; hit 92; sleep 0.3; hit 95; sleep 0.2; cmd "cc 60 0"
-wait_for 5 '[ -s "$(st 3)" ]' && cmp -s "$(st 0)" "$(st 3)" && [ "$(field stcur0)" = 0 ] \
-    && ok "Copy + state 1, then the empty state 4: pasted (the same bytes); state 1 still the active one" || bad "the state paste: $(ls "$R/states/felucca")"
-cp "$(st 3)" "$T/state4"
-cmd "cc 119 127"; sleep 0.2; hit 95; sleep 0.2; cmd "cc 119 0"
-wait_for 5 '[ ! -e "$(st 3)" ]' && [ ! -e "$R/states/felucca/state-03.json" ] && ok "Delete + state 4: gone" || bad "the delete"
-cmd "cc 60 127"; sleep 0.2; hit 96; sleep 0.2; cmd "cc 60 0"
-wait_for 5 '[ -s "$(st 4)" ]' && cmp -s "$(st 4)" "$T/state4" && ok "Copy + the empty state 5: the deleted state pasted there" || bad "paste after a delete"
-b0=$(field boot0)
-cmd "cc 60 127"; sleep 0.2; hit 93; sleep 0.3; hit 92; sleep 0.2; cmd "cc 60 0"
-wait_for 5 '[ "$(field boot0)" -gt "$b0" ]' && cmp -s "$(st 0)" "$(st 1)" && [ "$(field stcur0)" = 0 ] \
-    && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ]' \
-    && ok "Copy + state 2, then the active state 1: replaced and loaded (boot $b0 -> $(field boot0); the memory 44)" \
-    || bad "a paste onto the active state: boot '$(field boot0)', copy '$(byte "$(pcopy 1 1)")'"
-b0=$(field boot0)
-hit 29
-wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field stcur0)" = -1 ] && [ "$(field cstcur0)" = -1 ] && [ "$(field undo0)" = 1 ]' \
-    && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" != 44 ]' && [ "$(byte "$(st 0)")" = 44 ] \
-    && ok "step 14 New: Felucca as first installed (copy byte '$(byte "$(pcopy 1 1)")'), no state active, state 1 untouched" \
-    || bad "New: stcur '$(field stcur0)' '$(field cstcur0)', undo '$(field undo0)', copy '$(byte "$(pcopy 1 1)")'"
+hit 93
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 1 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 5a ]' \
+    && cmp -s "$(st 1)" "$T/lib1" && [ "$(byte "$(st 2)")" = 33 ] \
+    && ok "pad 2 clicked: library state 1 loaded into the project (boot $b0 -> $(field boot0)): the copy 5a at once, the undo kept" \
+    || bad "the library load: copy '$(byte "$(pcopy 1 1)")', undo '$(field undo0)'"
+poke 0 85
+wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 55 ]' && sleep 1 && cmp -s "$(st 1)" "$T/lib1" \
+    && ok "played after the load (55): the project's copy changes, library state 1 stays byte for byte" \
+    || bad "after the load and a change: state 1 '$(byte "$(st 1)")'"
 b0=$(field boot0)
 press 56
-wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field stcur0)" = 0 ] && [ "$(field cstcur0)" = 0 ] && [ "$(field undo0)" = 0 ]' \
-    && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ]' \
-    && ok "Undo: the memory before New back (44), state 1 the active one again" \
-    || bad "Undo: stcur '$(field stcur0)' '$(field cstcur0)', undo '$(field undo0)', copy '$(byte "$(pcopy 1 1)")'"
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 0 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ]' \
+    && ok "Undo after the library load: the sound before it back (44)" \
+    || bad "Undo: undo '$(field undo0)', copy '$(byte "$(pcopy 1 1)")'"
+cmd "cc 60 127"; sleep 0.2; hit 93; sleep 0.3; hit 95; sleep 0.2; cmd "cc 60 0"
+wait_for 5 '[ -s "$(st 3)" ]' && cmp -s "$(st 1)" "$(st 3)" \
+    && ok "Copy + state 1 (pad 2), then the empty pad 4: pasted (the same bytes)" || bad "the state paste: $(ls "$R/states/felucca")"
+cp "$(st 3)" "$T/state3"
+cmd "cc 119 127"; sleep 0.2; hit 95; sleep 0.2; cmd "cc 119 0"
+wait_for 5 '[ ! -e "$(st 3)" ]' && [ ! -e "$R/states/felucca/state-03.json" ] && ok "Delete + pad 4: gone" || bad "the delete"
+cmd "cc 60 127"; sleep 0.2; hit 96; sleep 0.2; cmd "cc 60 0"
+wait_for 5 '[ -s "$(st 4)" ]' && cmp -s "$(st 4)" "$T/state3" && ok "Copy + the empty pad 5: the deleted state pasted there" || bad "paste after a delete"
+cmd "cc 60 127"; sleep 0.2; hit 92; sleep 0.3; hit 97; sleep 0.2; cmd "cc 60 0"
+wait_for 5 '[ -s "$(st 5)" ]' && [ "$(byte "$(st 5)")" = 44 ] && grep -q '"mem":"' "$R/states/felucca/state-05.json" \
+    && ok "Copy + pad 1 (the sound now), then the empty pad 6: stored there (44)" || bad "Copy + pad 1 then paste: '$(byte "$(st 5)")'"
+b0=$(field boot0)
+cmd "cc 60 127"; sleep 0.2; hit 94; sleep 0.3; hit 92; sleep 0.2; cmd "cc 60 0"
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 1 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 33 ]' \
+    && [ "$(byte "$(st 2)")" = 33 ] \
+    && ok "Copy + state 2 (pad 3), then pad 1: the buffer into the project (33), the undo kept" \
+    || bad "a paste onto pad 1: boot '$(field boot0)', copy '$(byte "$(pcopy 1 1)")'"
+press 56
+wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ] && [ "$(field undo0)" = 0 ]' && ok "Undo after the paste onto pad 1: 44 back" \
+    || bad "Undo of the paste: copy '$(byte "$(pcopy 1 1)")'"
+b0=$(field boot0)
+hit 29
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 1 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" != 44 ]' \
+    && [ "$(byte "$(st 5)")" = 44 ] \
+    && ok "step 14 New: Felucca as first installed in the project (copy byte '$(byte "$(pcopy 1 1)")'), no library state touched" \
+    || bad "New: undo '$(field undo0)', copy '$(byte "$(pcopy 1 1)")'"
+b0=$(field boot0)
+press 56
+wait_for 5 '[ "$(field boot0)" -gt "$b0" ] && [ "$(field undo0)" = 0 ]' && wait_for 8 '[ "$(byte "$(pcopy 1 1)")" = 44 ]' \
+    && ok "Undo after New: the sound before it back (44)" || bad "Undo: undo '$(field undo0)', copy '$(byte "$(pcopy 1 1)")'"
+# a library pad held + Delete: that state reset to the firmware as first installed; the firmware left alone
+b0=$(field boot0)
+cmd "note 97 100"; sleep 0.45; cmd "cc 119 127"; sleep 0.1; cmd "cc 119 0"; sleep 0.1; cmd "note 97 0"
+wait_for 5 '[ "$(tr -d "\377" < "$(st 5)" | wc -c)" = 0 ]' && [ ! -e "$R/states/felucca/state-05.mem" ] \
+    && grep -q '"fresh":"1"' "$R/states/felucca/state-05.json" && [ "$(field boot0)" = "$b0" ] && [ "$(byte "$(pcopy 1 1)")" = 44 ] \
+    && ok "pad 6 held + Delete: state 5 reset (an erased flash, no working memory, \"fresh\"); the firmware untouched (44)" \
+    || bad "hold + Delete: state 5 '$(byte "$(st 5)")', boot $b0 -> $(field boot0)"
 press 51; sleep 0.3; press 51; sleep 0.3
 
 # ---- the page's Files: the copies are in move/projects' zip (not the buffer's hidden ones); the open project's stay
@@ -189,8 +218,16 @@ v8() {   # $1 a version 9 .rfmmove -> $2 the same project as version 8
 v8 "$P/move-project-03.rfmmove" "$P/move-project-05.rfmmove"
 [ "$(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove" | tr -d ' ')" = 8 ] || bad "the version 8 fixture"
 mv "$R/firmwares/choralroot-0.43.json" "$T/"; mv "$FWS/choralroot-0.43.json" "$T/cr-bundled.json"
-sha0=$(cat "$R"/states/felucca/state-*.bin | sha256sum)
+# a state file 0 from before 0.14.0 (pad 1 is the project's sound now): moved once to the first free library index
+for e in bin json mem; do cp "$R/states/felucca/state-01.$e" "$R/states/felucca/state-00.$e" 2>/dev/null; done
 start || { bad "the host did not start again"; tail -20 "$T/host.log"; exit 1; }
+wait_for 10 '[ -s "$(st 3)" ] && [ ! -e "$(st 0)" ]' && cmp -s "$(st 3)" "$T/lib1" && [ -s "$R/states/felucca/state-03.json" ] \
+    && [ ! -e "$R/states/felucca/state-00.json" ] && [ ! -e "$R/states/felucca/state-00.moving" ] \
+    && grep -q "felucca: state-00 (made before pad 1 was the project's sound) moved to state 3" "$T/host.log" \
+    && wait_for 5 '[ $(( $(field states0) >> 3 & 1 )) = 1 ] && [ $(( $(field states0) & 1 )) = 0 ]' \
+    && ok "an old state-00 (and its .json, .mem): moved once to the first free library state, 3 (pad 4), and shown there" \
+    || bad "state-00's move: $(ls "$R/states/felucca" | tr '\n' ' '), states0 '$(field states0)'"
+sha0=$(cat "$R"/states/felucca/state-*.bin | sha256sum)
 wait_for 10 '[ "$(field id0)" = felucca ] && [ "$(field want1)" = choralroot ]' && [ -z "$(field id1)" ] && [ -s "$(pcopy 1 2)" ] \
     && grep -q "project 1: choralroot is not installed" "$T/host.log" \
     && ok "restarted, ChoralRoot removed: project 1's Felucca back, slot 2 missing (said), the project still wants ChoralRoot, its copy kept" \
@@ -204,9 +241,9 @@ wait_for 8 '[ "$(field proj_cur)" = 4 ] && [ "$(field proj_open)" = 4 ]' && slee
     && ok "project 5 (version 8): opened, the firmwares left as they were (Felucca, boot $b0)" \
     || bad "the version 8 project: proj '$(field proj_cur)', boot $b0 -> '$(field boot0)', slots '$(field id0)' '$(field id1)'"
 hit 93
-wait_for 8 '[ "$(field proj_open)" = 1 ]' && wait_for 8 '[ "$(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove" | tr -d " ")" = 9 ] && [ -s "$(pcopy 5 1)" ]' \
+wait_for 8 '[ "$(field proj_open)" = 1 ]' && wait_for 8 '[ "$(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove" | tr -d " ")" -ge 9 ] && [ -s "$(pcopy 5 1)" ]' \
     && [ ! -e "$(pcopy 5 2)" ] && grep -q '"id":"felucca"' "$P/move-project-05.fw1.json" \
-    && ok "saved as it was left: project 5 is version 9 now, with its copy of Felucca" \
+    && ok "saved as it was left: project 5 is version $(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove" | tr -d ' ') now (9 and up hold the firmwares), with its copy of Felucca" \
     || bad "project 5 after its save: version '$(od -An -tu1 -j22 -N1 "$P/move-project-05.rfmmove")', $(ls "$P")"
 [ -s "$(pcopy 1 2)" ] && grep -q '"id":"choralroot"' "$P/move-project-01.fw2.json" \
     && ok "project 1 saved since: its copy of the missing ChoralRoot still there" || bad "project 1's ChoralRoot copy"
@@ -223,6 +260,16 @@ cmd "cc 119 127"; sleep 0.2; hit 97; sleep 0.3; cmd "cc 119 0"
 wait_for 8 '[ -s "$P/move-project-06.rfmmove" ] && [ -s "$(pcopy 6 1)" ]' && cmp -s "$P/.clip.fw1.bin" "$(pcopy 6 1)" \
     && ok "Delete + an empty pad: pasted as project 6, with its copy" || bad "the paste: $(ls "$P" | tr '\n' ' ')"
 [ "$(cat "$R"/states/felucca/state-*.bin | sha256sum)" = "$sha0" ] && ok "states/: Felucca's states as they were" || bad "states/ changed"
+grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
+stop
+# ---- a state-00 with no free library index: left in place, never shown or written, said once
+for k in $(seq 1 31); do f=$(printf '%s/states/felucca/state-%02d' "$R" "$k"); [ -e "$f.bin" ] || cp "$(st 1)" "$f.bin"; done
+cp "$(st 1)" "$(st 0)"; cp "$(st 0)" "$T/st0"
+start || { bad "the host did not start a third time"; tail -20 "$T/host.log"; exit 1; }
+wait_for 10 '[ "$(field id0)" = felucca ]' && sleep 2
+[ "$(field states0)" = 4294967294 ] && cmp -s "$(st 0)" "$T/st0" && [ "$(grep -c "felucca: state-00 .* left in place" "$T/host.log")" = 1 ] \
+    && ok "a state-00 with every library state taken: left in place (the same bytes), not shown (states $(field states0)), said once" \
+    || bad "no free index: states0 '$(field states0)', $(grep -c 'left in place' "$T/host.log") log lines"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 stop
 mv "$T" "$T.done" 2>/dev/null

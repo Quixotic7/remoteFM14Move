@@ -189,22 +189,28 @@ make test
   remotefm1.com's hosted copy; Files: the sheet's Add samples puts a WAV into audio/, the header's file browser
   (the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder deleted with what is in it,
   firmwares/ read-only), Export states and Export all projects downloaded; States and projects (the header's caps,
-  "The page's States and projects"): ChoralRoot's states saved into empty ones, loaded (a new instance, its working
-  memory restored), saved over (asked first), downloaded, uploaded into an empty one (the same bytes), Felucca's state
-  refused in plain words, deleted (asked first), the active one downloaded, deleted, uploaded and loaded again (the
-  host's log: its working memory restored), the Move's own pads (Track held + pad 7, an empty state) seen on the page,
-  Reset to default (a stored state asked first and its row "as first installed", the active one restarting the
-  firmware and staying active, an empty one stored at once), the other slots' States; the open project saved by a tap ("Saved", its firmware copies), duplicated into an empty
-  slot, opened, downloaded, deleted, uploaded as another and opened (ChoralRoot's copy restored), an upload over the
-  open one refused; the phone's States and Projects from the slot menu. Screenshots: `docs/move-page.png`,
+  "The page's States and projects"): pad 1 white and marked PROJECT; ChoralRoot's states saved into empty library
+  pads (nothing active), loaded into the project (a new instance, its working memory restored, the undo kept, "into
+  the project" in the result line), saved over (asked first), downloaded, uploaded into an empty one (the same bytes),
+  Felucca's state refused in plain words, deleted (asked first); pad 1's row ("Project N's sound"), its Download (the
+  project's copy as a state file), Upload onto it (asked first: loaded, the undo kept, no state file 0) and Reset
+  (asked first: the firmware restarts); the Move's own pads (Track held + pad 7, an empty state) seen on the page;
+  Reset to default of library states (a stored one asked first and its row "as first installed", an empty one stored
+  at once, the firmware untouched); the other slots' States; the open project saved by a tap ("Saved", its firmware
+  copies), duplicated into an empty slot, opened, downloaded, deleted, uploaded as another and opened (ChoralRoot's
+  copy restored), an upload over the open one refused, New project on an empty slot; the phone's States and Projects from the slot menu. Screenshots: `docs/move-page.png`,
   `move-page-editor.png`, `move-page-files.png` and the slots' and Mix & FX's (the States and projects' in build/);
 - `tests/store_e2e.sh` (the page's States and projects through their API, the sound read back as in
-  `tests/states_e2e.sh`: ChoralRoot 0.43 with core 1, its voicing through its takeover): states saved from the page at
-  +3 and +7 (the core's pads with them), state 1 downloaded, deleted, uploaded (the same bytes) and loaded: +3 again;
-  Reset to default: a stored state (an erased flash, no .mem; loaded: 0), the active one (the firmware restarts: 0,
-  still active), an empty one (stored), refused for an empty slot or another firmware; refusals in plain words (Felucca's state into ChoralRoot's slot, a file over the active state without `load=1`, a
-  state file as a project) and the file browser's own guard on a running firmware's states/; with `load=1` the
-  active state replaced and loaded; the open project saved at +5 and downloaded, saved at +7, its file uploaded as
+  `tests/states_e2e.sh`: ChoralRoot 0.43 with core 1, its voicing through its takeover): library states saved from
+  the page at +3 and +7 (the core's pads with them, nothing active), a save into pad 1 refused, state 2 downloaded,
+  deleted, uploaded (the same bytes) and loaded into the project: +3 again (the undo kept), played: its file byte for
+  byte; pad 1 downloaded (the project's copy, state-00.* inside as in files from before) and uploaded into the
+  library, reset (New: 0) and Undo on the Move (+7), a file uploaded onto it (replaced and loaded: +3); Reset to
+  default of a stored library state (an erased flash, no .mem; loaded: 0) and an empty one (stored), refused for an
+  empty slot or another firmware; refusals in plain words (Felucca's state into ChoralRoot's slot, a file over a
+  stored state without `replace=1`, a state file as a project) and the file browser's own guard on a running
+  firmware's states/; with `replace=1` stored, the firmware untouched; project-new refused over a stored project and
+  made in an empty one (its slots empty); the open project saved at +5 and downloaded, saved at +7, its file uploaded as
   project 3 and opened: +5 (its copy restored), project 1 again: +7, duplicated (its copies too) and opened: +5,
   deleted with its copies; an upload over the open project refused; no late block;
 - `tests/fm1_e2e.sh`: an FM-1 on USB-A (below) on the simulator: libremotefm1's fake unit behind Move Remote's simulated
@@ -262,26 +268,39 @@ make test
   its memory; an empty pad is a new project with its slots empty; Felucca changed there has project 2's own copy; an
   emptied slot's copy goes at the project's save; project 1 again: its loading screen comes and goes, Felucca's memory
   swapped back to project 1's, ChoralRoot loaded again; Copy + a project then an empty pad carries the copies; States
-  (Track 1 held + pad 7): save, the active state follows the memory, load, copy / paste, delete then paste, a paste
-  onto the active state loads it, step 14 New and Undo; the projects' zip holds the copies, the open project's are not
-  deleted; restarted with ChoralRoot removed: missing, the project keeps its name and its copy; a version 8 project
-  (made from a stored one) leaves the firmwares alone and is version 9, with its copies, after its next save; the open
-  project cut moves its copies into the buffer (hidden `.clip.fwK.*`) and a paste writes them for the new slot.
+  (Track 1 held + pad 7; pad 1 the project's own sound, pads 2..32 the library): pad 1's click saves the project (no
+  state file 0); an empty pad stores the sound, which playing never changes (byte for byte); a library load into the
+  project (its copy at once) and Undo; copy / paste, delete then paste; Copy + pad 1 then an empty pad stores the
+  sound now; a paste onto pad 1 and Undo; step 14 New and Undo; a pad held + Delete resets that state (the firmware
+  untouched); the projects' zip holds the copies, the open project's are not deleted; an old `state-00` moved to the
+  first free library index at the next start; restarted with ChoralRoot removed: missing, the project keeps its name
+  and its copy; a version 8 project (made from a stored one) leaves the firmwares alone and is version 10, with its
+  copies, after its next save; the open project cut moves its copies into the buffer (hidden `.clip.fwK.*`) and a
+  paste writes them for the new slot; a `state-00` with every library index taken: left in place, not shown, said
+  once.
 - `tests/states_e2e.sh` (the States and projects hold the working memory, "The working memory" below): first offline,
   `fwrun --snap-test`: each built firmware (ChoralRoot with core 1, Felucca, the core-1 and takeover fixtures; every
   published one in `dist/move-catalog` when it is there) snapshotted mid-chord, written and read back, restored into a
   second instance: the next 1102 blocks of both the same bit for bit. Then on the simulator, ChoralRoot 0.43 with core
   1 PLAYED: its voicing turned with the takeover's knob 1 and read back with the knob only touched (its popup's words,
-  through the fake TTS); state 1 saved at +3 at once, state 2 at +7 (their flash images the same bytes), each loaded
-  back at its value; New: 0, New + Undo: +7; Copy / paste with the .mem; a state as an older host saved it (no .mem)
-  and a .mem beside another image load from the flash; Felucca (one core) in slot 2: its PRESETS turned, its screen
-  back with its state; no late block; the active state written again while played (every 4 s here) and not while left
-  alone; project 1 / project 2 each bring their ChoralRoot back at its own voicing; quit and restart: as left.
+  through the fake TTS); library pad 2 stored at +3 at once, pad 3 at +7 (their flash images the same bytes), each
+  loaded into the project at its value, played after: the library files byte for byte; a load then Undo; New: 0, New +
+  Undo; Copy + pad 1 then an empty pad, loaded; a pad held + Delete: reset, the firmware untouched, loaded: 0; a state
+  as an older host saved it (no .mem) and a .mem beside another image load from the flash; Felucca (one core) in slot
+  2: its PRESETS turned, its screen back with its state; no late block; the project's copy written again while played
+  (every 4 s here), not while left alone, a library state never; the owner's point: two projects holding ChoralRoot,
+  each with its own sound after going to the other and back and after a restart, a library state loaded in one and
+  played there unchanged byte for byte and the other project untouched; no late block.
 - `tests/loadstop_e2e.sh` (opened while the Move is stopped: stopped, "The working memory" below): ChoralRoot's loop
   played in its takeover (a key, step 1 gets the chord, Play); while it plays project 1 saved and duplicated into 4,
-  states 2 and 1 saved; stopped; project 4, project 1 and state 2 opened: the Stop sent, the restored loop stopped,
+  library state 2 saved; stopped; project 4, project 1 and state 2 opened: the Stop sent, the restored loop stopped,
   no "chord:" line in 5 s, the Move's sequencer stopped; the Move playing: state 2 loaded with no Stop, its loop goes
   on; restarted with project 1's copy as saved while playing: opened at start, stopped and silent.
+- `tests/projnew_e2e.sh` (a new random project, "Projects that hold their firmwares" below): step 13 on the Projects
+  page through the simulator's command pipe; with two firmwares installed project 2 gets both, each as first
+  installed (not another project's copy, not `flash.bin`), the third slot empty, project 1 untouched; Undo deletes it
+  (no copies written back) and project 1 comes back with its own memory; with three installed (tkdemo too) project 2
+  gets three different ones, each fresh, and opens with them after a restart; no late block.
 - `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
   takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
   Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume
@@ -478,7 +497,7 @@ sequencer's tempo and transport) and NULL everything else, with a tail of NULLs 
   written with each project save and given back (`set_param("state")`) when that project's modules load.
 - Modules are listed at start: one installed while RemoteFM1 runs shows after a restart.
 
-## Projects that hold their firmwares; States (rfm1cs 0.13.0)
+## Projects that hold their firmwares; States (rfm1cs 0.13.0, 0.14.0)
 
 The owner's "Project should save firmwares": the host sets `RFM_MOVE_CAP_PROJFW` (`rfm_move_fw_caps`, before the
 projects), so a project keeps its three firmwares and each one's memory, and a firmware's states are a layer on the
@@ -493,27 +512,58 @@ Move (the core's README, "Projects that hold their firmwares; States").
 - **Opening a project** (a pad, or the last one at start): first every slot's memory, synced, goes into the outgoing
   project's copies; then for each slot the core's `PROJECT_FW`: the same firmware there with this project's memory
   already: nothing; the same firmware: only its memory swapped (a new instance of the same object, as a state load);
-  another one: loaded with the project's copy (none: `flash.bin`; none: a fresh memory); "": unloaded; not installed:
+  another one: loaded with the project's copy (none: a fresh memory, the firmware as first installed: (0.14.0) a new
+  random project, below, has no copies, and its firmwares must not start as another project's sound through their
+  `flash.bin`); "": unloaded; not installed:
   the slot left empty, "Felucca not installed" on the Move, the project's copy kept for when it is installed again. The
   slots load on the storage thread one after the other; the core's loading screen shows the progress
-  (`rfm_move_proj_fw`). The memory loaded is compared with the firmware's stored states (their json's hash first, then
-  byte for byte, on the storage thread): an equal one is the active state, else none. A project from before (blob
-  version 1..8) leaves the firmwares as they are; they are its own from then, and its next save makes it version 9
-  with copies of them. At start a version 9 project loads its firmwares this way instead of the library's slots.
+  (`rfm_move_proj_fw`). (Before 0.14.0 the memory loaded was compared with the stored states to find the active one;
+  there is none now.) A project from before (blob version 1..8) leaves the firmwares as they are; they are its own
+  from then, and its next save makes it version 9 or later (rfm1cs 0.14.0 writes version 10: the rates; the
+  firmwares' part is where version 9 put it) with copies of them. At start a version 9 or 10 project loads its
+  firmwares this way instead of the library's slots. The project switched to is written to `move/open-project` (the
+  one opened at start) as its firmwares come, not only at `PROJECT_LOAD`; a project that is no longer stored (deleted
+  while open) gets no copies written when another opens.
+- **A new random project** (rfm1cs 0.14.0, step 13 on the Projects page; the owner's "create a new project with 3
+  random firmwares (random from the ones installed) and then a random scale and root note ... in a empty slot"): the
+  core sends `PROJECT_SAVE` (the open one), `PROJECT_FW` x 3 for the new slot (no `PROJECT_LOAD`, no copies there),
+  `PROJECT_SAVE` (the new one). The host loads each named firmware as first installed (no copy: a fresh memory, see
+  above), answers `rfm_move_proj_fw` and `rfm_move_fw_slots` as for a stored project, and writes the new project's
+  copies as for any project. Fewer than three installed: the rest empty (the core asks for ""). Undo is
+  `PROJECT_DELETE` (the new one: its blob and copies dropped, none written back) then `PROJECT_LOAD` (the one before,
+  with its own copies). `tests/projnew_e2e.sh`.
 - **The project buffer**: Copy + a project copies its copies into the buffer (`.clip.fwK.*`), a cut moves them there,
   a paste writes them for the new slot, a delete drops them. "Duplicating a project": Copy held + a project, then an
   empty pad.
-- **States** (Track 1..3 held + the top row's pad 7): the active state (the last loaded, saved or pasted onto, or the
-  one the project's memory equals) saves itself: every write of the memory also goes to `state-KK.bin` when it is
-  behind. Before another state loads, the memory is synced into the active one. Copy and Delete put a state's bytes in
-  one buffer (RAM, one firmware's; Delete removes the file), a paste writes it (onto the active one: loaded too). Step
-  14 New keeps the memory and the active state in RAM (one per slot) and restarts the firmware with a fresh memory, no
-  state active; Undo puts both back. The undo goes when the firmware in the slot changes. Since the working memory
-  (below) a state and a project's copy are the firmware as it was, not only its flash.
+- **States** (Track 1..3 held + the top row's pad 7; rfm1cs 0.14.0, the owner's 2026-11-24: "a project should keep
+  it's own unique firmware state which then shows up as slot 1, so slot 1 always means project state, a unique state
+  per project"; the core's README "States: the host's contract"). **Pad 1 (index 0) is the open project's own sound**:
+  its copy of the firmware above; there is no state file 0, and pad 1's click is the project's save (`PROJECT_SAVE`
+  `value` 1). **Pads 2..32 (index k 1..31) are a library** shared by all projects: `states/<id>/state-KK.bin` (with
+  its `.mem` and `.json`), written only by a save, a paste, a reset or the page, **never by playing**: no state is
+  active, and the autosave goes into the project's copy and `flash.bin` only (`st_cur` is always -1). A stored library
+  pad loads its sound **into the project** (`STATE_LOAD`: the memory now synced into the project's copy and kept as the
+  undo, then the state into a new instance; the project's copy written at once); an empty one stores the sound now
+  (`STATE_SAVE`). Copy + pad 1 copies the sound now into the buffer (`STATE_COPY` index 0); a paste onto pad 1 loads the
+  buffer into the project (`STATE_PASTE` index 0, the undo kept); a library paste stores it. Copy and Delete of a
+  library state put its bytes in one buffer (RAM, one firmware's; Delete removes the file). Step 14 New (and pad 1's
+  reset) keeps the memory as the undo and restarts the firmware as first installed; **a library pad held + Delete**
+  (the owner's "You should be able to reset a state by holding the state and pressing delete": `STATE_NEW` with its
+  index) stores the firmware as first installed there (an erased flash image, what `rfm1_flash_stage(0, 0)` boots, no
+  working memory, `"fresh":"1"` in its `.json`) and leaves the firmware and the undo alone. **The undo** (one per slot)
+  is the memory before the last New, library load or paste onto pad 1; `STATE_UNDO` puts it back (the project's copy
+  written at once); it goes when the firmware in the slot changes or a project opens. `rfm_move_fw_states` reports
+  bits 1..31 (bit 0 always clear); `rfm_move_fw_state_cur` is no longer meaningful (the core ignores it).
+  **An old `state-00`** (made before 0.14.0; the owner has one for ChoralRoot) is moved once, when the firmware's
+  states are first listed, to the first free library index (none of its three files there): a journal
+  `state-00.moving` with the index first, then the `.mem`, the `.json` and the image last by renames, the journal
+  removed; a stop half way finishes at the next listing, nothing is overwritten or lost. No free index: left in
+  place, never shown or written, said once in the log. Since the working memory (below) a state and a project's copy
+  are the firmware as it was, not only its flash.
 - Status (`/api/status`): `proj_open` (the project whose copies the slots' memories are), `proj_cur` (the core's open
   project), `pfw_loading`, `pfw_shown` / `pfw_ended` (its loading screen came / went), `projects`, `states_open`, and
-  per slot `pcproj<s>`, `stcur<s>` (the active state the host autosaves), `cstcur<s>` (the core's), `want<s>` (the
-  open project's firmware), `undo<s>`.
+  per slot `pcproj<s>`, `stcur<s>` / `cstcur<s>` (always -1 since 0.14.0: no state is active), `want<s>` (the open
+  project's firmware), `undo<s>` (the host keeps an undo).
 - Upgrading from an earlier host: nothing in `states/` is deleted or rewritten; the projects load as they were (a
   version 8 project keeps the firmwares that are loaded) and get their copies at their next save.
 
@@ -538,8 +588,8 @@ copy also hold the firmware's working memory, and loading brings that back exact
   Move's playback is stopped"). A snapshot is taken whenever the copy or the state is written, so one taken while the
   firmware's own loop or sequencer ran (a save, a project left or a copy duplicated while playing, the 30 s autosave
   while played) holds it running, and restored exactly it ran on, the Move stopped: ChoralRoot's loop played its
-  chords after "project N open". So after every restore (a project opened, at start too; a State loaded, pasted onto
-  the active one, Undo of New; a state file from the page), when the Move's sequencer is stopped, the instance also
+  chords after "project N open". So after every restore (a project opened, at start too; a library state loaded
+  into the project, a paste onto pad 1, Undo; a state file from the page), when the Move's sequencer is stopped, the instance also
   gets a MIDI Stop (FC), the one the Move sends every firmware as its sequencer stops: a firmware that follows the
   Move's Start / Stop (ChoralRoot's loop with MIDI Clock OUT, the default, or IN) stops, nothing else of its memory
   changes (the log: "its saved working memory; the Move stopped: Stop sent"). The Move playing: nothing is sent (the
@@ -563,14 +613,14 @@ copy also hold the firmware's working memory, and loading brings that back exact
   encoder and decoder, `src/memsnap.c`; no third-party code), a checksum at the end. Sizes (the build's `fwrun
   --snap-test` mid-chord): ChoralRoot 0.43 8 MB as ~230-340 KB, Felucca 1.8.2 8 MB as ~250-430 KB, Melodee 1.6.1 16 MB
   as ~200 KB; the 116 published (and ChoralRoot 0.42, still in `dist/move-catalog`): 41 KB .. 1.06 MB, median 290 KB.
-- **When the active state and the open project's copy are written** (with the memory): (a) before another state or
-  project is loaded over it (and before a Copy or Delete of the active state, New, a project copied or cut); (b) when
-  the firmware leaves its slot or the host quits; (c) when the firmware writes its flash, as before (the 2 s
-  autosave); (d) every 30 s at most (`MEM_AUTOSAVE_MS`) while the firmware is being played (a player's input since the
-  last write: keys, buttons, knobs, MIDI but its clock, the takeover's input) and nothing else wrote it: a firmware
-  left alone, or a loop playing by itself, writes nothing. Saving another state is not a load: the active one keeps
-  what it holds unless (c) or (d). A project's own save writes its copies when they are behind on the flash, as
-  before.
+- **When the open project's copy is written** (with the memory; since rfm1cs 0.14.0 never a library state): (a)
+  before another state or project is loaded over it (and before Copy + pad 1, New, a paste onto pad 1, a project
+  copied or cut); (b) when the firmware leaves its slot or the host quits; (c) when the firmware writes its flash, as
+  before (the 2 s autosave); (d) every 30 s at most (`MEM_AUTOSAVE_MS`) while the firmware is being played (a player's
+  input since the last write: keys, buttons, knobs, MIDI but its clock, the takeover's input) and nothing else wrote
+  it: a firmware left alone, or a loop playing by itself, writes nothing; (e) right after a library state, the buffer,
+  a file or the undo is loaded into the project. A library state is written only when it is saved, pasted, reset or
+  replaced from the page. A project's own save writes its copies when they are behind on the flash, as before.
 - **No late block**: a snapshot copies the whole memory on the engine's thread (on the simulator 0.5-2 ms for 8 MB;
   on the Move's A72 a few ms, twice that for 16 MB), so the ring is first filled ahead by twice what the last copy took
   (at least 1.5 GB/s's worth), as `preroll` does before a start; the file is made on the storage thread. A restore's
@@ -844,7 +894,7 @@ second after a burst of 20, the rest counted ("N lines dropped"); the log file (
 | `src/engine.c` | the engine thread: 3 firmware slots on their device clocks, the mix and limiter, the ring the audio thread drains, the rfm1cs session over a socketpair, the actions |
 | `src/fwrt.c` | the firmware runtime: a compiled firmware loaded and booted as RFM1-FORMAT.md section 7 says, its clock, its panel, the WASI imports, traps |
 | `src/storage.c` | the RemoteFM1 folder, the storage thread (firmwares, states, the Move's settings, library and projects) and the network thread |
-| `src/projmem.c` | a project's copies of its firmwares' memory and the states' files: names, the json's hash, the compare that names the active state |
+| `src/projmem.c` | a project's copies of its firmwares' memory and the states' files: names, the json's hash (its compare of a memory with the stored states is unused since rfm1cs 0.14.0: no state is active) |
 | `src/catalog.c` | the catalog the browser lists (the index merged with the installed firmwares) and its downloads (SHA-256, install) |
 | `src/https.c`, `src/catsig.c`, `src/ed25519.c`, `src/catalog_key.h` | the downloads' HTTPS client (the system's OpenSSL 3, dlopen'd); the index's signature, Ed25519 (TweetNaCl's arithmetic), the catalog's public key |
 | `tools/sign_index.py` | index.json -> index.json.sig (make catalog, make testcat; tools/bundle.py checks it) |
@@ -1013,27 +1063,34 @@ Projects, and a slot's load menu has "States of slot n") open one panel with two
 own States and projects, so the page and the Move always agree; nothing is kept in the browser.
 
 - **States:** a slot's firmware's 32 States as the Move's pads (4 rows of 8, state 1 top left; the slot picked in
-  the panel, the playing one first): empty (dashed), stored (the slot's colour), the active one white. A tap picks one;
-  its row says which firmware and version saved it, when, and whether with its working memory (its `.json`, read
-  through `/api/fs/get`). Actions: Load; Save the sound here (over a stored one: asked first; the active one: Save
-  now); Download (a `.zip`: the active one is saved first, as its autosave would); Upload (a state file of this
-  firmware into that state; over a stored one asked first; over the active one "replace it and load it"); **Reset to
-  default** (the owner's "an option to reset the selected state to default": the state becomes the firmware as first
-  installed, what the Move's step 14 New gives; over a stored one asked first, as it replaces what the state holds:
-  the active one's firmware restarts fresh and the state stays active, another stored one only has its file
-  replaced, an empty one stores it at once); Delete (asked first).
+  the panel, the playing one first). (rfm1cs 0.14.0, the owner's 2026-11-24) **State 1 is the open project's own
+  sound** (white, PROJECT; its row "Project N's sound"): Save now (the project's save), Download (the project's copy
+  of this firmware as a state file, the project saved first), Upload (a state file of this firmware replaces the
+  project's sound and loads: asked first), Reset to default (New: the firmware restarts as first installed, asked
+  first; the Move's Undo brings it back). **States 2..32 are a library** shared by all projects, empty (dashed) or
+  stored (the slot's colour), never changed by playing; a tap picks one, its row says which firmware and version saved
+  it, when, and whether with its working memory or as first installed (its `.json`, read through `/api/fs/get`).
+  Actions: Load into the project (the result line says so; the Move's Undo brings the sound before back); Save the
+  sound here (over a stored one: asked first); Download (a `.zip`); Upload (a state file of this firmware into that
+  state; over a stored one asked first); **Reset to default** (the owner's "an option to reset the selected state to
+  default": the state holds the firmware as first installed, what a pad held + Delete gives on the Move; over a stored
+  one asked first, an empty one at once; the firmware is not touched); Delete (asked first). Nothing is "active".
 - **Projects:** the 32 projects (project 1 top left) in their colours, the open one white. A tap on the open one saves
-  it and says "Saved" on its pad. Actions: Open; Save; Duplicate (then a tap on an empty slot); Download (the open one
+  it and says "Saved" on its pad. An empty one: **New project** (the owner's "Works but no way to start new project
+  in empty slot": rfm1cs 0.14.0's `rfm_move_project_new`, exactly an empty pad's click on the Move: the open one saved,
+  a new empty project made and opened there, its three slots empty) or Upload. Actions: Open; Save; Duplicate (then a
+  tap on an empty slot); Download (the open one
   saved first); Upload (a project file into an empty or, asked first, a stored slot; never the open one); Delete
   (asked first; the open one: the Move goes on with an empty project there, as after Delete + its pad). No names in
   this round: numbered as the Move numbers them.
 - **Live:** the mix JSON's `store_ver` moves whenever what the panel shows changes on the Move (a pad, an autosave, a
   project opened, a firmware loaded), and the panel reads `GET /api/store` again.
-- **The same path as the Move's pads.** A state save / load is the core's `STATE_SAVE` / `STATE_LOAD` action put
-  through the host's own deferred handling (`do_deferred`: the active state's memory written first, the working memory
-  saved and restored, the log's lines), then the core told what its pad would have set (`fw.st_used`, `fw.st_cur`
-  through `rfm_move_fw_state_cur`, New's undo gone), so the Move's screen, its pads and "the active state saves itself"
-  stay right. Opening a project is the project grid's: the open one saved (`rfm_move_project_flush`), the core's
+- **The same path as the Move's pads.** A state save / load / pad 1's reset is the core's `STATE_SAVE` /
+  `STATE_LOAD` / `STATE_NEW` action put through the host's own deferred handling (`do_deferred`: the project's copy
+  written first and the undo kept for a load or New, the working memory saved and restored, the log's lines), then
+  the core told what its pad would have set (`fw.st_used`; for a load, New or an upload onto pad 1 its `fw.undo` /
+  `undo_cur`, so the Move's Undo works for them), so the Move's screen and pads stay right. A library reset is
+  `STATE_NEW` with its index (the same code as a pad held + Delete). Opening a project is the project grid's: the open one saved (`rfm_move_project_flush`), the core's
   `proj_pending` set, `PROJECT_LOAD` through `on_action` (the store reads it, `rfm1cs_session_project_answer`, its
   `PROJECT_FW`s load the firmwares with the project's copies). Saving the open one is its autosave now (`seq.dirty`
   set, then `rfm_move_project_flush`), its firmware copies first written with their working memory as it is now (the
@@ -1043,28 +1100,28 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   state buffer alone (`J_STATE_DELETE` with value 1: Delete + pad on the Move is a cut into it, and the page must not
   change what the Move's Copy + pad pastes), a project copied into an empty slot without the Move's project buffer
   (`J_PROJECT_DUP`: its FX state and firmware copies, then its blob through the store, so the store's directory and
-  the core's grid follow), and the files the page sends (`J_STATE_IMPORT`, as a paste; `J_PROJECT_IMPORT`). Reset to
-  default (`ENG_ST_RESET`) is a `J_STATE_SAVE` of an erased flash image (`flash_size` bytes of 0xFF: the ABI's fresh
-  flash, what `rfm1_flash_stage(0, 0)` boots) with no working memory and `"fresh":"1"` in its `.json`, the core's
-  `fw.st_used` bit set; on the active state then the `J_STATE_LOAD` with `STA_NEW` that step 14 New posts, carrying
-  the state, so `do_results` makes it the active one again (New's undo dropped, as after any state function from the
-  page). A request is answered once its jobs are back (a `J_SYNC` after them) and what it asked for is checked against
+  the core's grid follow), and the files the page sends (`J_STATE_IMPORT`: a library state stored; onto pad 1 loaded
+  into the project with the undo kept, no state file 0; `J_PROJECT_IMPORT`). Pad 1's Download copies the project's
+  copy (`move-project-NN.fwK.*`) into a hidden folder of the root (`.store-dl/sS/state-00.*`) and zips that, so the
+  file is a state file any state upload takes. A request is answered once its jobs are back (a `J_SYNC` after them) and what it asked for is checked against
   the Move.
-- **What rfm1cs 0.13.0 does not offer** (the submodule is pinned; the host writes the core's public fields as its own
+- **What rfm1cs does not offer** (the submodule is pinned; the host writes the core's public fields as its own
   handlers do, as page_edit does for FX setup): no call asks for a state function or a project function from outside,
   so the Move shows no popup ("State 3 saved") for the page's actions and the project grid's loading screen comes up
   when the blob is read, not at the request. A cleaner job would take `rfm_move_state_act(m, slot, k, op)` (the pad's
   `st_pad` / `st_new` / `st_undo`, with its popup and buffer marks, for SAVE, LOAD, DELETE without the buffer, NEW,
   UNDO) and `rfm_move_project_act(m, slot, op, to)` (`rfmv_proj_open` with `rfmv_pfw_press`, `rfmv_proj_delete`, a
-  copy into an empty slot, and a save that says "Saved"). Opening an empty slot (a new project, `rfmv_pfw_new`) has no
-  host path at all, so the page offers no "new project": the Move makes them.
+  copy into an empty slot, and a save that says "Saved"). A new empty project has its own call since 0.14.0
+  (`rfm_move_project_new`).
 - **The API:** `GET /api/store` (`{"ver", "open", "pending", "loading", "used", "dirty", "projects": [{"k", "color",
-  "bpm", "clips", "fw"}], "slots": [{"id", "name", "version", "used", "cur", "color"} or null]}`); `POST /api/store
-  {"op", "slot", "k", "to", "id", "replace"}` with op `state-save`, `state-load`, `state-delete`, `state-reset`,
-  `project-open`,
-  `project-save`, `project-dup` (`k` into the empty `to`), `project-delete`, answered when done (200 `{"ok":true,
+  "bpm", "clips", "fw"}], "slots": [{"id", "name", "version", "used" (library states 1..31, bit 0 clear), "cur" (0
+  always: pad 1 is the project's), "proj" (the project whose copy it is), "undo", "color"} or null]}`); `POST
+  /api/store {"op", "slot", "k", "to", "id", "replace"}` with op `state-save`, `state-load`, `state-delete` (k 1..31),
+  `state-reset` (k 0: New; 1..31: the firmware as first installed stored there), `project-open`, `project-save`,
+  `project-dup` (`k` into the empty `to`), `project-delete`, `project-new` (k an empty slot), answered when done (200 `{"ok":true,
   "message"}`, 409 `{"ok":false,"error"}` in plain words); `GET /api/store/state?slot=S&k=K` and `GET
-  /api/store/project?k=K` (the files); `POST /api/store/put?kind=state&slot=S&k=K[&replace=1][&load=1]` and
+  /api/store/project?k=K` (the files; a state k 0: the project's copy as a state file); `POST
+  /api/store/put?kind=state&slot=S&k=K[&replace=1]` (k 0: into the project, loaded) and
   `POST /api/store/put?kind=project&k=K[&replace=1]` (the body: a file).
 - **The files:** a store-only `.zip` made by the file browser's own zip writer (`files_zip_plan_sel`: the files of one
   folder that start with a name). A state, `<id>-<version>-state-NN.zip`: `state-KK.bin` (the flash image),
@@ -1080,8 +1137,8 @@ own States and projects, so the page and the Move always agree; nothing is kept 
   `.fwK.*` beside it, each copy's hashes), then put in place by the storage thread with renames on the same file
   system: the old state's or project's files go first, the new one's image (a state) or blob (a project) last, so a
   stop half way leaves the old one or none, never a mix. Refused in plain words: another firmware's state ("this is a
-  state of Felucca 1.8.2, and slot 2 runs ChoralRoot: a state loads only into its own firmware"), a state over the
-  active one without `load=1`, a project over the open one, a state file as a project or the other way round, a
+  state of Felucca 1.8.2, and slot 2 runs ChoralRoot: a state loads only into its own firmware"), a state over a
+  stored one without `replace=1`, a project over the open one, a state file as a project or the other way round, a
   compressed or damaged `.zip`. The file browser's own rules (files.h) stay as they were: it still never writes a
   running firmware's states/ or the open project's files; only these requests do, through the engine.
 - Screenshots (the page test, under build/): `move-page-states.png`, `move-page-projects.png`,

@@ -110,14 +110,15 @@ wait_for 10 '[ "$(slot 0 id)" = choralroot ]' && ok "the projects view switched 
     || { bad "no switch: slot 1 is '$(slot 0 id)'"; tail -5 "$T/host.log"; }
 [ -s "$ROOT/states/felucca/flash.bin" ] && ok "Felucca's flash saved when it left the slot" || bad "no felucca flash.bin"
 
-# ---- states: Loop (the states), an empty pad saves, the same pad then loads
+# ---- states: Loop (the states), an empty pad saves, the same pad then loads (rfm1cs 0.14.0: pad 1 is the project's
+# own sound; pad 2 is library state file 1)
 b0=$(slot 0 boot)
 press "cc 58"
-press "note 92"
-wait_for 5 '[ -s "$ROOT/states/choralroot/state-00.bin" ] && [ "$(slot 0 states)" = 1 ]' \
-    && ok "STATE_SAVE: states/choralroot/state-00.bin, the core told (states $(slot 0 states))" || bad "no state saved ($(slot 0 states))"
-press "note 92"
-wait_for 5 '[ "$(slot 0 boot)" -gt "$b0" ]' && ok "STATE_LOAD: ChoralRoot booted again from state 1 (boot $b0 -> $(slot 0 boot))" \
+press "note 93"
+wait_for 5 '[ -s "$ROOT/states/choralroot/state-01.bin" ] && [ "$(slot 0 states)" = 2 ]' \
+    && ok "STATE_SAVE: states/choralroot/state-01.bin, the core told (states $(slot 0 states))" || bad "no state saved ($(slot 0 states))"
+press "note 93"
+wait_for 5 '[ "$(slot 0 boot)" -gt "$b0" ]' && ok "STATE_LOAD: ChoralRoot booted again from state 2, into the project (boot $b0 -> $(slot 0 boot))" \
     || bad "no state load (boot $(slot 0 boot))"
 # ---- a second slot: Back (out of the states), Track 2 double click (the browser on slot 2: FW_ACTIVE 2), Felucca
 # (the second pad), jog press; a Track 1 tap leaves the view and plays slot 1 again

@@ -2,6 +2,40 @@
 
 ## Not released
 
+- **States: pad 1 is the project's own sound, pads 2..32 a library** (the owner's of 2026-11-24: "a project should
+  keep it's own unique firmware state which then shows up as slot 1, so slot 1 always means project state, a unique
+  state per project", and "You should be able to reset a state by holding the state and pressing delete"; the host's
+  part of rfm1cs 0.14.0's contract, README "Projects that hold their firmwares; States"). Index 0 is the open
+  project's copy of the firmware (no state file 0); state files 1..31 are a library shared by all projects that
+  playing never writes: no state is active, the autosave goes into the project's copy and `flash.bin` only. A library
+  load goes into the project (the project's copy written at once) with one undo per slot, as do New and a paste onto
+  pad 1; Copy + pad 1 copies the sound now; a library pad held + Delete (`STATE_NEW` with its index) stores the
+  firmware as first installed there, the same code as the page's Reset to default. An old `state-00` (the owner has
+  one for ChoralRoot) is moved once, by renames with a journal, to the first free library index; with none free it
+  is left in place, never shown or written, and said in the log. The page's States panel: pad 1 white, PROJECT,
+  "Project N's sound": Save now, Download (the project's copy as a state file), Upload (replaces it and loads, asked
+  first), Reset to default (New, asked first; the Move's Undo brings it back); library pads: Load into the project,
+  Save here / over (asked first), Download, Upload, Delete, Reset to default; `/api/store`'s `cur` is always 0, with
+  `proj` and `undo` per slot. State files downloaded before (state-00.* inside) still upload. Tests:
+  `tests/states_e2e.sh` (the owner's point with two projects, a library state byte for byte after loads, playing and a
+  restart), `tests/projfw_e2e.sh` (the Move's gestures, the `state-00` move and the no-free-index case),
+  `tests/store_e2e.sh`, `tests/loadstop_e2e.sh`, `tests/page_e2e.mjs`.
+- **rfm1cs-abletonmove 0.14.0 at cb708b8** (the three core branches of 2026-11-24 joined: the owner's notes on the
+  controls and the arp, States, the rates and the triplet layout; the core's CHANGES has each). For the host: a **new
+  random project** (step 13 on the Projects page: "create a new project with 3 random firmwares (random from the ones
+  installed) and then a random scale and root note ... in a empty slot") comes as `PROJECT_FW` with no `PROJECT_LOAD`
+  and no copies: a project with no copy now loads the firmware as first installed (was its `flash.bin`, another
+  project's sound), the project switched to is written to `move/open-project` as its firmwares come (it opens at the
+  next start), and a project deleted while open gets no copies written back when the one before returns (its Undo);
+  `tests/projnew_e2e.sh`. **A new project from the page** (the owner's "Works but no way to start new project in empty
+  slot"): New project on an empty slot of the Projects panel, `/api/store` op `project-new` (`rfm_move_project_new`).
+  The project blob is version 10 (the rates): the host's reading of its firmware part is unchanged (version 9 and
+  up) and uploads go through the core's own check. `module/help.json`: the Sequencer (Back + Play, the knob lock, Shift
+  + an FM-1 knob, Rate and Feel, FW Play), Arp (per track, the clip's notes, Delete + click, random lanes, octaves
+  down, no Chance), Back shortcuts, States (the new model, a pad held + Delete), Projects (step 13) and Firmwares (step
+  13 Random) pages. Nothing else in the host needed a change (the library file is passed through as before: the core
+  moves a tag stored on step 13 itself; the page's browser has no Move tags).
+
 - **The page's States: Reset to default** (the owner's "Works but need an option to reset the selected state to
   default"). A state's row has Reset to default: the state becomes the firmware as first installed, as the Move's step
   14 New gives it (a fresh, erased flash, no working memory; its row says "as first installed"). Over a stored state

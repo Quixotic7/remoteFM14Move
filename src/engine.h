@@ -100,6 +100,8 @@ int engine_midi_out(uint8_t *buf, int cap, uint32_t *pos);
 uint32_t engine_midi_out_pos(void);   /* (where a new page starts reading) */
 /* the firmware ids in the slots now ("" none; any thread): the page's file browser leaves their files alone */
 void engine_running_ids(char ids[3][32]);
+/* (rfm1cs 0.14.0) the project whose copy slot s's firmware holds (pad 1 of its States), -1 none */
+int engine_slot_proj(int s);
 /* a JSON status line (the slots, CPU, late blocks, the ring) into out */
 int engine_status(char *out, int cap);
 /* the installed firmwares, {"firmwares":[...]} (each: id, name, version, license, source_url, sha256, file, base, authors,
@@ -135,22 +137,27 @@ char *engine_fx_modules(void);
  * engine's thread as the Move's pads ask for it (the same actions through on_action and the deferred work, the same
  * storage jobs), the core told what changed (rfm_move_fw_states / _fw_state_cur, the project's directory and info) so
  * the Move's screen and pads show it. A request is answered once the storage thread has done its part:
- *   ENG_ST_SAVE    slot, k: the firmware's sound now into state k (a stored one: ENG_STF_REPLACE); then the active one
- *   ENG_ST_LOAD    slot, k: state k loaded (the active state's memory written first, as from its pad)
- *   ENG_ST_DELETE  slot, k: state k gone (not into the Move's state buffer: a Copy + pad there pastes what it holds)
- *   ENG_ST_IMPORT  slot, k, dir: a state file (dir: s.bin, s.json, s.mem, web.c checked it is this firmware's) as state
- *                  k (a stored one: ENG_STF_REPLACE; the active one only with ENG_STF_LOAD, which also loads it)
+ * (rfm1cs 0.14.0, the owner's 2026-11-24) state k 0 is the open project's own sound (its copy of the firmware), k 1..31
+ * the library's state files, shared by all projects; no state is active:
+ *   ENG_ST_SAVE    slot, k 1..31: the firmware's sound now stored as state k (a stored one: ENG_STF_REPLACE)
+ *   ENG_ST_LOAD    slot, k 1..31: state k loaded into the project (the memory now kept as the undo, as its pad)
+ *   ENG_ST_DELETE  slot, k 1..31: state k gone (not into the Move's state buffer: a Copy + pad there pastes what it
+ *                  holds)
+ *   ENG_ST_IMPORT  slot, k, dir: a state file (dir: s.bin, s.json, s.mem, web.c checked it is this firmware's): k 1..31
+ *                  stored as state k (a stored one: ENG_STF_REPLACE); k 0 loaded as the project's sound (the undo kept)
  *   ENG_PJ_OPEN    k: that stored project opened (the open one saved first, as from its pad in the project grid)
  *   ENG_PJ_SAVE    k: the open project saved now, its firmware copies with it
  *   ENG_PJ_DUP     k, to: a stored project copied into the empty slot to, with its firmware copies
  *   ENG_PJ_DELETE  k: a project gone with its copies (the open one: an empty project there, as a cut of it)
  *   ENG_PJ_IMPORT  k, dir: a project file (dir: p.rfmmove, p.fx.json, p.fwK.*) as project k (a stored one:
  *                  ENG_STF_REPLACE; never the open one)
- *   ENG_ST_RESET   slot, k: state k the firmware as first installed (what step 14 New gives: a fresh, erased flash,
- *                  no working memory), stored or empty; the active one: the firmware restarts fresh too, still active
+ *   ENG_ST_RESET   slot, k: k 1..31: the firmware as first installed (a fresh, erased flash, no working memory)
+ *                  stored as state k, the firmware untouched; k 0: New (the firmware restarts as first installed, the
+ *                  undo kept, as step 14)
+ *   ENG_PJ_NEW     k: a new empty project in that empty slot (rfm_move_project_new: as an empty pad's click)
  * id: the firmware the page means (a state request for a slot running another one now is refused). */
 enum { ENG_ST_SAVE = 1, ENG_ST_LOAD, ENG_ST_DELETE, ENG_ST_IMPORT, ENG_PJ_OPEN, ENG_PJ_SAVE, ENG_PJ_DUP, ENG_PJ_DELETE,
-       ENG_PJ_IMPORT, ENG_ST_RESET };
+       ENG_PJ_IMPORT, ENG_ST_RESET, ENG_PJ_NEW };
 #define ENG_ST_STATE(op) (((op) >= ENG_ST_SAVE && (op) <= ENG_ST_IMPORT) || (op) == ENG_ST_RESET)   /* a state's */
 #define ENG_STF_REPLACE 1
 #define ENG_STF_LOAD 2

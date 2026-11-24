@@ -1025,7 +1025,8 @@ static void api_fs_post(client_t *c, const char *what, const char *q)
  *                                            id: the firmware the page means), project-open, project-save,
  *                                            project-dup (k into the empty to), project-delete (k), state-reset
  *                                            (slot, k, id: the state as first installed, stored or empty; the active
- *                                            one restarts the firmware fresh, still active). Answered when
+ *                                            one restarts the firmware fresh, still active), project-new (k: an
+ *                                            empty slot). Answered when
  *                                            done: 200 {"ok":true,"message"}, or 409 {"ok":false,"error"}
  *   GET  /api/store/state?slot=S&k=K         state K of slot S's firmware as a file: a .zip (store only, as /api/fs/zip
  *                                            makes) of state-KK.bin, .json (id, version, sha256, the image's hash,
@@ -1087,7 +1088,7 @@ static void store_wait(client_t *c, const eng_store_t *r, const char *dir)
 static void api_store(client_t *c, const char *body)
 {
     static const char *const OPS[] = { "state-save", "state-load", "state-delete", "", "project-open", "project-save",
-                                       "project-dup", "project-delete", "", "state-reset" };   /* (ENG_ST_SAVE + i) */
+                                       "project-dup", "project-delete", "", "state-reset", "project-new" };   /* (ENG_ST_SAVE + i) */
     char op[32] = "";
     long slot = 0, k = -1, to = -1, rep = 0;
     eng_store_t r;
@@ -1097,8 +1098,8 @@ static void api_store(client_t *c, const char *body)
         fs_err(c, "400 Bad Request", "want {op, k}");
         return;
     }
-    for (i = 0; i < 10 && strcmp(OPS[i], op); i++) {}
-    if (i == 10 || !op[0]) {
+    for (i = 0; i < 11 && strcmp(OPS[i], op); i++) {}
+    if (i == 11 || !op[0]) {
         fs_err(c, "400 Bad Request", "no such op");
         return;
     }
@@ -1124,7 +1125,42 @@ static void api_store_zip(client_t *c, const char *what, const char *q)
         fs_err(c, "404 Not Found", state ? "no such state (an empty slot?)" : "no such project");
         return;
     }
-    if (state) {
+    if (state && k == 0) {   /* (rfm1cs 0.14.0) pad 1: the open project's copy of the firmware, as a state file
+                              * (state-00.*, a copy in a hidden folder of the root: a state upload takes it back) */
+        const int pj = engine_slot_proj((int)s);
+        static const char *const EXT[] = { ".bin", ".json", ".mem" };
+        char from[ST_PATH + 16], to[ST_PATH + 64], b0[ST_PATH];
+        int e;
+        if (pj < 0) {
+            fs_err(c, "404 Not Found", "no project is open on the Move");
+            return;
+        }
+        snprintf(rel, sizeof rel, ".store-dl/s%ld", s);
+        snprintf(p, sizeof p, "%s/%s", st_root(), rel);
+        st_mkdirs(p);
+        pm_copy_path(b0, sizeof b0, st_root(), pj, (int)s);
+        for (e = 0; e < 3; e++) {
+            size_t n = 0;
+            uint8_t *d;
+            if (e == 0)
+                snprintf(from, sizeof from, "%s", b0);
+            else if (e == 1)
+                pm_json_path(from, sizeof from, b0);
+            else
+                ms_path(from, sizeof from, b0);
+            snprintf(to, sizeof to, "%s/%s/state-00%s", st_root(), rel, EXT[e]);
+            unlink(to);
+            if ((d = st_read(from, &n))) {
+                st_write(to, d, n);
+                free(d);
+            }
+        }
+        snprintf(pre, sizeof pre, "state-00.");
+        snprintf(p, sizeof p, "%s/%s/state-00.json", st_root(), rel);
+        pm_json_str(p, "version", ver, sizeof ver);
+        snprintf(top, sizeof top, "%s%s%s-project-%02d", id, ver[0] ? "-" : "", ver, pj + 1);
+        snprintf(p, sizeof p, "%s/%s/state-00.bin", st_root(), rel);
+    } else if (state) {
         snprintf(rel, sizeof rel, "states/%s", id);
         snprintf(pre, sizeof pre, "state-%02ld.", k);
         snprintf(p, sizeof p, "%s/%s/state-%02ld.json", st_root(), rel, k);
