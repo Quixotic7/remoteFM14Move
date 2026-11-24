@@ -47,6 +47,9 @@ const char *fsvc_root(void);
 /* the I/O thread: fn(io) must, on another thread, call fsvc_serve(io). NULL: done inline in the pump (one ms late) */
 void fsvc_set_dispatch(void (*fn)(void *io));
 void fsvc_serve(void *io);
+/* (the recorder's takes) audio/<name> may be a symbolic link out of the folder: what resolves inside its target is
+ * the audio area's too (one name; NULL / "": none). Any other link out stays refused */
+void fsvc_set_audio_link(const char *name);
 /* the folder changed (files added or removed outside the carts: the page): every cart's fs_changed moves */
 void fsvc_bump_changed(void);
 
@@ -79,7 +82,8 @@ void fsvc_stats(const fsvc_t *s, fsvc_stats_t *out);
  * FSV_ENOENT. top: 1 when it is the area itself (/audio, /code, /data) */
 int32_t fsvc_map(const char *root, const char *id, const uint8_t *v, uint32_t n, char *out, size_t cap, int *area,
                  int *top);
-/* the host path (or, for one not there yet, its nearest folder) resolves inside the area's base under root */
+/* the host path (or, for one not there yet, its nearest folder) resolves inside the area's base under root (or, in
+ * the audio area, inside fsvc_set_audio_link's target) */
 int fsvc_inside(const char *root, const char *id, const char *path, int area);
 
 #endif

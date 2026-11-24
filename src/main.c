@@ -50,6 +50,8 @@
  *     --midi-out    the active slot's MIDI out to Out (USB-A and network MIDI; until the routing says who goes there)
  *     --midi-out-clock   Out sends the real-time bytes too (F8 clock, start, stop ...; default: dropped)
  *     --fake-fm1    (the simulator) a fake FM-1 on the simulated USB-A (fm1sim.c; the tests' /api/test/fm1)
+ *     --takes-dir   the recorder's takes (README "The sampler"; default: /data/UserData/UserLibrary/Samples/RemoteFM1, a
+ *                   folder a day, when that library is there, else ROOT/audio/rec; ROOT/audio/rec links to it)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
  *                   and its input log (inputs.log), written at exit */
@@ -92,7 +94,7 @@ int main(int argc, char **argv)
     int threads = 1, cpu2 = 1, rt_threads = 1, midi_out = 0, midi_clock = 0;
     char heal[PATH_MAX];
     const char *fm1_addr = NULL;
-    const char *sim_ain = NULL;
+    const char *sim_ain = NULL, *takes_dir = NULL;
     long fm1_bps = 0;
     long log_cap = 0;
     char *pargv[4];
@@ -200,6 +202,8 @@ int main(int argc, char **argv)
             mdns = 1;
         else if (!strcmp(argv[i], "--sim-dir") && i + 1 < argc)
             sim_dir = argv[++i];
+        else if (!strcmp(argv[i], "--takes-dir") && i + 1 < argc)
+            takes_dir = argv[++i];
         else if (!strcmp(argv[i], "--capture") && i + 1 < argc)
             capture = argv[++i];
         else if (!strcmp(argv[i], "--capture-seconds") && i + 1 < argc)
@@ -213,7 +217,7 @@ int main(int argc, char **argv)
                             "[--dev-firmwares DIR] [--frame-ms A[,B]] [--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
                             "[--rtp-port N] [--no-rtp] [--midi-out] [--midi-out-clock] "
                             "[--screen-reader on|off|auto] [--tts-sidecar PATH] [--tts-shm NAME] [--tts-config DIR] "
-                            "[--no-audio-in] [--sim-audio-in F.wav] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
+                            "[--no-audio-in] [--sim-audio-in F.wav] [--takes-dir DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
     }
@@ -278,6 +282,8 @@ int main(int argc, char **argv)
         c.fm1_addr = fm1_addr;
         c.serial = !threads;
         c.midi_out = midi_out;
+        c.takes_dir = takes_dir;
+        c.samples_dir = "/data/UserData/UserLibrary/Samples";   /* (the Move's own software lists it) */
         fw_cpu2_enable(cpu2);
 #ifdef RFM14_PLAT_MOVE
         c.cpu_mask = 0x7;   /* cores 0..2: core 3 is the SPI's */

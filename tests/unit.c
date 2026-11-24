@@ -716,6 +716,27 @@ static void fsapi(void)
     CK(run(s, FSV_LIST, "/audio", 0, 9) == 1 && run(s, FSV_LIST, "/audio", 1, 4) == FSV_EIO,
           "LIST: an entry never split; a buffer too small for the next one: FS_EIO, not the end");
     CK(run(s, FSV_READ, "/audio/out/outside.txt", 0, 16) == FSV_EACCES, "a symlinked folder out (audio/out): FS_EACCES");
+    {   /* the recorder's takes: audio/rec a link to the Move's sample library (out of the folder), followed once it is
+         * named (fsvc_set_audio_link); any other link out still refused */
+        char lib[600];
+        snprintf(lib, sizeof lib, "%s/Samples", tmpl), mkdir(lib, 0755);
+        snprintf(lib, sizeof lib, "%s/Samples/RemoteFM1", tmpl), mkdir(lib, 0755);
+        put(tmpl, "Samples/RemoteFM1/take.wav", "RIFF....WAVEtake");
+        snprintf(out, sizeof out, "%s/audio/rec", root);
+        symlink(lib, out);
+        CK(run(s, FSV_READ, "/audio/rec/take.wav", 0, 16) == FSV_EACCES, "audio/rec a link out, not named: FS_EACCES");
+        fsvc_set_audio_link("rec");
+        memset(g_mem + BUFAT, 0, 32);
+        r = run(s, FSV_READ, "/audio/rec/take.wav", 0, 16);
+        CK(r == 16 && !memcmp(g_mem + BUFAT, "RIFF....WAVEtake", 16), "fsvc_set_audio_link(\"rec\"): READ /audio/rec/take.wav "
+              "through the link (%d)", r);
+        r = run(s, FSV_LIST, "/audio/rec", 0, 256);
+        CK(r == 1 && g_mem[BUFAT + 1] == 8 && !memcmp(g_mem + BUFAT + 2, "take.wav", 8), "LIST /audio/rec: its files (%d)", r);
+        CK(run(s, FSV_READ, "/audio/out/outside.txt", 0, 16) == FSV_EACCES, "audio/out (another link out): still FS_EACCES");
+        CK(files_no_links(root, "audio/rec") != 0, "the page's browser: audio/rec is a link, not followed (files_no_links)");
+        fsvc_set_audio_link(NULL);
+        unlink(out);
+    }
 
     /* the limits */
     CK(req(s, FSV_READ, "/audio/kick.wav", 0, BUFAT, FSV_MAXLEN + 1) == FSV_EIO, "more than 1 MiB a request: FS_EIO");

@@ -4,7 +4,11 @@
  *                              (both, near full scale) every 0.5 s
  *   ainchk find TAKE.wav IN.wav   TAKE is a stretch of IN played looped, sample for sample: prints where it starts in
  *                              IN and how long it is; exit 0, else 1 (with the first frame that differs)
- *   ainchk same A.wav B.wav    the same frames (a WAV's data against another's); exit 0, else 1 */
+ *   ainchk same A.wav B.wav    the same frames (a WAV's data against another's); exit 0, else 1
+ *   ainchk gaps TAKE.wav IN.wav   as find, but frames of silence in TAKE where IN has sound are allowed (the input
+ *                              path's under-runs: a block of silence in place of one): prints where it starts and the
+ *                              silent frames; exit 0, else 1
+ *   ainchk info F.wav          "frames N peak P" (the recorder's takes: tests/rec_e2e.sh); exit 1 when unreadable */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,6 +68,44 @@ int main(int argc, char **argv)
         printf("ainchk: %u frames, not a stretch of the input\n", nt);
         return 1;
     }
-    fprintf(stderr, "usage: ainchk make OUT.wav | find TAKE.wav IN.wav | same A.wav B.wav\n");
+    if (argc == 4 && !strcmp(argv[1], "gaps")) {
+        const char *why = NULL;
+        uint32_t nt = 0, ni = 0, o, i, best = ~0u, best_o = 0;
+        int16_t *t = wav_read(argv[2], &nt, &why), *in;
+        if (!t || !nt)
+            return printf("ainchk: %s: %s\n", argv[2], t ? "no frames" : why), 1;
+        if (!(in = wav_read(argv[3], &ni, &why)) || !ni)
+            return printf("ainchk: %s: %s\n", argv[3], in ? "no frames" : why), 1;
+        for (o = 0; o < ni; o++) {
+            uint32_t z = 0;
+            for (i = 0; i < nt; i++) {
+                const int16_t *a = t + 2 * i, *b = in + 2 * ((o + i) % ni);
+                if (a[0] == b[0] && a[1] == b[1])
+                    continue;
+                if (a[0] || a[1])
+                    break;
+                z++;
+            }
+            if (i == nt && z < best && z < nt / 2)
+                best = z, best_o = o;
+        }
+        if (best == ~0u)
+            return printf("ainchk: %u frames, not a stretch of the input (silent gaps allowed)\n", nt), 1;
+        printf("ainchk: %u frames (%.2f s), the input's from frame %u on, %u silent frames\n", nt, nt / 44100.0, best_o, best);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "info")) {
+        const char *why = NULL;
+        uint32_t n = 0, i;
+        int pk = 0;
+        int16_t *t = wav_read(argv[2], &n, &why);
+        if (!t)
+            return printf("ainchk: %s: %s\n", argv[2], why), 1;
+        for (i = 0; i < 2 * n; i++)
+            pk = abs(t[i]) > pk ? abs(t[i]) : pk;
+        printf("frames %u peak %d\n", n, pk);
+        return 0;
+    }
+    fprintf(stderr, "usage: ainchk make OUT.wav | find TAKE.wav IN.wav | same A.wav B.wav | gaps TAKE.wav IN.wav | info F.wav\n");
     return 2;
 }

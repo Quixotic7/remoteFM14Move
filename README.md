@@ -310,6 +310,12 @@ make test
   ports, syncs the clock; the messages sent from the engine's block (`/api/test/midiout`) arrive as sent (a 1500-byte
   SysEx in two segments), F8 does not; RS, BY; with the fake FM-1 linked on USB-A Out skips it, a plain device there
   gets Out's note.
+- `tests/rec_e2e.sh` (the sampler, below): Felucca and the input on the simulator, the takes in a sample library
+  (`--takes-dir`): Sample opens the app (its screen, Sample white, the defaults); Manual, Bars (one bar exactly, the
+  sequencer playing), Capture, Threshold on the Input (the input sample for sample from 50 ms before the click; the
+  input path's under-runs, a block of silence, allowed), the Input level, Stems (a file per present stream, equal
+  lengths); Track 1/2/4 held + Sample; Back during a take; the saved message and Sample's green; the take count; a
+  quit during a take; audio/rec a link (made, kept, a real folder left); no library: audio/rec itself.
 
 ## An FM-1 on the Move's USB-A
 
@@ -1192,9 +1198,41 @@ sound output / MIDI input / MIDI learn, Install RemoteFM1 and the app links, the
 RemoteFM1 can take `site.patch`, `host.js` and `movehost.js` as they are; RemoteFM14Move's build then only sets the
 flag (and later fetches RemoteFM1's built site instead of patching it).
 
+## The sampler (rfm1cs 0.15.0)
+
+The recorder below as rfm1cs-abletonmove's sampler app (its README "The sampler"): the host sets
+`RFM_MOVE_CAP_SAMPLER` and offers Master, Slot 1..3, Input and Stems; Source, Mode, Length, Threshold and Input level
+(Monitor and To later); the Record tab; Files. Sample opens the app (in the FM-1 layout: a Track held + Sample); in it
+Sample is the record key (`SMP_PRESS` -> `rec_press`); Track 1..3 held + Sample: that slot the source, Track 4 the
+master; the jog picks a setting, its click changes it (`SMP_SET` -> `rec_set_*`; Threshold dB to a peak, the Input
+level a gain on the input stream only); Back closes it and a take goes on. The help page's "Sampler" says the same.
+
+- **Streams** (engine.c `rec_feed`, after each block): Master is the mix as heard (after the FX returns and the
+  limiter, as pushed to the output ring); Slot 1..3 each firmware's own block before its level, pan and sends (NULL
+  while the slot does not render); Input the Move's input block (the ain1 path: `ain_take`, every block whatever the
+  firmwares ask; none with `--no-audio-in`) with the Input level.
+- **The beat:** the sequencer's own position (`rfm_move_seq_pos`, rfm1cs 0.15.0): ticks at the next block's first
+  frame to a fraction of a tick, less the block's ticks: this block's first frame; -1 stopped. Not the FX clock's
+  `g_beat`. A start or a jump back shows as a jump in `beat` (the recorder handles it).
+- **Back to the core** (`rec_tick`, the engine loop): `rfm_move_smp_status` every 33 ms (the state, the bar of the
+  bars wanted, the frames, the level, the history; a Bars or Threshold take with a length: its whole length 116
+  peaks, filled as it runs), each finished take as one `rfm_move_smp_event` (a stems take: one), "Nothing" for an
+  empty capture, errors in two words ("Disk low", "Write error", "Too slow"). The slots' firmware names label the
+  streams (a take is named after its firmware).
+- **Where takes go:** `--takes-dir DIR`; else, when the Move's sample library `/data/UserData/UserLibrary/Samples` is
+  there, its `RemoteFM1/` (Move's own software lists it, as Schwung's `Resampler/<date>/`); else `ROOT/audio/rec`.
+  A folder a day (`YYYY-MM-DD/`). `ROOT/audio/rec` links to the takes when they are elsewhere: made at start when
+  nothing is there (a link pointing elsewhere: made again); a real folder there is left as it is (said once in the
+  log). The carts' file service follows that one link (`fsvc_set_audio_link`: `/audio/rec/..` resolves into the
+  takes; any other link out of the folder is still refused); the page's file browser does not follow links (it shows
+  no `audio/rec` while it is one).
+- The capture memory: 32 s a stream, five streams (~30 MB). `/api/status`: `rec_state`, `rec_src`, `rec_mode`,
+  `rec_len`, `rec_thr`, `rec_in_db`, `rec_takes`, `rec_link`, `smp_shown`, `takes_dir` (and with `--test-api`
+  Sample's light, its green flashes and the app's messages).
+
 ## The recorder (src/recorder.c)
 
-Takes of the engine's streams as WAV files (not wired into the engine or the Move's UI yet). Seven streams: Master,
+Takes of the engine's streams as WAV files (the sampler above drives it). Seven streams: Master,
 Slot 1..3, Input, Looper, Kit; the source is one of them or Stems (every present stream, one file each, the same first
 and last frame). The engine calls `rec_block` once a block with each stream's block (NULL: absent), the transport's
 `playing`, `beat` (at the block's first frame, 4 a bar, 0 at the start) and `bpm`; it never waits: no file I/O, no

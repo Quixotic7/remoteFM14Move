@@ -9,7 +9,8 @@
 # ChoralRoot's cpu2 builds when among the inputs: tests/cpu2fw_e2e.sh), readouts (an rd1 ChoralRoot among
 # them: tests/rd1_e2e.sh), session view (tests/sess_e2e.sh), projects that hold their firmwares and the States
 # (tests/projfw_e2e.sh), the States and projects holding the firmware's working memory, played (tests/states_e2e.sh), the page's States and projects through their API, played the same way (tests/store_e2e.sh), a project or a state opened while the Move is stopped silent and stopped (tests/loadstop_e2e.sh), a new random project (tests/projnew_e2e.sh), the takeover (tk1, tests/tkdemo: tests/tk_e2e.sh; ChoralRoot's CHORDS when a tk1 build of it is among them: tests/cr_tk_e2e.sh), engine parameters (ep1: an ep1 build of ChoralRoot among them, the ENGINE knob page: tests/ep1_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh; RemoteFM1's Speech mode: tests/speechmode_e2e.sh) and the firmwares' own words through it (the
-# FM-1 screen reader protocol: tests/fmreader_e2e.sh), Out: network MIDI and USB-A (tests/midiout_e2e.sh).
+# FM-1 screen reader protocol: tests/fmreader_e2e.sh), Out: network MIDI and USB-A (tests/midiout_e2e.sh), the recorder
+# as the sampler app (tests/rec_e2e.sh).
 cd "$(dirname "$0")/.."
 fail=0
 build/tools/unit || fail=1
@@ -64,4 +65,5 @@ tests/speechmode_e2e.sh || fail=1
 tests/fmreader_e2e.sh || fail=1
 tests/midiout_e2e.sh || fail=1
 tests/mroute_e2e.sh || fail=1
+tests/rec_e2e.sh || fail=1
 exit $fail

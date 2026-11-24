@@ -19,6 +19,7 @@
 static char g_root[PATH_MAX];           /* the folder (its real path), "" none */
 static void (*g_dispatch)(void *io);
 static volatile uint32_t g_changed = 1;
+static char g_alink[256];               /* fsvc_set_audio_link: audio/<this> may point out of the folder */
 
 enum { PH_FREE, PH_NEW, PH_IO, PH_READY };
 
@@ -64,6 +65,10 @@ void fsvc_set_root(const char *root)
 }
 const char *fsvc_root(void) { return g_root; }
 void fsvc_set_dispatch(void (*fn)(void *io)) { g_dispatch = fn; }
+void fsvc_set_audio_link(const char *name)
+{
+    snprintf(g_alink, sizeof g_alink, "%s", name && !strchr(name, '/') ? name : "");
+}
 void fsvc_bump_changed(void) { __atomic_add_fetch(&g_changed, 1, __ATOMIC_RELAXED); }
 
 static int32_t from_errno(int e)
@@ -191,7 +196,16 @@ int fsvc_inside(const char *root, const char *id, const char *path, int area)
         *sl = 0;                        /* (not there yet: its folder) */
     }
     bl = strlen(rb);
-    return !strncmp(rp, rb, bl) && (rp[bl] == 0 || rp[bl] == '/');
+    if (!strncmp(rp, rb, bl) && (rp[bl] == 0 || rp[bl] == '/'))
+        return 1;
+    if (area == FSV_AUDIO && g_alink[0]) {   /* (the takes' link: inside its target) */
+        snprintf(tmp, sizeof tmp, "%s/%s", base, g_alink);
+        if (!realpath(tmp, rb))
+            return 0;
+        bl = strlen(rb);
+        return !strncmp(rp, rb, bl) && (rp[bl] == 0 || rp[bl] == '/');
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ an instance --- */

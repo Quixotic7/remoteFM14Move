@@ -125,13 +125,13 @@ FW_DEV_OUT := $(patsubst build/in-dev/%.rfm1,build/fw-dev/%.rfm1m,$(wildcard bui
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
-CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c projfw.c fw.c session.c store.c speech.c takeover.c engine.c) \
+CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c projfw.c fw.c session.c store.c speech.c takeover.c engine.c sampler.c) \
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
-            src/fmwords.c src/fmreader.c
+            src/fmwords.c src/fmreader.c src/recorder.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
 RF := third_party/RemoteFM1

@@ -1,5 +1,16 @@
 # Changes
 
+## Unreleased
+
+rfm1cs-abletonmove's `sampler` branch (7653d22, local: 0.15.0's sampler app and `rfm_move_seq_pos`).
+
+- **The sampler** (README "The sampler"): `src/recorder.c` in the host, driven by the core's sampler app
+  (`RFM_MOVE_CAP_SAMPLER`): Master, Slot 1..3 (dry) and Input (with its level) each block, the sequencer's position
+  for the bar lines, the status ~30 times a second, one event a take, the firmware names as labels. Takes to the
+  Move's sample library (`Samples/RemoteFM1/<date>/`), `ROOT/audio/rec` a link to them; without that library
+  `ROOT/audio/rec` itself; `--takes-dir`. The carts' file service follows that link (`fsvc_set_audio_link`). Help:
+  "Sampler". `/api/status` `rec_*`. Tests: `tests/rec_e2e.sh`; unit: the link; `ainchk info`, `gaps`.
+
 ## 0.4.0 (2026-11-24)
 
 rfm1cs-abletonmove 0.14.0 (tag v0.14.0, 1004f14).

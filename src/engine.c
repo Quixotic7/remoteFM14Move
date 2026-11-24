@@ -4,6 +4,8 @@
 #include "engine.h"
 
 #include <errno.h>
+#include <limits.h>
+#include <math.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
@@ -37,6 +39,7 @@
 #include "minijson.h"
 #include "mr_core.h"
 #include "projmem.h"
+#include "recorder.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
 #include "wasm-rt.h"
@@ -960,6 +963,8 @@ static void speech_sync(void)
 #endif
 }
 
+static void rec_setting(int index, int value);
+static rec_t *g_rec;
 static void on_action(const rfm1cs_event_t *ev)
 {
     const rfm_move_act_t *a = ev->act;
@@ -1014,6 +1019,13 @@ static void on_action(const rfm1cs_event_t *ev)
     }
     case RFM_MOVE_ACT_MIDI:
         route_midi(a);
+        break;
+    case RFM_MOVE_ACT_SMP_SET:   /* (rfm1cs 0.15.0) the sampler app's settings: the recorder's (README "The sampler") */
+        rec_setting(a->index, a->value);
+        break;
+    case RFM_MOVE_ACT_SMP_PRESS:   /* .. Sample in the app: the recorder's key (the mode says what it does) */
+        if (g_rec)
+            rec_press(g_rec);
         break;
     case RFM_MOVE_ACT_SETTINGS: {
         char p[ST_PATH];
@@ -1456,6 +1468,7 @@ static void raw_flush(void)   /* the test capture of the first instance: its blo
 }
 
 static void run_ids_sync(void);
+static void rec_labels(void);
 
 /* ------------------------------------------------------------------ the takeover (tk1) --- */
 /* FM1VST docs/RFM1-TAKEOVER.md section 6, rfm1cs 0.7.0 (README "Takeover"): each slot's record (fw_tk) read after
@@ -2651,6 +2664,7 @@ static void run_ids_sync(void)
     for (s = 0; s < NSLOT; s++)
         snprintf(g_run_ids[s], sizeof g_run_ids[s], "%s", SL[s].on ? SL[s].fw.id : ""), g_run_proj[s] = SL[s].on ? SL[s].pc_proj : -1;
     pthread_mutex_unlock(&g_vmu);
+    rec_labels();   /* (a firmware loaded or gone: the recorder's names for its takes) */
 }
 
 int engine_slot_proj(int s)
@@ -4048,6 +4062,230 @@ static int tcpu_json(char *out, int cap)
     return n < cap ? n : cap - 1;
 }
 
+/* ------------------------------------------------------------------ the recorder (README "The sampler") --- */
+/* recorder.h's takes of the engine's streams, as the core's sampler app (RFM_MOVE_CAP_SAMPLER) drives it: SMP_SET and
+ * SMP_PRESS from on_action, rec_block after each block (render_block_), the status ~30 times a second and each
+ * finished take back to the core (rec_tick, engine_main), the slots' firmware names as labels (run_ids_sync). The
+ * engine thread's, but rec_new / rec_free (engine_start / engine_stop) */
+#define REC_STATUS_MS 33u
+#define REC_SPAN 116                     /* a bar-cut take's wave: its whole length in this many peaks (2 a column) */
+#define REC_CAPTURE_S 32u                /* the capture memory, seconds, a stream (5 streams: ~30 MB) */
+static char g_takes_dir[ST_PATH];
+static float g_rec_in_gain = 1.0f;      /* the sampler's Input level, as a gain (the input stream only) */
+static int16_t g_rec_in[FW_BLOCK * 2];
+static uint32_t g_rec_takes, g_rec_last_take, g_rec_blocks;
+static uint32_t g_rec_t_greens, g_rec_t_msgs;   /* (tests) */
+static int g_rec_t_msg;
+static int g_rec_link;                   /* audio/rec: 1 the takes' link, 0 none, -1 something else there */
+static struct { int on, n; uint64_t frames; uint8_t pk[REC_SPAN]; } g_rec_span;   /* (rec_tick: a bar-cut take's wave) */
+
+/* where the takes go: --takes-dir; else the Move's sample library's RemoteFM1/ (Move's own software lists it, a folder
+ * a day as Schwung's Resampler does), else <root>/audio/rec itself. audio/rec shows them to the firmwares that read
+ * audio/: a link made when nothing is there (a link of ours pointing elsewhere: made again; anything else: left, said
+ * once) */
+static void rec_folder(void)
+{
+    char rec[ST_PATH], real_a[PATH_MAX], real_b[PATH_MAX];
+    struct stat st;
+    st_path(rec, sizeof rec, "audio/rec");
+    if (C.takes_dir && C.takes_dir[0])
+        snprintf(g_takes_dir, sizeof g_takes_dir, "%s", C.takes_dir);
+    else if (C.samples_dir && !stat(C.samples_dir, &st) && S_ISDIR(st.st_mode))
+        snprintf(g_takes_dir, sizeof g_takes_dir, "%s/RemoteFM1", C.samples_dir);
+    else
+        snprintf(g_takes_dir, sizeof g_takes_dir, "%s", rec);
+    st_mkdirs(g_takes_dir);
+    g_rec_link = 0;
+    if (!realpath(g_takes_dir, real_a))
+        snprintf(real_a, sizeof real_a, "%s", g_takes_dir);
+    if (realpath(rec, real_b) && !strcmp(real_a, real_b) && !lstat(rec, &st) && !S_ISLNK(st.st_mode))
+        return;   /* (the takes are audio/rec itself) */
+    if (!lstat(rec, &st) && S_ISLNK(st.st_mode)) {
+        if (realpath(rec, real_b) && !strcmp(real_a, real_b))
+            g_rec_link = 1;   /* (there from an earlier start) */
+        else if (unlink(rec) != 0)
+            g_rec_link = -1;
+    } else if (!lstat(rec, &st))
+        g_rec_link = -1;
+    if (!g_rec_link)
+        g_rec_link = symlink(real_a, rec) == 0 ? 1 : -1;
+    if (g_rec_link == 1)
+        fsvc_set_audio_link("rec");   /* (the carts' file service follows it: fsvc.c) */
+    else
+        fprintf(stderr, "engine: %s is not a link to the takes (%s): left as it is, the firmwares do not see the "
+                        "takes there\n", rec, g_takes_dir);
+}
+
+static void rec_start(void)
+{
+    rec_cfg_t rc;
+    memset(&rc, 0, sizeof rc);
+    rec_folder();
+    rc.dir = g_takes_dir;
+    rc.day_folders = 1;
+    rc.fs = FW_FS;
+    rc.block_frames = FW_BLOCK;
+    rc.capture_s = REC_CAPTURE_S;
+    rc.streams = 1u << REC_ST_MASTER | 1u << REC_ST_SLOT1 | 1u << REC_ST_SLOT2 | 1u << REC_ST_SLOT3 | 1u << REC_ST_INPUT;
+    if (!(g_rec = rec_new(&rc)))
+        fprintf(stderr, "engine: no recorder (no memory)\n");
+    else
+        fprintf(stderr, "engine: the recorder's takes go to %s (a folder a day)%s\n", g_takes_dir,
+                g_rec_link == 1 ? ", audio/rec links to them" : "");
+    g_rec_last_take = ~0u;
+}
+
+/* SMP_SET: the setting's value as the core sends it (move.h RFM_MOVE_SMP_*) */
+static void rec_setting(int index, int value)
+{
+    if (!g_rec)
+        return;
+    switch (index) {
+    case RFM_MOVE_SMP_SOURCE:
+        rec_set_source(g_rec, value == RFM_MOVE_SMP_SRC_STEMS ? REC_SRC_STEMS : value == RFM_MOVE_SMP_SRC_INPUT ? REC_ST_INPUT
+                              : value == RFM_MOVE_SMP_SRC_LOOPER ? REC_ST_LOOPER : value == RFM_MOVE_SMP_SRC_KIT ? REC_ST_KIT
+                              : value >= RFM_MOVE_SMP_SRC_SLOT1 && value <= RFM_MOVE_SMP_SRC_SLOT3 ? REC_ST_SLOT1 + value - 1
+                              : REC_ST_MASTER);
+        break;
+    case RFM_MOVE_SMP_MODE:   /* (the same order: Capture, Bars, Threshold, Manual) */
+        rec_set_mode(g_rec, value >= 0 && value <= REC_MODE_MANUAL ? value : REC_MODE_BARS);
+        break;
+    case RFM_MOVE_SMP_LENGTH:
+        rec_set_length_bars(g_rec, value < 0 ? 0 : value > 32 ? 32 : value);
+        break;
+    case RFM_MOVE_SMP_THRESHOLD:   /* dB -60..0 -> a peak */
+        rec_set_threshold(g_rec, (int)lrint(32767.0 * pow(10.0, (value > 0 ? 0 : value) / 20.0)));
+        break;
+    case RFM_MOVE_SMP_INPUT:   /* dB -24..24: the input stream's gain */
+        g_rec_in_gain = (float)pow(10.0, (value < -24 ? -24 : value > 24 ? 24 : value) / 20.0);
+        break;
+    default:   /* Monitor, To: later */
+        break;
+    }
+}
+
+/* after each block: the mix as heard (out), each slot's own block before its level, pan and sends (dry; NULL: not
+ * rendered), the Move's input with the Input level (NULL: none arriving); the song's position at the block's first
+ * frame from the sequencer (pos: ticks at the next block's first frame, -1 stopped; per_frame its ticks a frame) */
+static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const int16_t *ain, double pos, double per_frame)
+{
+    rec_block_t b;
+    int s;
+    if (!g_rec)
+        return;
+    memset(&b, 0, sizeof b);
+    b.st[REC_ST_MASTER] = out;
+    for (s = 0; s < NSLOT; s++)
+        b.st[REC_ST_SLOT1 + s] = slot[s];
+    if (ain) {
+        if (g_rec_in_gain == 1.0f)
+            b.st[REC_ST_INPUT] = ain;
+        else {
+            for (s = 0; s < FW_BLOCK * 2; s++) {
+                const float v = ain[s] * g_rec_in_gain;
+                g_rec_in[s] = (int16_t)(v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int)lrintf(v));
+            }
+            b.st[REC_ST_INPUT] = g_rec_in;
+        }
+    }
+    b.frames = FW_BLOCK;
+    b.playing = pos >= 0;
+    b.beat = b.playing ? (pos - FW_BLOCK * per_frame) / (RFM_MOVE_SEQ_BAR / 4.0) : 0.0;
+    b.bpm = rfm_move_seq_bpm10(&S->core) / 10.0;
+    rec_block(g_rec, &b);
+    g_rec_blocks++;
+}
+
+/* (engine_main, ~30 times a second) the recorder's status to the core's app; each finished take as an event */
+static void rec_tick(uint32_t now)
+{
+    static uint32_t last;
+    rec_status_t r;
+    rfm_move_smp_status_t st;
+    rec_take_t t;
+    int redraw = 0, wanted;
+    if (!g_rec || !g_session_on)
+        return;
+    while (rec_poll_take(g_rec, &t)) {
+        if (t.take == g_rec_last_take && t.reason != REC_END_NOTHING)
+            continue;   /* (a stems take: one event, its first file's) */
+        g_rec_last_take = t.take;
+        if (t.reason == REC_END_NOTHING)
+            redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_NOTHING, 0, 0, 0, NULL);
+        else if (t.reason >= REC_END_DISK_LOW || !t.path[0]) {
+            static const char *const WHY[] = { "Disk low", "Write error", "Too slow" };
+            const char *why = t.reason >= REC_END_DISK_LOW && t.reason <= REC_END_OVERRUN ? WHY[t.reason - REC_END_DISK_LOW]
+                                                                                          : "Write error";
+            fprintf(stderr, "engine: take %u: %s (%s)\n", t.take, why, t.path[0] ? t.path : "no file");
+            redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_ERROR, 0, 0, 0, why);
+        } else {
+            g_rec_takes++;
+            fprintf(stderr, "engine: take %u saved: %s (%llu frames, %u bars, %.1f BPM, ended %d)\n", t.take, t.path,
+                    (unsigned long long)t.frames, t.bars, t.bpm, t.reason);
+            redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_SAVED, (int)t.bars, (int)lrint(t.bpm * 10.0),
+                                         (int)(t.frames * 1000u / FW_FS), NULL);
+            fsvc_bump_changed();   /* (audio/rec has a new file) */
+        }
+    }
+    if (now - last >= REC_STATUS_MS) {
+        last = now;
+        rec_get(g_rec, &r);
+        memset(&st, 0, sizeof st);
+        st.state = (uint8_t)r.state;   /* (the same order: idle, armed, recording, saving) */
+        st.listening = r.mode == REC_MODE_CAPTURE && r.state == REC_IDLE;
+        wanted = (r.mode == REC_MODE_BARS || r.mode == REC_MODE_THRESHOLD) ? r.length_bars : 0;
+        st.bars = (uint8_t)wanted;
+        st.bar = r.state == REC_RECORDING ? (uint8_t)(wanted && (int)r.bars >= wanted ? wanted : (int)r.bars + 1) : 0;
+        st.takes = (uint16_t)(g_rec_takes > 65535 ? 65535 : g_rec_takes);
+        st.level = (uint16_t)(r.peak < 0 ? 0 : r.peak);
+        st.frames = (uint32_t)r.frames;
+        st.rate = FW_FS;
+        if (r.state == REC_RECORDING && wanted) {   /* a bar-cut take: its whole length REC_SPAN peaks, filled as it runs */
+            const double bpm = rfm_move_seq_bpm10(&S->core) / 10.0;
+            const double total = bpm > 0 ? wanted * 4 * 60.0 / bpm * FW_FS : 0;
+            int done = total > 0 ? (int)(r.frames * REC_SPAN / total) : 0, k, i, w, pk = 0;
+            if (!g_rec_span.on || r.frames < g_rec_span.frames)
+                memset(&g_rec_span, 0, sizeof g_rec_span), g_rec_span.on = 1;
+            done = done > REC_SPAN ? REC_SPAN : done;
+            w = (int)((r.frames - g_rec_span.frames) / (FW_FS * 16u / 1000u)) + 1;   /* (the ~16 ms windows since) */
+            for (i = r.hist_n - (w < r.hist_n ? w : r.hist_n); i < r.hist_n; i++)
+                pk = r.hist[i] > pk ? r.hist[i] : pk;
+            for (k = g_rec_span.n; k < done; k++)
+                g_rec_span.pk[k] = (uint8_t)pk;
+            if (done > g_rec_span.n)
+                g_rec_span.n = done, g_rec_span.frames = r.frames;
+            st.span = REC_SPAN;
+            st.npeaks = (uint8_t)g_rec_span.n;
+            memcpy(st.peaks, g_rec_span.pk, (size_t)g_rec_span.n);
+        } else {   /* the rolling history (while recording: the take's own) */
+            g_rec_span.on = 0;
+            st.npeaks = (uint8_t)(r.hist_n > RFM_MOVE_SMP_PEAKS ? RFM_MOVE_SMP_PEAKS : r.hist_n);
+            memcpy(st.peaks, r.hist, st.npeaks);
+        }
+        redraw |= rfm_move_smp_status(&S->core, &st);
+        rfm1cs_session_flush_leds(S);   /* (Sample's light follows the state) */
+        if (C.test_api) {   /* (tests: Sample's green flashes and the app's messages, as they come) */
+            static int was_g, was_m;
+            const uint8_t *c = S->core.sent[RFM_MOVE_L_SAMPLE];
+            const int g = c[1] > 0 && !c[0] && !c[2], m = S->core.smp.msg;
+            g_rec_t_greens += g && !was_g;
+            if (m && m != was_m)
+                g_rec_t_msgs++, g_rec_t_msg = m;
+            was_g = g, was_m = m;
+        }
+    }
+    if (redraw)
+        rfm1cs_session_redraw(S, now);
+}
+
+/* the slots' firmware names as their streams' labels (a take is named after its firmware) */
+static void rec_labels(void)
+{
+    int s;
+    for (s = 0; g_rec && s < NSLOT; s++)
+        rec_set_label(g_rec, REC_ST_SLOT1 + s, SL[s].on ? fw_name(SL[s].fw.id) : NULL);
+}
+
 /* ------------------------------------------------------------------ the clock --- */
 static void render_block_(uint32_t now);
 static void render_block(uint32_t now)   /* (g_nest: a snapshot does not render ahead from inside one) */
@@ -4059,8 +4297,9 @@ static void render_block(uint32_t now)   /* (g_nest: a snapshot does not render 
 static void render_block_(uint32_t now)
 {
     int16_t blk[FW_BLOCK * 2], out[FW_BLOCK * 2];
-    const int16_t *ain;
+    const int16_t *ain, *dry[NSLOT] = { NULL };
     int s, k, sounding, sends = 0;
+    double spos, sper;
     const uint64_t t_blk = now_ns();
     {   /* the clock the modules ask for (host_api_v1: get_bpm, get_clock_status, get_beat_position) */
         const float bpm = (float)rfm_move_seq_bpm10(&S->core) / 10.0f;
@@ -4070,6 +4309,7 @@ static void render_block_(uint32_t now)
     }
     rfm1cs_session_advance(S, now, FW_BLOCK, FW_FS);   /* the sequencer: its MIDI stamped within this block (through
                                                          * the MIDI FX: route_midi) */
+    spos = rfm_move_seq_pos(&S->core, &sper);   /* (the recorder: the song's position, rfm1cs 0.15.0) */
     midi_fx_tick();
     do_deferred();
     sounding = rfm_move_fw_sounding(&S->core);
@@ -4112,6 +4352,7 @@ static void render_block_(uint32_t now)
             const int16_t *sb = RT[s].blk;
             if (!(mask >> s & 1))
                 continue;
+            dry[s] = sb;   /* (the recorder's slot stream: its own block, before level, pan and sends) */
             if (&sl->fw == g_raw_fw && g_cap_raw && g_cap_raw_n + FW_BLOCK <= g_cap_max) {
                 memcpy(g_cap_raw + 2u * g_cap_raw_n, sb, sizeof RT[s].blk);
                 g_cap_raw_n += FW_BLOCK;
@@ -4179,6 +4420,7 @@ static void render_block_(uint32_t now)
             g_peak_win = v;
     }
     mr_ring_push(&g_ring, out, FW_BLOCK);
+    rec_feed(out, dry, ain, spos, sper);   /* (the recorder: the mix as heard, the slots dry, the input) */
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
         memcpy(g_cap_mix + 2u * g_cap_mix_n, out, sizeof out);
         g_cap_mix_n += FW_BLOCK;
@@ -4292,7 +4534,11 @@ static void housekeeping(uint32_t now)
             for (p = 0; p < RFM_MOVE_NPADS; p++)
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, "%02x%02x%02x", S->core.sent[p][0], S->core.sent[p][1],
                               S->core.sent[p][2]);
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\",");
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\",\"move_sample\":\"%02x%02x%02x\",",
+                          S->core.sent[RFM_MOVE_L_SAMPLE][0], S->core.sent[RFM_MOVE_L_SAMPLE][1],
+                          S->core.sent[RFM_MOVE_L_SAMPLE][2]);   /* (Sample's light) */
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"smp_greens\":%u,\"smp_msgs\":%u,\"smp_msg\":%d,",
+                          g_rec_t_greens, g_rec_t_msgs, g_rec_t_msg);
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"slots\":[");
         for (s = 0; s < NSLOT; s++) {
@@ -4501,6 +4747,16 @@ static void housekeeping(uint32_t now)
             if (n < (int)sizeof tmp)   /* (the screen reader protocol: the firmware that speaks for itself) */
                 n += fmr_json(tmp + n, (int)sizeof tmp - n);
         }
+        if (g_rec) {   /* the recorder (README "The sampler"): its state and settings in force, takes saved, the app */
+            rec_status_t r;
+            rec_get(g_rec, &r);
+            mj_escape(g_takes_dir, esc[0], sizeof esc[0]);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"rec_state\":%d,\"rec_src\":%d,\"rec_mode\":%d,\"rec_len\":%d,"
+                          "\"rec_thr\":%d,\"rec_in_db\":%d,\"rec_takes\":%u,\"rec_blocks\":%u,\"rec_over\":%u,\"rec_link\":%d,"
+                          "\"smp_shown\":%d,\"takes_dir\":\"%s\"", r.state, r.source, r.mode, r.length_bars, r.threshold,
+                          rfm_move_smp_value(&S->core, RFM_MOVE_SMP_INPUT), g_rec_takes, g_rec_blocks, r.overruns,
+                          g_rec_link, rfm_move_smp_shown(&S->core), esc[0]);
+        }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"mroute\":[%d,%d,%d]", g_mroute[0], g_mroute[1],
                       g_mroute[2]);   /* (rfm1cs 0.6.6: each slot's MIDI routes, as the engine forwards them) */
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
@@ -4684,6 +4940,7 @@ static void *engine_main(void *arg)
         speak_watch();
         ann_tick(now);
         housekeeping(now);
+        rec_tick(now);   /* (the sampler app: the recorder's status, its finished takes) */
         view_live(now);
         {   /* (the Move's FX setup opened, closed or on another page: no action says so) */
             static int sig = -1;
@@ -4803,7 +5060,15 @@ int engine_start(const engine_cfg_t *cfg)
     free(lib);
     /* (rfm1cs 0.13.0) a project holds its firmwares: before the projects (rfm_move_project_dir: a fresh install's first
      * project gets the new-project defaults) and before the list */
-    rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW);
+    rec_start();   /* (README "The sampler": before the capability, which sends every setting's SMP_SET) */
+    rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0));
+    /* the sampler app offers: Master, Slot 1..3, Input, Stems; Source, Mode, Length, Threshold, Input level (not
+     * Monitor, To: later); the Record tab; takes to Files */
+    rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
+                       1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS,
+                       1u << RFM_MOVE_SMP_SOURCE | 1u << RFM_MOVE_SMP_MODE | 1u << RFM_MOVE_SMP_LENGTH |
+                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT, 1u << RFM_MOVE_SMP_TAB_RECORD,
+                       1u << RFM_MOVE_SMP_TO_FILES);
     rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
     rfm_move_set_master(&S->core, 768);
@@ -4916,6 +5181,11 @@ void engine_stop(void)
         return;
     g_run = 0;
     pthread_join(g_thr, NULL);
+    if (g_rec) {   /* (a take running ends here; the writer finishes its file first) */
+        rec_free(g_rec);
+        g_rec = NULL;
+        fprintf(stderr, "engine: the recorder stopped (%u take(s) saved)\n", g_rec_takes);
+    }
     fmr_stop();
     st_worker_stop();
     if (C.capture_out && g_cap_out)

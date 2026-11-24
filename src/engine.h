@@ -54,6 +54,9 @@ typedef struct {
     const char *fm1_addr;
     int midi_out;                    /* --midi-out: the active slot's MIDI out to Out (midiout.h), the real-time bytes
                                       * as midiout's cfg says */
+    /* the recorder (recorder.h; README "The sampler"): its takes' folder (--takes-dir; NULL: the Move's sample library's
+     * RemoteFM1/ when samples_dir is a folder, else <root>/audio/rec), and that library (/data/UserData/UserLibrary/Samples) */
+    const char *takes_dir, *samples_dir;
 } engine_cfg_t;
 
 int engine_start(const engine_cfg_t *cfg);

@@ -508,6 +508,42 @@
       ]
     },
     {
+      "title": "Sampler",
+      "lines": [
+        "Sample opens the",
+        "sampler. In it,",
+        "Sample records.",
+        "In FM-1 mode: hold",
+        "a Track + Sample.",
+        "",
+        "Track 1-3 held +",
+        "Sample: that",
+        "firmware is the",
+        "source. Track 4",
+        "held + Sample: the",
+        "master.",
+        "",
+        "The jog picks a",
+        "setting; its click",
+        "changes it: Source,",
+        "Mode, Length,",
+        "Threshold, Input",
+        "level.",
+        "",
+        "Back closes it; a",
+        "take goes on.",
+        "Sample brings it",
+        "back.",
+        "",
+        "Takes go to the",
+        "Samples library:",
+        "RemoteFM1, a folder",
+        "a day. Firmwares",
+        "see them in",
+        "audio/rec."
+      ]
+    },
+    {
       "title": "Projects",
       "lines": [
         "Track 4 double tap",

@@ -78,8 +78,8 @@ head -c 5000 /dev/urandom > "$T/noise.bin"
 c1=$(up noise.wav "$T/noise.bin"); c2=$(up "notes.txt" "$T/two.wav"); c3=$(up "%2E%2E%2Fescape.wav" "$T/two.wav")
 c4=$(up ".hidden.wav" "$T/two.wav"); c5=$(up "a%2Fb.wav" "$T/two.wav")
 [ "$c1" = 415 ] && [ "$c2" = 400 ] && [ "$c3" = 400 ] && [ "$c4" = 400 ] && [ "$c5" = 400 ] && [ ! -f "$ROOT/audio/noise.wav" ] \
-    && [ ! -f "$ROOT/escape.wav" ] && [ -z "$(ls -A "$ROOT/audio" | grep -v '^Amen loop (1).wav$')" ] \
-    && ok "refused, nothing left: not a WAV (415), .txt, ../escape.wav, .hidden.wav, a/b.wav (400)" \
+    && [ ! -f "$ROOT/escape.wav" ] && [ -z "$(ls -A "$ROOT/audio" | grep -v '^Amen loop (1).wav$' | grep -v '^rec$')" ] \
+    && ok "refused, nothing left (audio/rec: the recorder's takes): not a WAV (415), .txt, ../escape.wav, .hidden.wav, a/b.wav (400)" \
     || bad "the checks: $c1 $c2 $c3 $c4 $c5; audio/: $(ls -A "$ROOT/audio" | tr '\n' ' ')"
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Length: 268435460' --data-binary "@$T/two.wav" "$U/api/files/audio/big.wav")
 [ "$c" = 413 ] && [ ! -f "$ROOT/audio/big.wav" ] && ok "over 256 MB: 413" || bad "the size cap: $c"
