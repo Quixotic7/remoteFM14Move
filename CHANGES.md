@@ -2,6 +2,13 @@
 
 ## Not released
 
+- **A project or a state opened while the Move is stopped is stopped** (the owner's "Loading a new project is starting
+  playback when the Move's playback is stopped"). A firmware's working memory saved while its own loop or sequencer
+  ran (a save, a duplicate or a project left while playing, the autosave while played) came back running: the Move's
+  log showed ChoralRoot's "chord: G9" / "chord: Fsus9" after "project 22 open", with no note in. After every restore,
+  the Move stopped, the instance now gets the Stop (FC) the Move sends every firmware as its sequencer stops, so its
+  loop stops and its memory is otherwise as saved; the Move playing, nothing is sent. Projects and states already
+  saved while playing open stopped too. README "The working memory"; `tests/loadstop_e2e.sh`.
 - **rfm1cs-abletonmove 0.14.0** (local d013197; the owner's notes of 2026-11-23 on the Move's controls and the
   Projects page; the core's CHANGES has each one). In the track view each track keeps its knob page; on the FM-1 knob
   page the jog's click is the takeover (Knobs + Keys) and there the jog turns the FM-1 layout's target (SELECT, PRESET,

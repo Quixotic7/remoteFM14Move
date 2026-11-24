@@ -275,6 +275,11 @@ make test
   and a .mem beside another image load from the flash; Felucca (one core) in slot 2: its PRESETS turned, its screen
   back with its state; no late block; the active state written again while played (every 4 s here) and not while left
   alone; project 1 / project 2 each bring their ChoralRoot back at its own voicing; quit and restart: as left.
+- `tests/loadstop_e2e.sh` (opened while the Move is stopped: stopped, "The working memory" below): ChoralRoot's loop
+  played in its takeover (a key, step 1 gets the chord, Play); while it plays project 1 saved and duplicated into 4,
+  states 2 and 1 saved; stopped; project 4, project 1 and state 2 opened: the Stop sent, the restored loop stopped,
+  no "chord:" line in 5 s, the Move's sequencer stopped; the Move playing: state 2 loaded with no Stop, its loop goes
+  on; restarted with project 1's copy as saved while playing: opened at start, stopped and silent.
 - `tests/tk_e2e.sh` (the takeover, "Takeover (tk1)"): tkdemo and Felucca on the simulator: Track 1 opens tkdemo's
   takeover (its screen on the Move), a pad reaches it (`rfm1_tk_input`, its LED 255,120,0, its screen "PAD 5"),
   Track 2 (not claimed) MIDI mode and Track 1 back, Shift: ALL claimed and the Track buttons the firmware's, volume
@@ -527,6 +532,19 @@ copy also hold the firmware's working memory, and loading brings that back exact
   stack as always, then the memory and globals copied over: no `rfm1_init`, nothing re-applied from the flash). After
   it the firmware's takeover is told it is not shown (as after a boot, until rfm1cs shows it), and what was held when
   it was taken is let go (the panel's keys and buttons; CC 123 on every channel, the host's All Notes Off).
+- **Opened while the Move is stopped: stopped** (the owner's "Loading a new project is starting playback when the
+  Move's playback is stopped"). A snapshot is taken whenever the copy or the state is written, so one taken while the
+  firmware's own loop or sequencer ran (a save, a project left or a copy duplicated while playing, the 30 s autosave
+  while played) holds it running, and restored exactly it ran on, the Move stopped: ChoralRoot's loop played its
+  chords after "project N open". So after every restore (a project opened, at start too; a State loaded, pasted onto
+  the active one, Undo of New; a state file from the page), when the Move's sequencer is stopped, the instance also
+  gets a MIDI Stop (FC), the one the Move sends every firmware as its sequencer stops: a firmware that follows the
+  Move's Start / Stop (ChoralRoot's loop with MIDI Clock OUT, the default, or IN) stops, nothing else of its memory
+  changes (the log: "its saved working memory; the Move stopped: Stop sent"). The Move playing: nothing is sent (the
+  core's own Stop and Start go out as they always did). Cured at the restore, not at the snapshot: the snapshot stays
+  the firmware as it was (a save does not stop what plays), and the copies already saved while playing (the owner's)
+  open stopped too. Not covered: a firmware whose own transport ignores a Stop in (ChoralRoot with MIDI Clock OFF and
+  its takeover not shown) runs on as it was saved.
 - **Which firmwares** (`src/snapsafe.h`, made by `tools/snapsafe.py`, `make snapsafe`): a snapshot of the memory and
   the globals is the whole state of a module whose tables and data segments never change after start-up; the tool
   reads each .rfm1 (its instructions) and keeps the SHA-256 of those that qualify, with their globals' place in

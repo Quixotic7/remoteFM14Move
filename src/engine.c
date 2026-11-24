@@ -1744,6 +1744,15 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n, co
                     fw_midi(&sl->fw, m, 3, sl->fw.frames_done);
                 }
             }
+            /* (the owner's "loading a new project is starting playback": a snapshot taken while the firmware's own
+             * loop or sequencer ran, as a save while playing takes it, comes back running) the Move stopped: its
+             * transport stopped too, by the Stop the Move sends every firmware as its sequencer stops (rfm1cs 0.9.0,
+             * FC): only Play starts it. The Move playing: nothing (the core's own stop and start go out as they do) */
+            if (!S->core.seq.playing && !S->core.seq.start_pending) {
+                const uint8_t stop = 0xFC;
+                fw_midi(&sl->fw, &stop, 1, sl->fw.frames_done);
+                restored = 2;
+            }
         } else
             fprintf(stderr, "engine: slot %d: %s: booted from its flash instead\n", s + 1, sl->fw.err);
     }
@@ -1757,7 +1766,7 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n, co
         return -1;
     }
     sl->on = 1;
-    sl->restored = (uint32_t)restored;
+    sl->restored = restored ? 1u : 0u;
     snprintf(sl->so, sizeof sl->so, "%s", so);
     sl->reboot = 0;
     sl->serial = ++g_serial;
@@ -1773,7 +1782,8 @@ static int slot_boot(int s, fw_inst_t *pre, const uint8_t *flash, uint32_t n, co
     sl->tk_in = sl->tk_states = 0;
     tk_poll(s, 1);   /* (tk1: its takeover's claims and name to rfm1cs, or none) */
     fprintf(stderr, "engine: slot %d: %s %s (%s)\n", s + 1, sl->fw.name, sl->fw.version,
-            restored ? "its saved working memory" : flash && n ? "its saved flash" : "a fresh flash");
+            restored == 2 ? "its saved working memory; the Move stopped: Stop sent" : restored
+            ? "its saved working memory" : flash && n ? "its saved flash" : "a fresh flash");
     run_ids_sync();
     return 0;
 }
