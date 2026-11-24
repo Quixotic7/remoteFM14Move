@@ -1191,3 +1191,39 @@ sound output / MIDI input / MIDI learn, Install RemoteFM1 and the app links, the
 **Upstreaming.** Every change is behind `ON_MOVE`; with `content="web"` the site is RemoteFM1's unchanged. So
 RemoteFM1 can take `site.patch`, `host.js` and `movehost.js` as they are; RemoteFM14Move's build then only sets the
 flag (and later fetches RemoteFM1's built site instead of patching it).
+
+## The recorder (src/recorder.c)
+
+Takes of the engine's streams as WAV files (not wired into the engine or the Move's UI yet). Seven streams: Master,
+Slot 1..3, Input, Looper, Kit; the source is one of them or Stems (every present stream, one file each, the same first
+and last frame). The engine calls `rec_block` once a block with each stream's block (NULL: absent), the transport's
+`playing`, `beat` (at the block's first frame, 4 a bar, 0 at the start) and `bpm`; it never waits: no file I/O, no
+malloc, no lock but a `trylock` for new settings. Every present stream goes into its own preallocated ring all the
+time (the capture memory, 64 s by default, + 2 s); a take is only a first and a last frame, sent through a lock-free
+queue to a writer thread that writes `<name>.part` (the 44-byte header kept up to date about once a second, the free
+space checked with `statvfs`), then renames it (a hard link, so never over another take). The engine never overwrites
+frames the writer still needs: it drops the block instead and ends a running take there (`REC_END_OVERRUN`).
+
+- **Bars:** a press arms; the take starts on the next bar line (the first frame at or after it, inside a block),
+  or with the transport's first playing frame when armed while stopped; Length N ends it N bars of beats later, Open
+  at the bar line after a second press (a press during an N take ends it there too); the transport's stop ends it at
+  that frame (not bar-cut); a press while armed disarms. Bar lines come from each block's beat, so a tempo change
+  during a take still cuts on bar lines.
+- **Capture:** a press keeps what was just played, from the memory. Playing: ending on the last bar line passed,
+  whole bars: N, or Auto (back to the last silence of 2 bars or more, under -54 dBFS, rounded down to its bar line,
+  1..16 bars). Stopped: back to the last silence of 2 s or more, ending now. Silence only: no take
+  (`REC_END_NOTHING`).
+- **Threshold:** a press arms; the block whose peak reaches the threshold starts the take 50 ms early (the
+  attack whole); a press ends it, or Length N: N bars at the tempo then, counted from the take's first frame.
+- **Manual:** a press starts at its block, a press ends at its block.
+
+Settings change at a block while no take records (a running take keeps its own). Names:
+`<MMDD>-<HHMMSS> <label> <bpm>bpm <bars>b.wav`, or `<seconds>s.wav` when not bar-cut, in `YYYY-MM-DD/` with
+`day_folders`; labels keep letters, digits, space and `_ - . , ( ) +`. `rec_get`: the state, the frames and bars so
+far, the source's peak and its last 128 windows of ~16 ms (the take's own while recording). `rec_poll_take`: each
+finished file with its frames, bars, BPM and why it ended (an error: disk low, a write error, an overrun).
+
+`tests/recorder_test.sh` (no make): `tests/recorder_test.c` built and run plain, with ASan + UBSan and with TSan;
+each stream a counter pattern, so every file is checked sample for sample against the frames fed (bar lines inside
+blocks at 120 and 97.3 BPM, every mode, stems, max length, a failing folder, disk low, settings mid-take, a slow
+writer, an overrun, the status).
