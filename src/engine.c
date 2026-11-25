@@ -1062,6 +1062,14 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_SLICE:
         kit_action(a);
         break;
+    case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
+                                    * gesture: the host stops as ever (the project saved), Move's own software comes back */
+        static const uint8_t quit[3] = { 0x01, 0x00, 0x89 };   /* u16 len 1, MR_H_QUIT */
+        fprintf(stderr, "engine: Exit from Global settings\n");
+        sock_write(quit, sizeof quit);
+        sock_flush();
+        break;
+    }
     case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
     case RFM_MOVE_ACT_SMP_PEAKS:
     case RFM_MOVE_ACT_SMP_PLAY:
@@ -5785,7 +5793,7 @@ int engine_start(const engine_cfg_t *cfg)
             fprintf(stderr, "engine: no kit (no memory)\n");
     }
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
-                                   (g_kit ? RFM_MOVE_CAP_KIT : 0));
+                                   (g_kit ? RFM_MOVE_CAP_KIT : 0) | RFM_MOVE_CAP_EXIT);
     /* the sampler app offers: Master, Slot 1..3, Input, Stems, (stage 3b, with the kit) Kit; Source, Mode, Length,
      * Threshold, Input level, (3b) To (not Monitor: later); the Record tab, (stage 2) Takes and Tools with the take
      * library; takes to Files, (3b) to the Kit (the next empty pad) */

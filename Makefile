@@ -36,7 +36,7 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim snapsafe buildinfo update test-update
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim snapsafe buildinfo update test-update test-exit
 all: image inputs site buildinfo
 	$(DOCKER_RUN) make -j4 in-all
 
@@ -91,6 +91,10 @@ test-sampler: all
 .PHONY: test-kit
 test-kit: all
 	tests/kit_test.sh && $(DOCKER_RUN) tests/kit_e2e.sh
+
+# Global settings' Exit (the host leaves through Move Remote's QUIT) on the simulator
+test-exit: all
+	$(DOCKER_RUN) tests/exit_e2e.sh
 
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
 # signed with the catalog's key (CATALOG_SIGNING_KEY; its public half must be src/catalog_key.h's)
