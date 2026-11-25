@@ -14,6 +14,7 @@
 //     slot n" in a slot's load menu, States and Projects in the phone's slot menu
 //   - the Sampler window (js/movesmp.js): the header's Sampler cap (desktop), Sampler in the phone's slot menu; it and
 //     Mix & FX take turns over the faceplate
+//   - Listen here (js/movelisten.js): the header's Listen cap and the Move's speaker beside it (the phone too)
 //   - keys: ⌥1 ⌥2 ⌥3 play a slot (an empty one: its load menu), ⌥M the Mix & FX view, Esc back to the faceplate
 //     (when nothing is latched: the panel's Esc lets latches go first).
 // The faceplate follows the playing slot by itself (movehost.js "moved": main.js followMove).
@@ -24,6 +25,7 @@ import { LAYOUTS } from "./panel.js";
 import { mountMoveFiles } from "./movefiles.js";
 import { mountMoveWifi } from "./movewifi.js";
 import { mountMoveUpdate } from "./moveupdate.js";
+import { mountMoveListen } from "./movelisten.js";
 import { mountMoveBrowse } from "./movebrowse.js";
 import { mountMoveStore, STORE_IC } from "./movestore.js";
 import { SmpView } from "./movesmp.js";
@@ -259,6 +261,9 @@ export function mountMoveUi(o) {
   ui.projectsBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-projectsbtn", id: "mv-projectsbtn", title: "The sequencer's 32 projects on the Move",
     onclick: () => ui.storeView.toggle("projects") }, svg(STORE_IC.projects, 15), h("span", {}, "Projects"));
   ui.filesBtn.before(ui.statesBtn, ui.projectsBtn);
+  // Listen here (js/movelisten.js): the Move's output played on this device; the cap and the Move's speaker, first
+  ui.listen = mountMoveListen({ toast: (t, k) => ui.store.toast(t, k) });
+  ui.statesBtn.before(ui.listen.el);
   // the Sampler window (js/movesmp.js): the Move's sampler app and its takes, laid out as Mix & FX (one of the two open)
   ui.smpView = new SmpView({ store: ui.store, ui, player: o.player, phone: ui.phone });
   ui.smpBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-smpbtn", id: "mv-smpbtn", "aria-pressed": "false", title: "Sampler",

@@ -81,13 +81,17 @@
 /* (the header holds the chips, Source, Editor, Files, Mix & FX, Site source and the settings: narrower, they shrink) */
 @media (max-width: 1440px) { .mv-hints { display: none; } }
 @media (max-width: 1360px) { .mv-chip { width: 170px; } }
-@media (max-width: 1280px) { .mv-chip { width: 150px; } .mv-vr { display: none; } .mv-kbd-cap { display: none; } }
-@media (max-width: 1180px) { .mv-filesbtn > span:not(.mv-ic) { display: none; } .mv-filesbtn { padding: 0 10px; } }
+@media (max-width: 1400px) { .mv-chip { width: 150px; } }   /* (Listen here's cap beside them) */
+@media (max-width: 1280px) { .mv-chip { width: 126px; } .mv-vr { display: none; } .mv-kbd-cap { display: none; } }
+/* (Listen here's cap, js/movelisten.js, came beside them: Files' word goes at 1400, Mix & FX's at 1300) */
+@media (max-width: 1400px) { .mv-filesbtn > span:not(.mv-ic) { display: none; } .mv-filesbtn { padding: 0 10px; } }
+@media (max-width: 1300px) { .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
 /* (the States and Projects caps, js/movestore.js: their words first to go, their icons and tooltips stay) */
 @media (max-width: 1400px) { .mv-statesbtn > span:not(.mv-ic), .mv-projectsbtn > span:not(.mv-ic) { display: none; } .mv-statesbtn, .mv-projectsbtn { padding: 0 10px; } }
 /* (the Sampler cap, js/movesmp.js: its word goes with theirs) */
 @media (max-width: 1400px) { .mv-smpbtn > span:not(.mv-ic) { display: none; } .mv-smpbtn { padding: 0 10px; } }
-@media (max-width: 1080px) { .mv-chip { width: 128px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
+@media (max-width: 1180px) { .mv-chip { width: 118px; } #top .src-link .src-text, #top .src-link .src-arrow { display: none; } }
+@media (max-width: 1080px) { .mv-chip { width: 118px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
 
 /* ---- phone: the slot button (the iOS app's top-left pill) and its menu */
 @media (max-width: 640px) {

@@ -7,6 +7,7 @@
 //     or microphone asked for; no https redirect;
 //   - the panel draws, the Move's live screen shows on it, the header names the firmware the Move runs;
 //   - a click on a key of the drawn keybed sounds in the simulator (its mix peak);
+//   - Listen here: the headphones cap plays the Move's output (the ScriptProcessor here), the Move silent; off again;
 //   - the header's slot chips (in place of remotefm1.com's firmware picker): a chip's menu lists the Move's firmwares
 //     and loads ChoralRoot into the active slot (the host's status); its skin (its .rfm1's rfm1.skin sections) shows;
 //     a load from outside the page (as the Move's own projects view) is followed;
@@ -782,6 +783,22 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   ok(page.asked.length === 0, `nothing asked of the browser: no AudioContext, Web MIDI, WebUSB, microphone, folder (${page.asked.join(", ") || "none"})`);
   ok(page.plate[0] > 1000 && page.lit > 2000 && page.seq > 0, `the panel drawn (${page.plate.join(" x ")}), the Move's screen live on it (${page.lit} pixels lit, frame ${page.seq})`);
   ok(["Chakra Petch", "DM Sans"].every((f) => page.fonts.includes(f)), `the site's fonts loaded (${[...new Set(page.fonts)].join(", ")})`);
+
+  // ---- Listen here (js/movelisten.js, src/listen.c): on this plain http page (no AudioWorklet: the ScriptProcessor, as
+  // Safari on the Move's page), a click on the header's headphones: the stream plays (samples with sound reach the
+  // player, no gap), the Move silent; a second click: off, the Move's sound back
+  {
+    await moveCmd("note 84 110", "note 88 110");
+    await click("#mv-lisbtn");
+    const on = await until(`window.FM1Listen && FM1Listen.state === "on" && FM1Listen.stats && FM1Listen.stats.playing && FM1Listen.stats.nonzero > 44100`, 10000, "Listen playing");
+    const L = await js(`JSON.parse(JSON.stringify(FM1Listen))`), a = await api("listen");
+    ok(on && L.path === "scriptprocessor" && L.gaps === 0 && L.stats.under === 0 && a.muted === 1 && a.out_peak === 0 && a.tap_peak > 1000,
+      `Listen: on (${L.path}, ${L.rate} Hz), ${L.stats.nonzero} samples with sound played, ${L.stats.ms} ms buffered, no gap or run dry; the Move silent (out_peak ${a.out_peak}, tap ${a.tap_peak})`);
+    await click("#mv-lisbtn");
+    ok(await untilApi(async () => { const b = await api("listen"); return b.listeners === 0 && b.muted === 0; }, 3000)
+      && (await js(`FM1Listen.state`)) === "off", "Listen: off, the Move's sound back");
+    await moveCmd("note 84 0", "note 88 0");
+  }
 
   if (ONLY === "sampler") {
     // ---- --only=sampler: the Sampler window alone (tests/sampler_suite.sh). ChoralRoot into slot 2 through the API
