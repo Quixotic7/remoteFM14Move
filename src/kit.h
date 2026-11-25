@@ -9,7 +9,13 @@
  * Threads: kit_note .. kit_poll, kit_render, kit_preview_mix from the engine's thread (never blocking: a short mutex
  * around a copy at most); every file is read on the file thread: the take library's worker (cfg.tl: tl_post's
  * TL_Q_JOB runs kit_work there), or, without one, the kit's own thread (cfg.own_thread), or the caller's (tests:
- * kit_work). The memory a sound leaves is freed there too, never on the engine's thread. libc + pthreads (+ libm). */
+ * kit_work). The memory a sound leaves is freed there too, never on the engine's thread. libc + pthreads (+ libm).
+ *
+ * (stage 3c, making sounds) Mix and join two pads, a pad's own edits (trim, normalize, reverse), a take sliced over
+ * the pads: every new file written on the file thread into the kits' Edits folder (kits_dir/Edits:
+ * Samples/RemoteFM1/Kits/Edits, seen by Move's browser; never listed as a kit, it has no kit.json), 16-bit stereo WAV
+ * at the first sound's rate, its name the result's ("Join 2+5", "Kick trim"; " 2", " 3" .. when taken). A sound read
+ * for several pads (a take's slices: each pad a region of it) is in memory once (shared, counted once). */
 #ifndef RFM14_KIT_H
 #define RFM14_KIT_H
 #include <stdint.h>
@@ -51,7 +57,13 @@ typedef struct {
     uint32_t frames, rate;
     uint8_t thumb[KIT_THUMB];
 } kit_row_t;
-enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT };
+enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES };
+/* (stage 3c) as rfm1cs's RFM_MOVE_KIT_MG_*, _ED_*, _SM_* */
+enum { KIT_MG_COPY, KIT_MG_MIX, KIT_MG_JOIN };
+enum { KIT_ED_TRIM = 1, KIT_ED_NORMALIZE, KIT_ED_REVERSE };
+enum { KIT_SM_HITS, KIT_SM_EQ16, KIT_SM_EQ8, KIT_SM_EQ4, KIT_SM_STEPS, KIT_SM_N };
+#define KIT_SLICES 16
+#define KIT_NORM_PEAK 31656       /* normalize, and a mix past full scale: the peak, -0.3 dBFS */
 typedef struct {                  /* (stage 3b) a kit as saved: its pads' paths and settings, the right half, the strip */
     char name[KIT_NAME];
     int layout;
@@ -73,6 +85,9 @@ typedef struct {
     int total, from, n;
     kit_row_t rows[KIT_ROWS];
     kit_kit_t kit;                /* KIT */
+    /* (3c) SLICES: take, path, frames, rate, npk / pk its whole wave; n slices (0 failed), cuts[0..n] in frames */
+    uint32_t take;
+    uint32_t cuts[KIT_SLICES + 1];
 } kit_ans_t;
 typedef struct kit kit_t;
 
@@ -106,12 +121,26 @@ void kit_render(kit_t *k, float *acc, uint32_t frames);   /* adds the Kit bus (s
  * sampler's Kit source; NULL: none) */
 void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, uint32_t frames);
 void kit_preview_mix(kit_t *k, int16_t *out, uint32_t frames);   /* adds the preview (after the recorder's tap) */
+/* (stage 3c) answers: KIT_A_LOADED for the pad that gets the new file (a failure: its status, the pad keeps its own) */
+void kit_merge(kit_t *k, int dst, int src, int op);   /* Mix / Join: src's region then (or plus) dst's, onto dst */
+void kit_edit(kit_t *k, int pad, int op);             /* KIT_ED_*: the pad's own new file */
+/* a take's cuts by method (KIT_SM_*; Steps: step_us a step): answer KIT_A_SLICES; the take is kept for kit_slice_play
+ * (the preview path, never recorded) until kit_slice_done or another preview */
+void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us);
+void kit_slice_play(kit_t *k, uint32_t from, uint32_t count);
+void kit_slice_done(kit_t *k);
+/* (the file thread, tests) a take's cuts as KIT_SLICE gives them: n slices (cuts[0..n]) of pcm (stereo) */
+int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, uint32_t *cuts);
+const char *kit_pad_path(const kit_t *k, int pad);
+/* (the page's Kit tab, any thread: the folder read there) the kits saved, {"kits": [{"id", "name"}]}: malloc'd */
+char *kit_kits_json(const kit_t *k);   /* (engine's thread, tests) the file on the pad ("" none) */
 /* (status, tests) */
 int kit_voices(const kit_t *k);           /* voices sounding */
 uint32_t kit_bytes(const kit_t *k);       /* the kit's sounds in memory */
 uint32_t kit_frames(const kit_t *k, int pad);   /* a pad's sound's frames (0 none) */
 double kit_rate_of(const kit_t *k, int pad, int semis);   /* (3b) a voice's source frames an output frame */
 int kit_previewing(const kit_t *k);       /* the preview sounds */
+uint32_t kit_sounding(const kit_t *k);    /* (3c) the pads a voice sounds for (bits) */
 
 /* ---- the file thread: the requests waiting, done (the take library's worker calls it through TL_Q_JOB) */
 void kit_work(void *k);

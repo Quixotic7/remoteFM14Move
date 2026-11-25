@@ -14,6 +14,9 @@
  *   POST /api/edit          {"op", "a", "b"}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as /ws's ops
  *   GET /api/smp            the Sampler window's state: the sampler's settings, the recorder now (engine.c smp_json;
  *                           /ws sends it as text when it changes)
+ *   GET /api/kit            (rfm1cs stage 3c) the Sampler window's Kit tab: the kit (engine.c kit_json; /ws sends it as text
+ *                           when it changes); GET /api/kit/kits the kits saved; POST /api/kit {"op": play | choose | set
+ *                           | save | open, ...}: done on the engine's thread as the Move's own controls (web.c api_kit_post)
  *   GET/POST /api/takes...  the Sampler window's takes (web.c "the Sampler window's takes": list, peaks, wav with
  *                           Range, edit, undo, rename, play), done by the take library's worker
  *   POST /api/test/midi     {"track", "b0", "b1", "b2"}: sequencer MIDI from outside (--test-api only; else 403)

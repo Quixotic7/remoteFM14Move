@@ -81,7 +81,7 @@ typedef struct {
      * a Range asked (rg 1: rg_a..rg_b, rg_b ~0 to the end; 2: the last rg_a bytes) */
     int treq, tkr, rg;
     uint64_t treq_ms, rg_a, rg_b;
-    uint32_t smp_seq;
+    uint32_t smp_seq, kit_seq;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -306,6 +306,40 @@ static void api_edit(client_t *c, const char *body, int test)
         return;
     }
     engine_panel((int)op, (int)a, (int)b);
+    json_reply(c, "202 Accepted", "{\"ok\":true}");
+}
+
+/* (the Sampler window's Kit tab, rfm1cs stage 3c) POST /api/kit {"op": "play" (pad, vel: 0 let go) | "choose" (pad) |
+ * "set" (pad, param RFM_MOVE_KIT_P_*, value) | "save" | "open" (id, GET /api/kit/kits'): done on the engine's thread as
+ * the Move's own controls do it (the core's kit; the Move's screen and pads follow); 202 */
+static void api_kit_post(client_t *c, const char *body)
+{
+    char op[16] = "";
+    long pad = 0, param = 0, value = 0, vel = 0, id = 0;
+    if (!body || mj_string(body, "op", op, sizeof op)) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"want op\"}");
+        return;
+    }
+    mj_int(body, "pad", &pad), mj_int(body, "param", &param), mj_int(body, "value", &value), mj_int(body, "vel", &vel);
+    mj_int(body, "id", &id);
+    if (pad < 0 || pad > 15 || param < 0 || param > 31 || value < -32768 || value > 32767 || vel < 0 || vel > 127) {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"out of range\"}");
+        return;
+    }
+    if (!strcmp(op, "play"))
+        engine_panel(ENG_OP_KIT_PLAY, (int)pad, (int)vel);
+    else if (!strcmp(op, "choose"))
+        engine_panel(ENG_OP_KIT_CHOOSE, (int)pad, 0);
+    else if (!strcmp(op, "set"))
+        engine_panel(ENG_OP_KIT_SET, (int)(pad * 32 + param), (int)value);
+    else if (!strcmp(op, "save"))
+        engine_panel(ENG_OP_KIT_SAVE, 0, 0);
+    else if (!strcmp(op, "open"))
+        engine_panel(ENG_OP_KIT_OPEN, (int)(uint32_t)(unsigned long)id, 0);
+    else {
+        json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"no such op\"}");
+        return;
+    }
     json_reply(c, "202 Accepted", "{\"ok\":true}");
 }
 
@@ -1782,6 +1816,8 @@ static void request(client_t *c, const char *body)
             api_fs_post(c, path + 8, query);
         else if (!strncmp(path, "/api/takes/", 11))
             api_takes_post(c, path + 10, body);
+        else if (!strcmp(path, "/api/kit"))
+            api_kit_post(c, body);
         else if (!strncmp(path, "/api/fm1/wifi/", 14))
             api_fm1_wifi(c, path + 14, body);
 #ifdef RFM14_PLAT_SIM
@@ -1841,6 +1877,13 @@ static void request(client_t *c, const char *body)
         http_reply(c, "200 OK", "application/json", g_v.mix, strlen(g_v.mix));
     else if (!strcmp(path, "/api/smp"))
         json_reply(c, "200 OK", g_v.smp[0] ? g_v.smp : "{\"type\":\"smp\",\"on\":0}");
+    else if (!strcmp(path, "/api/kit"))   /* (the Kit tab, rfm1cs stage 3c) */
+        json_reply(c, "200 OK", g_v.kit[0] ? g_v.kit : "{\"type\":\"kit\",\"on\":0}");
+    else if (!strcmp(path, "/api/kit/kits")) {
+        char *j = engine_kits_json();
+        json_reply(c, "200 OK", j ? j : "{\"kits\":[]}");
+        free(j);
+    }
     else if (!strcmp(path, "/api/takes") || !strncmp(path, "/api/takes/", 11))
         api_takes_get(c, path + 10, query, req);
     else if (!strcmp(path, "/api/fx")) {
@@ -2100,6 +2143,10 @@ static void push(client_t *c)
     if (c->smp_seq != g_v.smp_seq && g_v.smp[0]) {   /* (the Sampler window's: the settings, the recorder now) */
         c->smp_seq = g_v.smp_seq;
         ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.smp, strlen(g_v.smp));
+    }
+    if (c->kit_seq != g_v.kit_seq && g_v.kit[0]) {   /* (its Kit tab, rfm1cs stage 3c: the kit) */
+        c->kit_seq = g_v.kit_seq;
+        ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.kit, strlen(g_v.kit));
     }
     if (c->meters_seq != g_v.meters_seq) {
         uint8_t m[8];

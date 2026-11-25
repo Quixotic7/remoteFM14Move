@@ -93,6 +93,10 @@ typedef struct {
      * smp_json): when it changes, at most 15 a second */
     char smp[1536];
     uint32_t smp_seq;
+    /* (the page's Kit tab, rfm1cs stage 3c) the kit as the core has it, JSON ({"type":"kit",..}: engine.c kit_json): when
+     * it changes, at most 15 a second */
+    char kit[8192];
+    uint32_t kit_seq;
 } engine_view_t;
 /* copies the view when its seq is not *seq (then *seq = the new one): 1 copied, 0 unchanged */
 int engine_view(engine_view_t *v, uint32_t *seq);
@@ -136,9 +140,16 @@ int engine_load(int slot, const char *id, int activate);   /* activate: then mak
  *   page its knobs are on (the Move's fw.fx_pg)
  *   (rfm1cs 0.6.6) ENG_OP_MROUTE a slot 0..2, b its MIDI routes (bits 0..2 the slots, 8 Out; refused: a cycle, its own)
  *   (the page's Sampler window, rfm1cs rfm_move_smp_set) ENG_OP_SMP_SET a the setting (RFM_MOVE_SMP_*), b its value as
- *   SMP_SET sends it (Length: the bars) | ENG_OP_SMP_PRESS: the app's record key (Sample in the app: SMP_PRESS) */
+ *   SMP_SET sends it (Length: the bars) | ENG_OP_SMP_PRESS: the app's record key (Sample in the app: SMP_PRESS)
+ *   (the page's Kit tab, rfm1cs stage 3c; web.c POST /api/kit) ENG_OP_KIT_PLAY a pad, b vel (0 let go) |
+ *   ENG_OP_KIT_CHOOSE a pad | ENG_OP_KIT_SET a pad * 32 + setting (RFM_MOVE_KIT_P_*), b its value | ENG_OP_KIT_SAVE: the
+ *   kit saved as a new kit (as its Save row) | ENG_OP_KIT_OPEN a a saved kit's id (engine_kits_json's): loaded */
 enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOAD, ENG_OP_FXPARAM, ENG_OP_PAGE,
-       ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_MROUTE, ENG_OP_SMP_SET, ENG_OP_SMP_PRESS, ENG_OP_LAST = ENG_OP_SMP_PRESS };
+       ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_MROUTE, ENG_OP_SMP_SET, ENG_OP_SMP_PRESS, ENG_OP_KIT_PLAY, ENG_OP_KIT_CHOOSE,
+       ENG_OP_KIT_SET, ENG_OP_KIT_SAVE, ENG_OP_KIT_OPEN, ENG_OP_LAST = ENG_OP_KIT_OPEN };
+/* (the page's Kit tab) the kits saved, {"kits": [{"id", "name"}]} in name order (read on the caller's thread), a
+ * malloc'd copy, or NULL (no kit) */
+char *engine_kits_json(void);
 /* the page's Sampler window: the take library (takes.h; web.c /api/takes), each request handed by the engine's thread
  * to the library's worker (the files never on the engine's thread), its answer kept for the page:
  *   ENG_TK_LIST    id a day (0: the newest): tl_list_json

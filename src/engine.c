@@ -976,12 +976,14 @@ static int g_kit_rec = -1;               /* a pad recorded into (KIT_REC): the t
 static uint32_t g_kit_rec_blk;           /* .. the recorder's blocks at its press */
 static uint32_t g_kit_t_notes, g_kit_t_loads, g_kit_t_rows, g_kit_t_recs;   /* (tests) */
 static uint32_t g_kit_t_mix, g_kit_t_saved, g_kit_t_kits, g_kit_t_to;   /* (tests, stage 3b) */
+static uint32_t g_kit_t_made, g_kit_t_slices, g_kit_t_slplay;   /* (tests, stage 3c) */
 static char g_kit_t_saved_name[KIT_NAME];
 static int16_t g_kit_blk[FW_BLOCK * 2];   /* (stage 3b) the kit's output alone: the sampler's Kit source */
 static int g_kit_blk_on;
 static int g_smp_to;                     /* the sampler's To (RFM_MOVE_SMP_TO_*: Kit puts a take on the next empty pad) */
 static void kit_action(const rfm_move_act_t *a);
 static int g_smp_force;                  /* (the page's Sampler window) its JSON made again at once (smp_json) */
+static int g_kit_force;                  /* (the page's Kit tab) its JSON made again at once (kit_json) */
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
 static void on_action(const rfm1cs_event_t *ev)
@@ -1055,6 +1057,9 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_SAVE:    /* (stage 3b) kits saved and opened, a folder onto the pads */
     case RFM_MOVE_ACT_KIT_OPEN:
     case RFM_MOVE_ACT_KIT_FOLDER:
+    case RFM_MOVE_ACT_KIT_MERGE:   /* (stage 3c) mix and join, a pad's own edits, a take sliced */
+    case RFM_MOVE_ACT_KIT_EDIT:
+    case RFM_MOVE_ACT_KIT_SLICE:
         kit_action(a);
         break;
     case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
@@ -3047,6 +3052,36 @@ static void page_edit(int op, int a, int b)
         if (rfm_move_smp_set(m, a, b) <= 0)
             return;
         break;
+    case ENG_OP_KIT_PLAY:   /* (the page's Kit tab, rfm1cs stage 3c) a pad heard, chosen, a setting, Save, a kit */
+        g_kit_force = 1;
+        if (!rfm_move_kit_play(m, a, b))
+            return;
+        break;
+    case ENG_OP_KIT_CHOOSE:
+        g_kit_force = 1;
+        if (!rfm_move_kit_choose(m, a))
+            return;
+        break;
+    case ENG_OP_KIT_SET:
+        g_kit_force = 1;
+        if (!rfm_move_kit_set(m, a >> 5, a & 31, b))
+            return;
+        break;
+    case ENG_OP_KIT_SAVE: {
+        rfm_move_act_t act;
+        if (!g_kit)
+            return;
+        memset(&act, 0, sizeof act);
+        act.kind = RFM_MOVE_ACT_KIT_SAVE;
+        kit_action(&act);
+        g_kit_force = 1;
+        return;
+    }
+    case ENG_OP_KIT_OPEN:
+        if (g_kit)
+            kit_open(g_kit, (uint32_t)a);
+        g_kit_force = 1;
+        return;
     case ENG_OP_SMP_PRESS: {   /* .. its record button: Sample in the app (SMP_PRESS: the recorder's key) */
         rfm_move_act_t act;
         if (!g_rec || !(m->fw.caps & RFM_MOVE_CAP_SAMPLER))
@@ -4622,6 +4657,16 @@ static void kit_action(const rfm_move_act_t *a)
         break;
     }
     case RFM_MOVE_ACT_KIT_OPEN: kit_open(g_kit, a->take); break;
+    case RFM_MOVE_ACT_KIT_MERGE: kit_merge(g_kit, a->index, (int)a->take, a->value), g_kit_t_made++; break;   /* (3c) */
+    case RFM_MOVE_ACT_KIT_EDIT: kit_edit(g_kit, a->index, a->value), g_kit_t_made++; break;
+    case RFM_MOVE_ACT_KIT_SLICE:
+        if (a->param == RFM_MOVE_KIT_SL_ASK)
+            kit_slice(g_kit, a->take, a->value, a->from);
+        else if (a->param == RFM_MOVE_KIT_SL_PLAY)
+            kit_slice_play(g_kit, a->from, a->count), g_kit_t_slplay++;
+        else
+            kit_slice_done(g_kit);
+        break;
     case RFM_MOVE_ACT_KIT_FOLDER: kit_folder(g_kit, a->value, a->take); break;
     case RFM_MOVE_ACT_KIT_LOAD:
         if (a->data && a->len) {
@@ -4659,6 +4704,50 @@ static void kit_action(const rfm_move_act_t *a)
     default: break;
     }
 }
+/* (rec_tick) the page's Kit tab: the kit as the core has it (every pad's sound, its wave, its settings; the chosen pad,
+ * the name, the layout; the pads sounding), the kits saved's version: g_view.kit when it changed, at most 15 a second */
+static void kit_json(uint32_t now)
+{
+    static uint32_t last;
+    static char prev[sizeof g_view.kit];
+    static char j[sizeof g_view.kit];
+    const rfm_move_t *m = &S->core;
+    const rfm_move_kit_t *t = &m->kit;
+    int n, k, p, glow = 0;
+    char nm[RFM_MOVE_KIT_NAME * 2 + 8];
+    if (!g_kit || (!g_kit_force && now - last < 66u))
+        return;
+    glow = (int)kit_sounding(g_kit);
+    mj_escape(rfm_move_kit_name(m), nm, sizeof nm);
+    n = snprintf(j, sizeof j, "{\"type\":\"kit\",\"on\":1,\"shown\":%d,\"cur\":%d,\"name\":\"%s\",\"layout\":%d,"
+                 "\"saved\":%u,\"kits\":%u,\"glow\":%d,\"pads\":[", rfm_move_kit_shown(m), t->cur, nm, t->rh,
+                 g_kit_t_saved, g_kit_t_kits, glow);
+    for (k = 0; k < RFM_MOVE_KIT_PADS && n < (int)sizeof j - 400; k++) {
+        const rfm_move_kit_pad_t *d = &t->pad[k];
+        char pk[2 * RFM_MOVE_KIT_PEAKS + 1];
+        mj_escape(d->name, nm, sizeof nm);
+        for (p = 0; p < d->npk && p < RFM_MOVE_KIT_PEAKS; p++)
+            snprintf(pk + 2 * p, 3, "%02x", d->pk[p]);
+        pk[2 * p] = 0;
+        n += snprintf(j + n, sizeof j - (size_t)n, "%s{\"n\":\"%s\",\"has\":%d,\"st\":%d,\"f\":%u,\"r\":%u,\"pk\":\"%s\",\"v\":[",
+                      k ? "," : "", nm, d->path[0] != 0, d->st, d->frames, d->rate, pk);
+        for (p = 0; p < RFM_MOVE_KIT_P_N; p++)
+            n += snprintf(j + n, sizeof j - (size_t)n, "%s%d", p ? "," : "", d->v[p]);
+        n += snprintf(j + n, sizeof j - (size_t)n, "]}");
+    }
+    if (n < (int)sizeof j - 4)
+        snprintf(j + n, sizeof j - (size_t)n, "]}");
+    if (!g_kit_force && !strcmp(j, prev))
+        return;
+    g_kit_force = 0, last = now;
+    memcpy(prev, j, sizeof prev);
+    pthread_mutex_lock(&g_vmu);
+    memcpy(g_view.kit, j, sizeof j);
+    g_view.kit_seq++;
+    g_view.seq++;
+    pthread_mutex_unlock(&g_vmu);
+}
+char *engine_kits_json(void) { return g_kit ? kit_kits_json(g_kit) : NULL; }
 /* (rec_tick) the kit's answers to the core; 1: redraw */
 static int kit_answers(void)
 {
@@ -4683,6 +4772,9 @@ static int kit_answers(void)
                 snprintf(g_kit_t_saved_name, sizeof g_kit_t_saved_name, "%s", a.name), g_kit_t_saved++;
             else
                 fprintf(stderr, "engine: the kit not saved\n");
+        } else if (a.kind == KIT_A_SLICES) {   /* (3c) a take's cuts */
+            redraw |= rfm_move_kit_slices(&S->core, a.take, a.path, a.frames, a.rate, a.n, a.cuts, a.npk, a.pk);
+            g_kit_t_slices++;
         } else if (a.kind == KIT_A_KIT) {   /* (3b) a saved kit read: the core takes it (its loads follow) */
             if (a.status == KIT_OK) {
                 const char *paths[KIT_PADS];
@@ -4766,6 +4858,7 @@ static void rec_tick(uint32_t now)
         tk_requests();   /* (the page's Sampler window: to the library's worker) */
     redraw |= tl_answers();
     redraw |= kit_answers();
+    kit_json(now);   /* (the page's Kit tab) */
     if (now - last >= REC_STATUS_MS) {
         last = now;
         rec_get(g_rec, &r);
@@ -5364,6 +5457,20 @@ static void housekeeping(uint32_t now)
                           t->pad[t->cur].st, g_kit_t_mix, g_kit_t_saved, g_kit_t_saved_name, g_kit_t_kits, g_kit_t_to, kn,
                           t->pad[t->cur].v[RFM_MOVE_KIT_P_STRETCH], kit_rate_of(g_kit, t->cur, 0),
                           rfm_move_kit_mix(&S->core, RFM_MOVE_KIT_MIX_LEVEL));
+            {   /* (stage 3c) the chosen pad's file and sound, the slicing, the merges and edits asked */
+                char kp[160];
+                const char *pp = kit_pad_path(g_kit, t->cur), *b = strrchr(pp, '/');
+                snprintf(kp, sizeof kp, "%s", b ? b + 1 : pp);
+                for (p = 0; kp[p]; p++)
+                    if (kp[p] == '"' || kp[p] == '\\' || (unsigned char)kp[p] < 32)
+                        kp[p] = '_';
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_file\":\"%s\",\"kit_frames\":%u,\"kit_start\":%d,"
+                              "\"kit_end\":%d,\"kit_made\":%u,\"kit_slices\":%u,\"kit_slplay\":%u,\"kit_sl_on\":%d,"
+                              "\"kit_sl_n\":%d,\"kit_sl_first\":%d,\"kit_mg\":%d", kp,
+                              kit_frames(g_kit, t->cur), t->pad[t->cur].v[RFM_MOVE_KIT_P_START],
+                              t->pad[t->cur].v[RFM_MOVE_KIT_P_END], g_kit_t_made, g_kit_t_slices, g_kit_t_slplay, t->sl_on,
+                              t->sl_ok == 1 ? t->sl_n : -1, t->sl_first, t->mg_b ? 2 : t->mg_a ? 1 : 0);
+            }
         }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
             n += midiout_json(tmp + n, (int)sizeof tmp - n);
