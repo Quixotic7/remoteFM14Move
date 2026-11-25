@@ -5,6 +5,8 @@
 rfm1cs-abletonmove's `sampler` branch (2a78cfe, local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a
 take recording, one Sample press brings the app back and ends the take).
 
+- (rfm1cs 5d76ada) **Down in the FM-1 layout does nothing** (the owner's 2026-11-25: the Track buttons switch
+  firmwares); the help's two mentions of it are gone.
 - **The sampler after the owner's try on the Move (2026-11-24).** A stems take is a folder of its own,
   `<MMDD>-<HHMMSS> Stems <bpm>bpm <bars>b` (or `<seconds>s`): `Master.wav`, `Track 1 <firmware>.wav` ..
   `Track 3 ...`, `Input.wav` (`Looper.wav`, `Kit.wav` later); `... Stems.part` while it records, named when whole,

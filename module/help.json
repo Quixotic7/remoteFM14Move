@@ -136,9 +136,7 @@
             "",
             "Jog: SELECT; click",
             "for PRESET, ALGO.",
-            "Up: the FM-1's SEQ",
-            "Down: the next",
-            " loaded firmware"
+            "Up: the FM-1's SEQ"
           ]
         },
         {
@@ -212,10 +210,6 @@
           "lines": [
             "Tap Track 1-3: play",
             "that slot.",
-            "",
-            "Down (FM-1 layout):",
-            "the next loaded",
-            "slot.",
             "",
             "Track 1-3 held +",
             "volume: that slot's",
