@@ -1301,7 +1301,7 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
-## The kit (rfm1cs stages 3a and 3b, src/kit.c)
+## The kit (rfm1cs stages 3a, 3b and 3c, src/kit.c)
 
 rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
 4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
@@ -1358,6 +1358,32 @@ pad's path and twelve settings), and says which notes play which pad. The help p
 - **(stage 3b) The sampler:** the host offers Source Kit and To (Files, Kit). To Kit: a take saved (not one recorded
   into a pad) goes onto `rfm_move_kit_next_empty(core, 1)` (the core marks it loading), "the kit has no empty pad"
   in the log when there is none.
+- **(stage 3c) New sounds:** every new file is written on the file thread (never the engine's) into
+  `<takes dir>/Kits/Edits` (`Samples/RemoteFM1/Kits/Edits`: Move's browser sees it; Files' Kits never lists it, it
+  has no kit.json), a 16-bit stereo WAV at the first sound's rate written beside (`.tmp`) and renamed into place, named
+  for what it is ("Mix 2+5", "Join 2+5", "Kick trim", "Kick norm", "Kick rev"; " 2", " 3" .. when the name is taken),
+  then put on its pad as a load (`rfm_move_kit_loaded` with its path, saved with the project). A sound several pads
+  hold (a take's slices; the same file loaded twice) is in memory once: a table of the sounds read (path, size, time)
+  counts its holders and frees it with the last; the 64 MB counts it once.
+- **(stage 3c) Mix and join:** `KIT_MERGE` (`kit_merge`: index the second pad, take the first): the first pad's file's
+  region (its start..end) and the second's are read again from their files (the regions the core's `KIT_SET`s gave),
+  the second at the first's rate (linear); Mix sums them, and a sum past full scale is scaled to a peak of -0.3 dBFS
+  (31656, never clipped); Join puts the first's then the second's end to end (2 ms faded each side of the seam: the
+  length the two's). The result goes on the second pad; the core's Undo brings its sound back.
+- **(stage 3c) A pad's own edits:** `KIT_EDIT` (`kit_edit`): Trim (the file cut to the region), Normalize (its peak
+  -0.3 dBFS), Reverse; a new file, the source (a take, a sample) untouched.
+- **(stage 3c) Slicing:** `KIT_SLICE` `RFM_MOVE_KIT_SL_ASK` (`kit_slice`): the take's WAV read (`row_path`), its cuts
+  (`kit_cuts`) by the method: Hits (5 ms windows' level; a window louder than twice the 40 ms before it and a tenth of
+  the loudest starts a slice, 60 ms after the last at least; the 16 strongest kept; a slice from each hit to the next,
+  the last to the end; none: the whole take), Equal 16 / 8 / 4, Steps (`from`: a step's microseconds; a slice a step,
+  16 at most), answered `rfm_move_kit_slices` with the take's path, its cuts, its 64 peaks; the take stays in memory as
+  the preview's sound so `_PLAY` plays a slice's frames at once (`kit_slice_play`, after the recorder's tap), `_DONE`
+  lets it go. The core puts the slices on the pads as the take's path with a region each (one file, in memory once).
+- **(stage 3c) The page's Kit tab:** the Sampler window's third tab (web/move/js/movesmp.js): `GET /api/kit` (the kit
+  as the core has it, `kit_json`: each pad's name, sound, wave, settings, the chosen pad, the name, the pads sounding;
+  /ws sends it as text when it changes), `GET /api/kit/kits` (the kits saved: `kit_kits_json`, read on the page's
+  thread), `POST /api/kit` {"op": play | choose | set | save | open} (`ENG_OP_KIT_*`, done on the engine's thread
+  through the core: `rfm_move_kit_play`, `_choose`, `_set`, the Save row's `KIT_SAVE`, `kit_open` of a kit's id).
 - **Files:** Takes: the take library's list of every take, newest first (`tl_rows` `TL_ALL`; a row "M 4 Bars", its
   picture); a take loads from its WAV (a stems take: its Master). Samples: `--samples-dir` (the Move's
   `/data/UserData/UserLibrary/Samples`): folders first, then WAV / AIFF files, by name, dot files hidden; a folder's
@@ -1368,7 +1394,9 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   chosen pad's), `kit_st`, `kit_rec`, and the counts `kit_notes`, `kit_loads`, `kit_rows`, `kit_recs`; (3b)
   `kit_stretch` and `kit_rate` (the chosen pad's Stretch and its voices' source frames a frame), `kit_level` (the
   kit's strip), `kit_name`, the counts `kit_mix` (MIX slot 3), `kit_saved` (with `kit_saved_name`), `kit_kits`
-  (kits opened), `kit_to` (takes put on a pad by To Kit).
+  (kits opened), `kit_to` (takes put on a pad by To Kit).; (3c) `kit_file`, `kit_frames`, `kit_start`, `kit_end` (the chosen pad's file and region), `kit_sl_on`, `kit_sl_n`,
+  `kit_sl_first` (the slicing), `kit_mg` (Copy held: 1 a pad, 2 two), the counts `kit_made` (merges and edits asked),
+  `kit_slices` (cuts answered), `kit_slplay` (slices heard)
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,

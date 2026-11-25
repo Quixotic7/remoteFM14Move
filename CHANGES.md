@@ -1,6 +1,19 @@
 # Changes
 
-## Unreleased: the kit (stages 3a and 3b)
+## Unreleased: the kit (stages 3a, 3b and 3c)
+
+- **Mix and join:** hold Copy, press a pad, then another: Copy, Mix or Join (the jog chooses, the click does it). Mix
+  and Join make a new sound on the second pad (Samples/RemoteFM1/Kits/Edits); Undo brings the pad back; let go of Copy
+  first and nothing happens.
+- **A pad's own edits:** the Sound row's click: Play, Trim, Normalize, Reverse, Delete. An edit makes the pad its own
+  copy; the take or sample it came from is untouched. Undo.
+- **Slicing:** a take's To Kit, then Slice: its hits (or 16 / 8 / 4 equal parts, or a slice a step); the pads play
+  the slices, knobs 1 and 2 move the chosen cut, Shift + a pad picks where they start; the click puts them on the
+  pads, one file, each pad its own part. Undo brings the kit back.
+- **The page's Kit tab:** the Sampler window shows the 16 pads (press to play and pick), the picked pad's wave and
+  settings, the kit's name, Save and Load.
+- Kits that use a new file keep working after a restart (a pad whose new file's path was shorter than the old one
+  could make the project's kit unreadable).
 
 - **Stretch** (knob 3): a pad's sound lasts exactly 1 to 64 steps at the tempo, and follows the tempo when it
   changes. While Pitch, Stretch, Start or End turn, the step buttons light the steps it lasts.
