@@ -926,10 +926,56 @@ sound, then starts it (its first calls on the engine's thread, between two block
 second after a burst of 20, the rest counted ("N lines dropped"); the log file (stderr's) is moved to `<log>.1` past
 1 MB (`--log-cap`).
 
+## Updating from the page
+
+A new build can be installed from the Move's own page, with no computer: open `http://remotefm1.local:7730/`, the
+settings sheet (the page's gear), **Update**, and pick the `.rfm1u` file (on an iPad: from Files). The page reads the
+file's version and asks before sending it. The Move checks it, installs it and says **Installed X. Relaunch RemoteFM1
+on the Move to start it.** Nothing restarts by itself: leave RemoteFM1 (Shift + touch the volume knob + click the jog
+wheel) and start it again from Schwung's Tools menu. **Undo last update** puts the previous build back (one level).
+The section shows the running build's version and commit, and the installed one's when it differs.
+
+Making one, on the Mac:
+
+```sh
+make update                  # make, then dist/updates/remotefm1-<version>-<commit>.rfm1u (tools/make_update.py)
+python3 tools/make_update.py --check dist/updates/<file>.rfm1u   # its signature and its files
+```
+
+By default it carries `remotefm1-host`, `help.json`, `module.json` and the whole page (`site/`, ~0.5 MB packed);
+about 2 MB in all. `--base DIR` leaves out the site files an unpacked module at DIR already has, `--add SRC=DEST`
+adds a file, `--full dist/remotefm1-module.tar.gz` wraps a whole module package. Firmwares are not in it: the
+catalog and the bundled set stay as they are.
+
+- **The signature:** Ed25519 with its own key, `~/.config/remotefm14move/update-signing-key.pem` (mode 600, never in
+  git; its public half is `src/update_key.h`), over `"RFM1-UPDATE-1\0"` and the SHA-256 of the file. A catalog
+  signature (another key, another message) can never pass as an update. A file with a bad signature is refused and
+  nothing changes. The file's format is in `src/update.h`.
+- **What it may hold:** plain files and folders, relative to the module's folder. A link, a device, a FIFO, an
+  absolute name or a `..` refuses the whole file. It is an overlay: the files it carries replace those of the same
+  name, everything else in the module stays (the bundled firmwares, the catalog snapshot, the launcher's `bin/`).
+- **On the Move** (`src/update.c`, on its own thread; the audio is not touched): the upload goes to
+  `/data/UserData/.remotefm1-update.part` (256 MB at most; refused without the room for it). Then: the signature; a
+  copy of the module's folder with the update over it, its `remotefm1-host` checked (an executable aarch64 program);
+  a backup of the RemoteFM1 folder's `move/` (projects, settings) as
+  `/data/UserData/remotefm1-data-backup-<date>-<time>.tar.gz` (the newest 3 kept); then two renames: the module's
+  folder becomes `remotefm1.prev` (an older one deleted), the copy becomes `remotefm1`. The running host keeps the
+  program it started with. When the folder above the module's cannot be written, the same swap happens inside it
+  (`remotefm1/.update-prev`). Undo renames `.prev` back; the build undone is deleted.
+- The launcher's real-time helper (`bin/heal`) is copied as a plain file; the next launch installs it again, as it
+  does after a first install (README "Threads").
+- The host's module folder is the one it runs from (`--module-dir DIR` for the tests); `GET /api/update` is the state,
+  `POST /api/update` the file, `POST /api/update/undo` the undo (src/web.h).
+- **Tests:** `make test-update` (tests/update_test.sh: the format, the signatures, the payload's rules, gzip, the
+  backup, natively with ASan + UBSan; tests/update_e2e.sh: installs, refusals, Undo and the inside layout on the
+  simulator). Both are part of `make test`.
+
 ## Layout
 
 | Path | What |
 |---|---|
+| `src/update.c`, `src/gz.c`, `src/update_key.h` | the page's Update (README "Updating from the page"): the .rfm1u's check, install and Undo; gzip both ways; the update key's public half |
+| `tools/make_update.py`, `web/move/js/moveupdate.js` | a signed .rfm1u from this build; the settings sheet's Update section |
 | `src/main.c` | the program: the engine, the page, mDNS, then Move Remote's platform main (`plat_move.c` / `plat_sim.c`) |
 | `src/engine.c` | the engine thread: 3 firmware slots on their device clocks, the mix and limiter, the ring the audio thread drains, the rfm1cs session over a socketpair, the actions |
 | `src/fwrt.c` | the firmware runtime: a compiled firmware loaded and booted as RFM1-FORMAT.md section 7 says, its clock, its panel, the WASI imports, traps |

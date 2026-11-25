@@ -2,6 +2,11 @@
 
 ## Unreleased: the kit (stages 3a, 3b and 3c)
 
+- **Update from the page:** the settings sheet's Update section installs a new build sent as an `.rfm1u` file (from
+  an iPad's Files too): the Move checks its signature, backs up your projects and settings
+  (`/data/UserData/remotefm1-data-backup-*.tar.gz`), installs it and asks you to relaunch RemoteFM1. **Undo last
+  update** puts the previous build back. The section shows the running build's version and commit.
+
 - **Mix and join:** hold Copy, press a pad, then another: Copy, Mix or Join (the jog chooses, the click does it). Mix
   and Join make a new sound on the second pad (Samples/RemoteFM1/Kits/Edits); Undo brings the pad back; let go of Copy
   first and nothing happens.
