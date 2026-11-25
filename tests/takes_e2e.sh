@@ -85,7 +85,7 @@ wait_for 3 '[ "$(field smp_t_start)" = "$ws" ] && [ "$(field smp_t_end)" = "$we"
     && ok "knob 1: the start 20 steps on ($ws), knob 2: the end 10 back ($we; a step 1/256 of the take: $st)" \
     || bad "the knobs: start '$(field smp_t_start)' (want $ws) end '$(field smp_t_end)' (want $we)"
 shot; cp "$SIM/mr-screen.pbm" build/test-out/takes_trim_zoom.pbm
-jog 2 1   # (End chosen by its knob) Play, Keep
+jog 1 1   # (the jog starts on Play; the knobs leave it there) Keep
 wait_for 2 '[ "$(field smp_t_i)" = 3 ]' || bad "the jog to Keep: '$(field smp_t_i)'"
 e0=$(edits); click
 wait_for 5 '[ "$(edits)" = $((e0 + 1)) ] && [ "$(field tl_ok)" = 1 ]'
@@ -155,6 +155,15 @@ click
 wait_for 3 '[ "$(field tl_play)" = 0 ]' && ok "Play again: it stops" || bad "the stop: playing '$(field tl_play)'"
 press 51
 wait_for 2 '[ "$(field smp_scr)" = 0 ] && [ "$(field smp_tab)" = 1 ]' || bad "Back: the list ('$(field smp_scr)')"
+t0=$(takes); press 118   # (the owner's 2026-11-25) Sample in Takes: the chosen take plays, nothing records
+wait_for 3 '[ "$(field tl_play)" = "$id" ]' && [ "$(field rec_state)" = 0 ] && press 118 && wait_for 3 '[ "$(field tl_play)" = 0 ]' \
+    && [ "$(takes)" = "$t0" ] && ok "Sample in the Takes tab: the chosen take plays, again: it stops; no take recorded" \
+    || bad "Sample in Takes: playing '$(field tl_play)' (want $id), recorder '$(field rec_state)', takes $(takes) (were $t0)"
+press 51   # Back in Takes: the tabs (the jog on them), the app still shown; again: closed
+wait_for 2 '[ "$(field smp_shown)" = 1 ] && [ "$(field smp_tab)" = 1 ]' && press 51 && wait_for 2 '[ "$(field smp_shown)" = 0 ]' \
+    && ok "Back in the Takes tab: the tabs first, then the app closes" || bad "Back in Takes: shown '$(field smp_shown)' tab '$(field smp_tab)'"
+press 118
+wait_for 3 '[ "$(field smp_shown)" = 1 ]' || bad "the app again"
 
 # ---------------------------------------------------------------- Capture: the preview
 tab 0
@@ -188,8 +197,11 @@ tab 1
 wait_for 3 '[ "$(field smp_total)" = 1 ]' || bad "the take there: total '$(field smp_total)'"
 click
 wait_for 3 '[ "$(field smp_scr)" = 1 ]' || bad "its actions"
-click; press 118   # Play, then Sample: the master records while it plays (a take running: the jog is not the list's)
+id=$(field smp_cur); press 51; tab 0
+press 118   # Record: Sample starts the master's take; then the take is played on the Move as the page does it (outside
+            # Record Sample plays; a take running: the app shows only it)
 wait_for 3 '[ "$(field rec_state)" = 2 ]' || bad "the master records: state '$(field rec_state)'"
+curl -s -X POST -H 'Content-Type: application/json' -d "{\"id\":$id}" "$U/api/takes/play" >/dev/null
 wait_for 3 '[ "$(field tl_play)" != 0 ]' || bad "Play: '$(field tl_play)'"
 wait_for 5 '[ "$(field tl_play)" = 0 ]'
 sleep 0.3; press 118

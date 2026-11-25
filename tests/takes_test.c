@@ -228,6 +228,11 @@ static void t_list(void)
     check(n == 2 && total == 5 && !strcmp(r[0].rel, TOLD), "List: a window (from 3: two left)");
     n = tl_rows(l, 12345, 0, 8, r, &total, &f);
     check(n == 0 && total == 0 && f == 0, "List: no such day: nothing");
+    n = tl_rows(l, TL_ALL, 0, 8, r, &total, &f);        /* (the Move's Takes list: every take, the newest first) */
+    check(n == 6 && total == 6 && f == TL_ALL && !strcmp(r[0].rel, TM) && !strcmp(r[4].rel, TST) && !strcmp(r[5].rel, T23),
+          "List: every take of every day in one list, the newest first (%d of %d)", n, total);
+    n = tl_rows(l, TL_ALL, 4, 3, r, &total, &f);
+    check(n == 2 && total == 6 && r[0].kind == TL_STEMS && !strcmp(r[1].rel, T23), "List: a window of all takes across two days");
     {
         tl_row_t a, b;
         const uint32_t id = id_of(l, TS2);

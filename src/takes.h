@@ -21,6 +21,8 @@
 #define TL_WPEAKS 64      /* a window's peaks, at most */
 #define TL_ROWS 8         /* rows an answer holds, at most */
 #define TL_NEWEST 0xFFFFFFFFu   /* TL_Q_ROWS: the newest day that has takes */
+#define TL_ALL 0xFFFFFFFEu      /* TL_Q_ROWS: every take of every day, the newest first (the Move's Takes list: the
+                                 * owner's 2026-11-25 "scroll through everything I've recorded, newest at the top") */
 #define TL_REL 256
 
 enum { TL_DAY = 1, TL_TAKE = 2, TL_STEMS = 3 };   /* a row's kind (as rfm1cs's RFM_MOVE_SMP_ROW_*) */
@@ -57,7 +59,8 @@ void tl_free(tl_t *l);   /* stops its threads (a play stops) */
 void tl_set_labels(tl_t *l, const char *const labels[3]);
 
 /* ---- now (the caller's thread) */
-/* rows of a folder: 0 the days, TL_NEWEST the newest day with takes, else a day's id; from, n (<= TL_ROWS). Returns
+/* rows of a folder: 0 the days, TL_NEWEST the newest day with takes, TL_ALL every take (answered as folder TL_ALL,
+ * also with none), else a day's id; from, n (<= TL_ROWS). Returns
  * the rows given; *total the folder's rows, *folder_out the folder answered (0 and *total 0: no such folder / no
  * takes) */
 int tl_rows(tl_t *l, uint32_t folder, int from, int n, tl_row_t *rows, int *total, uint32_t *folder_out);

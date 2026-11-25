@@ -103,7 +103,7 @@ static uint32_t fnv(const char *s)
     uint32_t h = 2166136261u;
     for (; *s; s++)
         h = (h ^ (uint8_t)*s) * 16777619u;
-    return h == 0 || h == TL_NEWEST ? 1u : h;
+    return h == 0 || h == TL_NEWEST || h == TL_ALL ? 1u : h;
 }
 
 static int is_day(const char *s, int *y, int *m, int *d)   /* YYYY-MM-DD */
@@ -561,6 +561,23 @@ static int rows_locked(tl_t *l, uint32_t folder, int from, int n, tl_row_t *rows
         *total = nd;
         for (i = from; i >= 0 && i < nd && k < n; i++)
             day_row(l, dv[i], &rows[k++]);
+        free(dv);
+        return k;
+    }
+    if (folder == TL_ALL) {                             /* every take: day after day (newest first), each day's newest
+                                                         * first; only the rows asked are read */
+        int at = 0;
+        *fout = TL_ALL;
+        for (i = 0; i < nd; i++) {
+            int j;
+            nt = takes_in(l, dv[i], &tv);
+            for (j = 0; j < nt; j++, at++)
+                if (from >= 0 && at >= from && k < n)
+                    take_row(l, dv[i], tv[j], &rows[k++]);
+            free(tv);
+            tv = NULL;
+        }
+        *total = at;
         free(dv);
         return k;
     }
