@@ -58,6 +58,7 @@ const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=
 const SHOT = arg("shot", join(ROOT, "docs/move-page.png"));
 const DOCS = join(ROOT, "docs");
 const LIVE_IMAGES = process.argv.includes("--live-images"), ALSO = arg("shots-also", null);
+const ONLY = arg("only", "");   // --only=sampler: the page's load checks, then the Sampler window alone (desktop, phone)
 const BIG = join(ROOT, "dist/move-catalog/index.json");
 const CHROMIUM = process.env.CHROMIUM || "/Applications/Chromium.app/Contents/MacOS/Chromium";
 const IMAGE = process.env.IMAGE || "rfm14move-build";
@@ -267,7 +268,9 @@ async function sampler(responses) {
   ok(await untilApi(async () => peakOf(await wavOf(nt.id)) === 31656, 8000), "Normalize: its peak -0.3 dBFS (31656)");
   ok(await until(`!document.getElementById("mv-smp-undo").disabled`, 3000, "Undo on"), "Undo on (the take library's one undo)");
   await click("#mv-smp-undo");
-  ok(await untilApi(async () => (await wavOf(nt.id)).equals(pre), 8000) && (await smpNow()).undo === 0, "Undo: the take as before Normalize, byte for byte (the Move's undo used)");
+  const undone = await untilApi(async () => (await wavOf(nt.id)).equals(pre), 8000);
+  const undoOff = await untilApi(async () => (await smpNow()).undo === 0, 3000);   // (the state follows at its next status)
+  ok(undone && undoOff, `Undo: the take as before Normalize, byte for byte (${undone}), the Move's undo used (${undoOff})`);
   // Rename: the rules (the API), then from the page
   const head = nt.name.slice(0, 12);
   const bad1 = await post("takes/rename", { id: nt.id, name: "a/b" }), bad2 = await post("takes/rename", { id: nt.id, name: ".hidden" });
@@ -584,7 +587,35 @@ async function storeChecks() {
   if ((await active()) !== st0.active) { await edit(16, st0.active, 0); await untilApi(async () => (await active()) === st0.active, 5000); }
 }
 
-console.log(`page_e2e (${BASE}, container ${cid.slice(0, 12)})`);
+// the Sampler on the phone (the page already at 390 x 844): from the slot menu, the full-screen sheet
+async function samplerPhone() {
+  await click("#mv-slotbtn");
+  await until(`document.getElementById("mv-ip-smp")`, 3000, "the menu again");
+  await click("#mv-ip-smp");
+  ok(await until(`document.querySelector("#mv-smp.open.phone") && FM1MoveUi.smpView.on`, 5000, "the phone's Sampler"), "Sampler from the slot menu: the full-screen sheet");
+  await sleep(600);   // (it slides in: a tap before it is there pans the viewport)
+  const phWide = () => js(`(() => { const v = document.getElementById("mv-smp"), b = v.getBoundingClientRect();
+    const out = [...v.querySelectorAll("button, canvas, .mv-segs, .mv-bar, .mv-smp-tn b")].filter((e) => e.offsetParent && e.getBoundingClientRect().right > innerWidth + 1).length;
+    return { w: b.width, x: b.left, sw: document.documentElement.scrollWidth, bw: v.querySelector(".mv-body").scrollWidth, cw: v.querySelector(".mv-body").clientWidth, out }; })()`);
+  await click('#mv-smp .mv-tab[data-tab="0"]');
+  await until(`document.getElementById("mv-smp-rec")`, 3000, "Record");
+  await sleep(500);
+  let pw = await phWide();
+  ok(pw.w >= 389 && pw.x <= 1 && pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Record on the phone: the whole width (${Math.round(pw.w)} px), no sideways scroll, nothing past the edge (${pw.out})`);
+  await shot(join(OUT, "sampler-phone-record.png"));
+  await click('#mv-smp .mv-tab[data-tab="1"]');
+  await until(`document.querySelector("#mv-smp .mv-smp-take canvas[data-ok]")`, 6000, "the phone's takes");
+  await click("#mv-smp .mv-smp-take .mv-smp-tools");
+  await until(`document.querySelector("#mv-smp .mv-smp-tools-p canvas[data-ok]")`, 5000, "the phone's Tools");
+  await sleep(500);
+  pw = await phWide();
+  ok(pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Takes and Tools on the phone: no sideways scroll, nothing past the edge (${pw.out})`);
+  await shot(join(OUT, "sampler-phone-takes.png"));
+  await click("#mv-smp .mv-close");
+  ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "close"), "its close button goes back to the faceplate");
+}
+
+console.log(`page_e2e (${BASE}, container ${cid.slice(0, 12)})${ONLY ? `, only: ${ONLY}` : ""}`);
 try {
   ok(await untilApi(async () => !!(await slotId(0)), 20000), "the host runs on the simulator (its status answers)");
   // the files the page asks for, by URL: their HTTP status
@@ -675,6 +706,21 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   ok(page.plate[0] > 1000 && page.lit > 2000 && page.seq > 0, `the panel drawn (${page.plate.join(" x ")}), the Move's screen live on it (${page.lit} pixels lit, frame ${page.seq})`);
   ok(["Chakra Petch", "DM Sans"].every((f) => page.fonts.includes(f)), `the site's fonts loaded (${[...new Set(page.fonts)].join(", ")})`);
 
+  if (ONLY === "sampler") {
+    // ---- --only=sampler: the Sampler window alone (tests/sampler_suite.sh). ChoralRoot into slot 2 through the API
+    // (as the slots section leaves it), slot 1 playing, then the window on the desktop and on the phone; no docs/ shots
+    await fetch(API + "load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slot: 1, id: "choralroot" }) });
+    ok(await untilApi(async () => (await slotId(1)) === "choralroot", 15000), "ChoralRoot loaded into slot 2 (the API)");
+    if ((await active()) !== 0) { await edit(16, 0, 0); await untilApi(async () => (await active()) === 0, 5000); }
+    await until(`document.getElementById("fw-name").textContent === "Felucca" && document.querySelector('.mv-chip[data-slot="1"]:not(.empty):not(.loading)')`, 10000, "Felucca playing, chip 2 loaded");
+    await sampler(responses);
+    await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await cdp("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    await cdp("Page.reload", { ignoreCache: false });
+    ok(await until(`window.FM1MoveUi && document.getElementById("mv-slotbtn").offsetParent && FM1Site.current().info && document.querySelector("#mv-slotbtn canvas")`, 20000, "the phone page"),
+      "the phone: the slot button in the header");
+    await samplerPhone();
+  } else {
   // ---- a click on a key of the drawn keybed: it sounds in the simulator
   await sleep(1200);
   const q = (await status()).peak;
@@ -1165,30 +1211,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "close"), "the sheet's close button goes back to the faceplate");
 
   // ---- the Sampler on the phone: from the slot menu, the full-screen sheet, no sideways scroll (Record, Takes, Tools)
-  await click("#mv-slotbtn");
-  await until(`document.getElementById("mv-ip-smp")`, 3000, "the menu again");
-  await click("#mv-ip-smp");
-  ok(await until(`document.querySelector("#mv-smp.open.phone") && FM1MoveUi.smpView.on`, 5000, "the phone's Sampler"), "Sampler from the slot menu: the full-screen sheet");
-  await sleep(600);   // (it slides in: a tap before it is there pans the viewport)
-  const phWide = () => js(`(() => { const v = document.getElementById("mv-smp"), b = v.getBoundingClientRect();
-    const out = [...v.querySelectorAll("button, canvas, .mv-segs, .mv-bar, .mv-smp-tn b")].filter((e) => e.offsetParent && e.getBoundingClientRect().right > innerWidth + 1).length;
-    return { w: b.width, x: b.left, sw: document.documentElement.scrollWidth, bw: v.querySelector(".mv-body").scrollWidth, cw: v.querySelector(".mv-body").clientWidth, out }; })()`);
-  await click('#mv-smp .mv-tab[data-tab="0"]');
-  await until(`document.getElementById("mv-smp-rec")`, 3000, "Record");
-  await sleep(500);
-  let pw = await phWide();
-  ok(pw.w >= 389 && pw.x <= 1 && pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Record on the phone: the whole width (${Math.round(pw.w)} px), no sideways scroll, nothing past the edge (${pw.out})`);
-  await shot(join(OUT, "sampler-phone-record.png"));
-  await click('#mv-smp .mv-tab[data-tab="1"]');
-  await until(`document.querySelector("#mv-smp .mv-smp-take canvas[data-ok]")`, 6000, "the phone's takes");
-  await click("#mv-smp .mv-smp-take .mv-smp-tools");
-  await until(`document.querySelector("#mv-smp .mv-smp-tools-p canvas[data-ok]")`, 5000, "the phone's Tools");
-  await sleep(500);
-  pw = await phWide();
-  ok(pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Takes and Tools on the phone: no sideways scroll, nothing past the edge (${pw.out})`);
-  await shot(join(OUT, "sampler-phone-takes.png"));
-  await click("#mv-smp .mv-close");
-  ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "close"), "its close button goes back to the faceplate");
+  await samplerPhone();
 
   // ---- States and projects on the phone: from the slot menu, the whole screen
   await click("#mv-slotbtn");
@@ -1277,6 +1300,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await js(`(() => { window.fetch = window.__wfFetch; FM1MoveUi.wifi.pass.value = ""; })()`);
   await esc();
   ok(await until(`document.getElementById("mv-wf").hidden`, 3000, "Esc"), "Esc closes FM-1 Wi-Fi");
+  }   // (the whole page; --only=sampler is the branch above)
 
   const bad = [...responses].filter(([u, s]) => s >= 400 && !expect4xx.some((x) => u.includes(x)));
   ok(responses.size > 30 && !bad.length && !failed.length, `every file the page asked for loaded (${responses.size} responses; failed: ${bad.map(([u, s]) => `${s} ${u}`).concat(failed).join(", ") || "none"})`);

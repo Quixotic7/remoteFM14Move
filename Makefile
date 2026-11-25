@@ -62,6 +62,12 @@ inputs:
 test: all testcat testcat-v
 	tests/test.sh
 
+# the sampler's tests alone (the recorder, the take library, the app's e2e, the page's Sampler window): minutes, for
+# work on it; make test stays the proof before an install or a release
+.PHONY: test-sampler
+test-sampler: all
+	tests/sampler_suite.sh
+
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
 # signed with the catalog's key (CATALOG_SIGNING_KEY; its public half must be src/catalog_key.h's)
 CATALOG_SIGNING_KEY ?= $(HOME)/.config/remotefm14move/catalog-signing-key.pem
