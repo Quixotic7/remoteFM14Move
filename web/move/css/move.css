@@ -447,9 +447,48 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-view.phone .mv-smp-op { width: 40px; padding: 0; justify-content: center; }
 .mv-view.phone .mv-smp-days { flex-wrap: wrap; }
 
+/* (rfm1cs stage 3c) the Sampler window's Kit tab: the 16 pads as the Move's left 4 x 4 (a row a kit track's colour), the
+ * chosen pad's wave and settings */
+.mv-kit { gap: 14px; }
+.mv-kit-head { flex-wrap: wrap; row-gap: 8px; }
+.mv-kit-name { font: 700 18px/1.2 var(--ui); }
+.mv-kit-main { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+.mv-kit-pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mv-kit-pad { --c: var(--accent); position: relative; aspect-ratio: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;
+  gap: 4px; padding: 8px; border-radius: 12px; cursor: pointer; text-align: left; color: var(--muted); touch-action: none; user-select: none;
+  background: var(--well); border: 2px solid transparent; box-shadow: inset 0 0 0 1px var(--line); transition: background .08s, box-shadow .08s, transform .05s; }
+.mv-kit-pad.has { background: color-mix(in srgb, var(--c) 30%, var(--well)); color: var(--text); }
+.mv-kit-pad.cur { border-color: #fff; box-shadow: 0 0 16px -4px #fff; }
+.mv-kit-pad.glow { background: var(--c); color: #17140F; box-shadow: 0 0 22px -2px var(--c); }
+.mv-kit-pad.muted { background: color-mix(in srgb, #9696a0 25%, var(--well)); color: var(--muted); }
+.mv-kit-pad:active { transform: scale(.97); }
+.mv-kit-pad:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.mv-kit-no { font: 700 13px/1 "DM Mono", monospace; opacity: .85; }
+.mv-kit-pn { font: 600 12px/1.2 var(--ui); min-height: 15px; }
+.mv-kit-pw { display: block; width: 100%; height: 36px; opacity: .9; }
+.mv-kit-panel { --c: var(--accent); display: flex; flex-direction: column; gap: 12px; padding: 16px; border-top: 3px solid var(--c); }
+.mv-kit-ptitle { gap: 10px; min-width: 0; }
+.mv-kit-ptitle b { font: 700 16px/1.2 var(--ui); min-width: 0; }
+.mv-kit-big-no { --c: var(--accent); width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--c);
+  color: #17140F; font: 700 16px/1 "DM Mono", monospace; }
+.mv-kit-bigw { height: 110px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); overflow: hidden; }
+.mv-kit-big { display: block; width: 100%; height: 100%; }
+.mv-kit-sets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.mv-kit-set { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mv-kit-set .mv-segs { justify-content: flex-start; align-self: flex-start; flex-wrap: wrap; }
+.mv-kit-set .mv-seg { text-transform: none; }
+@media (max-width: 1000px) { .mv-kit-main { grid-template-columns: minmax(0, 1fr); } }
+.mv-view.phone .mv-kit-main { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.mv-view.phone .mv-kit-pads { gap: 6px; }
+.mv-view.phone .mv-kit-pad { padding: 5px; border-radius: 9px; }
+.mv-view.phone .mv-kit-pn { font-size: 10px; }
+.mv-view.phone .mv-kit-pw { height: 22px; }
+.mv-view.phone .mv-kit-sets { grid-template-columns: minmax(0, 1fr); }
+
 @media (prefers-reduced-motion: reduce) {
   .mv-view, .mv-view.open { transition: none; }
   .mv-smp-rec.armed, .mv-smp-state i { animation: none !important; }
+  .mv-kit-pad { transition: none; }
   .mv-body, .mv-ipmenu, .mv-pop, .mv-dim { animation: none; }
   .mv-meter i { transition: none; }
 }

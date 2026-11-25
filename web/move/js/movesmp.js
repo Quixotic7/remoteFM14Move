@@ -13,11 +13,26 @@
 //           POST /api/takes/play), download, rename, delete; Tools on the chosen take: Trim (two markers on its wave),
 //           Normalize, Reverse, Fade in / out with a length; one Undo, the Move's (the take library's, src/takes.c).
 //           A stems take: play, download and delete only. Nothing here starts the song.
+//   Kit     (rfm1cs stage 3c, only with the kit: /ws {"type":"kit"}, src/engine.c kit_json) the 16 pads as the Move's left
+//           4 x 4 (pad 1 bottom left, a row a kit track's colour, the pads sounding lit): a press plays the pad (held:
+//           a momentary or a loop sounds while held) and chooses it; the chosen pad's wave with its region and every
+//           setting (pitch, start, end, play mode, attack, hold, release, choke, reverse, level, pan, mute, stretch, the
+//           sends), each as the Move's knobs set it (POST /api/kit, the core's rfm_move_kit_set); the kit's name, Save
+//           (a new kit) and Load (the kits saved, GET /api/kit/kits). The Move's screen and pads follow.
 // The takes are named by the library's ids only (src/web.c /api/takes).
-import { OP, h, svg, IC, bar, choice, closePop } from "./moveui.js";
+import { OP, h, svg, IC, bar, segs, choice, closePop, openPop, popItem } from "./moveui.js";
 import { download } from "./movefs.js";
 
-const TABS = ["Record", "Takes"];
+const TABS = ["Record", "Takes", "Kit"];
+// (the Kit tab) the kit tracks' colours (13 pink .. 16 violet, as the Move's pads), a pad's settings (RFM_MOVE_KIT_P_*),
+// the envelope's steps (ms, as the knobs)
+const KROW = ["#FF3CA0", "#FF8C28", "#78DCFF", "#AA78FF"];
+const KP = { PITCH: 0, START: 1, END: 2, MODE: 3, ATTACK: 4, HOLD: 5, RELEASE: 6, CHOKE: 7, REVERSE: 8, LEVEL: 9, PAN: 10, MUTE: 11,
+  STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15 };
+const KFRAC = 32767;
+const ENV = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000];
+const envIdx = (ms) => { let b = 0; ENV.forEach((v, i) => { if (Math.abs(v - ms) < Math.abs(ENV[b] - ms)) b = i; }); return b; };
+const msText = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(ms % 1000 ? 1 : 0)} s` : `${ms} ms`);
 const SRC = [["M", "Master"], ["1", "Slot 1"], ["2", "Slot 2"], ["3", "Slot 3"], ["In", "Input"], ["S", "Stems"], ["L", "Looper"], ["K", "Kit"]];
 const MODES = ["Capture", "Bars", "Threshold", "Manual"];
 const LENS = [0, 1, 2, 4, 8, 16, 32];
@@ -58,7 +73,9 @@ export class SmpView {
   constructor({ store, ui, player, phone }) {
     this.store = store; this.ui = ui; this.player = player; this.phoneMq = phone;
     this.isOpen = false;
-    this.tab = recall("mv-smp-tab") === "1" ? 1 : 0;
+    this.tab = Math.max(0, Math.min(2, +(recall("mv-smp-tab") || 0) | 0));
+    this.kit = player.kit || null;                  // (the Kit tab) the kit as the Move's core has it
+    this.kits = null; this.kitsVer = -1;            // the kits saved (GET /api/kit/kits), asked again after a save
     this.smp = player.smp || null;
     this.ups = []; this.key = "";
     this.list = null; this.day = 0; this.listVer = -1; this.listing = false;
@@ -76,7 +93,8 @@ export class SmpView {
     this.audio.addEventListener("error", () => { if (this.playing) { this.playing = 0; this.refreshPlay(); this.store.toast("The take could not play here.", "bad"); } });
     this.el = h("section", { class: "mv-view mv-smp", id: "mv-smp", "aria-label": "Sampler", "aria-hidden": "true", inert: true });
     document.body.append(this.el);
-    player.listen({ smp: (j) => this.onSmp(j) });
+    player.listen({ smp: (j) => this.onSmp(j), kit: (j) => this.onKit(j) });
+    if (!this.kit) fetch("api/kit", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && !this.kit) this.onKit(j); }).catch(() => {});
     if (!this.smp) fetch("api/smp", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && !this.smp) this.onSmp(j); }).catch(() => {});
     store.on((what) => { if (what === "mix" && this.isOpen) this.render(); });
     phone.addEventListener("change", () => { this.key = ""; this.render(); });
@@ -109,6 +127,7 @@ export class SmpView {
     if (this.ui.smpBtn) { this.ui.smpBtn.classList.toggle("lit", this.isOpen); this.ui.smpBtn.setAttribute("aria-pressed", this.isOpen ? "true" : "false"); }
     if (this.isOpen) this.el.focus({ preventScroll: true });
   }
+  get kitOn() { return !!(this.kit && this.kit.on); }
   setTab(i) {
     if (i === this.tab) return;
     this.tab = i; closePop(); remember("mv-smp-tab", String(i));
@@ -123,11 +142,20 @@ export class SmpView {
     if (this.tab === 1 && j.takes_ver !== this.listVer) this.loadList();
     this.render();
   }
+  // (the Kit tab) the kit came: the tab's controls follow; the kits saved asked again after a save or a load
+  onKit(j) {
+    this.kit = j;
+    if (!this.isOpen) return;
+    if (this.tab === 2 && j.on && (j.saved | 0) + (j.kits | 0) * 1000 !== this.kitsVer) this.loadKits();
+    this.render();
+  }
   render() {
     if (!this.isOpen) return;
-    const st = this.store, s = this.smp || {}, l = this.list;
-    const key = JSON.stringify([this.tab, this.ph, s.on, s.takes_on, s.srcs, s.sets, st.slots.map((x) => [x.on, x.name]),
-      this.tab === 1 && l ? [l.day, l.days.map((d) => [d.id, d.takes]), l.takes.map((t) => [t.id, t.name, t.frames]), this.sel, this.onMove] : 0]);
+    const st = this.store, s = this.smp || {}, l = this.list, k = this.kit || {};
+    if (this.tab === 2 && !this.kitOn) this.tab = 0;
+    const key = JSON.stringify([this.tab, this.ph, s.on, s.takes_on, s.srcs, s.sets, st.slots.map((x) => [x.on, x.name]), this.kitOn,
+      this.tab === 1 && l ? [l.day, l.days.map((d) => [d.id, d.takes]), l.takes.map((t) => [t.id, t.name, t.frames]), this.sel, this.onMove] : 0,
+      this.tab === 2 && k.pads ? [k.cur, k.pads.map((p) => [p.n, p.has, p.st, p.f]), this.kits ? this.kits.map((x) => x.id) : null] : 0]);
     if (key !== this.key) { this.key = key; this.build(); }
     for (const f of this.ups) f();
     this.paint();
@@ -137,8 +165,8 @@ export class SmpView {
     this.ups = [];
     const scroll = this.body && this.builtTab === this.tab ? this.body.scrollTop : 0;
     this.builtTab = this.tab;
-    const tabs = h("div", { class: "mv-tabs", role: "tablist" }, TABS.map((t, i) => h("button", { class: `mv-tab ${i === this.tab ? "on" : ""}`, role: "tab",
-      "aria-selected": i === this.tab ? "true" : "false", "data-tab": i, onclick: () => this.setTab(i) }, t)));
+    const tabs = h("div", { class: "mv-tabs", role: "tablist" }, TABS.map((t, i) => (i === 2 && !this.kitOn ? null : h("button", { class: `mv-tab ${i === this.tab ? "on" : ""}`, role: "tab",
+      "aria-selected": i === this.tab ? "true" : "false", "data-tab": i, onclick: () => this.setTab(i) }, t))));
     const live = h("span", { class: "mv-live mv-smp-live" });
     this.up(() => { const s = this.smp; live.hidden = !(s && s.shown); live.textContent = "On the Move's screen"; });
     const head = this.ph
@@ -146,7 +174,7 @@ export class SmpView {
           h("button", { class: "mv-iconbtn mv-close", "aria-label": "Close the Sampler", onclick: () => this.close() }, svg(IC.close, 16))), tabs]
       : [h("div", { class: "mv-bar-top" }, tabs, live, h("span", { class: "mv-spacer" }),
           h("button", { class: "mv-pill mv-back", onclick: () => this.close() }, "Back to the faceplate", h("span", { class: "mv-val mv-mut" }, "Esc")))];
-    this.body = h("div", { class: `mv-body mv-smp-body mv-smp-tab-${this.tab}` }, !this.on ? this.none() : this.tab ? this.takes() : this.record());
+    this.body = h("div", { class: `mv-body mv-smp-body mv-smp-tab-${this.tab}` }, this.tab === 2 ? this.kitTab() : !this.on ? this.none() : this.tab ? this.takes() : this.record());
     this.el.classList.toggle("phone", this.ph);
     this.el.replaceChildren(h("div", { class: "mv-head" }, head), this.body);
     this.el.tabIndex = -1;
@@ -403,6 +431,129 @@ export class SmpView {
     return h("div", { class: "mv-smp-tools-p", "data-take": t.id }, box,
       h("div", { class: "mv-row mv-smp-ops" }, trimBtn, info, h("span", { class: "mv-spacer" })),
       h("div", { class: "mv-row mv-smp-ops" }, OPS.slice(1).map(btn), fadeLen));
+  }
+
+  // ================================================================ Kit (rfm1cs stage 3c)
+  pad(i) { return (this.kit && this.kit.pads && this.kit.pads[i]) || { n: "", has: 0, v: [0, 0, KFRAC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }; }
+  kv(p) { const d = this.pad(this.kit ? this.kit.cur : 0); return d.v ? d.v[p] | 0 : 0; }
+  async kpost(body) {
+    try {
+      const r = await fetch("api/kit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return r.ok;
+    } catch (_) { return false; }
+  }
+  kset(p, v) { return this.kpost({ op: "set", pad: this.kit ? this.kit.cur : 0, param: p, value: Math.round(v) }); }
+  async loadKits() {
+    const k = this.kit || {};
+    this.kitsVer = (k.saved | 0) + (k.kits | 0) * 1000;
+    try {
+      const r = await fetch("api/kit/kits", { cache: "no-store" });
+      if (r.ok) { const j = await r.json(); this.kits = j.kits || []; }
+    } catch (_) {}
+    this.render();
+  }
+  kitWave(c, hex, color, region) {
+    const pk = hexPeaks(hex);
+    if (!pk.length) { const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height); return; }
+    this.drawWave(c, pk, color);
+    if (region) {   // (outside the region: shaded)
+      const g = c.getContext("2d"), w = c.width, hh = c.height, a = (region[0] / KFRAC) * w, b = (region[1] / KFRAC) * w;
+      g.fillStyle = "rgba(10,8,6,.66)"; g.fillRect(0, 0, a, hh); g.fillRect(b, 0, w - b, hh);
+    }
+  }
+  kitTab() {
+    const k = this.kit || {};
+    if (!this.kitOn || !k.pads) return h("div", { class: "mv-empty-in mv-smp-none" }, h("b", {}, "No kit on this Move"));
+    if (!this.kits) this.loadKits();
+    // the pads: the Move's left 4 x 4, pad 1 bottom left
+    const pads = [];
+    for (let r = 3; r >= 0; r--) for (let c = 0; c < 4; c++) pads.push(this.kpad(r * 4 + c));
+    const grid = h("div", { class: "mv-kit-pads", role: "group", "aria-label": "The kit's pads" }, pads);
+    // the head: the kit's name, Load, Save
+    const name = h("b", { class: "mv-kit-name", id: "mv-kit-name" });
+    this.up(() => { const kk = this.kit || {}; name.textContent = kk.name || "Kit"; name.classList.toggle("mv-mut", !kk.name); });
+    const live = h("span", { class: "mv-live" });
+    this.up(() => { live.hidden = !(this.kit && this.kit.shown); live.textContent = "On the Move's screen"; });
+    const load = h("button", { class: "mv-pill mv-kit-load", id: "mv-kit-load", "aria-haspopup": "menu", disabled: !(this.kits && this.kits.length),
+      onclick: () => openPop(load, () => (this.kits || []).map((x) => popItem({ label: x.name, on: x.name === (this.kit || {}).name, id: `mv-kit-k-${x.id}`,
+        onclick: () => { closePop(); this.kpost({ op: "open", id: x.id }); this.store.toast(`${x.name}: loading`); } })), { width: 220, cls: "mv-pop-list" }) },
+      svg('<path d="M2 4.5h4l1.5 1.5H14v7H2z"/>', 14), "Load");
+    const save = h("button", { class: "mv-pill mv-kit-save", id: "mv-kit-save", onclick: async () => { if (await this.kpost({ op: "save" })) this.store.toast("Saving the kit"); } },
+      svg('<path d="M3 2.5h8l2 2v9H3z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5v-4h5v4"/>', 14), "Save");
+    const head = h("div", { class: "mv-row mv-kit-head" }, name, live, h("span", { class: "mv-spacer" }), load, save);
+    return h("div", { class: "mv-col mv-kit" }, head, h("div", { class: "mv-kit-main" }, grid, this.kpanel()));
+  }
+  // a pad: its number, its name, its wave; pressed: heard (held while the press lasts) and chosen
+  kpad(i) {
+    const col = KROW[i >> 2];
+    const cv = h("canvas", { class: "mv-kit-pw", height: 36 });
+    const nm = h("span", { class: "mv-kit-pn mv-ell" });
+    const b = h("button", { class: "mv-kit-pad", "data-pad": i, style: { "--c": col }, "aria-label": `Pad ${i + 1}` },
+      h("span", { class: "mv-kit-no" }, String(i + 1)), nm, cv);
+    let down = false;
+    const off = () => { if (!down) return; down = false; this.kpost({ op: "play", pad: i, vel: 0 }); };
+    const press = () => {
+      if (this.kit && this.kit.cur !== i) this.kpost({ op: "choose", pad: i });
+      if (this.pad(i).has) { down = true; this.kpost({ op: "play", pad: i, vel: 100 }); }
+      if (this.kit && this.kit.cur !== i) { this.kit.cur = i; this.render(); }
+    };
+    b.addEventListener("pointerdown", (e) => {   // (let go anywhere: the window's, the tab may be built again meanwhile)
+      if (e.button > 0) return;
+      e.preventDefault();
+      window.addEventListener("pointerup", off, { once: true }); window.addEventListener("pointercancel", off, { once: true });
+      press();
+    });
+    b.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); press(); } });
+    b.addEventListener("keyup", (e) => { if (e.key === "Enter" || e.key === " ") off(); });
+    this.up(() => {
+      const d = this.pad(i), kk = this.kit || {};
+      b.classList.toggle("has", !!d.has); b.classList.toggle("cur", kk.cur === i);
+      b.classList.toggle("glow", !!((kk.glow >>> i) & 1)); b.classList.toggle("muted", !!(d.v && d.v[KP.MUTE]));
+      nm.textContent = d.has ? d.n || "…" : "";
+      b.setAttribute("aria-pressed", kk.cur === i ? "true" : "false");
+      if (cv.dataset.pk !== (d.pk || "")) {
+        cv.dataset.pk = d.pk || "";
+        requestAnimationFrame(() => { if (cv.isConnected) this.kitWave(cv, d.pk || "", "rgba(255,255,255,.85)"); });
+      }
+    });
+    return b;
+  }
+  // the chosen pad: its wave and region, its settings (as the Move's knobs and rows set them)
+  kpanel() {
+    const cur = this.kit ? this.kit.cur : 0, col = KROW[cur >> 2];
+    const d = this.pad(cur), secs = (v) => (d.f && d.r ? `${((d.f * v) / KFRAC / d.r).toFixed(3)} s` : `${Math.round((v / KFRAC) * 1000) / 10}%`);
+    const cv = h("canvas", { class: "mv-kit-big", id: "mv-kit-wave", height: 110 });
+    this.up(() => {
+      const dd = this.pad(cur), key = `${dd.pk}|${dd.v ? dd.v[KP.START] : 0}|${dd.v ? dd.v[KP.END] : 0}`;
+      if (cv.dataset.k === key) return;
+      cv.dataset.k = key;
+      requestAnimationFrame(() => { if (cv.isConnected) this.kitWave(cv, dd.pk || "", col, dd.v ? [dd.v[KP.START], dd.v[KP.END]] : null); });
+    });
+    const row = (name, ctl, p) => h("div", { class: "mv-kit-set", "data-set": p }, h("span", { class: "mv-h" }, name), ctl);
+    const B = (p, label, o) => bar(this, Object.assign({ key: `k${p}`, label, cls: "thin", color: () => col, get: () => this.kv(p), set: (v) => this.kset(p, v) }, o));
+    const env = (p, label) => bar(this, { key: `k${p}`, label, cls: "thin", min: 0, max: ENV.length - 1, color: () => col,
+      get: () => envIdx(this.kv(p)), set: (i) => this.kset(p, ENV[i]), fmt: (i) => msText(ENV[i]) });
+    const S = (p, label, options) => segs(this, { key: `k${p}`, label, options, get: () => this.kv(p), set: (v) => this.kset(p, v) });
+    const sets = h("div", { class: "mv-kit-sets" },
+      row("Pitch", bar(this, { key: "k0", label: "Pitch", cls: "thin", min: -24, max: 24, color: () => col, get: () => Math.round(this.kv(KP.PITCH) / 100),
+        set: (v) => this.kset(KP.PITCH, v * 100), fmt: (v) => (this.kv(KP.STRETCH) ? "Stretch" : `${v > 0 ? "+" : ""}${v} st`) }), KP.PITCH),
+      row("Start", B(KP.START, "Start", { min: 0, max: KFRAC, fmt: secs }), KP.START),
+      row("End", B(KP.END, "End", { min: 0, max: KFRAC, fmt: secs }), KP.END),
+      row("Play", S(KP.MODE, "Play", ["One shot", "Momentary", "Loop"]), KP.MODE),
+      row("Attack", env(KP.ATTACK, "Attack"), KP.ATTACK),
+      row("Hold", env(KP.HOLD, "Hold"), KP.HOLD),
+      row("Release", env(KP.RELEASE, "Release"), KP.RELEASE),
+      row("Choke", S(KP.CHOKE, "Choke", ["Off", "1", "2", "3", "4"]), KP.CHOKE),
+      row("Reverse", S(KP.REVERSE, "Reverse", ["Off", "On"]), KP.REVERSE),
+      row("Level", B(KP.LEVEL, "Level", { min: -60, max: 6, fmt: (v) => (v <= -60 ? "-inf" : `${v > 0 ? "+" : ""}${v} dB`) }), KP.LEVEL),
+      row("Pan", B(KP.PAN, "Pan", { min: -50, max: 50, fmt: (v) => (v ? `${v < 0 ? "L" : "R"}${Math.abs(v)}` : "C") }), KP.PAN),
+      row("Mute", S(KP.MUTE, "Mute", ["Off", "On"]), KP.MUTE),
+      row("Stretch", B(KP.STRETCH, "Stretch", { min: 0, max: 64, fmt: (v) => (v ? `${v} step${v === 1 ? "" : "s"}` : "Off") }), KP.STRETCH),
+      [1, 2, 3].map((n) => row(`Send ${n}`, B(KP.SEND1 + n - 1, `Send ${n}`, { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.SEND1 + n - 1)));
+    const title = h("div", { class: "mv-row mv-kit-ptitle" }, h("span", { class: "mv-kit-big-no", style: { "--c": col } }, String(cur + 1)),
+      h("b", { class: "mv-ell", id: "mv-kit-pname" }, d.has ? d.n || "…" : "Empty"),
+      h("span", { class: "mv-val mv-mut" }, d.has && d.f && d.r ? `${(d.f / d.r).toFixed(2)} s` : ""));
+    return h("div", { class: "mv-card mv-kit-panel", id: "mv-kit-panel", style: { "--c": col } }, title, h("div", { class: "mv-kit-bigw" }, cv), sets);
   }
 
   // ---- the take's edits, through the library (the Move's list and Tools follow; one undo, the Move's)

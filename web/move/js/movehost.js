@@ -22,7 +22,7 @@
 //           listener (it gets the last ones at once); p.mix / p.meters / p.minis the last ones; p.edit(op, a, b) one
 //           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 24 FXPG; 26 SMP_SET, 27 SMP_PRESS: the Sampler
 //           window's) over /ws (POST /api/edit while /ws is down)
-//   Sampler (js/movesmp.js): p.listen({ smp(j) }): the sampler's settings and the recorder now (/ws {"type":"smp"},
+//   Sampler (js/movesmp.js): p.listen({ smp(j), kit(j) }): the sampler's settings and the recorder now (/ws {"type":"smp"},
 //           GET /api/smp); p.smp the last one
 //   MIDI (the firmware editors' SysEx, js/editor-panel.js): p.midi(bytes) to the firmware in the Move's active slot (/ws
 //           frames: 32 + the bytes, in pieces); its MIDI out (SysEx and channel messages, /ws binary 5) comes back as
@@ -156,6 +156,7 @@ export class MoveHostPlayer {
     this.subs = [];                              // Mix & FX listeners (listen)
     this.mix = null; this.meters = new Uint8Array(7); this.minis = [null, null, null];
     this.smp = null;                             // the sampler's settings and the recorder now (/ws "smp")
+    this.kit = null;                             // (stage 3c) the kit (/ws "kit": the Sampler window's Kit tab)
     // (Player's surface that main.js touches; nothing of it applies here)
     this.ctx = null; this.node = null; this.current = null; this.volume = 1; this.muted = false; this.tapOn = false;
   }
@@ -168,6 +169,7 @@ export class MoveHostPlayer {
     this.subs.push(l);
     if (this.mix && l.mix) l.mix(this.mix);
     if (this.smp && l.smp) l.smp(this.smp);
+    if (this.kit && l.kit) l.kit(this.kit);
     this.minis.forEach((px, s) => { if (px && l.mini) l.mini(s, px); });
     return () => { this.subs = this.subs.filter((x) => x !== l); };
   }
@@ -205,6 +207,7 @@ export class MoveHostPlayer {
         try { j = JSON.parse(m.data); } catch (e) { console.warn("movehost: info", e); return; }
         if (j && j.type === "mix") { this.mix = j; this.emit("mix", j); }
         else if (j && j.type === "smp") { this.smp = j; this.emit("smp", j); }   // (the Sampler window's: js/movesmp.js)
+        else if (j && j.type === "kit") { this.kit = j; this.emit("kit", j); }   // (its Kit tab, rfm1cs stage 3c)
         else this.onInfo(j);
         return;
       }

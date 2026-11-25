@@ -38,7 +38,8 @@
 //   - the Sampler window (js/movesmp.js): opened as Mix & FX; settings both ways (the page to the core and the
 //     recorder, the Move's Track + Sample to the page); a take recorded from the page; browser playback and Range;
 //     Trim, Normalize, Undo, Rename and its rules, Delete and Undo, Download, Play on the Move; on the phone, no
-//     sideways scroll; screenshots build/test-out/sampler-*.png;
+//     sideways scroll; (rfm1cs stage 3c) its Kit tab: a take put on pad 1 on the Move shows, the 16 pads as the Move's,
+//     a press heard and chosen, a setting both ways, Save and Load from the page; screenshots build/test-out/sampler-*.png;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet; FM-1 Wi-Fi (js/movewifi.js) from the
 //     settings sheet: the USB-A line, a canned list, a password picked and shown (move-page-phone-wifi.png);
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
@@ -308,6 +309,76 @@ async function sampler(responses) {
   await click("#mv-smp-where");
   ok(await js(`!FM1MoveUi.smpView.onMove`), "back to playing in the browser");  await esc();
   ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "Esc"), "Esc closes the Sampler window");
+}
+
+// ---- (rfm1cs stage 3c) the Sampler window's Kit tab (js/movesmp.js over GET /api/kit, /api/kit/kits, POST /api/kit):
+// a take put on pad 1 on the Move shows on the page; the 16 pads as the Move's (pad 1 bottom left); a press plays the
+// pad on the Move and chooses it; a setting from the page reaches the core (the status), one from the Move's knob shows
+// on the page; Save (a new kit) and Load from the page; screenshot build/test-out/sampler-kit.png
+async function kitChecks() {
+  const kitNow = () => api("kit").catch(() => null);
+  for (let i = 0; i < 3 && (await status()).smp_shown; i++) { await moveCmd("cc 51 127", "cc 51 0"); await sleep(300); }   // (the Move's sampler app closed)
+  await moveCmd("cc 40 127"); await sleep(400); await moveCmd("note 94 100", "note 94 0", "cc 40 0"); await sleep(500);
+  ok(await untilApi(async () => (await status()).kit_shown === 1, 5000), "on the Move, Track 4 held + pad 3: the Kit view");
+  await moveCmd("cc 14 127", "cc 3 127", "cc 3 0", "cc 14 1", "cc 14 1", "cc 3 127", "cc 3 0", "cc 14 1", "cc 3 127", "cc 3 0");
+  await untilApi(async () => (await status()).kit_total > 0, 5000);
+  await sleep(400);
+  await moveCmd("cc 3 127", "cc 3 0");   // (Files, Takes, the newest take onto pad 1)
+  ok(await untilApi(async () => { const k = await kitNow(); return k && k.on && k.pads && k.pads[0].has && k.pads[0].f > 0 && k.pads[0].pk.length === 128; }, 8000),
+    "a take onto pad 1 on the Move: GET /api/kit has it (its name, frames, wave)");
+  await click("#mv-smpbtn");
+  await until(`document.querySelector("#mv-smp.open")`, 5000, "the Sampler");
+  await sleep(500);
+  ok(await until(`document.querySelector('#mv-smp .mv-tab[data-tab="2"]')`, 5000, "the Kit tab"), "the Sampler window has a Kit tab (the host has the kit)");
+  await click('#mv-smp .mv-tab[data-tab="2"]');
+  ok(await until(`document.querySelectorAll("#mv-smp .mv-kit-pad").length === 16 && document.querySelector('#mv-smp .mv-kit-pad[data-pad="0"].has')`, 6000, "the pads"),
+    "Kit: the 16 pads, pad 1 with its sound");
+  const order = await js(`[...document.querySelectorAll("#mv-smp .mv-kit-pad")].map((b) => +b.dataset.pad).join(",")`);
+  const geo = await js(`(() => { const r = (i) => document.querySelector('#mv-smp .mv-kit-pad[data-pad="' + i + '"]').getBoundingClientRect(); return { b1: r(0).top > r(12).top && r(0).left < r(3).left, }; })()`);
+  ok(order === "12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3" && geo.b1, `as the Move's left 4 x 4: pad 1 bottom left, rows upward (${order})`);
+  const pn = await js(`document.querySelector('#mv-smp .mv-kit-pad[data-pad="0"] .mv-kit-pn').textContent`), kn = (await kitNow()).pads[0].n;
+  ok(pn && pn === kn, `pad 1 shows its sound's name ("${pn}", the Move's "${kn}")`);
+  // a press: heard on the Move (its note on, then off), chosen
+  await until(`FM1MoveUi.smpView.kits`, 4000, "the kits listed");   // (the tab built again once they come: then pressed)
+  await sleep(400);
+  await click('#mv-smp .mv-kit-pad[data-pad="5"]');
+  ok(await untilApi(async () => (await status()).kit_cur === 5, 4000) && await until(`document.querySelector('#mv-smp .mv-kit-pad[data-pad="5"].cur')`, 4000, "pad 6"),
+    `a press on pad 6 (empty): chosen on the Move too (its chosen pad: ${(await status()).kit_cur})`);
+  const n0 = (await status()).kit_notes;
+  await click('#mv-smp .mv-kit-pad[data-pad="0"]');
+  ok(await untilApi(async () => (await status()).kit_notes >= n0 + 2 && (await status()).kit_cur === 0, 4000), "a press on pad 1: heard on the Move (its note on and off) and chosen");
+  await until(`document.querySelector('#mv-smp .mv-kit-pad[data-pad="0"].cur') && document.getElementById("mv-kit-wave").dataset.k`, 4000, "pad 1's panel");
+  // a setting from the page: Pitch up two semitones (its keys), Play Loop; the core has them
+  await js(`document.querySelector('#mv-smp [data-ctl="k0"]').focus()`);
+  await key("ArrowUp", { keyName: "ArrowUp", vk: 38 }); await key("ArrowUp", { keyName: "ArrowUp", vk: 38 });
+  ok(await untilApi(async () => (await status()).kit_pitch === 200, 4000), "Pitch +2 on the page: the Move's core has it (+200 cents)");
+  await click('#mv-smp [data-ctl="k3"] .mv-seg:nth-child(3)');
+  ok(await untilApi(async () => { const k = await kitNow(); return k.pads[0].v[3] === 2; }, 4000), "Play Loop on the page: pad 1's mode in the core");
+  // from the Move: knob 1 a semitone more, the page follows
+  await moveCmd("cc 71 2");
+  ok(await until(`document.querySelector('#mv-smp [data-ctl="k0"]').dataset.v === "3"`, 4000, "the Move's knob"), "on the Move, knob 1: the page's Pitch follows (+3)");
+  await sleep(300);
+  await shot(join(OUT, "sampler-kit.png"));
+  // Save from the page; Pitch changed; Load the kit saved: its Pitch back
+  const s0 = (await status()).kit_saved | 0;
+  await click("#mv-kit-save");
+  let kits = null;
+  ok(await untilApi(async () => (await status()).kit_saved === s0 + 1 && (kits = (await api("kit/kits")).kits) && kits.length >= 1, 8000),
+    `Save on the page: a new kit (${kits && kits.map((x) => x.name).join(", ")})`);
+  const saved = kits[kits.length - 1];
+  ok(await until(`document.getElementById("mv-kit-name").textContent === ${JSON.stringify(saved.name)}`, 5000, "the name"), `the kit's name on the page: ${saved.name}`);
+  await js(`document.querySelector('#mv-smp [data-ctl="k0"]').focus()`);
+  await key("ArrowDown", { keyName: "ArrowDown", vk: 40 });
+  await untilApi(async () => (await status()).kit_pitch === 200, 4000);
+  const k0 = (await status()).kit_kits | 0;
+  await until(`!document.getElementById("mv-kit-load").disabled`, 5000, "Load");
+  await click("#mv-kit-load");
+  await until(`document.querySelector('[data-id="mv-kit-k-${saved.id}"]')`, 3000, "the kits' list");
+  await click(`[data-id="mv-kit-k-${saved.id}"]`);
+  ok(await untilApi(async () => (await status()).kit_kits === k0 + 1 && (await status()).kit_pitch === 300, 8000), `Load ${saved.name} on the page: the kit back as saved (Pitch +3)`);
+  await esc();
+  await until(`!document.querySelector("#mv-smp.open")`, 3000, "closed");
+  await moveCmd("cc 51 127", "cc 51 0");   // (Back on the Move: the Files' list closed)
 }
 
 // ---- States and projects (js/movestore.js, src/web.c /api/store): every action from the panel, checked on the Move's
@@ -611,6 +682,12 @@ async function samplerPhone() {
   pw = await phWide();
   ok(pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Takes and Tools on the phone: no sideways scroll, nothing past the edge (${pw.out})`);
   await shot(join(OUT, "sampler-phone-takes.png"));
+  await click('#mv-smp .mv-tab[data-tab="2"]');
+  await until(`document.querySelectorAll("#mv-smp .mv-kit-pad").length === 16 && document.getElementById("mv-kit-panel")`, 5000, "the phone's kit");
+  await sleep(500);
+  pw = await phWide();
+  ok(pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Kit on the phone: the pads and the chosen pad's settings, no sideways scroll, nothing past the edge (${pw.out})`);
+  await shot(join(OUT, "sampler-phone-kit.png"));
   await click("#mv-smp .mv-close");
   ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "close"), "its close button goes back to the faceplate");
 }
@@ -714,6 +791,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     if ((await active()) !== 0) { await edit(16, 0, 0); await untilApi(async () => (await active()) === 0, 5000); }
     await until(`document.getElementById("fw-name").textContent === "Felucca" && document.querySelector('.mv-chip[data-slot="1"]:not(.empty):not(.loading)')`, 10000, "Felucca playing, chip 2 loaded");
     await sampler(responses);
+    await kitChecks();
     await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await cdp("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
     await cdp("Page.reload", { ignoreCache: false });
@@ -1156,6 +1234,7 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
 
   // ---- the Sampler window (js/movesmp.js over src/web.c /api/smp, /api/takes and the ops SMP_SET / SMP_PRESS)
   await sampler(responses);
+  await kitChecks();   // (its Kit tab, rfm1cs stage 3c)
 
   // ---- States and projects (js/movestore.js over the host's /api/store: the Move's own, done as its pads do them)
   await storeChecks();
