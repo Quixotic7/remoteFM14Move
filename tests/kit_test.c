@@ -6,7 +6,9 @@
  * velocity, 24 voices and the oldest stolen), Samples' rows (folders first, by name, the pictures, a folder entered),
  * Takes' rows from the take library and a take loaded, the preview (after the tap: kit_preview_mix), the file work on
  * the take library's worker (TL_Q_JOB) and on the kit's own thread; (stage 3b) Stretch, the sends and the kit's
- * strip, kits saved / listed / opened, a whole folder onto the pads. Ends with ALL KIT TESTS PASSED.
+ * strip, kits saved / listed / opened, a whole folder onto the pads; (stage 3c) mix and join, a pad's own edits (the
+ * source untouched), a take's slices (hits, equal, steps), a slice heard, a sound shared by pads. Ends with ALL KIT
+ * TESTS PASSED.
  *   tests/kit_test.sh */
 #include <math.h>
 #include <stdio.h>
@@ -392,7 +394,7 @@ static void t_thread(void)
         if (got < KIT_PADS)
             usleep(5000);
     }
-    CHECK(got == KIT_PADS && n == KIT_PADS && kit_bytes(k) == KIT_PADS * 2000u * 4u);
+    CHECK(got == KIT_PADS && n == KIT_PADS && kit_bytes(k) == 2000u * 4u);   /* (3c: one file, in memory once) */
     for (i = 0; i < KIT_PADS; i++)                      /* (replaced: the old sounds freed on that thread) */
         kit_load(k, i, p);
     for (got = 0, i = 0; i < 500 && got < KIT_PADS; i++) {
@@ -564,6 +566,252 @@ static void t_kits(void)
     kit_free(k);
 }
 
+
+/* ================================================================ (stage 3c) === */
+/* a 16-bit stereo WAV of a function of the frame */
+static void wavf(const char *path, uint32_t frames, uint32_t rate, int16_t (*fn)(uint32_t, int))
+{
+    FILE *f = fopen(path, "wb");
+    const uint32_t data = frames * 4u;
+    uint32_t i;
+    fwrite("RIFF", 1, 4, f), w32le(f, 36 + data), fwrite("WAVEfmt ", 1, 8, f), w32le(f, 16);
+    w16le(f, 1), w16le(f, 2), w32le(f, rate), w32le(f, rate * 4u), w16le(f, 4), w16le(f, 16);
+    fwrite("data", 1, 4, f), w32le(f, data);
+    for (i = 0; i < frames; i++)
+        w16le(f, (uint16_t)fn(i, 0)), w16le(f, (uint16_t)fn(i, 1));
+    fclose(f);
+}
+static int16_t loud(uint32_t i, int c) { (void)i; return (int16_t)(c ? -30000 : 30000); }
+static int16_t quiet(uint32_t i, int c) { return (int16_t)((int)(i % 200u) * 10 - 1000) * (c ? -1 : 1); }
+static int16_t ramp2(uint32_t i, int c) { return (int16_t)(c ? -(int)(i % 30000u) : (int)(i % 30000u)); }
+/* 4 hits a second (at 0.1, 0.35, 0.6, 0.85 s): a decaying burst each, a quiet hum between */
+static int16_t hits(uint32_t i, int c)
+{
+    static const uint32_t AT[4] = { 4800, 16800, 28800, 40800 };
+    double v = 30.0 * sin(i * 0.01);
+    int h;
+    (void)c;
+    for (h = 0; h < 4; h++)
+        if (i >= AT[h] && i < AT[h] + 6000)
+            v += 20000.0 * exp(-(double)(i - AT[h]) / 900.0) * sin((double)(i - AT[h]) * 0.3);
+    return (int16_t)v;
+}
+static uint64_t file_sum(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    uint64_t h = 1469598103934665603ull;
+    int ch;
+    if (!f)
+        return 0;
+    while ((ch = fgetc(f)) != EOF)
+        h = (h ^ (uint64_t)ch) * 1099511628211ull;
+    fclose(f);
+    return h;
+}
+static int wait_ans(kit_t *k, kit_ans_t *a)   /* the next answer (the file work done here) */
+{
+    kit_work(k);
+    return kit_poll(k, a);
+}
+/* the new file on disk: its frames and peak (-1: unreadable) */
+static int disk(const char *path, uint32_t *frames, int *peak)
+{
+    kit_t *k = mk(0);
+    kit_ans_t a;
+    int st = load(k, 0, path, &a);
+    *frames = kit_frames(k, 0), *peak = 0;
+    if (st == KIT_OK) {
+        uint32_t i;
+        kit_set(k, 0, KIT_P_MODE, KIT_M_ONESHOT);
+        kit_note(k, 0, 0, 127, 0);
+        run(k, *frames < 48000 ? *frames : 48000);
+        for (i = 0; i < 2 * (*frames < 48000 ? *frames : 48000); i++)
+            *peak = (int)fabsf(B[i]) > *peak ? (int)fabsf(B[i]) : *peak;
+    }
+    kit_free(k);
+    return st == KIT_OK ? 0 : -1;
+}
+/* 3c: mix (summed, under full scale), join (length a + b; regions; another rate), a pad's own edits (trim, normalize,
+ * reverse: new files in Kits/Edits, the source untouched), a sound several pads hold in memory once */
+static void t_make(void)
+{
+    char d[600], kd[700], pa[800], pb[800], pc[800], pq[800];
+    kit_cfg_t c;
+    kit_ans_t a;
+    kit_t *k;
+    uint32_t fr;
+    int pk;
+    uint64_t sum;
+    snprintf(d, sizeof d, "%s/MK", DIRP), mkdir(d, 0755);
+    snprintf(kd, sizeof kd, "%s/Kits", d);
+    snprintf(pa, sizeof pa, "%s/a.wav", d), wavf(pa, 1000, 48000, loud);
+    snprintf(pb, sizeof pb, "%s/b.wav", d), wavf(pb, 600, 48000, loud);
+    snprintf(pc, sizeof pc, "%s/c.wav", d), wavf(pc, 600, 24000, ramp2);
+    snprintf(pq, sizeof pq, "%s/q.wav", d), wavf(pq, 2000, 48000, quiet);
+    memset(&c, 0, sizeof c);
+    c.fs = 48000, c.kits_dir = kd;
+    k = kit_new(&c);
+    CHECK(load(k, 0, pa, &a) == KIT_OK && load(k, 1, pb, &a) == KIT_OK && load(k, 2, pc, &a) == KIT_OK &&
+          load(k, 3, pq, &a) == KIT_OK);
+    /* Mix: pad 1 onto pad 2, two full-scale sounds summed: under full scale, never clipped */
+    kit_merge(k, 1, 0, KIT_MG_MIX);
+    CHECK(wait_ans(k, &a) && a.kind == KIT_A_LOADED && a.pad == 1 && a.status == KIT_OK && a.frames == 1000 &&
+          !strcmp(a.name, "Mix 1+2") && strstr(a.path, "/Kits/Edits/Mix 1+2.wav") && kit_frames(k, 1) == 1000);
+    CHECK(!strcmp(kit_pad_path(k, 1), a.path));
+    CHECK(!disk(a.path, &fr, &pk) && fr == 1000 && pk == KIT_NORM_PEAK && pk <= 32767);
+    printf("  ok    Mix: 30000 + 30000 summed to a peak of %d (never clipped), 1000 frames, %s\n", pk, strrchr(a.path, '/') + 1);
+    /* Join: pad 1 then pad 3 (24 kHz: at pad 1's rate), length a + b */
+    CHECK(load(k, 1, pb, &a) == KIT_OK);
+    kit_merge(k, 1, 0, KIT_MG_JOIN);
+    CHECK(wait_ans(k, &a) && a.status == KIT_OK && a.frames == 1000 + 600 && !strcmp(a.name, "Join 1+2"));
+    CHECK(!disk(a.path, &fr, &pk) && fr == 1600);
+    kit_merge(k, 2, 0, KIT_MG_JOIN);                    /* (24 kHz: 600 frames are 1200 at 48 kHz) */
+    CHECK(wait_ans(k, &a) && a.status == KIT_OK && a.frames == 1000 + 1200 && a.rate == 48000);
+    kit_set(k, 0, KIT_P_START, KIT_FRAC / 2), kit_set(k, 0, KIT_P_END, KIT_FRAC);   /* (regions: 500 of pad 1) */
+    CHECK(load(k, 1, pb, &a) == KIT_OK);
+    kit_merge(k, 1, 0, KIT_MG_JOIN);
+    CHECK(wait_ans(k, &a) && a.status == KIT_OK && a.frames == 1000u - 1000u * (KIT_FRAC / 2) / KIT_FRAC + 600u &&
+          strstr(a.path, "Join 1+2 2.wav"));
+    printf("  ok    Join: 1000 + 600 = 1600 frames, 1000 + 600 at 24 kHz = 2200, the second half's 501 + 600 = %u\n",
+           a.frames);
+    kit_set(k, 0, KIT_P_START, 0);
+    /* a pad's own edits: new files, the source untouched */
+    sum = file_sum(pq);
+    kit_set(k, 3, KIT_P_START, KIT_FRAC / 4), kit_set(k, 3, KIT_P_END, KIT_FRAC / 2);
+    kit_edit(k, 3, KIT_ED_TRIM);
+    CHECK(wait_ans(k, &a) && a.pad == 3 && a.status == KIT_OK && a.frames == 1000 - 500 && !strcmp(a.name, "q trim") &&
+          strstr(a.path, "/Kits/Edits/q trim.wav"));
+    CHECK(file_sum(pq) == sum && !strcmp(kit_pad_path(k, 3), a.path));
+    CHECK(load(k, 3, pq, &a) == KIT_OK);
+    kit_set(k, 3, KIT_P_START, 0), kit_set(k, 3, KIT_P_END, KIT_FRAC);
+    kit_edit(k, 3, KIT_ED_NORMALIZE);
+    CHECK(wait_ans(k, &a) && a.status == KIT_OK && a.frames == 2000 && !strcmp(a.name, "q norm"));
+    CHECK(!disk(a.path, &fr, &pk) && pk == KIT_NORM_PEAK && file_sum(pq) == sum);
+    CHECK(load(k, 3, pc, &a) == KIT_OK);
+    kit_edit(k, 3, KIT_ED_REVERSE);
+    CHECK(wait_ans(k, &a) && a.status == KIT_OK && a.frames == 600 && !strcmp(a.name, "c rev"));
+    {   /* reversed: its first frame the source's last */
+        kit_t *z = mk(0);
+        kit_ans_t b;
+        CHECK(load(z, 0, a.path, &b) == KIT_OK);
+        kit_set(z, 0, KIT_P_MODE, KIT_M_ONESHOT);
+        kit_note(z, 0, 0, 127, 0);
+        run(z, 4);
+        CHECK(fabsf(B[0]) < 1.0f || fabsf(B[0] - 599.0f) < 1.5f);
+        kit_free(z);
+    }
+    printf("  ok    Trim (500 frames), Normalize (peak %d), Reverse: new files in Kits/Edits, the source's bytes unchanged\n",
+           KIT_NORM_PEAK);
+    /* refused at once: an empty pad */
+    CHECK(load(k, 5, "", &a) == KIT_OK);
+    kit_edit(k, 5, KIT_ED_TRIM);
+    CHECK(kit_poll(k, &a) && a.pad == 5 && a.status == KIT_FAILED);
+    kit_merge(k, 5, 0, KIT_MG_MIX);
+    CHECK(kit_poll(k, &a) && a.pad == 5 && a.status == KIT_FAILED);
+    /* one file on four pads: in memory once */
+    {
+        int i;
+        uint32_t before;
+        for (i = 4; i < 8; i++)
+            CHECK(load(k, i, pa, &a) == KIT_OK);
+        before = kit_bytes(k);
+        CHECK(load(k, 8, pa, &a) == KIT_OK && kit_bytes(k) == before);
+    }
+    kit_free(k);
+}
+/* 3c: a take's slices: the cuts by its hits, equal parts, steps; KIT_SLICE through the take library (the take's file,
+ * its wave), a slice heard on the preview path (its frames only), done; the slices on pads, each its own region */
+static void t_slice(void)
+{
+    static const uint32_t AT[4] = { 4800, 16800, 28800, 40800 };
+    char d[600], p[800];
+    int16_t *pcm = malloc(48000u * 4u);
+    uint32_t cuts[KIT_SLICES + 1], i;
+    int n, ok = 1;
+    tl_t *l;
+    kit_t *k;
+    kit_cfg_t c;
+    kit_ans_t a;
+    int16_t out[2 * 1024];
+    for (i = 0; i < 48000; i++)
+        pcm[2 * i] = hits(i, 0), pcm[2 * i + 1] = hits(i, 1);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_HITS, 0, cuts);
+    for (i = 0; n == 4 && i < 4; i++)
+        ok &= (cuts[i] > AT[i] ? cuts[i] - AT[i] : AT[i] - cuts[i]) <= 240;
+    CHECK(n == 4 && ok && cuts[4] == 48000);
+    printf("  ok    Hits: 4 slices at %u %u %u %u (the hits at 4800 16800 28800 40800)\n", cuts[0], cuts[1], cuts[2], cuts[3]);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_EQ8, 0, cuts);
+    CHECK(n == 8 && cuts[1] == 6000 && cuts[8] == 48000);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_EQ16, 0, cuts);
+    CHECK(n == 16 && cuts[1] == 3000);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_EQ4, 0, cuts);
+    CHECK(n == 4 && cuts[2] == 24000);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_STEPS, 125000, cuts);   /* (a 1/16 at 120 BPM: 6000 frames) */
+    CHECK(n == 8 && cuts[1] == 6000 && cuts[7] == 42000 && cuts[8] == 48000);
+    n = kit_cuts(pcm, 48000, 48000, KIT_SM_STEPS, 62500, cuts);    /* (16 at most) */
+    CHECK(n == 16 && cuts[16] == 48000);
+    printf("  ok    Equal 16 / 8 / 4 and Steps (125 ms: 8 slices of 6000 frames; 62.5 ms: 16)\n");
+    memset(pcm, 0, 48000u * 4u);
+    CHECK(kit_cuts(pcm, 48000, 48000, KIT_SM_HITS, 0, cuts) == 1 && cuts[0] == 0 && cuts[1] == 48000);
+    free(pcm);
+    /* through the take library */
+    snprintf(d, sizeof d, "%s/sltakes", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/2026-11-25", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/2026-11-25/1125-120000 Master 120bpm 2b.wav", d), wavf(p, 48000, 48000, hits);
+    l = tl_new(d, NULL);
+    memset(&c, 0, sizeof c);
+    c.fs = 48000, c.tl = l;
+    k = kit_new(&c);
+    {
+        tl_row_t r[2];
+        int tot = 0;
+        uint32_t f;
+        CHECK(tl_rows(l, TL_ALL, 0, 1, r, &tot, &f) == 1);
+        kit_slice(k, r[0].id, KIT_SM_HITS, 0);
+        for (i = 0, n = 0; i < 300 && !n; i++)
+            n = kit_poll(k, &a), usleep(10000);
+        CHECK(n && a.kind == KIT_A_SLICES && a.take == r[0].id && a.n == 4 && a.frames == 48000 && a.npk == KIT_PEAKS &&
+              !strcmp(a.path, p));
+        memcpy(cuts, a.cuts, sizeof cuts);
+        kit_slice_play(k, cuts[1], 1000);               /* (slice 2's first 1000 frames heard, then nothing) */
+        memset(out, 0, sizeof out);
+        kit_preview_mix(k, out, 1024);
+        CHECK(kit_previewing(k) == 0 && out[0] == hits(cuts[1], 0) && out[2 * 999] == hits(cuts[1] + 999, 0) &&
+              out[2 * 1000] == 0);
+        kit_slice_done(k);
+        kit_slice_play(k, 0, 100);
+        CHECK(!kit_previewing(k));
+        kit_slice(k, 0x12345, KIT_SM_HITS, 0);          /* (no such take: no slices) */
+        for (i = 0, n = 0; i < 300 && !n; i++)
+            n = kit_poll(k, &a), usleep(10000);
+        CHECK(n && a.kind == KIT_A_SLICES && a.n == 0);
+    }
+    /* the slices on pads 1..4: the one file in memory once, each pad its own region */
+    {
+        int j;
+        for (j = 0; j < 4; j++) {
+            kit_load(k, j, p);
+            for (i = 0, n = 0; i < 300 && !n; i++)
+                n = kit_poll(k, &a), usleep(5000);
+            kit_set(k, j, KIT_P_START, (int)((uint64_t)cuts[j] * KIT_FRAC / 48000));
+            kit_set(k, j, KIT_P_END, (int)((uint64_t)cuts[j + 1] * KIT_FRAC / 48000));
+            kit_set(k, j, KIT_P_MODE, KIT_M_ONESHOT);
+        }
+        CHECK(kit_bytes(k) == 48000u * 4u);
+        kit_note(k, 2, 0, 127, 0);
+        run(k, 64);
+        {   /* (pad 3 plays from its own start: slice 3's, between two source frames as the region says) */
+            const double s0 = 48000.0 * (int)((uint64_t)cuts[2] * KIT_FRAC / 48000) / KIT_FRAC + 10.0;
+            const uint32_t f = (uint32_t)s0;
+            const float want = (float)(hits(f, 0) + (hits(f + 1, 0) - hits(f, 0)) * (s0 - f));
+            CHECK(fabsf(B[2 * 10] - want) < 1.5f);
+        }
+    }
+    printf("  ok    KIT_SLICE: the take's 4 hits, a slice heard (its 1000 frames), the slices on pads 1..4 (in memory once)\n");
+    kit_free(k);
+    tl_free(l);
+}
+
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -578,6 +826,8 @@ int main(void)
     t_stretch();
     t_sends();
     t_kits();
+    t_make();
+    t_slice();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

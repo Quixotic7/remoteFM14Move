@@ -13,6 +13,10 @@
 #   - the Mixer's fourth strip, the kit's (knob 4: its level);
 #   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
+#   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in Kits/Edits on pad 2), Undo; Copy let go before the
+#     click: nothing; Join (its length the two's); the Sound row's Normalize (the pad's own copy, the join untouched),
+#     Undo; a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
+#     1..8 (one file in memory once), Undo;
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
 #   - the output has the kit (the host's mix, --capture);
 #   - a second start: the project's kit back (its pads loaded from their paths, the routing, its name).
@@ -185,6 +189,69 @@ click
 wait_for 8 '[ "$(field kit_kits)" = 1 ] && [ "$(field kit_pads)" = 3 ]' && [ "$(field kit_name)" = "Kit 1" ] \
     && ok "Load: Kit 1 in the new project (its two sounds from its folder, its name)" \
     || bad "Load: kits '$(field kit_kits)' pads '$(field kit_pads)' name '$(field kit_name)'"
+
+# ---------------------------------------------------------------- (stage 3c) mix and join, a pad's own edit, slicing
+frames() { build/tools/ainchk info "$1" | sed -n 's/^frames \([0-9]*\) .*/\1/p'; }
+peak() { build/tools/ainchk info "$1" | sed -n 's/.* peak \([0-9]*\)$/\1/p'; }
+ED="$LIB/Kits/Edits"
+m0=$(field kit_made)
+cmd "cc 60 127"; hit 68; hit 69; jog 1 1; click; cmd "cc 60 0"   # Copy held, pad 1, pad 2: Mix
+wait_for 8 '[ "$(field kit_file)" = "Mix 1+2.wav" ]' && [ -s "$ED/Mix 1+2.wav" ] && [ "$(field kit_cur)" = 1 ] \
+    && [ "$(peak "$ED/Mix 1+2.wav")" -le 32767 ] \
+    && ok "Copy held, pad 1, pad 2, Mix: a new file on pad 2 (Kits/Edits/Mix 1+2.wav, peak $(peak "$ED/Mix 1+2.wav"))" \
+    || bad "Mix: file '$(field kit_file)' cur '$(field kit_cur)' made '$(field kit_made)' (from $m0): $(ls "$ED" 2>&1 | tr '\n' ' ')"
+sleep 1.2; press 56
+wait_for 5 '[ "$(field kit_file)" != "Mix 1+2.wav" ] && [ -n "$(field kit_file)" ]' \
+    && ok "Undo: pad 2 back ($(field kit_file))" || bad "Undo of the mix: '$(field kit_file)'"
+f2=$(field kit_frames)
+cmd "cc 60 127"; hit 68; hit 69
+wait_for 3 '[ "$(field kit_mg)" = 2 ]' || bad "the Copy menu: '$(field kit_mg)'"
+jog 2 1; sleep 0.2; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_merge.pbm
+cmd "cc 60 0"                                                # (Copy let go before the click: nothing)
+wait_for 3 '[ "$(field kit_mg)" = 0 ]' && sleep 0.5 && [ "$(field kit_made)" = $((m0 + 1)) ] && ok "Copy let go before the click: nothing done" \
+    || bad "Copy let go: mg '$(field kit_mg)' made '$(field kit_made)'"
+cmd "cc 60 127"; hit 68; hit 69; jog 2 1; click; cmd "cc 60 0"   # Join
+wait_for 8 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && [ "$(frames "$ED/Join 1+2.wav")" = $((88200 + f2)) ] \
+    && ok "Join: pad 1 then pad 2 on pad 2 (88200 + $f2 = $(frames "$ED/Join 1+2.wav") frames)" \
+    || bad "Join: file '$(field kit_file)' frames $(frames "$ED/Join 1+2.wav" 2>/dev/null) (want $((88200 + f2)))"
+sleep 1.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_joined.pbm
+j0=$(cksum < "$ED/Join 1+2.wav")
+click; jog 2 1; sleep 0.2                                    # the Sound row's tools: Normalize
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_padact.pbm
+click
+wait_for 8 '[ "$(field kit_file)" = "Join 1+2 norm.wav" ]' && [ "$(peak "$ED/Join 1+2 norm.wav")" = 31656 ] \
+    && [ "$(cksum < "$ED/Join 1+2.wav")" = "$j0" ] \
+    && ok "the Sound row's Normalize: the pad's own copy (Join 1+2 norm.wav, peak 31656), Join 1+2.wav untouched" \
+    || bad "Normalize: file '$(field kit_file)' peak $(peak "$ED/Join 1+2 norm.wav" 2>/dev/null)"
+sleep 1.2; press 56
+wait_for 5 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && ok "Undo: the join back on pad 2" || bad "Undo of the edit: '$(field kit_file)'"
+# a take's To Kit, then Slice: the sampler's Takes, the take's actions, To Kit (the seventh), Slice
+tk=$(ls -t "$LIB"/2*/*.wav 2>/dev/null | head -1); tf=$(frames "$tk")
+press 118; sleep 0.4
+jog 14 127; click; jog 3 127; jog 1 1; click; jog 1 1; sleep 0.4   # the Takes tab, its first row
+click; wait_for 3 '[ "$(field smp_scr)" = 1 ]' || bad "the take's actions: scr '$(field smp_scr)'"
+jog 6 1; click
+wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "To Kit: the Kit view '$(field kit_shown)'"
+jog 1 1; click                                               # Slice
+wait_for 8 '[ "$(field kit_sl_on)" = 1 ] && [ "$(field kit_sl_n)" -ge 1 ]' \
+    && ok "To Kit, Slice: the take's cuts by its hits ($(field kit_sl_n) slices)" \
+    || bad "Slice: on '$(field kit_sl_on)' n '$(field kit_sl_n)' answers '$(field kit_slices)'"
+jog 2 1                                                      # Equal 8
+wait_for 8 '[ "$(field kit_sl_n)" = 8 ]' || bad "Equal 8: n '$(field kit_sl_n)'"
+cmd "cc 49 127"; hit 68; cmd "cc 49 0"; sleep 0.2             # Shift + pad 1: from pad 1
+p0=$(field kit_slplay); hit 70                               # pad 3: slice 3 heard
+wait_for 3 '[ "$(field kit_slplay)" = $((p0 + 1)) ]' && [ "$(field kit_sl_first)" = 0 ] \
+    && ok "Equal 8; Shift + pad 1 the first pad; pad 3 plays slice 3 (the preview path)" \
+    || bad "the slices' pads: play '$(field kit_slplay)' (from $p0) first '$(field kit_sl_first)'"
+sleep 0.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_slice.pbm
+click
+wait_for 8 '[ "$(field kit_pads)" = 255 ] && [ "$(field kit_sl_on)" = 0 ]' && [ "$(field kit_bytes)" = $((tf * 4)) ] \
+    && [ "$(field kit_file)" = "$(basename "$tk")" ] && [ "$(field kit_start)" = 0 ] && [ "$(field kit_end)" -lt 4200 ] \
+    && ok "the click: 8 slices on pads 1..8, one file in memory once ($(field kit_bytes) bytes), pad 1 its first region" \
+    || bad "the slices onto pads: pads '$(field kit_pads)' bytes '$(field kit_bytes)' (want $((tf * 4))) file '$(field kit_file)' end '$(field kit_end)'"
+sleep 1.2; press 56
+wait_for 5 '[ "$(field kit_pads)" = 3 ]' && [ "$(field kit_name)" = "Kit 1" ] && ok "Undo: the kit back (pads 1 and 2, Kit 1)" \
+    || bad "Undo of the slices: pads '$(field kit_pads)' name '$(field kit_name)'"
 
 # ---------------------------------------------------------------- the sampler: Source Kit, To Kit
 t0=$(field rec_takes)
