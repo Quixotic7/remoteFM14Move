@@ -725,7 +725,7 @@ static const char *const STATE[] = { "idle", "receiving", "checking", "installin
 
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static struct {
-    int ready, state;
+    int ready, state, side_ok;   /* side_ok: the copies go in `beside` (writable, the module's own file system) */
     uint32_t seq;
     char msg[320], backup[128];
     char mod[PATH_MAX], parent[PATH_MAX], data[PATH_MAX], beside[PATH_MAX];   /* beside: where the upload and backups go */
@@ -748,7 +748,11 @@ static void set_state(int state, const char *fmt, ...)
     fprintf(stderr, "update: %s: %s\n", STATE[state], G.msg);
 }
 
-/* the in-place layout (the folder above the module's not writable): RFM14_TEST_UPDATE_INSIDE forces it in tests */
+/* The copies (the staged build, the previous one, one undone) never sit beside the module in its own folder: Schwung
+ * lists every folder of modules/tools with a module.json as a tool, so a "remotefm1.prev" there is a second RemoteFM1
+ * in its menu. They go in `beside` (where the upload and backups go: /data/UserData on the Move) under hidden names,
+ * when that can be written and is the module's file system (the swap is renames); else inside the module's folder.
+ * RFM14_TEST_UPDATE_INSIDE forces the inside layout in tests. */
 static int inside(void)
 {
 #ifdef RFM14_TEST_BUILD
@@ -756,7 +760,7 @@ static int inside(void)
     if (e && *e == '1')
         return 1;
 #endif
-    return access(G.parent, W_OK) != 0;
+    return !G.side_ok || access(G.parent, W_OK) != 0;
 }
 static void paths(char *n, char *p, char *u, size_t cap)   /* the staged copy, the previous build, the one going */
 {
@@ -765,9 +769,9 @@ static void paths(char *n, char *p, char *u, size_t cap)   /* the staged copy, t
         snprintf(p, cap, "%s/.update-prev", G.mod);
         snprintf(u, cap, "%s/.update-undone", G.mod);
     } else {
-        snprintf(n, cap, "%s.new", G.mod);
-        snprintf(p, cap, "%s.prev", G.mod);
-        snprintf(u, cap, "%s.undone", G.mod);
+        snprintf(n, cap, "%s/.remotefm1-update-new", G.beside);
+        snprintf(p, cap, "%s/.remotefm1-update-prev", G.beside);
+        snprintf(u, cap, "%s/.remotefm1-update-undone", G.beside);
     }
 }
 static int undo_dir(char *out, size_t cap)   /* the build an Undo brings back: 0 (out), -1 none */
@@ -775,8 +779,8 @@ static int undo_dir(char *out, size_t cap)   /* the build an Undo brings back: 0
     snprintf(out, cap, "%s/.update-prev", G.mod);
     if (is_dir(out))
         return 0;
-    snprintf(out, cap, "%s.prev", G.mod);
-    return is_dir(out) ? 0 : -1;
+    snprintf(out, cap, "%s/.remotefm1-update-prev", G.beside);
+    return G.side_ok && is_dir(out) ? 0 : -1;
 }
 
 /* a module folder's build: its update-manifest.json (an install's), else its module.json's version */
@@ -825,6 +829,11 @@ void upd_init(const upd_cfg_t *c)
         *(slash == G.beside ? slash + 1 : slash) = 0;
     if (access(G.beside, W_OK) != 0)   /* (beside the folder when that can be written, else in it) */
         snprintf(G.beside, sizeof G.beside, "%s", G.data);
+    {
+        struct stat a, b;
+        G.side_ok = access(G.beside, W_OK) == 0 && stat(G.beside, &a) == 0 && stat(G.mod, &b) == 0 &&
+                    a.st_dev == b.st_dev;
+    }
     snprintf(G.part, sizeof G.part, "%s/.remotefm1-update.part", G.beside);
     snprintf(G.version, sizeof G.version, "%s", c->version ? c->version : "");
     snprintf(G.commit, sizeof G.commit, "%s", c->commit ? c->commit : "");
@@ -834,8 +843,8 @@ void upd_init(const upd_cfg_t *c)
     unlink(G.part);
     paths(n, p, u, sizeof n);
     upd_rmtree(n), upd_rmtree(u);
-    snprintf(n, sizeof n, "%s.new", G.mod), upd_rmtree(n);
-    snprintf(n, sizeof n, "%s.undone", G.mod), upd_rmtree(n);
+    snprintf(n, sizeof n, "%s/.remotefm1-update-new", G.beside), upd_rmtree(n);
+    snprintf(n, sizeof n, "%s/.remotefm1-update-undone", G.beside), upd_rmtree(n);
     snprintf(n, sizeof n, "%s/.update-new", G.mod), upd_rmtree(n);
     snprintf(n, sizeof n, "%s/.update-undone", G.mod), upd_rmtree(n);
     G.ready = 1;
@@ -1264,8 +1273,8 @@ static void *undo_main(void *arg)
     if (in) {
         snprintf(u, sizeof u, "%s/.update-undone", G.mod);
     } else {
-        snprintf(p, sizeof p, "%s.prev", G.mod);
-        snprintf(u, sizeof u, "%s.undone", G.mod);
+        snprintf(p, sizeof p, "%s/.remotefm1-update-prev", G.beside);
+        snprintf(u, sizeof u, "%s/.remotefm1-update-undone", G.beside);
     }
     build_of(p, v, cm, bt, sizeof v);
     upd_rmtree(u);

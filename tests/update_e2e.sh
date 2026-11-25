@@ -59,11 +59,11 @@ refused() {   # file, what the message says
     code=$(post "$F/$1")
     settle
     s=$(state); m=$(msg)
-    if [ "$code" = 202 ] && [ "$s" = failed ] && echo "$m" | grep -q "$2" && [ "$(tree "$M")" = "$T0" ] && [ ! -e "$M.prev" ] \
-        && [ ! -e "$M.new" ] && [ "$(backups)" = "$B0" ]; then
+    if [ "$code" = 202 ] && [ "$s" = failed ] && echo "$m" | grep -q "$2" && [ "$(tree "$M")" = "$T0" ] && [ ! -e "$D/.remotefm1-update-prev" ] \
+        && [ ! -e "$D/.remotefm1-update-new" ] && [ "$(backups)" = "$B0" ]; then
         ok "$1: refused ($m), nothing changed"
     else
-        bad "$1: http $code state '$s' msg '$m' changed: $( [ "$(tree "$M")" = "$T0" ] && echo no || echo YES) prev $( [ -e "$M.prev" ] && echo yes || echo no) backups $(backups)"
+        bad "$1: http $code state '$s' msg '$m' changed: $( [ "$(tree "$M")" = "$T0" ] && echo no || echo YES) prev $( [ -e "$D/.remotefm1-update-prev" ] && echo yes || echo no) backups $(backups)"
     fi
 }
 
@@ -102,8 +102,8 @@ cmp -s build/move/remotefm1-host "$M/remotefm1-host" && [ -x "$M/remotefm1-host"
     || bad "the module's files after the install"
 [ -f "$M/bin/heal" ] && [ -f "$M/firmwares/felucca-old.txt" ] && [ -f "$M/site/old-only.txt" ] \
     && ok "the rest kept (bin/heal, a firmware, a site file the update does not name)" || bad "the rest after the install"
-grep -q '"old": 1' "$M.prev/help.json" && [ ! -f "$M.prev/update-marker.txt" ] && ! cmp -s build/move/remotefm1-host "$M.prev/remotefm1-host" \
-    && [ "$(tree "$M.prev")" = "$T0" ] && ok "<dir>.prev holds the old build, whole" || bad "the .prev after the install"
+grep -q '"old": 1' "$D/.remotefm1-update-prev/help.json" && [ ! -f "$D/.remotefm1-update-prev/update-marker.txt" ] && ! cmp -s build/move/remotefm1-host "$D/.remotefm1-update-prev/remotefm1-host" \
+    && [ "$(tree "$D/.remotefm1-update-prev")" = "$T0" ] && ok "<dir>.prev holds the old build, whole" || bad "the .prev after the install"
 BK=$(ls -t "$D"/remotefm1-data-backup-*.tar.gz 2>/dev/null | head -1)
 [ -n "$BK" ] && tar tzf "$BK" | grep -q '^move/settings.bin$' && tar tzf "$BK" | grep -q 'move-project-01.fw1.bin' \
     && busybox tar tzf "$BK" | grep -q 'move/settings.bin' \
@@ -115,18 +115,18 @@ echo "$j" | grep -q '"installed":{"version":"9.9.9-test"' && echo "$j" | grep -q
     && echo "$j" | grep -q '"undo_to":{"version":"0.4.9"' && echo "$j" | grep -q '"staged":{"version":"9.9.9-test"' \
     && ok "the status: installed 9.9.9-test, undo back to 0.4.9" || bad "the status after: $j"
 curl -s "$U/js/moveupdate.js" | grep -q mountMoveUpdate && ok "the page still served (its Update script)" || bad "the page after the install"
-[ ! -e "$M.new" ] && [ ! -e "$M.undone" ] && [ ! -e "$D/.remotefm1-update.part" ] && ok "nothing left over (.new, .undone, the upload)" \
+[ ! -e "$D/.remotefm1-update-new" ] && [ ! -e "$D/.remotefm1-update-undone" ] && [ ! -e "$D/.remotefm1-update.part" ] && ok "nothing left over (.new, .undone, the upload)" \
     || bad "left over: $(ls -d "$M".* "$D"/.remotefm1* 2>/dev/null)"
 
 # ---------------------------------------------------------------- a second update, Undo
 sleep 1.1
 code=$(post $F/good2.rfm1u); settle
-[ "$(state)" = done ] && grep -q 9.9.10-test "$M/update-manifest.json" && grep -q 9.9.9-test "$M.prev/update-manifest.json" \
-    && [ "$(ls -d "$MODS"/remotefm1.* | wc -l)" = 1 ] && ok "good2.rfm1u over it: .prev is the first update now (one .prev)" \
+[ "$(state)" = done ] && grep -q 9.9.10-test "$M/update-manifest.json" && grep -q 9.9.9-test "$D/.remotefm1-update-prev/update-manifest.json" \
+    && [ "$(ls -d "$D"/.remotefm1-update-prev* | wc -l)" = 1 ] && [ "$(ls -A "$MODS")" = remotefm1 ] && ok "good2.rfm1u over it: .prev is the first update now (one .prev; nothing but remotefm1 in the tools folder)" \
     || bad "good2: '$(state)' '$(msg)' $(ls -d "$MODS"/remotefm1.*)"
 code=$(curl -s -o "$T/post.json" -w '%{http_code}' -X POST "$U/api/update/undo"); settle
 [ "$code" = 202 ] && [ "$(state)" = done ] && msg | grep -q "Put back 9.9.9-test" && grep -q 9.9.9-test "$M/update-manifest.json" \
-    && [ ! -e "$M.prev" ] && [ ! -e "$M.undone" ] && st | grep -q '"undo":false' \
+    && [ ! -e "$D/.remotefm1-update-prev" ] && [ ! -e "$D/.remotefm1-update-undone" ] && st | grep -q '"undo":false' \
     && ok "Undo: 9.9.9-test back ($(msg)), no .prev, no Undo left" || bad "Undo: $code '$(state)' '$(msg)'"
 code=$(curl -s -o "$T/post.json" -w '%{http_code}' -X POST "$U/api/update/undo")
 [ "$code" = 409 ] && ok "Undo again: 409 (one level)" || bad "Undo again: $code"

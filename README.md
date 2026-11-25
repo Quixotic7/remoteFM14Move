@@ -959,9 +959,12 @@ catalog and the bundled set stay as they are.
   copy of the module's folder with the update over it, its `remotefm1-host` checked (an executable aarch64 program);
   a backup of the RemoteFM1 folder's `move/` (projects, settings) as
   `/data/UserData/remotefm1-data-backup-<date>-<time>.tar.gz` (the newest 3 kept); then two renames: the module's
-  folder becomes `remotefm1.prev` (an older one deleted), the copy becomes `remotefm1`. The running host keeps the
-  program it started with. When the folder above the module's cannot be written, the same swap happens inside it
-  (`remotefm1/.update-prev`). Undo renames `.prev` back; the build undone is deleted.
+  folder becomes `/data/UserData/.remotefm1-update-prev` (an older one deleted), the copy (staged as
+  `/data/UserData/.remotefm1-update-new`) becomes `remotefm1`. Never a `remotefm1.*` folder beside the module: Schwung
+  lists every folder of `modules/tools` with a `module.json` as a tool, so it would be a second RemoteFM1 in its menu.
+  The running host keeps the program it started with. When the folder above the module's cannot be written, or
+  `/data/UserData` is another file system, the same swap happens inside it (`remotefm1/.update-prev`). Undo renames
+  the previous build back; the build undone is deleted.
 - The launcher's real-time helper (`bin/heal`) is copied as a plain file; the next launch installs it again, as it
   does after a first install (README "Threads").
 - The host's module folder is the one it runs from (`--module-dir DIR` for the tests); `GET /api/update` is the state,
