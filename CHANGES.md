@@ -1,5 +1,24 @@
 # Changes
 
+## Unreleased: the kit (stage 3a)
+
+- **The kit.** Track 4's third view (tap Track 4 round Mixer, Routing, Kit; or hold Track 4 + pad 3): 16 sampled pads
+  on tracks 13 to 16. The left pads play the kit, the right pads the chosen pad's pitches (or its scale, or nothing);
+  the steps are the chosen pad's; the knobs its pitch, start, play mode, attack, release and level. Sounds come from
+  your takes or from the Move's Samples library (each heard as you scroll to it); hold a pad + Sample to record
+  straight into it. A sampler take's actions gain To Kit. One shot, momentary or loop, reverse, choke groups, mute.
+  The kit is saved with the project; a new project plays tracks 13 to 16 on it.
+
+Projects saved with the kit are not read by 0.5.0 or older; settings neither.
+
+In detail (rfm1cs-abletonmove `kit`: the Kit view, `RFM_MOVE_CAP_KIT`, the `KIT_*` actions):
+
+- **src/kit.c** (new): sounds (WAV, AIFF; 16-bit stereo in memory, 64 MB a kit, "Too Long" past it), voices (24,
+  linear interpolation, attack / hold / release, one shot / momentary / loop, reverse, choke, level, pan), the Kit bus
+  in the mix, the Files rows (Takes, Samples), the preview after the recorder's tap; its file work on the take
+  library's worker (takes.h `TL_Q_JOB`). The engine: the `KIT_*` actions, a pad recorded into through the recorder,
+  the kit's status fields; `--samples-dir`. Tests: `tests/kit_test.sh`, `tests/kit_e2e.sh`, `make test-kit`.
+
 ## 0.5.0 (2026-11-25)
 
 - **The sampler.** Sample opens a sampler that records what the Move plays: the master, one firmware on its own

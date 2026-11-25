@@ -1301,6 +1301,54 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
+## The kit (rfm1cs stage 3a, src/kit.c)
+
+rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
+4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
+memory) and owns the sounds and the voices; the core owns the pads' settings, saved with the project (version 11: each
+pad's path and twelve settings), and says which notes play which pad. The help page's "Kit" says how to play it.
+
+- **The actions** (`kit_action`, from `on_action`): `KIT_NOTE` (a pad played or let go, the right half's semitones; a
+  note the sequencer stamped in this block at its frame: `g_kit_adv` around `rfm1cs_session_advance`) and `KIT_SET`
+  (a setting) to the voices at once; `KIT_LOAD` (a path: a project's or Undo's; a row: Files or the sampler's To Kit;
+  neither: the pad emptied), `KIT_ROWS` (Files: Takes, Samples) and `KIT_PREVIEW` to the file work; `KIT_REC` (a pad
+  held + Sample) through the recorder as Sample in the app: its press, and at the pad's release a second press when a
+  take records or is armed (an armed one, or a press the recorder has not seen yet, is dropped); the take saved
+  (`rec_tick`) is loaded onto that pad. Answers from `rec_tick` (`kit_answers`): `rfm_move_kit_loaded`,
+  `rfm_move_kit_rows`.
+- **The file work** (reading a sound, Files' rows and pictures, a preview's sound, freeing the memory a sound leaves)
+  runs on the take library's worker (`TL_Q_JOB`: `kit_work`), never on the engine's thread; without a take library
+  on a thread of the kit's own. A sound is put on its pad (and the old one handed back to be freed) by the engine
+  between blocks.
+- **Sounds:** WAV (PCM 16 / 24 / 32-bit, float) and AIFF / AIFC (PCM 16 / 24 / 32-bit, big-endian or `sowt`), mono
+  or stereo, any rate (played at its own: the rate is part of the pitch), kept as 16-bit stereo; 64 MB a kit
+  (`KIT_MAX_BYTES`): a sound past what the other pads leave is refused (`KIT_TOO_LONG`, "Too Long"), the pad keeps
+  the one it had. 64 peaks of each sound (scaled to its own peak) go back with it for the pad's wave.
+- **Voices:** 24 sounding (16 pads plus the right half's pitches), the oldest stolen (2 ms); linear interpolation;
+  the region start..end, forwards or reversed; pitch in cents plus the right half's semitones; an envelope: attack
+  (linear), hold, release (linear). One shot plays to the region's end (hold 0: the release is the tail that ends
+  there; a hold: the release after attack + hold), Momentary while held, Loop round the region while held (then its
+  release). A pad again takes its own voice (its pad and pitch) back with a 5 ms fade; a choke group's pad fades the
+  group's others (5 ms); Mute fades the pad's voices and refuses its notes; level (dB, -60 silent) and pan (a
+  balance), velocity (linear). The Kit bus is added to the mix before the FX returns and the recorder's tap (the
+  master's takes have it; the sends and the Mixer's Kit strip are stage 3b).
+- **Files:** Takes: the take library's list of every take, newest first (`tl_rows` `TL_ALL`; a row "M 4 Bars", its
+  picture); a take loads from its WAV (a stems take: its Master). Samples: `--samples-dir` (the Move's
+  `/data/UserData/UserLibrary/Samples`): folders first, then WAV / AIFF files, by name, dot files hidden; a folder's
+  id the FNV-1a of its path there; a file's picture 14 short windows of it (not the whole file). The preview: the
+  first 30 s of the sound, played once after the recorder's tap (never in a take), a new one or none replacing it.
+- `/api/status` (with a kit): `kit_shown`, `kit_cur`, `kit_tab`, `kit_row`, `kit_place`, `kit_total`, `kit_route`,
+  `kit_pads` (the pads with a sound in memory, a bit each), `kit_voices`, `kit_bytes`, `kit_prev`, `kit_pitch` (the
+  chosen pad's), `kit_st`, `kit_rec`, and the counts `kit_notes`, `kit_loads`, `kit_rows`, `kit_recs`.
+
+`tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
+the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
+the region, loop, momentary, the attack, the one shot's tail, the hold, choke, a pad again, mute, level and pan,
+velocity, 24 voices), Samples' rows and a folder, Takes from a take library on its worker, the preview, the kit's own
+thread. `tests/kit_e2e.sh` (in the image after make; in `tests/in_image.sh` and `make test-sampler`; alone `make
+test-kit`): on the simulator, the Kit view, Files (Samples, a folder, the preview, a load), a pad, a step and Play, a
+knob, a take recorded into a pad, the kit in the output (`mix.raw`), the project's kit back after a restart.
+
 ## The page's Sampler window
 
 The owner's words (2026-11-25): "work in a web sampler window, similar to the MIXer popup, should have the sampler
