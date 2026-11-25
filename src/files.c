@@ -124,32 +124,89 @@ int files_rel_ok(const char *rel, int is_new, const char **why)
     }
 }
 
+/* (README "The sampler") the one link followed: its path relative to the root and on disk ("" none) */
+static char g_fl_rel[FILES_PATH_MAX + 1], g_fl_abs[FILES_PATH_MAX + 600];
+
+void files_follow_link(const char *root, const char *rel)
+{
+    const char *why = NULL;
+    g_fl_rel[0] = g_fl_abs[0] = 0;
+    if (!root || !rel || !*rel || files_rel_ok(rel, 0, &why) != 0 ||
+        snprintf(g_fl_abs, sizeof g_fl_abs, "%s/%s", root, rel) >= (int)sizeof g_fl_abs) {
+        g_fl_abs[0] = 0;
+        return;
+    }
+    snprintf(g_fl_rel, sizeof g_fl_rel, "%s", rel);
+}
+
+/* p is the followed link (a link to a folder) */
+static int followed(const char *p)
+{
+    struct stat st;
+    return g_fl_abs[0] && !strcmp(p, g_fl_abs) && !lstat(p, &st) && S_ISLNK(st.st_mode) && !stat(p, &st) &&
+           S_ISDIR(st.st_mode);
+}
+
+int files_lstat(const char *path, struct stat *st)
+{
+    if (lstat(path, st) != 0)
+        return -1;
+    if (S_ISLNK(st->st_mode) && followed(path))
+        return stat(path, st);
+    return 0;
+}
+
+/* full (through the followed link) resolves inside the link's target: as far as it exists */
+static int in_target(const char *full)
+{
+    char t[FILES_PATH_MAX + 600], rt[4096], rp[4096];
+    size_t n;
+    snprintf(t, sizeof t, "%s", full);
+    if (!realpath(g_fl_abs, rt))
+        return 0;
+    while (!realpath(t, rp)) {
+        char *sl = strrchr(t, '/');
+        if (errno != ENOENT || !sl || sl == t)
+            return 0;
+        *sl = 0;   /* (not there yet: its folder) */
+    }
+    n = strlen(rt);
+    return !strncmp(rp, rt, n) && (rp[n] == 0 || rp[n] == '/');
+}
+
 int files_no_links(const char *root, const char *rel)
 {
-    char p[FILES_PATH_MAX + 600];
+    char p[FILES_PATH_MAX + 600], full[FILES_PATH_MAX + 600];
     size_t at;
     const size_t rl = strlen(root);
     struct stat st;
+    int via = 0;
     if (rl + 2 + strlen(rel) >= sizeof p)
         return -1;
     memcpy(p, root, rl);
     at = rl;
+    snprintf(full, sizeof full, "%s%s%s", root, *rel ? "/" : "", rel);
     while (*rel) {
         const char *e = strchr(rel, '/');
         const size_t n = e ? (size_t)(e - rel) : strlen(rel);
+        if ((n == 1 && rel[0] == '.') || (n == 2 && rel[0] == '.' && rel[1] == '.'))
+            return -1;   /* (no way back up) */
         p[at++] = '/';
         memcpy(p + at, rel, n);
         at += n;
         p[at] = 0;
         if (lstat(p, &st) != 0)
-            return 0;   /* (the rest does not exist: nothing further to follow) */
-        if (S_ISLNK(st.st_mode))
-            return -1;
+            break;   /* (the rest does not exist: nothing further to follow) */
+        if (S_ISLNK(st.st_mode)) {
+            if (via || !followed(p))
+                return -1;
+            via = 1;   /* (the takes' link: what follows it must stay inside its target) */
+        }
         if (!e)
             break;
         rel = e + 1;
     }
-    return 0;
+    return via && !in_target(full) ? -1 : 0;
 }
 
 int files_unescape(const char *in, size_t n, char *out, size_t cap)
@@ -233,6 +290,10 @@ const char *files_refuse(const char *rel, int op, const files_use_t *u, char *wh
             snprintf(why, cap, "%s/ is a folder the Move needs", seg);
         return why;
     }
+    if (g_fl_rel[0] && !strcmp(rel, g_fl_rel) && (op == FILES_DELETE || op == FILES_RENAME || op == FILES_REPLACE)) {
+        snprintf(why, cap, "%s/ is the sampler's takes (the Move's sample library): it stays", rel);
+        return why;
+    }
     if (!strcmp(seg, "move")) {
         if (strncmp(rel, "move/projects", 13) || (rel[13] && rel[13] != '/')) {
             snprintf(why, cap, "move/'s settings and library are the running Move's own: read-only (projects: move/projects/)");
@@ -285,7 +346,7 @@ int files_writable(const char *rel)
 }
 
 /* ------------------------------------------------------------------ the listing --- */
-typedef struct { char *name; uint64_t size; long mtime; int dir; } ent_t;
+typedef struct { char *name; uint64_t size; long mtime; int dir, link; } ent_t;
 static int by_ent(const void *a, const void *b)
 {
     const ent_t *x = a, *y = b;
@@ -311,8 +372,8 @@ static int scan(const char *dir, ent_t **out)
         if (e->d_name[0] == '.' || seg_ok(e->d_name, strlen(e->d_name), 0, &why) != 0)
             continue;
         snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
-        if (lstat(p, &st) != 0 || !(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)))
-            continue;   /* (links, sockets, devices: not shown) */
+        if (files_lstat(p, &st) != 0 || !(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)))
+            continue;   /* (links but the followed one, sockets, devices: not shown) */
         if (n == cap) {
             ent_t *nv = realloc(v, (size_t)(cap = cap ? cap * 2 : 32) * sizeof *v);
             if (!nv)
@@ -323,6 +384,7 @@ static int scan(const char *dir, ent_t **out)
         v[n].size = S_ISDIR(st.st_mode) ? 0 : (uint64_t)st.st_size;
         v[n].mtime = (long)st.st_mtime;
         v[n].dir = S_ISDIR(st.st_mode);
+        v[n].link = followed(p);
         if (v[n].name)
             n++;
         if (n >= 100000)
@@ -378,8 +440,9 @@ char *files_list_json(const char *root, const char *rel)
                 break;
             out = b;
         }
-        o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":\"%s\",\"size\":%llu,\"mtime\":%ld,\"dir\":%s}", i ? "," : "",
-                              esc, (unsigned long long)v[i].size, v[i].mtime, v[i].dir ? "true" : "false");
+        o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":\"%s\",\"size\":%llu,\"mtime\":%ld,\"dir\":%s%s}", i ? "," : "",
+                              esc, (unsigned long long)v[i].size, v[i].mtime, v[i].dir ? "true" : "false",
+                              v[i].link ? ",\"link\":true" : "");
     }
     if (o + 4 > cap) {
         char *b = realloc(out, cap = o + 4);
@@ -517,7 +580,7 @@ files_zip_t *files_zip_plan(const char *root, const char *rel, uint64_t *length,
     }
     z->fd = -1;
     snprintf(dir, sizeof dir, "%s%s%s", root, *rel ? "/" : "", rel);
-    if (lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    if (files_lstat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
         *why = "no such folder";
         free(z);
         return NULL;

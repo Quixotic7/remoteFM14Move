@@ -31,7 +31,9 @@
 //     thumbnails of firmwares not installed, ChoralRoot's UPDATE, Fantasy CFW, a tap on Ripple downloads it and loads
 //     it into the playing slot (move-page-sheet-browser.png, move-page-phone-sheet-browser.png);
 //   - Files (js/movefiles.js, js/movefs.js): the sheet's Add samples puts a WAV into the Move's audio/; the header's
-//     Files button's browser: the root read-only, a folder made, a file dropped into it, renamed, deleted, a folder
+//     Files button's browser: the root read-only, audio/rec (the sampler's takes in a sample library outside the
+//     folder, --takes-dir) a folder with its rename and delete off, a take in it listed and downloaded through the
+//     link, a folder made, a file dropped into it, renamed, deleted, a folder
 //     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet; FM-1 Wi-Fi (js/movewifi.js) from the
 //     settings sheet: the USB-A line, a canned list, a password picked and shown (move-page-phone-wifi.png);
@@ -83,7 +85,9 @@ const TC = pageCatalog();
 const cid = execFileSync("docker", ["run", "-d", "--rm", "-p", `127.0.0.1:${PORT}:7730`, "-v", `${ROOT}:/w`, "-w", "/w", IMAGE, "sh", "-c",
   // (the test catalog, build/testcat-page, served in the container: the page's downloads come from it)
   (TC ? `busybox httpd -p 127.0.0.1:18090 -h ${TC} && ` : "") +
-  "mkdir -p /tmp/s && exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --catalog-url " +
+  // (the sampler's takes in a sample library outside the folder, one take in it: audio/rec their link)
+  "mkdir -p /tmp/s /tmp/lib/RemoteFM1/2026-11-24 && build/tools/ainchk make '/tmp/lib/RemoteFM1/2026-11-24/1124-153000 Felucca 120bpm 1b.wav' >/dev/null && " +
+  "exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --takes-dir /tmp/lib/RemoteFM1 --catalog-url " +
   (TC ? "http://127.0.0.1:18090" : "http://127.0.0.1:1") + " --fx-dir build/fxmods" +
   (TC ? ` --catalog-index ${TC}/index.json` : "")],
   { encoding: "utf8" }).trim();
@@ -878,6 +882,23 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
       "a folder opens: audio/ in the breadcrumbs, the sample listed");
     const row = await js(`(() => { const r = document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"]'); return { sz: r.querySelector(".sz").textContent, dt: r.querySelector(".dt").textContent }; })()`);
     ok(/KB$/.test(row.sz) && /\d/.test(row.dt), `its size and date (${row.sz}, ${row.dt})`);
+    // the sampler's takes: audio/rec, a link to the sample library, a folder here (its own rename and delete off)
+    const rec = await js(`(() => { const r = document.querySelector('#mv-fs .mv-fs-row[data-name="rec"]'); if (!r) return null;
+      const b = r.querySelectorAll(".acts button"); return { dir: r.querySelector(".sz").textContent, ren: b[1].disabled, del: b[2].disabled, why: b[2].title }; })()`);
+    ok(rec && rec.dir === "folder" && rec.ren && rec.del && /takes/.test(rec.why), `audio/rec, the takes' link: a folder, its rename and delete off ("${rec && rec.why}")`);
+    await click('#mv-fs .mv-fs-row[data-name="rec"] .nm');
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="2026-11-24"]')`, 5000, "audio/rec/2026-11-24");
+    await click('#mv-fs .mv-fs-row[data-name="2026-11-24"] .nm');
+    const TAKE = "1124-153000 Felucca 120bpm 1b.wav";
+    ok(await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="${TAKE}"]')`, 5000, "the take"), `into audio/rec/2026-11-24/: the take listed (${TAKE})`);
+    const tk = await js(`(async () => { const r = document.querySelector('#mv-fs .mv-fs-row[data-name="${TAKE}"]'), b = r.querySelectorAll(".acts button");
+      const x = await fetch("api/fs/get?path=" + encodeURIComponent("audio/rec/2026-11-24/${TAKE}")); const a = new Uint8Array(await x.arrayBuffer());
+      return { st: x.status, n: a.length, riff: String.fromCharCode(...a.subarray(0, 4)), ren: b[1].disabled, del: b[2].disabled }; })()`);
+    const ent = await onMove("audio/rec/2026-11-24", TAKE);
+    ok(tk.st === 200 && tk.riff === "RIFF" && ent && tk.n === ent.size && !tk.ren && !tk.del,
+      `the take downloads through the link (${tk.n} bytes, RIFF), its rename and delete on`);
+    await click('#mv-fs .mv-fs-crumbs button:nth-of-type(2)');
+    await until(`document.querySelector('#mv-fs .mv-fs-row[data-name="page kick.wav"]')`, 5000, "back to audio/");
     // a new folder (its name asked), a file dropped into it, renamed, deleted; the folder deleted with what is in it
     await js(`window.prompt = () => "Kits"; window.confirm = () => true`);
     await click("#mv-fs .mv-fs-new");

@@ -3,7 +3,9 @@
 # The page's file browser (src/web.c /api/fs, src/files.c) on the simulator, in the build image: every op (list,
 # download, a folder as a .zip that unzips to the same files, upload, rename, delete, a new folder) and the refusals
 # (the path rules, links out, firmwares/ and catalog/ read-only, the size cap and the free-space floor, what a running
-# firmware or the open project needs).
+# firmware or the open project needs); the sampler's takes in a sample library outside the folder (--takes-dir):
+# audio/rec, their link, the one link followed (listed, a take downloaded, zipped, renamed, uploaded into, deleted;
+# the link itself kept; a link inside the takes and .. refused).
 #   tests/files_e2e.sh      (after make)
 set -u
 cd "$(dirname "$0")/.."
@@ -22,7 +24,7 @@ wait_for() { _n=$(( $1 * 10 )); shift; while [ $_n -gt 0 ]; do eval "$1" && retu
 LOG=$T/host.log
 start() {
     env "$@" build/sim/remotefm1-host --root "$ROOT" --port $PORT --sim-dir "$SIM" --firmwares build/fw --site build/site \
-        --fw felucca >>"$LOG" 2>&1 &
+        --fw felucca ${XARGS:-} >>"$LOG" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' && wait_for 5 '[ "$(field session)" = 2 ]'
 }
@@ -152,6 +154,39 @@ start RFM14_TEST_DISK_FREE_MB=64
 c=$(put "$T/kick.wav" 'path=audio&name=k.wav'); e=$(err)
 [ "$c" = 507 ] && [ ! -e "$ROOT/audio/k.wav" ] && ok "64 MB free on the disk: refused, 64 MB stay free (507: \"$e\")" || bad "the floor: $c"
 [ -z "$(find "$ROOT" -name '*.part')" ] && ok "no temporary file left anywhere" || bad "left: $(find "$ROOT" -name '*.part')"
+stop
+
+# ---- the sampler's takes in a sample library outside the folder: audio/rec a link to them, the one link followed
+LIB=$T/Samples/RemoteFM1; DAY=$LIB/2026-11-24; mkdir -p "$DAY/1124-153000 Stems 120bpm 1b"
+mkwav "$DAY/1124-153000 Felucca 120bpm 1b.wav" 88200; mkwav "$DAY/1124-153000 Stems 120bpm 1b/Master.wav" 1000
+ln -s /etc "$LIB/out"   # (a link inside the takes pointing out)
+rmdir "$ROOT/audio/rec" 2>/dev/null   # (the recorder's own audio/rec from the runs above: empty)
+XARGS="--takes-dir $LIB" start || { bad "the host did not start (--takes-dir)"; tail -20 "$LOG"; exit 1; }
+[ -L "$ROOT/audio/rec" ] && [ "$(field rec_link)" = 1 ] || bad "audio/rec is not the takes' link: $(ls -l "$ROOT/audio")"
+c=$(code GET 'list?path=audio')
+[ "$c" = 200 ] && grep -q '"name":"rec","size":0,"mtime":[0-9]*,"dir":true,"link":true}' "$T/out" \
+    && ok "list audio/: rec, the takes' link, as a folder (\"link\":true)" || bad "audio/rec in the list: $c $(head -c 400 "$T/out")"
+c=$(code GET 'list?path=audio/rec/2026-11-24')
+[ "$c" = 200 ] && grep -q '"name":"1124-153000 Felucca 120bpm 1b.wav","size":352844,' "$T/out" && grep -q '"name":"1124-153000 Stems 120bpm 1b","size":0,.*"dir":true' "$T/out" \
+    && code GET 'list?path=audio/rec' >/dev/null && ! grep -q '"name":"out"' "$T/out" \
+    && ok "list audio/rec/2026-11-24/: the take (352844 bytes) and a stems folder; the link out inside the takes not listed" \
+    || bad "the takes' list: $c $(head -c 400 "$T/out")"
+c=$(curl -s -o "$T/take.wav" -w '%{http_code}' "$U/api/fs/get?path=audio/rec/2026-11-24/1124-153000%20Felucca%20120bpm%201b.wav")
+[ "$c" = 200 ] && cmp -s "$T/take.wav" "$DAY/1124-153000 Felucca 120bpm 1b.wav" && ok "get a take through audio/rec: byte for byte" || bad "get a take: $c"
+c=$(curl -s -o "$T/rec.zip" -w '%{http_code}' "$U/api/fs/zip?path=audio/rec")
+mkdir -p "$T/unrec"; ( cd "$T/unrec" && busybox unzip -q "$T/rec.zip" ) 2>"$T/unrec.err"
+[ "$c" = 200 ] && cmp -s "$T/unrec/rec/2026-11-24/1124-153000 Stems 120bpm 1b/Master.wav" "$DAY/1124-153000 Stems 120bpm 1b/Master.wav" \
+    && [ ! -e "$T/unrec/rec/out" ] && ok "zip of audio/rec: the takes, the stems folder's files; not the link out" || bad "zip of audio/rec: $c $(cat "$T/unrec.err")"
+c1=$(code POST 'rename?path=audio/rec/2026-11-24/1124-153000%20Felucca%20120bpm%201b.wav&to=audio/rec/2026-11-24/My%20take.wav')
+[ "$c1" = 200 ] && [ -f "$DAY/My take.wav" ] && [ ! -e "$DAY/1124-153000 Felucca 120bpm 1b.wav" ] && ok "rename a take inside audio/rec: 200, renamed in the sample library" || bad "rename a take: $c1 $(cat "$T/out")"
+c1=$(put "$T/kick.wav" 'path=audio/rec&name=up.wav')
+[ "$c1" = 201 ] && cmp -s "$T/kick.wav" "$LIB/up.wav" && ok "put into audio/rec: 201, in the sample library" || bad "put into audio/rec: $c1 $(cat "$T/out")"
+c1=$(code POST 'delete?path=audio/rec/2026-11-24/My%20take.wav'); c2=$(code POST 'delete?path=audio/rec/up.wav')
+[ "$c1" = 200 ] && [ "$c2" = 200 ] && [ ! -e "$DAY/My take.wav" ] && [ ! -e "$LIB/up.wav" ] && ok "delete takes inside audio/rec: 200, gone from the sample library" || bad "delete a take: $c1 $c2"
+c1=$(code POST 'delete?path=audio/rec'); e1=$(err); c2=$(code POST 'rename?path=audio/rec&to=audio/x'); c3=$(code GET 'get?path=audio/rec/out/passwd')
+c4=$(code GET 'list?path=audio/rec/out'); c5=$(code GET 'get?path=audio/rec/../../catalog-url'); c6=$(code GET 'get?path=data/out/passwd')
+[ "$c1" = 403 ] && [ "$c2" = 403 ] && [ -L "$ROOT/audio/rec" ] && [ "$c3" = 403 ] && [ "$c4" = 403 ] && [ "$c5" = 400 ] && [ "$c6" = 403 ] \
+    && ok "audio/rec itself stays (403: \"$e1\"); a link inside the takes, .., another link: refused" || bad "the takes' refusals: $c1 $c2 $c3 $c4 $c5 $c6"
 stop
 echo "files_e2e: $checks checks, $fail failed"
 [ $fail = 0 ]

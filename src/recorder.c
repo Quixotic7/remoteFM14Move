@@ -73,6 +73,8 @@ typedef struct {   /* the writer's take */
     uint32_t bars;
     double bpm;
     char dir[1024];
+    char head[32];               /* <MMDD>-<HHMMSS> */
+    char sdir[1024];             /* a stems take: its folder while it records ("" not stems) */
     char name[REC_NST][256];
     char part[REC_NST][1024];
     FILE *f[REC_NST];
@@ -732,6 +734,7 @@ static void result(rec_t *r, const char *path, int stream, uint32_t id, uint64_t
     snprintf(t->path, sizeof t->path, "%s", path);
     t->stream = stream;
     t->take = id;
+    t->first = r->w->c.id == id ? r->w->c.f : 0;   /* (the writer's take; a NOTHING has none) */
     t->frames = frames;
     t->bars = bars;
     t->bpm = bpm;
@@ -837,15 +840,30 @@ static void close_files(wtake_t *w, int remove_them)
         }
 }
 
+/* a stems file's name: Master, Track 1 <its firmware> (Track 1 with no label), Input, Looper, Kit */
+static void stem_name(char *d, size_t dn, int s, const char *label)
+{
+    static const char *const FIXED[REC_NST] = { "Master", NULL, NULL, NULL, "Input", "Looper", "Kit" };
+    char lab[REC_LABEL];
+    if (FIXED[s]) {
+        snprintf(d, dn, "%s", FIXED[s]);
+        return;
+    }
+    sanitize(lab, sizeof lab, label, "");
+    snprintf(d, dn, "Track %d%s%s", s - REC_ST_SLOT1 + 1, *lab ? " " : "", lab);
+}
+
 static void open_take(rec_t *r, wtake_t *w)
 {
     struct tm tm;
-    char head[32];
+    char *head = w->head;
+    const int stems = w->c.source == REC_SRC_STEMS;
     int s;
     w->have_end = 0;
     w->err = 0;
     w->rd = w->c.f;
     w->hdr_at = w->df_at = w->c.f;
+    w->sdir[0] = 0;
     memset(w->f, 0, sizeof w->f);
     localtime_r(&w->c.t, &tm);
     if (mkdirs(r->dir)) {
@@ -864,16 +882,40 @@ static void open_take(rec_t *r, wtake_t *w)
         w->err = REC_END_DISK_LOW;
         return;
     }
-    snprintf(head, sizeof head, "%02d%02d-%02d%02d%02d", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    snprintf(head, sizeof w->head, "%02d%02d-%02d%02d%02d", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    if (stems) {   /* a folder of its own, under a temporary name until the take is whole (finish names it) */
+        int k;
+        for (k = 1; k < 1000; k++) {
+            if (k == 1)
+                snprintf(w->sdir, sizeof w->sdir, "%s/%s Stems.part", w->dir, head);
+            else
+                snprintf(w->sdir, sizeof w->sdir, "%s/%s Stems (%d).part", w->dir, head, k);
+            if (!mkdir(w->sdir, 0755))
+                break;
+            if (errno != EEXIST)
+                k = 1000;
+        }
+        if (k >= 1000) {
+            w->sdir[0] = 0;
+            w->err = REC_END_WRITE_ERROR;
+            return;
+        }
+    }
     for (s = 0; s < REC_NST; s++) {
         char lab[REC_LABEL];
         uint8_t h[44];
         int fd = -1, k;
         if (!(w->c.mask >> s & 1))
             continue;
-        sanitize(lab, sizeof lab, w->c.label[s], DEF_LABEL[s]);
-        snprintf(w->name[s], sizeof w->name[s], "%s %s", head, lab);
-        for (k = 1; k < 1000 && fd < 0; k++) {
+        if (stems) {   /* (a fresh folder: the files have their final names in it) */
+            stem_name(w->name[s], sizeof w->name[s], s, w->c.label[s]);
+            snprintf(w->part[s], sizeof w->part[s], "%s/%s.wav", w->sdir, w->name[s]);
+            fd = open(w->part[s], O_WRONLY | O_CREAT | O_EXCL, 0644);
+        } else {
+            sanitize(lab, sizeof lab, w->c.label[s], DEF_LABEL[s]);
+            snprintf(w->name[s], sizeof w->name[s], "%s %s", head, lab);
+        }
+        for (k = 1; k < 1000 && fd < 0 && !stems; k++) {
             if (k == 1)
                 snprintf(w->part[s], sizeof w->part[s], "%s/%s.part", w->dir, w->name[s]);
             else
@@ -889,6 +931,9 @@ static void open_take(rec_t *r, wtake_t *w)
                 unlink(w->part[s]);
             }
             close_files(w, 1);
+            if (w->sdir[0])
+                rmdir(w->sdir);
+            w->sdir[0] = 0;
             w->err = REC_END_WRITE_ERROR;
             return;
         }
@@ -910,14 +955,65 @@ static void finish(rec_t *r, wtake_t *w, int reason)
 {
     const uint64_t frames = w->rd - w->c.f;
     const uint32_t bars = reason == REC_END_OK ? w->bars : 0;
+    char tail[64], a[32], fin[1024];
     int s, any = 0;
     if (!frames && reason < REC_END_NOTHING) {   /* (an empty take: no file) */
         close_files(w, 1);
+        if (w->sdir[0])
+            rmdir(w->sdir);
         result(r, "", w->c.source, w->c.id, 0, 0, w->bpm, REC_END_NOTHING);
         return;
     }
+    if (bars) {
+        num(a, sizeof a, w->bpm);
+        snprintf(tail, sizeof tail, " %sbpm %ub", a, bars);
+    } else {
+        num(a, sizeof a, (double)frames / r->fs);
+        snprintf(tail, sizeof tail, " %ss", a);
+    }
+    if (w->sdir[0]) {   /* stems: every file whole, then the folder named (never over a take: mkdir claims the name) */
+        unsigned had = 0;
+        int k, done = 0;
+        for (s = 0; s < REC_NST; s++)
+            if (w->f[s]) {
+                any = 1;
+                had |= 1u << s;
+                if (header_update(r, w->f[s], frames) || fsync(fileno(w->f[s])))
+                    reason = reason < REC_END_NOTHING ? REC_END_WRITE_ERROR : reason;
+                fclose(w->f[s]);
+                w->f[s] = NULL;
+            }
+        for (k = 1; k < 1000 && any && !done; k++) {
+            if (k == 1)
+                snprintf(fin, sizeof fin, "%s/%s Stems%s", w->dir, w->head, tail);
+            else
+                snprintf(fin, sizeof fin, "%s/%s Stems%s (%d)", w->dir, w->head, tail, k);
+            if (mkdir(fin, 0755)) {
+                if (errno == EEXIST)
+                    continue;
+                break;
+            }
+            if (!rename(w->sdir, fin))   /* (onto the empty folder just made) */
+                done = 1;
+            else {
+                rmdir(fin);
+                break;
+            }
+        }
+        if (!any)
+            rmdir(w->sdir);
+        for (s = 0; s < REC_NST; s++)
+            if (had >> s & 1) {
+                char p[1300];
+                snprintf(p, sizeof p, "%s/%s.wav", fin, w->name[s]);
+                result(r, done ? p : "", s, w->c.id, frames, done ? bars : 0, w->bpm, done ? reason : REC_END_WRITE_ERROR);
+            }
+        w->sdir[0] = 0;
+        if (!any)
+            result(r, "", w->c.source, w->c.id, 0, 0, w->bpm, reason);
+        return;
+    }
     for (s = 0; s < REC_NST; s++) {
-        char tail[64], a[32], fin[1024];
         int k, done = 0;
         if (!w->f[s])
             continue;
@@ -926,13 +1022,6 @@ static void finish(rec_t *r, wtake_t *w, int reason)
             reason = reason < REC_END_NOTHING ? REC_END_WRITE_ERROR : reason;
         fclose(w->f[s]);
         w->f[s] = NULL;
-        if (bars) {
-            num(a, sizeof a, w->bpm);
-            snprintf(tail, sizeof tail, " %sbpm %ub", a, bars);
-        } else {
-            num(a, sizeof a, (double)frames / r->fs);
-            snprintf(tail, sizeof tail, " %ss", a);
-        }
         for (k = 1; k < 1000 && !done; k++) {   /* never over a take: link fails on a name that is there */
             if (k == 1)
                 snprintf(fin, sizeof fin, "%s/%s%s.wav", w->dir, w->name[s], tail);

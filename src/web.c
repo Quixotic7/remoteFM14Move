@@ -626,7 +626,8 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
 /* ------------------------------------------------------------------ the file browser (/api/fs) --- */
 /* the RemoteFM1 folder, files.h's rules:
  *   GET  /api/fs/list?path=P                 a folder: {"path", "writable", "why", "entries": [{"name", "size",
- *                                            "mtime", "dir"}], "free", "max", "busy": the slots' ids, "open_project"}
+ *                                            "mtime", "dir"[, "link": the takes' audio/rec]}], "free", "max", "busy":
+ *                                            the slots' ids, "open_project"}
  *   GET  /api/fs/get?path=P                  a file (streamed; attachment)
  *   GET  /api/fs/zip?path=P                  a folder as a .zip (store only, streamed, its length known first)
  *   POST /api/fs/put?path=DIR&name=N[&replace=1]   the body into DIR/N (FS_UP_MAX at most, FS_RESERVE left free;
@@ -635,7 +636,9 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
  *   POST /api/fs/rename?path=P&to=Q          P moved to Q (a free name; both where the page may change things)
  *   POST /api/fs/delete?path=P[&recursive=1&confirm=NAME]   a file or an empty folder; a folder with what is in it
  *                                            only with recursive=1 and confirm= its own name
- * Refusals: 400 (the path), 403 (files.h: read-only, or in use: why), 404, 409 (there already, not empty), 413, 507. */
+ * Refusals: 400 (the path), 403 (files.h: read-only, or in use: why), 404, 409 (there already, not empty), 413, 507.
+ * No symbolic link is followed but audio/rec when it links to the sampler's takes (files_follow_link): inside it
+ * everything works, each path resolving inside its target. */
 #define FS_UP_MAX (256ull * 1024 * 1024)
 #define FS_RESERVE (64ull * 1024 * 1024)
 
@@ -873,7 +876,7 @@ static int fs_put_start(client_t *c, const char *q, long want)
         return 1;
     }
     c->up_replace = qparam(qq, "replace", v, sizeof v) == 0 && v[0] == '1';
-    if (lstat(abs_, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    if (files_lstat(abs_, &st) != 0 || !S_ISDIR(st.st_mode)) {   /* (audio/rec, the takes' link: its folder) */
         fs_err(c, "404 Not Found", "no such folder");
         return 1;
     }

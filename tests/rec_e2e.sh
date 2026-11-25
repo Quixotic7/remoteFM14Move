@@ -13,10 +13,14 @@
 #   - Capture after playing (stopped): what was just played, "Captured";
 #   - Threshold on the Input (-6 dB: the input's clicks, not its tone), 1 bar: the input sample for sample, starting
 #     50 ms before a click; the Input level (-6 dB) applied to a Manual take of the input;
-#   - Stems: a file per present stream (Master, Felucca, Input), the same length;
+#   - Stems: a folder of its own (<MMDD>-<HHMMSS> Stems <s>s), a file per present stream (Master.wav,
+#     Track 1 Felucca.wav, Input.wav), the same length;
 #   - Track 2 held + Sample: slot 2 the source; Track 4 held + Sample: the master;
-#   - Back with a take running: the app closes, the take goes on (Sample red), Sample brings the app back, Sample
-#     ends it: the file whole; the take count; quitting during a take: its file finished;
+#   - Back with a take running: the app closes, the take goes on (Sample red); ONE Sample press brings the app back and
+#     ends the take (rfm1cs 2a78cfe): the file whole; the take count;
+#   - Arm, then Play: stopped, Bars, Length 1: Sample arms (Sample blinking red, the app's screen waiting), Play starts
+#     the take at the song's first frame, it ends by itself one bar of frames later; Length Open: at the bar line after
+#     a second Sample; quitting during a take: its file finished;
 #   - without --takes-dir (no sample library here): the takes in audio/rec itself; a real audio/rec folder with
 #     --takes-dir elsewhere: left as it is, said once in the log.
 #   tests/rec_e2e.sh      (after make)
@@ -180,13 +184,14 @@ wait_for 3 '[ "$(field rec_src)" = -1 ]' || bad "Stems: src '$(field rec_src)'"
 cmd "note 68 110"; press 118; sleep 1.2; cmd "note 68 0"; press 118
 wait_for 5 '[ "$(takes)" = 6 ]'
 sleep 0.5
-F=$(newest "$LIB"); stamp=$(basename "$F" | cut -c1-11)
-set -- "$LIB/$day/$stamp"*.wav
+SD=$(ls -dt "$LIB/$day/"*" Stems "* 2>/dev/null | head -1)
+set -- "$SD"/*.wav
 lens=$(for f in "$@"; do frames "$f"; done | sort -u | tr '\n' ' ')
-names=$(for f in "$@"; do basename "$f" | cut -c13- | sed 's/ [0-9.]*s\.wav$//'; done | sort | tr '\n' ',')
-[ $# = 3 ] && [ "$(echo $lens | wc -w | tr -d ' ')" = 1 ] && [ "$names" = "Felucca,Input,Master," ] \
-    && ok "Stems: one take, a file per present stream ($names), each $lens frames" \
-    || bad "Stems: $# files ($names), lengths $lens"
+names=$(for f in "$@"; do basename "$f"; done | sort | tr '\n' ',')
+[ -d "$SD" ] && basename "$SD" | grep -Eq '^[0-9]{4}-[0-9]{6} Stems [0-9.]+s$' && [ $# = 3 ] && [ "$(echo $lens | wc -w | tr -d ' ')" = 1 ] \
+    && [ "$names" = "Input.wav,Master.wav,Track 1 Felucca.wav," ] && ! ls "$LIB/$day" | grep -q '\.part$' \
+    && ok "Stems: one take, its own folder '$(basename "$SD")' with a file per present stream ($names), each $lens frames" \
+    || bad "Stems: folder '$SD', $# files ($names), lengths $lens; $(ls "$LIB/$day" | tr '\n' '|')"
 
 # ---------------------------------------------------------------- Track 2 / Track 4 held + Sample
 press 51; wait_for 3 '[ "$(field smp_shown)" = 0 ]' || bad "Back: shown '$(field smp_shown)'"
@@ -205,25 +210,74 @@ press 51
 wait_for 3 '[ "$(field smp_shown)" = 0 ]' && sleep 1.2 && [ "$(field rec_state)" = 2 ] && red \
     && ok "Back during a take: the app closes, the take goes on (Sample red)" \
     || bad "Back during a take: shown '$(field smp_shown)' state '$(field rec_state)' light '$(sample)'"
-press 118
-wait_for 3 '[ "$(field smp_shown)" = 1 ]' && [ "$(field rec_state)" = 2 ] && ok "Sample: the app again, the take still running" \
-    || bad "Sample after Back: shown '$(field smp_shown)' state '$(field rec_state)'"
-press 118; t1=$(date +%s.%N); cmd "note 68 0"
-wait_for 5 '[ "$(takes)" = 7 ]'
+press 118; t1=$(date +%s.%N); cmd "note 68 0"   # ONE Sample press: the app back and the take's end (rfm1cs 2a78cfe)
+wait_for 3 '[ "$(field smp_shown)" = 1 ]' && wait_for 5 '[ "$(takes)" = 7 ]' && [ "$(field rec_state)" != 2 ] \
+    && ok "one Sample press after Back: the app again and the take ended (takes 7, state $(field rec_state))" \
+    || bad "Sample after Back: shown '$(field smp_shown)' state '$(field rec_state)' takes '$(takes)'"
 F=$(newest "$LIB"); n=$(frames "$F")
 want=$(echo "$t0 $t1" | awk '{printf "%d", ($2 - $1) * 44100}')
 [ -n "$n" ] && [ "$n" -gt $((want - 13230)) ] && [ "$n" -lt $((want + 13230)) ] && basename "$F" | grep -q Master \
-    && ok "...Sample ends it: '$(basename "$F")' whole, $n frames (the presses $(echo "$want" | awk '{printf "%.2f", $1 / 44100}') s apart)" \
+    && ok "...its file whole: '$(basename "$F")', $n frames (the presses $(echo "$want" | awk '{printf "%.2f", $1 / 44100}') s apart)" \
     || bad "the take over Back: '$F', $n frames (want ~$want)"
+sleep 1; [ "$(takes)" = 7 ] && [ "$(field rec_state)" = 0 ] && [ "$(field smp_shown)" = 1 ] \
+    && ok "...and no new take after it (state idle, the app shown)" || bad "after the one press: takes $(takes), state $(field rec_state)"
 nw=$(wavs "$LIB" | wc -l | tr -d ' ')
 [ "$(takes)" = 7 ] && [ "$nw" = 9 ] && ok "the take count: 7 takes (9 files: the stems take's 3)" || bad "the count: $(takes) takes, $nw files"
+
+# ---------------------------------------------------------------- Arm, then Play: the take starts with the song
+# (stopped, Bars: Sample arms, the transport's first playing frame starts the take; rec_play_f / rec_first_f: the
+# frame of the first playing block and the last take's first frame, in frames fed to the recorder)
+set_ 1 -2   # Mode: Manual -> Bars (Length 1 still)
+wait_for 3 '[ "$(field rec_mode)" = 1 ] && [ "$(field rec_len)" = 1 ] && [ "$(field seq_playing)" = 0 ]' \
+    || bad "Bars, 1, stopped: mode '$(field rec_mode)' len '$(field rec_len)' playing '$(field seq_playing)'"
+sleep 2.5; shot; s_idle=$SCR   # (the wave flat: nothing sounds)
+screens() { _s=""; _i=0; while [ $_i -lt 6 ]; do shot; [ "$SCR" != "$s_idle" ] && _s="$_s
+$(printf '%s' "$SCR" | cksum | cut -d' ' -f1)"; sleep 0.11; _i=$((_i + 1)); done; echo "$_s" | grep -v '^$' | sort -u | wc -l | tr -d ' '; }
+press 118
+wait_for 3 '[ "$(field rec_state)" = 1 ]'; r0=$(field smp_reds); ns=$(screens); cp "$SIM/mr-screen.pbm" build/test-out/rec_armed.pbm
+sleep 2.2; r1=$(field smp_reds)   # (the status is a second's snapshot: smp_reds counts the red light's changes as they come)
+[ "$(field rec_state)" = 1 ] && red && [ $((r1 - r0)) -ge 3 ] && [ "$ns" -ge 2 ] && [ "$(takes)" = 7 ] && [ "$(field seq_playing)" = 0 ] \
+    && ok "stopped, Bars, Length 1: Sample arms (Sample blinking red: $((r1 - r0)) changes in ~2 s; the app's screen waiting, blinking: $ns screens, build/test-out/rec_armed.pbm); nothing recorded yet" \
+    || bad "armed: state '$(field rec_state)', light $(sample), red changes $r0 -> $r1, screens $ns, takes $(takes)"
+cmd "note 68 110"; sleep 0.3
+press 85
+wait_for 3 '[ "$(field seq_playing)" = 1 ]' || bad "Play: seq_playing '$(field seq_playing)'"
+wait_for 6 '[ "$(takes)" = 8 ]'
+F=$(newest "$LIB"); n=$(frames "$F"); pf=$(field rec_play_f); ff=$(field rec_first_f); b0=$(field rec_beat0)
+bpm=$(basename "$F" | sed -n 's/.* \([0-9.]*\)bpm 1b\.wav$/\1/p')
+want=$(echo "${bpm:-0}" | awk '{ if ($1 > 0) printf "%d", 4 * 60 / $1 * 44100 + 0.5; else print 0 }')
+[ -n "$bpm" ] && [ "$n" -ge $((want - 1)) ] && [ "$n" -le $((want + 1)) ] && [ -n "$pf" ] && [ "$pf" = "$ff" ] && [ "$(peak "$F")" -gt 1000 ] \
+    && ok "Play: the take from the song's first frame (frame $ff, the beat there $b0), ended by itself one bar later: '$(basename "$F")', $n frames ($want at $bpm BPM)" \
+    || bad "Arm, then Play, 1 bar: '$F', $n frames (want $want at '$bpm'), the take's first frame $ff, the song's $pf (beat $b0)"
+press 85; cmd "note 68 0"
+wait_for 3 '[ "$(field seq_playing)" = 0 ]' || bad "Stop: seq_playing '$(field seq_playing)'"
+set_ 2 -1   # Length: 1 -> Open
+wait_for 3 '[ "$(field rec_len)" = 0 ]' || bad "Open: len '$(field rec_len)'"
+press 118
+wait_for 3 '[ "$(field rec_state)" = 1 ]' || bad "Open: not armed ('$(field rec_state)')"
+cmd "note 68 110"; sleep 0.3
+press 85
+wait_for 3 '[ "$(field rec_state)" = 2 ]' && sleep 2.6 && [ "$(field rec_state)" = 2 ] && [ "$(takes)" = 8 ] \
+    && ok "Length Open: Play starts the take, it runs past the first bar" || bad "Open: state '$(field rec_state)', takes $(takes)"
+press 118
+wait_for 6 '[ "$(takes)" = 9 ]'
+F=$(newest "$LIB"); n=$(frames "$F"); pf=$(field rec_play_f); ff=$(field rec_first_f)
+bpm=$(basename "$F" | sed -n 's/.* \([0-9.]*\)bpm [0-9]*b\.wav$/\1/p'); nb=$(basename "$F" | sed -n 's/.*bpm \([0-9]*\)b\.wav$/\1/p')
+want=$(echo "${bpm:-0} ${nb:-0}" | awk '{ if ($1 > 0) printf "%d", $2 * 4 * 60 / $1 * 44100 + 0.5; else print 0 }')
+[ -n "$bpm" ] && [ "${nb:-0}" -ge 2 ] && [ "$n" -ge $((want - 1)) ] && [ "$n" -le $((want + 1)) ] && [ "$pf" = "$ff" ] \
+    && ok "Length Open: from the song's first frame ($ff) to the bar line after the second Sample: '$(basename "$F")', $n frames ($nb bars at $bpm BPM)" \
+    || bad "Arm, then Play, Open: '$F', $n frames ($nb bars at '$bpm': $want), first frame $ff, the song's $pf"
+press 85; cmd "note 68 0"
+wait_for 3 '[ "$(field seq_playing)" = 0 ]' || bad "Stop: seq_playing '$(field seq_playing)'"
+set_ 1 2   # Mode: Bars -> Manual
+wait_for 3 '[ "$(field rec_mode)" = 3 ]' || bad "Manual again: mode '$(field rec_mode)'"
 
 # ---------------------------------------------------------------- quitting during a take
 press 118; wait_for 3 '[ "$(field rec_state)" = 2 ]'; sleep 1
 stop
 F=$(newest "$LIB"); n=$(frames "$F")
-[ "$RC" = 0 ] && [ "$(wavs "$LIB" | wc -l | tr -d ' ')" = 10 ] && [ -n "$n" ] && [ "$n" -gt 30000 ] && ! ls "$LIB/$day" | grep -q '\.part$' \
-    && grep -q "the recorder stopped (7 take(s) saved)" "$L" \
+[ "$RC" = 0 ] && [ "$(wavs "$LIB" | wc -l | tr -d ' ')" = 12 ] && [ -n "$n" ] && [ "$n" -gt 30000 ] && ! ls "$LIB/$day" | grep -q '\.part$' \
+    && grep -q "the recorder stopped (9 take(s) saved)" "$L" \
     && ok "quit during a take: its file finished ('$(basename "$F")', $n frames), no .part left" \
     || bad "quit during a take: rc $RC, $(wavs "$LIB" | wc -l) files, '$F' $n frames; $(ls "$LIB/$day" | tr '\n' ' ')"
 

@@ -241,7 +241,9 @@ make test
   name and length), a zip of states/ and of the whole folder that unzip (BusyBox) to the same files, rename (a move;
   refused onto a name, into itself, into firmwares/, a bad name), delete (a non-empty folder only with recursive=1
   and its name), the path rules, links out not followed, listed or zipped, firmwares/ and the root read-only, a
-  running firmware's flash and the open project refused with the reason, 256 MB and the 64 MB floor
+  running firmware's flash and the open project refused with the reason, 256 MB and the 64 MB floor; with
+  `--takes-dir` a sample library outside: `audio/rec` (the takes' link) listed as a folder, a take downloaded byte
+  for byte, zipped, renamed, uploaded into, deleted, the link itself kept, a link inside the takes and `..` refused
   (`RFM14_TEST_DISK_FREE_MB`, the test build only), no temporary file left.
 - `tests/latch_e2e.sh` (rfm1cs 0.5.4, latch per slot): MIDI mode, latch on, a chord on slot 1 (Felucca); slot 2
   (ChoralRoot) made active: slot 1 keeps sounding, slot 2 plays its own note; latch off: both silent.
@@ -1224,8 +1226,16 @@ level a gain on the input stream only); Back closes it and a take goes on. The h
   A folder a day (`YYYY-MM-DD/`). `ROOT/audio/rec` links to the takes when they are elsewhere: made at start when
   nothing is there (a link pointing elsewhere: made again); a real folder there is left as it is (said once in the
   log). The carts' file service follows that one link (`fsvc_set_audio_link`: `/audio/rec/..` resolves into the
-  takes; any other link out of the folder is still refused); the page's file browser does not follow links (it shows
-  no `audio/rec` while it is one).
+  takes; any other link out of the folder is still refused), and so does the page's file browser
+  (`files_follow_link`): `audio/rec` listed as a folder (`"link": true`, its rename and delete off), inside it list,
+  download, zip, upload, rename and delete, each path resolving inside the link's target (no `.` / `..`, no other
+  link after it); the link itself stays; every other link hidden and refused. (The page has no player: a take is
+  played after its download.)
+- **Arm, then Play:** Bars with the song stopped: Sample arms (Sample blinking red, the app's dot blinking), Play
+  starts the take at the transport's first frame (the beat there 0); Length N ends it N bars of frames later, Open at
+  the bar line after a second Sample (`rec_e2e.sh`: `rec_play_f` = `rec_first_f`).
+- **Closed with a take recording:** one Sample press brings the app back and ends the take (rfm1cs 2a78cfe); armed
+  and waiting, Sample only shows the app.
 - The capture memory: 32 s a stream, five streams (~30 MB). `/api/status`: `rec_state`, `rec_src`, `rec_mode`,
   `rec_len`, `rec_thr`, `rec_in_db`, `rec_takes`, `rec_link`, `smp_shown`, `takes_dir` (and with `--test-api`
   Sample's light, its green flashes and the app's messages).
@@ -1257,7 +1267,12 @@ frames the writer still needs: it drops the block instead and ends a running tak
 
 Settings change at a block while no take records (a running take keeps its own). Names:
 `<MMDD>-<HHMMSS> <label> <bpm>bpm <bars>b.wav`, or `<seconds>s.wav` when not bar-cut, in `YYYY-MM-DD/` with
-`day_folders`; labels keep letters, digits, space and `_ - . , ( ) +`. `rec_get`: the state, the frames and bars so
+`day_folders`; labels keep letters, digits, space and `_ - . , ( ) +`. A stems take is a folder of its own,
+`<MMDD>-<HHMMSS> Stems <bpm>bpm <bars>b` (or `<seconds>s`), holding `Master.wav`, `Track 1 <label>.wav` ..
+`Track 3 <label>.wav` (`Track 1.wav` with no label), `Input.wav`, `Looper.wav`, `Kit.wav` (the present streams):
+`<MMDD>-<HHMMSS> Stems.part/` while it records (its files readable after a crash), named when whole (an empty folder
+made, then the `.part` folder renamed onto it: never over a take, ` (2)`). `rec_take_t.first`: the take's first frame
+(in frames fed). `rec_get`: the state, the frames and bars so
 far, the source's peak and its last 128 windows of ~16 ms (the take's own while recording). `rec_poll_take`: each
 finished file with its frames, bars, BPM and why it ended (an error: disk low, a write error, an overrun).
 

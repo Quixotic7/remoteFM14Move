@@ -15,7 +15,8 @@
 
 /* the streams */
 enum { REC_ST_MASTER, REC_ST_SLOT1, REC_ST_SLOT2, REC_ST_SLOT3, REC_ST_INPUT, REC_ST_LOOPER, REC_ST_KIT, REC_NST };
-#define REC_SRC_STEMS (-1)   /* the source: every present stream, one file each, the same first and last frame */
+#define REC_SRC_STEMS (-1)   /* the source: every present stream, one file each, the same first and last frame, in a
+                              * folder of its own (Master.wav, Track 1 <label>.wav .., Input.wav, Looper.wav, Kit.wav) */
 
 enum { REC_MODE_CAPTURE, REC_MODE_BARS, REC_MODE_THRESHOLD, REC_MODE_MANUAL };
 enum { REC_IDLE, REC_ARMED, REC_RECORDING, REC_SAVING };   /* (saving: idle, the writer still finishing a take) */
@@ -70,6 +71,7 @@ typedef struct {
     char path[1024];              /* the finished file ("" with no file) */
     int stream;                   /* REC_ST_*; REC_SRC_STEMS for a stems take's result with no file */
     uint32_t take;                /* the take's number (a stems take: the same in each file's result) */
+    uint64_t first;               /* its first frame, counted in frames fed to rec_block since rec_new */
     uint64_t frames;
     uint32_t bars;                /* 0: not bar-cut */
     double bpm;

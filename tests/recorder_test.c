@@ -379,9 +379,11 @@ static void t_bars_stopped_arm(void)
     p = S.i;
     play(&S);
     run_to(&S, p + 3 * 88200);
-    if (takes(S.r, &t, 1, 5000) == 1)
+    if (takes(S.r, &t, 1, 5000) == 1) {
         expect_take(&t, REC_ST_MASTER, p, 2 * 88200, 2, "Bars, armed while stopped: starts with the first playing frame");
-    else
+        check(t.first == p, "Bars, armed while stopped: rec_take_t.first the transport's first frame (%llu, want %llu)",
+              (unsigned long long)t.first, (unsigned long long)p);
+    } else
         check(0, "Bars, armed while stopped: no take");
     rec_free(S.r);
 }
@@ -631,12 +633,36 @@ static void t_manual(void)
     rec_free(S.r);
 }
 
+/* a stems take's files: each the right name in the folder want (under ROOT/stems/), sample-exact, one take */
+static void stems_files(const rec_take_t *t, int n, const char *want, uint64_t first, uint64_t frames, const char *what)
+{
+    static const char *const NAME[REC_NST] = { "Master.wav", "Track 1 ChoralRoot.wav", "Track 2.wav",
+                                              "Track 3 Felucca.wav", "Input.wav", "Looper.wav", "Kit.wav" };
+    char dir[900], w[160];
+    int k, ok = 1, names = 1, seen = 0;
+    snprintf(dir, sizeof dir, "%s/stems/%s/", ROOT, want);
+    for (k = 0; k < n; k++) {
+        snprintf(w, sizeof w, "%s: stream %d", what, t[k].stream);
+        expect_take(&t[k], t[k].stream, first, frames, 0, w);
+        ok &= t[k].frames == t[0].frames && t[k].take == t[0].take;
+        names &= t[k].stream >= 0 && !strncmp(t[k].path, dir, strlen(dir)) && !strcmp(t[k].path + strlen(dir), NAME[t[k].stream]);
+        if (t[k].stream >= 0)
+            seen |= 1 << t[k].stream;
+    }
+    check(ok && seen == 0x1F, "%s: equal lengths, one take, a file per present stream (the absent: none)", what);
+    check(names, "%s: in their own folder '%s', named %s%s%s%s%s", what, want, base(t[0].path), n > 1 ? ", " : "",
+          n > 1 ? base(t[1].path) : "", n > 2 ? ", ..." : "", n > 4 ? base(t[4].path) : "");
+}
+
 static void t_stems(void)
 {
     sim_t S = { 0 };
     rec_take_t t[8];
-    int n, k, ok = 1, seen = 0;
-    const unsigned pres = 1u << REC_ST_MASTER | 1u << REC_ST_SLOT1 | 1u << REC_ST_SLOT3 | 1u << REC_ST_INPUT;
+    char dir[700], part[900];
+    int n;
+    const unsigned pres = 1u << REC_ST_MASTER | 1u << REC_ST_SLOT1 | 1u << REC_ST_SLOT2 | 1u << REC_ST_SLOT3 |
+                          1u << REC_ST_INPUT;
+    uint64_t p;
     S.r = mk("stems", NULL);
     S.bpm = 120.0;
     S.present = pres;
@@ -645,25 +671,51 @@ static void t_stems(void)
     rec_set_source(S.r, REC_SRC_STEMS);
     rec_set_label(S.r, REC_ST_SLOT1, "ChoralRoot");
     rec_set_label(S.r, REC_ST_SLOT3, "Felucca");
+    rec_set_label(S.r, REC_ST_INPUT, "Mic?");   /* (Master, Input: their own names whatever the label) */
     run_to(&S, 33 * BLK);
     press(&S);
     run_to(&S, 1033 * BLK);
     press(&S);
     block(&S);
-    n = takes(S.r, t, 4, 5000);
-    check(n == 4, "Stems: 4 files for 4 present streams (%d)", n);
-    for (k = 0; k < n; k++) {
-        char what[64];
-        snprintf(what, sizeof what, "Stems: stream %d", t[k].stream);
-        expect_take(&t[k], t[k].stream, 33 * BLK, 1000 * BLK, 0, what);
-        ok &= t[k].frames == t[0].frames && t[k].take == t[0].take;
-        seen |= 1 << t[k].stream;
-    }
-    check(ok && seen == (int)pres, "Stems: equal lengths, one take, the absent streams no file");
-    for (k = 0; k < n; k++)
-        if (t[k].stream == REC_ST_SLOT1)
-            check(strstr(base(t[k].path), " ChoralRoot ") != NULL, "Stems: slot 1 labelled ('%s')", base(t[k].path));
+    n = takes(S.r, t, 5, 5000);
+    check(n == 5, "Stems: 5 files for 5 present streams (%d)", n);
+    stems_files(t, n, "1124-153000 Stems 2.9s", 33 * BLK, 1000 * BLK, "Stems");
     check(no_more(S.r), "Stems: no more files");
+
+    /* a second stems take the same second, with a slow writer: the folder under a temporary name while it records,
+     * its files readable; then ' (2)' */
+    rec_test_write_delay(S.r, 20000);
+    snprintf(dir, sizeof dir, "%s/stems", ROOT);
+    snprintf(part, sizeof part, "%s/1124-153000 Stems.part/Master.wav", dir);
+    p = S.i;
+    press(&S);
+    run_to(&S, p + 1000 * BLK);
+    press(&S);
+    block(&S);
+    usleep(400000);
+    {
+        uint8_t h[44];
+        FILE *f = fopen(part, "rb");
+        const int ok = f && fread(h, 1, 44, f) == 44 && rd32(h + 40) > 0 && rd32(h + 4) == 36 + rd32(h + 40);
+        if (f)
+            fclose(f);
+        check(ok, "Stems recording: in '1124-153000 Stems.part/', Master.wav readable (header kept up to date)");
+    }
+    n = takes(S.r, t, 5, 10000);
+    rec_test_write_delay(S.r, 0);
+    check(n == 5, "Stems again the same second: 5 files (%d)", n);
+    stems_files(t, n, "1124-153000 Stems 2.9s (2)", p, 1000 * BLK, "Stems the same second");
+    {
+        DIR *d = opendir(dir);
+        struct dirent *e;
+        int dirs = 0, other = 0;
+        while (d && (e = readdir(d)))
+            if (e->d_name[0] != '.')
+                (strstr(e->d_name, ".part") || strncmp(e->d_name, "1124-153000 Stems 2.9s", 22)) ? other++ : dirs++;
+        if (d)
+            closedir(d);
+        check(dirs == 2 && !other, "Stems: two folders, nothing else (no .part left)");
+    }
     rec_free(S.r);
 }
 
@@ -723,6 +775,19 @@ static void t_errors(void)
     block(&S);
     k = takes(S.r, &t, 1, 5000);
     check(k == 1 && t.reason == REC_END_WRITE_ERROR, "A failing folder: the next take reports it too");
+    {   /* (the second press above started a take of its own: the writer stopped the first at once) */
+        rec_take_t tt[4];
+        takes(S.r, tt, 4, 300);
+    }
+    S.present |= 1u << REC_ST_SLOT1;
+    rec_set_source(S.r, REC_SRC_STEMS);
+    block(&S);
+    press(&S);
+    run_to(&S, S.i + 10 * BLK);
+    k = takes(S.r, &t, 1, 5000);
+    check(k == 1 && t.reason == REC_END_WRITE_ERROR && !*t.path && t.stream == REC_SRC_STEMS && no_more(S.r),
+          "A failing folder, stems: one write error for the take, no file (%d results, reason %d, stream %d)", k,
+          t.reason, t.stream);
     check(S.max_us < 20000.0, "A failing folder: rec_block never waited (longest %.0f us)", S.max_us);
     rec_free(S.r);
     unlink(blocker);
@@ -1011,7 +1076,8 @@ static void t_capture_stems_overlap(void)
     if (n == 4) {
         expect_take(&t[0], t[0].stream, 2 * 88200, 88200, 1, "Capture stems: first take");
         expect_take(&t[3], t[3].stream, 2 * 88200, 88200, 1, "Capture stems: second take");
-        check(t[0].take != t[2].take && strstr(base(t[3].path), " (2).wav"), "Capture stems: two takes, the second ' (2)'");
+        check(t[0].take != t[2].take && strstr(t[3].path, " Stems 120bpm 1b (2)/") && strstr(t[0].path, " Stems 120bpm 1b/"),
+              "Capture stems: two takes, two folders, the second ' (2)' (%s)", t[3].path + strlen(ROOT));
     }
     rec_free(S.r);
 }

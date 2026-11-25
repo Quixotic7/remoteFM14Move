@@ -734,6 +734,49 @@ static void fsapi(void)
         CK(r == 1 && g_mem[BUFAT + 1] == 8 && !memcmp(g_mem + BUFAT + 2, "take.wav", 8), "LIST /audio/rec: its files (%d)", r);
         CK(run(s, FSV_READ, "/audio/out/outside.txt", 0, 16) == FSV_EACCES, "audio/out (another link out): still FS_EACCES");
         CK(files_no_links(root, "audio/rec") != 0, "the page's browser: audio/rec is a link, not followed (files_no_links)");
+        {   /* the page's browser follows that one link once named (files_follow_link): inside its target only */
+            char esc[700], *j;
+            uint64_t zl = 0;
+            const char *zw = NULL;
+            files_zip_t *z;
+            snprintf(esc, sizeof esc, "%s/Samples/RemoteFM1/2026-11-24", tmpl), mkdir(esc, 0755);
+            snprintf(esc, sizeof esc, "%s/Samples/RemoteFM1/esc", tmpl);
+            symlink(tmpl, esc);   /* (a link inside the target, pointing out of it) */
+            files_follow_link(root, "audio/rec");
+            CK(files_no_links(root, "audio/rec") == 0 && files_no_links(root, "audio/rec/take.wav") == 0 &&
+                   files_no_links(root, "audio/rec/2026-11-24") == 0 && files_no_links(root, "audio/rec/2026-11-24/new.wav") == 0,
+               "files_follow_link(audio/rec): the link, its files, a folder in it, a new name in it: followed (inside its target)");
+            CK(files_no_links(root, "audio/out") != 0 && files_no_links(root, "audio/out/outside.txt") != 0,
+               "files_follow_link: another link (audio/out) still refused");
+            CK(files_no_links(root, "audio/rec/..") != 0 && files_no_links(root, "audio/rec/../../x") != 0 &&
+                   files_no_links(root, "audio/rec/2026-11-24/../take.wav") != 0 && files_no_links(root, "audio/../audio") != 0,
+               "files_follow_link: no .. anywhere (out of the target through the link's parent)");
+            CK(files_no_links(root, "audio/rec/esc") != 0 && files_no_links(root, "audio/rec/esc/Samples") != 0,
+               "files_follow_link: a link inside the target pointing out: refused");
+            j = files_list_json(root, "audio");
+            CK(j && strstr(j, "{\"name\":\"rec\",\"size\":0,") && strstr(strstr(j, "\"name\":\"rec\""), "\"dir\":true,\"link\":true}") &&
+                   !strstr(j, "\"name\":\"out\""),
+               "files_list_json(audio): rec a folder (\"link\":true); audio/out not listed");
+            free(j);
+            j = files_list_json(root, "audio/rec");
+            CK(j && strstr(j, "\"name\":\"take.wav\",\"size\":16,") && strstr(j, "\"name\":\"2026-11-24\"") && !strstr(j, "\"esc\""),
+               "files_list_json(audio/rec): the takes; the link out in it not listed");
+            free(j);
+            {
+                char w[256];
+                CK(files_refuse("audio/rec", FILES_DELETE, NULL, w, sizeof w) && files_refuse("audio/rec", FILES_RENAME, NULL, w, sizeof w) &&
+                       !files_refuse("audio/rec/take.wav", FILES_DELETE, NULL, w, sizeof w) &&
+                       !files_refuse("audio/rec/take.wav", FILES_RENAME, NULL, w, sizeof w),
+                   "files_refuse: audio/rec itself stays; a take in it deletes and renames");
+            }
+            z = files_zip_plan(root, "audio/rec", &zl, &zw);
+            CK(z && zl > 16, "files_zip_plan(audio/rec): the takes as a zip (%llu bytes)", (unsigned long long)zl);
+            files_zip_free(z);
+            files_follow_link(NULL, NULL);
+            CK(files_no_links(root, "audio/rec") != 0, "files_follow_link(NULL): no link followed again");
+            unlink(esc);
+            snprintf(esc, sizeof esc, "%s/Samples/RemoteFM1/2026-11-24", tmpl), rmdir(esc);
+        }
         fsvc_set_audio_link(NULL);
         unlink(out);
     }

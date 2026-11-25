@@ -209,7 +209,7 @@ export class FilesView {
       return null;
     };
     const rows = d.entries.map((e) => {
-      const rel = join(path, e.name), lock = lockedHere(e.name);
+      const rel = join(path, e.name), lock = e.link ? "the sampler's takes (a link to the Move's sample library): it stays" : lockedHere(e.name);
       return h("div", { class: "mv-fs-row", role: "listitem", "data-name": e.name },
         h("span", { class: `ic${e.dir ? " dir" : ""}` }, svg(e.dir ? IC.folder : IC.file, 16)),
         e.dir ? h("button", { class: "nm dir", title: e.name, onclick: () => this.go(rel) }, e.name) : h("span", { class: "nm", title: e.name }, e.name),

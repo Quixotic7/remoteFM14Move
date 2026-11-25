@@ -2,7 +2,20 @@
 
 ## Unreleased
 
-rfm1cs-abletonmove's `sampler` branch (7653d22, local: 0.15.0's sampler app and `rfm_move_seq_pos`).
+rfm1cs-abletonmove's `sampler` branch (2a78cfe, local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a
+take recording, one Sample press brings the app back and ends the take).
+
+- **The sampler after the owner's try on the Move (2026-11-24).** A stems take is a folder of its own,
+  `<MMDD>-<HHMMSS> Stems <bpm>bpm <bars>b` (or `<seconds>s`): `Master.wav`, `Track 1 <firmware>.wav` ..
+  `Track 3 ...`, `Input.wav` (`Looper.wav`, `Kit.wav` later); `... Stems.part` while it records, named when whole,
+  ` (2)` never over a take. The page's file browser follows `audio/rec`, the takes' link (`files_follow_link`): listed
+  as a folder (`"link": true`), download, zip, upload, rename and delete inside it, each path inside its target; the
+  link itself stays; every other link still hidden and refused, `.` / `..` refused. Bars, stopped: Sample arms, Play
+  starts the take at the song's first frame (worked as built; now tried end to end). `rec_take_t.first`; with
+  `--test-api` `smp_reds`, `rec_play_f`, `rec_first_f`, `rec_beat0`. Help "Sampler". Tests: `recorder_test.c` (the
+  stems folder, names, ` (2)`, the `.part` folder readable, a failing folder), unit (the followed link),
+  `files_e2e.sh` (the takes through `audio/rec`), `rec_e2e.sh` (one Sample press after Back, the stems folder, Arm then
+  Play with Length 1 and Open).
 
 - **The sampler** (README "The sampler"): `src/recorder.c` in the host, driven by the core's sampler app
   (`RFM_MOVE_CAP_SAMPLER`): Master, Slot 1..3 (dry) and Input (with its level) each block, the sequencer's position

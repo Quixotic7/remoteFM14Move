@@ -28,6 +28,7 @@
 #include "../third_party/abletonmoveremote/common/ring.h"
 #include "catalog.h"
 #include "engine_dsp.h"
+#include "files.h"
 #include "fm1link.h"
 #include "midiout.h"
 #include "announce.h"
@@ -4075,7 +4076,11 @@ static float g_rec_in_gain = 1.0f;      /* the sampler's Input level, as a gain 
 static int16_t g_rec_in[FW_BLOCK * 2];
 static uint32_t g_rec_takes, g_rec_last_take, g_rec_blocks;
 static uint32_t g_rec_t_greens, g_rec_t_msgs;   /* (tests) */
+static uint32_t g_rec_t_reds;                    /* (tests: Sample red, its level changed: the armed blink) */
 static int g_rec_t_msg;
+static uint64_t g_rec_t_play, g_rec_t_first;     /* (tests: the transport's first playing frame, the last take's first
+                                                  * frame, both in frames fed to the recorder) */
+static double g_rec_t_beat0;                     /* (tests: the beat given with that first playing block) */
 static int g_rec_link;                   /* audio/rec: 1 the takes' link, 0 none, -1 something else there */
 static struct { int on, n; uint64_t frames; uint8_t pk[REC_SPAN]; } g_rec_span;   /* (rec_tick: a bar-cut take's wave) */
 
@@ -4109,9 +4114,10 @@ static void rec_folder(void)
         g_rec_link = -1;
     if (!g_rec_link)
         g_rec_link = symlink(real_a, rec) == 0 ? 1 : -1;
-    if (g_rec_link == 1)
-        fsvc_set_audio_link("rec");   /* (the carts' file service follows it: fsvc.c) */
-    else
+    if (g_rec_link == 1) {
+        fsvc_set_audio_link("rec");                  /* (the carts' file service follows it: fsvc.c) */
+        files_follow_link(st_root(), "audio/rec");   /* (and the page's file browser: files.c) */
+    } else
         fprintf(stderr, "engine: %s is not a link to the takes (%s): left as it is, the firmwares do not see the "
                         "takes there\n", rec, g_takes_dir);
 }
@@ -4192,6 +4198,12 @@ static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const
     b.playing = pos >= 0;
     b.beat = b.playing ? (pos - FW_BLOCK * per_frame) / (RFM_MOVE_SEQ_BAR / 4.0) : 0.0;
     b.bpm = rfm_move_seq_bpm10(&S->core) / 10.0;
+    {
+        static int was;
+        if (b.playing && !was)
+            g_rec_t_play = (uint64_t)g_rec_blocks * FW_BLOCK, g_rec_t_beat0 = b.beat;
+        was = b.playing;
+    }
     rec_block(g_rec, &b);
     g_rec_blocks++;
 }
@@ -4220,6 +4232,7 @@ static void rec_tick(uint32_t now)
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_ERROR, 0, 0, 0, why);
         } else {
             g_rec_takes++;
+            g_rec_t_first = t.first;
             fprintf(stderr, "engine: take %u saved: %s (%llu frames, %u bars, %.1f BPM, ended %d)\n", t.take, t.path,
                     (unsigned long long)t.frames, t.bars, t.bpm, t.reason);
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_SAVED, (int)t.bars, (int)lrint(t.bpm * 10.0),
@@ -4265,13 +4278,14 @@ static void rec_tick(uint32_t now)
         redraw |= rfm_move_smp_status(&S->core, &st);
         rfm1cs_session_flush_leds(S);   /* (Sample's light follows the state) */
         if (C.test_api) {   /* (tests: Sample's green flashes and the app's messages, as they come) */
-            static int was_g, was_m;
+            static int was_g, was_m, was_r;
             const uint8_t *c = S->core.sent[RFM_MOVE_L_SAMPLE];
-            const int g = c[1] > 0 && !c[0] && !c[2], m = S->core.smp.msg;
+            const int g = c[1] > 0 && !c[0] && !c[2], m = S->core.smp.msg, rd = c[0] && !c[1] && !c[2] ? c[0] : 0;
             g_rec_t_greens += g && !was_g;
+            g_rec_t_reds += rd && was_r && rd != was_r;   /* (red, its level changed: a blink) */
             if (m && m != was_m)
                 g_rec_t_msgs++, g_rec_t_msg = m;
-            was_g = g, was_m = m;
+            was_g = g, was_m = m, was_r = rd;
         }
     }
     if (redraw)
@@ -4537,8 +4551,10 @@ static void housekeeping(uint32_t now)
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\",\"move_sample\":\"%02x%02x%02x\",",
                           S->core.sent[RFM_MOVE_L_SAMPLE][0], S->core.sent[RFM_MOVE_L_SAMPLE][1],
                           S->core.sent[RFM_MOVE_L_SAMPLE][2]);   /* (Sample's light) */
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"smp_greens\":%u,\"smp_msgs\":%u,\"smp_msg\":%d,",
-                          g_rec_t_greens, g_rec_t_msgs, g_rec_t_msg);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"smp_greens\":%u,\"smp_msgs\":%u,\"smp_msg\":%d,"
+                          "\"smp_reds\":%u,\"rec_play_f\":%llu,\"rec_first_f\":%llu,\"rec_beat0\":%.4f,",
+                          g_rec_t_greens, g_rec_t_msgs, g_rec_t_msg, g_rec_t_reds, (unsigned long long)g_rec_t_play,
+                          (unsigned long long)g_rec_t_first, g_rec_t_beat0);
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"slots\":[");
         for (s = 0; s < NSLOT; s++) {

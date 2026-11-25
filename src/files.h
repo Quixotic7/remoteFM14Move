@@ -7,7 +7,8 @@
  * no control characters, no '\', not "." or "..", not hidden (a leading '.': the host's own temporary files are);
  * at most 1024 bytes in all. A name the page makes (an upload, a new folder, a rename's target) also has none of
  * : * ? " < > | and no leading or trailing space and no trailing '.' (it must survive a zip on any computer). No
- * segment on the way may be a symbolic link (nothing reaches outside the root).
+ * segment on the way may be a symbolic link (nothing reaches outside the root), but the one files_follow_link names
+ * (audio/rec, the sampler's takes), and then only inside its target.
  *
  * What may change (files_refuse): only audio/, code/, data/, states/ and move/projects/; the five folders themselves
  * stay. firmwares/ is read-only (a firmware is native code the Move runs: only the signed catalog installs one),
@@ -24,8 +25,17 @@
 
 /* the path rules: 0 ok, -1 not (why says); new: the last segment is a name the page makes */
 int files_rel_ok(const char *rel, int is_new, const char **why);
-/* rel's segments, from the root, are no symbolic links (and exist as far as they go): 0, -1 a link on the way */
+/* rel's segments, from the root, are no symbolic links (and exist as far as they go): 0, -1 a link on the way, or a
+ * "." / ".." segment. The one followed link (files_follow_link) may be on the way, once: then rel must resolve inside
+ * its target (as far as it exists), with no other link after it */
 int files_no_links(const char *root, const char *rel);
+/* (README "The sampler") the one symbolic link the browser follows: rel under root (audio/rec, the sampler's takes in
+ * the Move's sample library). Listed as a folder ("link": true), listed, read, renamed and deleted inside; itself it
+ * stays (no delete, rename or replace). NULL / "": none */
+void files_follow_link(const char *root, const char *rel);
+/* lstat, but the followed link (to a folder) as the folder it points to */
+struct stat;
+int files_lstat(const char *path, struct stat *st);
 /* %XX-decoded (a query value: '+' a space) into out: 0, or -1 (a bad escape, %00, too long) */
 int files_unescape(const char *in, size_t n, char *out, size_t cap);
 
