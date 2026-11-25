@@ -1301,7 +1301,7 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
-## The kit (rfm1cs stage 3a, src/kit.c)
+## The kit (rfm1cs stages 3a and 3b, src/kit.c)
 
 rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
 4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
@@ -1331,7 +1331,33 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   release). A pad again takes its own voice (its pad and pitch) back with a 5 ms fade; a choke group's pad fades the
   group's others (5 ms); Mute fades the pad's voices and refuses its notes; level (dB, -60 silent) and pan (a
   balance), velocity (linear). The Kit bus is added to the mix before the FX returns and the recorder's tap (the
-  master's takes have it; the sends and the Mixer's Kit strip are stage 3b).
+  master's takes have it).
+- **(stage 3b) Stretch:** `KIT_SET` of the Stretch setting carries `from`, the microseconds the pad's start..end must
+  last (its steps at the tempo and its track's rate; the core sends it again when either changes): `kit_stretch`. A
+  voice then plays (end - start) / (us x 48 kHz) source frames an output frame (the pad's pitch ignored, the right
+  half's semitones over it); a voice sounding is re-fitted at once.
+- **(stage 3b) The sends and the kit's strip:** each voice adds its sound, after its level and pan, times its pad's
+  Send 1..3 (0..100 %) to the kit's own send buses; `MIX` with slot 3 (`kit_mix`) is the kit's strip, the Mixer's
+  fourth: its level and pan (a balance) over the whole kit, its sends 1..3 (0..127) of the whole kit added to the
+  pads' own. `kit_render_bus` adds the kit to the mix and to each running audio FX's send bus (as a firmware slot's
+  after its level), and gives the kit's output alone (`g_kit_blk`): the recorder's Kit stream (`REC_ST_KIT`), the
+  sampler's Source Kit.
+- **(stage 3b) Kits:** `KIT_SAVE`: the core's kit (each pad's path and settings, the right half, the strip: read on
+  the engine's thread) saved on the file thread as `<takes dir>/Kits/Kit N` (`Samples/RemoteFM1/Kits`; N one past the
+  highest "Kit N" there): copies of its sounds (one copy of a file two pads share; a name two files share: the pad's
+  number before it; a file gone: the pad saved empty) and `kit.json` (`{"format": "rfm1-kit", "version": 1, "name",
+  "layout", "mix": [level, pan, s1, s2, s3], "pads": [{"file", "pitch", "start", "end", "mode", "attack", "hold",
+  "release", "choke", "reverse", "level", "pan", "mute", "stretch", "send1", "send2", "send3"} x 16]}`), answered
+  `rfm_move_kit_saved` ("Saved / Kit 1"); one save at a time. Files' Kits (place 3): the folders there with a
+  kit.json, in name order (numbers as numbers), a row each (`KIT_ROW_KIT`, no preview); `KIT_OPEN` reads one (its
+  folder's name its name; a file must sit in its folder) and answers `rfm_move_kit_apply`: the core takes every pad's
+  path and settings, then loads them as a project's.
+- **(stage 3b) A whole folder:** `KIT_FOLDER` (Shift + the click on a folder, All To Pads): its sounds (no folders) in
+  name order (numbers as numbers), the first 16 onto pads 1..16, each answered as a load; the pads past them answered
+  `KIT_EMPTY` (the core's `RFM_MOVE_KIT_EMPTY`: emptied). The core's one Undo brings the kit back.
+- **(stage 3b) The sampler:** the host offers Source Kit and To (Files, Kit). To Kit: a take saved (not one recorded
+  into a pad) goes onto `rfm_move_kit_next_empty(core, 1)` (the core marks it loading), "the kit has no empty pad"
+  in the log when there is none.
 - **Files:** Takes: the take library's list of every take, newest first (`tl_rows` `TL_ALL`; a row "M 4 Bars", its
   picture); a take loads from its WAV (a stems take: its Master). Samples: `--samples-dir` (the Move's
   `/data/UserData/UserLibrary/Samples`): folders first, then WAV / AIFF files, by name, dot files hidden; a folder's
@@ -1339,15 +1365,22 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   first 30 s of the sound, played once after the recorder's tap (never in a take), a new one or none replacing it.
 - `/api/status` (with a kit): `kit_shown`, `kit_cur`, `kit_tab`, `kit_row`, `kit_place`, `kit_total`, `kit_route`,
   `kit_pads` (the pads with a sound in memory, a bit each), `kit_voices`, `kit_bytes`, `kit_prev`, `kit_pitch` (the
-  chosen pad's), `kit_st`, `kit_rec`, and the counts `kit_notes`, `kit_loads`, `kit_rows`, `kit_recs`.
+  chosen pad's), `kit_st`, `kit_rec`, and the counts `kit_notes`, `kit_loads`, `kit_rows`, `kit_recs`; (3b)
+  `kit_stretch` and `kit_rate` (the chosen pad's Stretch and its voices' source frames a frame), `kit_level` (the
+  kit's strip), `kit_name`, the counts `kit_mix` (MIX slot 3), `kit_saved` (with `kit_saved_name`), `kit_kits`
+  (kits opened), `kit_to` (takes put on a pad by To Kit).
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
 the region, loop, momentary, the attack, the one shot's tail, the hold, choke, a pad again, mute, level and pan,
 velocity, 24 voices), Samples' rows and a folder, Takes from a take library on its worker, the preview, the kit's own
-thread. `tests/kit_e2e.sh` (in the image after make; in `tests/in_image.sh` and `make test-sampler`; alone `make
-test-kit`): on the simulator, the Kit view, Files (Samples, a folder, the preview, a load), a pad, a step and Play, a
-knob, a take recorded into a pad, the kit in the output (`mix.raw`), the project's kit back after a restart.
+thread; (3b) Stretch (its length, the region, a voice re-fitted), the sends and the strip (a pad's send, the strip's,
+level 0, a hard pan, the kit's own output), kits saved / listed / opened (copies, kit.json, one at a time, a kit not
+there), a folder onto the pads (name order, the rest emptied). `tests/kit_e2e.sh` (in the image after make; in
+`tests/in_image.sh` and `make test-sampler`; alone `make test-kit`): on the simulator, the Kit view, Files (Samples, a
+folder, the preview, a load), a pad, a step and Play, a knob, Stretch and the tempo halved, a pad's Send 1 into
+freeverb, the Mixer's kit strip, All To Pads and its Undo, Save then Load in a new project, the sampler's Source Kit
+and To Kit, a take recorded into a pad, the kit in the output (`mix.raw`), the project's kit back after a restart.
 
 ## The page's Sampler window
 

@@ -1,6 +1,19 @@
 # Changes
 
-## Unreleased: the kit (stage 3a)
+## Unreleased: the kit (stages 3a and 3b)
+
+- **Stretch** (knob 3): a pad's sound lasts exactly 1 to 64 steps at the tempo, and follows the tempo when it
+  changes. While Pitch, Stretch, Start or End turn, the step buttons light the steps it lasts.
+- **Sends** (knob 8 Send 1; Send 2 and 3 in the rows): each pad to the three audio FX. The kit is a fourth strip in
+  the Mixer (knob 4, column 4: its level, pan, sends) and has its own pad in Routing.
+- **A whole folder:** Shift + the jog's click on a folder in Files, All To Pads: its first 16 sounds onto the pads.
+  Undo brings the kit back.
+- **Kits:** the Kit tab's Save keeps the kit as Samples/RemoteFM1/Kits/Kit 1, Kit 2 .. (copies of its sounds and a
+  kit.json); Load (or Files' Kits) brings one into any project.
+- **The sampler:** Source Kit records the kit alone; To Kit puts each take on the next empty pad (lit white).
+
+Projects saved with stage 3b's kit (rfm1cs project version 12) are not read by stage 3a builds.
+
 
 - **The kit.** Track 4's third view (tap Track 4 round Mixer, Routing, Kit; or hold Track 4 + pad 3): 16 sampled pads
   on tracks 13 to 16. The left pads play the kit, the right pads the chosen pad's pitches (or its scale, or nothing);
@@ -18,6 +31,11 @@ In detail (rfm1cs-abletonmove `kit`: the Kit view, `RFM_MOVE_CAP_KIT`, the `KIT_
   in the mix, the Files rows (Takes, Samples), the preview after the recorder's tap; its file work on the take
   library's worker (takes.h `TL_Q_JOB`). The engine: the `KIT_*` actions, a pad recorded into through the recorder,
   the kit's status fields; `--samples-dir`. Tests: `tests/kit_test.sh`, `tests/kit_e2e.sh`, `make test-kit`.
+- (3b) src/kit.c: Stretch (`kit_stretch`), the pads' sends and the kit's strip (`kit_mix`, `kit_render_bus`: the FX
+  send buses, the kit's own output for the recorder's Kit stream), kits saved / listed / opened (`kit_save`,
+  `kit_open`, Files' place 3), All To Pads (`kit_folder`). The engine: `MIX` slot 3, `KIT_SAVE` / `KIT_OPEN` /
+  `KIT_FOLDER`, the sampler's Source Kit and To Kit offered, a To Kit take on the next empty pad. rfm1cs-abletonmove
+  pinned to its `kit` branch (stage 3b).
 
 ## 0.5.0 (2026-11-25)
 
