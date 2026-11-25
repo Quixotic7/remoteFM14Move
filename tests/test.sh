@@ -9,6 +9,8 @@ fail=0
 echo "==== Move Remote (third_party/abletonmoveremote, branch $(git -C third_party/abletonmoveremote rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?'))"
 make -C third_party/abletonmoveremote test >build/moveremote-test.log 2>&1 && tail -1 build/moveremote-test.log \
     || { cat build/moveremote-test.log; fail=1; }
+echo "==== the page's Update, natively (tests/update_test.sh: also the fixtures tests/update_e2e.sh uses)"
+tests/update_test.sh >build/update-test.log 2>&1 && tail -1 build/update-test.log || { cat build/update-test.log; fail=1; }
 echo "==== in the image"
 docker run --rm -v "$(pwd)":/w -w /w "${IMAGE:-rfm14move-build}" tests/in_image.sh || fail=1
 echo "==== the page in headless Chromium (on the Mac; the host in the image)"
