@@ -1,9 +1,33 @@
 # Changes
 
-## Unreleased
+## 0.5.0 (2026-11-25)
 
-rfm1cs-abletonmove's `sampler` branch (local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a take
-recording, one Sample press brings the app back and ends the take; stage 2, the takes).
+- **The sampler.** Sample opens a sampler that records what the Move plays: the master, one firmware on its own
+  (dry, at full level), the audio input, or stems (the master and each firmware as separate files). Four modes:
+  Capture (what you just played, back to the last silence), Bars (starts and ends on the bar line; a fixed length or
+  open; armed while stopped, Play starts the take), Threshold (starts with the sound) and Manual. A Track held +
+  Sample opens it with that firmware as the source (Track 4: the master); in the FM-1 layout that is the way in.
+  Back closes it and a running take goes on; Sample brings it back and ends the take.
+- **Your takes** are WAV files in the Move's own library, `Samples/RemoteFM1`, a folder a day, so Move's sample
+  browser lists them; firmwares that read audio (Elasticat and others) see them as `audio/rec`.
+- **Takes and Tools.** The Takes tab lists everything you recorded, the newest on top. A click on a take: Play,
+  Trim, Normalize, Reverse, Fade In, Fade Out, Delete. In Trim, knob 1 is the start and knob 2 the end (Shift: fine
+  steps) while the jog stays on Play. Outside the Record tab Sample plays the take you are on. One step of Undo
+  brings back a deleted or edited take. After a Capture its take plays by itself; after a Manual or Threshold take
+  Trim comes up.
+- **A Sampler window on the Move's page**, next to Mix & FX: the sampler's settings and its record key, the level
+  and the wave, and your takes with playback in the browser or on the Move, the same edits, rename, download and
+  delete. The page's file browser shows the takes too.
+- **Down in the FM-1 layout** no longer switches firmware: the Track buttons do that.
+
+Settings saved by 0.5.0 are not read by 0.4.0 or older.
+
+In detail (rfm1cs-abletonmove 0.15.0: the sampler app, its takes, `rfm_move_seq_pos`, `rfm_move_smp_set`):
+
+- **The owner's try of the takes on the Move (2026-11-25):** the Move's Takes list is every take of every day, the
+  newest first (takes.h `TL_ALL`, the core's `RFM_MOVE_SMP_ALL`); with rfm1cs: Trim's knobs leave the jog's icon alone,
+  Sample plays outside Record, a take's actions hold the five tools, Back in Takes and Tools goes to the tabs first.
+  The entries below describe the stages as first built.
 
 - **The page's Sampler window** (the owner's 2026-11-25; README "The page's Sampler window"): `web/move/js/movesmp.js`
   from the header's Sampler cap (the phone: the slot menu), laid out as Mix & FX. Record: the app's settings (the ops
