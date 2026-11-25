@@ -975,6 +975,11 @@ static int g_kit_adv;                    /* (render_block_) inside the sequencer
 static int g_kit_rec = -1;               /* a pad recorded into (KIT_REC): the take goes onto it, -1 none */
 static uint32_t g_kit_rec_blk;           /* .. the recorder's blocks at its press */
 static uint32_t g_kit_t_notes, g_kit_t_loads, g_kit_t_rows, g_kit_t_recs;   /* (tests) */
+static uint32_t g_kit_t_mix, g_kit_t_saved, g_kit_t_kits, g_kit_t_to;   /* (tests, stage 3b) */
+static char g_kit_t_saved_name[KIT_NAME];
+static int16_t g_kit_blk[FW_BLOCK * 2];   /* (stage 3b) the kit's output alone: the sampler's Kit source */
+static int g_kit_blk_on;
+static int g_smp_to;                     /* the sampler's To (RFM_MOVE_SMP_TO_*: Kit puts a take on the next empty pad) */
 static void kit_action(const rfm_move_act_t *a);
 static int g_smp_force;                  /* (the page's Sampler window) its JSON made again at once (smp_json) */
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
@@ -1047,6 +1052,9 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_ROWS:
     case RFM_MOVE_ACT_KIT_PREVIEW:
     case RFM_MOVE_ACT_KIT_REC:
+    case RFM_MOVE_ACT_KIT_SAVE:    /* (stage 3b) kits saved and opened, a folder onto the pads */
+    case RFM_MOVE_ACT_KIT_OPEN:
+    case RFM_MOVE_ACT_KIT_FOLDER:
         kit_action(a);
         break;
     case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
@@ -1145,7 +1153,11 @@ static void on_action(const rfm1cs_event_t *ev)
         break;
     }
     case RFM_MOVE_ACT_MIX:
-        if (a->slot < NSLOT) {
+        if (a->slot == RFM_MOVE_KIT_SLOT && g_kit) {   /* (rfm1cs stage 3b) the kit's own strip */
+            const int sends[3] = { a->mix[2], a->mix[3], a->mix[4] };
+            kit_mix(g_kit, a->mix[0], a->mix[1], sends);
+            g_kit_t_mix++;
+        } else if (a->slot < NSLOT) {
             int k;
             SL[a->slot].level = a->mix[0] > 127 ? 127 : a->mix[0];
             SL[a->slot].pan = a->mix[1] > 127 ? 127 : a->mix[1];
@@ -4175,7 +4187,8 @@ static void rec_start(void)
     rc.fs = FW_FS;
     rc.block_frames = FW_BLOCK;
     rc.capture_s = REC_CAPTURE_S;
-    rc.streams = 1u << REC_ST_MASTER | 1u << REC_ST_SLOT1 | 1u << REC_ST_SLOT2 | 1u << REC_ST_SLOT3 | 1u << REC_ST_INPUT;
+    rc.streams = 1u << REC_ST_MASTER | 1u << REC_ST_SLOT1 | 1u << REC_ST_SLOT2 | 1u << REC_ST_SLOT3 | 1u << REC_ST_INPUT |
+                 1u << REC_ST_KIT;   /* (stage 3b: the kit's output) */
     if (!(g_rec = rec_new(&rc)))
         fprintf(stderr, "engine: no recorder (no memory)\n");
     else
@@ -4489,7 +4502,10 @@ static void rec_setting(int index, int value)
     case RFM_MOVE_SMP_INPUT:   /* dB -24..24: the input stream's gain */
         g_rec_in_gain = (float)pow(10.0, (value < -24 ? -24 : value > 24 ? 24 : value) / 20.0);
         break;
-    default:   /* Monitor, To: later */
+    case RFM_MOVE_SMP_TO:   /* (stage 3b) Kit: a take saved goes onto the kit's next empty pad */
+        g_smp_to = value;
+        break;
+    default:   /* Monitor: later */
         break;
     }
 }
@@ -4507,6 +4523,8 @@ static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const
     b.st[REC_ST_MASTER] = out;
     for (s = 0; s < NSLOT; s++)
         b.st[REC_ST_SLOT1 + s] = slot[s];
+    if (g_kit_blk_on)
+        b.st[REC_ST_KIT] = g_kit_blk;   /* (stage 3b) the kit's output alone */
     if (ain) {
         if (g_rec_in_gain == 1.0f)
             b.st[REC_ST_INPUT] = ain;
@@ -4582,7 +4600,29 @@ static void kit_action(const rfm_move_act_t *a)
         kit_note(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0);
         g_kit_t_notes++;
         break;
-    case RFM_MOVE_ACT_KIT_SET: kit_set(g_kit, a->index, a->param, a->value); break;
+    case RFM_MOVE_ACT_KIT_SET:
+        kit_set(g_kit, a->index, a->param, a->value);
+        if (a->param == RFM_MOVE_KIT_P_STRETCH)      /* (3b) its microseconds at the tempo */
+            kit_stretch(g_kit, a->index, a->from);
+        break;
+    case RFM_MOVE_ACT_KIT_SAVE: {   /* (3b) the core's kit as it is now, saved by the file thread */
+        static kit_kit_t x;   /* (2.6 KB: not on the stack) */
+        int pad, p;
+        memset(&x, 0, sizeof x);
+        x.layout = rfm_move_kit_layout(&S->core);
+        for (p = 0; p < 5; p++)
+            x.mix[p] = (uint8_t)rfm_move_kit_mix(&S->core, p);
+        for (pad = 0; pad < KIT_PADS; pad++) {
+            const char *path = rfm_move_kit_path(&S->core, pad);
+            snprintf(x.path[pad], sizeof x.path[pad], "%s", path ? path : "");
+            for (p = 0; p < KIT_P_N; p++)
+                x.v[pad][p] = (int16_t)rfm_move_kit_value(&S->core, pad, p);
+        }
+        kit_save(g_kit, &x);
+        break;
+    }
+    case RFM_MOVE_ACT_KIT_OPEN: kit_open(g_kit, a->take); break;
+    case RFM_MOVE_ACT_KIT_FOLDER: kit_folder(g_kit, a->value, a->take); break;
     case RFM_MOVE_ACT_KIT_LOAD:
         if (a->data && a->len) {
             char p[KIT_PATH];
@@ -4637,7 +4677,28 @@ static int kit_answers(void)
             }
             redraw |= rfm_move_kit_rows(&S->core, a.place, a.folder, a.total, a.from, a.n, rows);
             g_kit_t_rows++;
+        } else if (a.kind == KIT_A_SAVED) {   /* (3b) "Saved / Kit 3" */
+            redraw |= rfm_move_kit_saved(&S->core, a.status == KIT_OK, a.name);
+            if (a.status == KIT_OK)
+                snprintf(g_kit_t_saved_name, sizeof g_kit_t_saved_name, "%s", a.name), g_kit_t_saved++;
+            else
+                fprintf(stderr, "engine: the kit not saved\n");
+        } else if (a.kind == KIT_A_KIT) {   /* (3b) a saved kit read: the core takes it (its loads follow) */
+            if (a.status == KIT_OK) {
+                const char *paths[KIT_PADS];
+                int pad;
+                for (pad = 0; pad < KIT_PADS; pad++)
+                    paths[pad] = a.kit.path[pad];
+                redraw |= rfm_move_kit_apply(&S->core, a.kit.name, a.kit.layout, a.kit.mix, paths,
+                                             (const int16_t (*)[RFM_MOVE_KIT_P_N])a.kit.v);
+                g_kit_t_kits++;
+            } else
+                redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);
         } else if (a.kind == KIT_A_LOADED) {
+            if (a.status == KIT_EMPTY) {   /* (3b: All To Pads past the folder's sounds) */
+                redraw |= rfm_move_kit_loaded(&S->core, a.pad, RFM_MOVE_KIT_EMPTY, NULL, NULL, 0, 0, 0, NULL);
+                continue;
+            }
             if (a.status == KIT_OK && !a.path[0])
                 continue;   /* (a pad emptied: the core already shows it) */
             if (a.status != KIT_OK)
@@ -4668,6 +4729,12 @@ static void rec_tick(uint32_t now)
             if (t.reason < REC_END_NOTHING && t.path[0])
                 kit_load(g_kit, g_kit_rec, t.path);
             g_kit_rec = -1;
+        } else if (g_kit && g_smp_to == RFM_MOVE_SMP_TO_KIT && t.reason < REC_END_NOTHING && t.path[0]) {
+            const int pad = rfm_move_kit_next_empty(&S->core, 1);   /* (3b) To Kit: the next empty pad */
+            if (pad >= 0)
+                kit_load(g_kit, pad, t.path), g_kit_t_to++;
+            else
+                fprintf(stderr, "engine: take %u: the kit has no empty pad\n", t.take);
         }
         if (t.reason == REC_END_NOTHING)
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_NOTHING, 0, 0, 0, NULL);
@@ -4887,8 +4954,13 @@ static void render_block_(uint32_t now)
         }
         do_deferred();   /* (what the active slot's clock made the sequencer do: after every slot's block is mixed) */
     }
-    if (g_kit)
-        kit_render(g_kit, g_mix.acc, FW_BLOCK);   /* (the kit: its bus into the mix, before the recorder's tap) */
+    if (g_kit) {   /* (the kit: its bus into the mix, before the recorder's tap; 3b: its sends, its own block) */
+        float *ks[RFM_MOVE_FX_SLOTS];
+        for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)
+            ks[k] = sends >> k & 1 ? g_bus[k].acc : NULL;
+        kit_render_bus(g_kit, g_mix.acc, ks, g_kit_blk, FW_BLOCK);
+        g_kit_blk_on = 1;
+    }
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
         if (sends >> k & 1) {
             fxs_t *x = &FX[RFM_MOVE_FX_AUDIO][k];
@@ -5273,16 +5345,25 @@ static void housekeeping(uint32_t now)
             const rfm_move_kit_t *t = &S->core.kit;
             unsigned pads = 0;
             int p;
+            char kn[KIT_NAME];   /* (the kit's name, safe in JSON) */
             for (p = 0; p < KIT_PADS; p++)
                 pads |= (kit_frames(g_kit, p) ? 1u : 0u) << p;
+            snprintf(kn, sizeof kn, "%s", rfm_move_kit_name(&S->core));
+            for (p = 0; kn[p]; p++)
+                if (kn[p] == '"' || kn[p] == '\\')
+                    kn[p] = '_';
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_shown\":%d,\"kit_cur\":%d,\"kit_tab\":%d,\"kit_row\":%d,"
                           "\"kit_place\":%d,\"kit_total\":%d,\"kit_route\":%u,\"kit_pads\":%u,\"kit_voices\":%d,"
                           "\"kit_bytes\":%u,\"kit_prev\":%d,\"kit_notes\":%u,\"kit_loads\":%u,\"kit_rows\":%u,"
-                          "\"kit_recs\":%u,\"kit_rec\":%d,\"kit_pitch\":%d,\"kit_st\":%d",
+                          "\"kit_recs\":%u,\"kit_rec\":%d,\"kit_pitch\":%d,\"kit_st\":%d,\"kit_mix\":%u,"
+                          "\"kit_saved\":%u,\"kit_saved_name\":\"%s\",\"kit_kits\":%u,\"kit_to\":%u,\"kit_name\":\"%s\","
+                          "\"kit_stretch\":%d,\"kit_rate\":%.6f,\"kit_level\":%d",
                           rfm_move_kit_shown(&S->core), t->cur, t->tab, t->row, t->place, t->known ? t->total : -1,
                           t->route, pads, kit_voices(g_kit), kit_bytes(g_kit), kit_previewing(g_kit), g_kit_t_notes,
                           g_kit_t_loads, g_kit_t_rows, g_kit_t_recs, t->rec_pad, t->pad[t->cur].v[RFM_MOVE_KIT_P_PITCH],
-                          t->pad[t->cur].st);
+                          t->pad[t->cur].st, g_kit_t_mix, g_kit_t_saved, g_kit_t_saved_name, g_kit_t_kits, g_kit_t_to, kn,
+                          t->pad[t->cur].v[RFM_MOVE_KIT_P_STRETCH], kit_rate_of(g_kit, t->cur, 0),
+                          rfm_move_kit_mix(&S->core, RFM_MOVE_KIT_MIX_LEVEL));
         }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
             n += midiout_json(tmp + n, (int)sizeof tmp - n);
@@ -5589,20 +5670,25 @@ int engine_start(const engine_cfg_t *cfg)
     {   /* (the kit: its file work on the take library's worker, else a thread of its own) */
         kit_cfg_t kc;
         memset(&kc, 0, sizeof kc);
+        static char kits[1024];
         kc.fs = FW_FS, kc.samples_dir = C.samples_dir, kc.tl = g_tl, kc.own_thread = g_tl == NULL;
+        if (g_takes_dir[0])   /* (stage 3b: saved kits in Samples/RemoteFM1/Kits) */
+            snprintf(kits, sizeof kits, "%s/Kits", g_takes_dir), kc.kits_dir = kits;
         if (!(g_kit = kit_new(&kc)))
             fprintf(stderr, "engine: no kit (no memory)\n");
     }
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
                                    (g_kit ? RFM_MOVE_CAP_KIT : 0));
-    /* the sampler app offers: Master, Slot 1..3, Input, Stems; Source, Mode, Length, Threshold, Input level (not
-     * Monitor, To: later); the Record tab, (stage 2) Takes and Tools with the take library; takes to Files */
+    /* the sampler app offers: Master, Slot 1..3, Input, Stems, (stage 3b, with the kit) Kit; Source, Mode, Length,
+     * Threshold, Input level, (3b) To (not Monitor: later); the Record tab, (stage 2) Takes and Tools with the take
+     * library; takes to Files, (3b) to the Kit (the next empty pad) */
     rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
-                       1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS,
+                       1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS |
+                       (g_kit ? 1u << RFM_MOVE_SMP_SRC_KIT : 0),
                        1u << RFM_MOVE_SMP_SOURCE | 1u << RFM_MOVE_SMP_MODE | 1u << RFM_MOVE_SMP_LENGTH |
-                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT,
+                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT | (g_kit ? 1u << RFM_MOVE_SMP_TO : 0),
                        1u << RFM_MOVE_SMP_TAB_RECORD | (g_tl ? 1u << RFM_MOVE_SMP_TAB_TAKES | 1u << RFM_MOVE_SMP_TAB_TOOLS : 0),
-                       1u << RFM_MOVE_SMP_TO_FILES);
+                       1u << RFM_MOVE_SMP_TO_FILES | (g_kit ? 1u << RFM_MOVE_SMP_TO_KIT : 0));
     rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
     rfm_move_set_master(&S->core, 768);

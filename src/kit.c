@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include "minijson.h"
 #include "takes.h"
 
 #define NV 32                     /* voice slots: KIT_VOICES sounding, the rest fading out */
@@ -22,6 +23,8 @@
 #define NIDS 2048                 /* Samples' rows seen: id -> path */
 #define FADE_MS 5                 /* a choke, a pad's own voice taken back, a mute */
 #define DECLICK_MS 2              /* a stolen voice, a hard end */
+#define RBUF 256                  /* (3b) the frames rendered at once into the kit's own buses */
+#define KITS_MAX 256              /* (3b) saved kits listed */
 
 typedef struct {                  /* a sound in memory */
     int16_t *pcm;                 /* stereo, interleaved */
@@ -43,11 +46,12 @@ typedef struct {
     float r_from;
     uint32_t fade_n;              /* a fade out: its frames (ST_FADE) */
     float gl, gr;
+    float sg[3];                  /* (3b) the pad's sends 1..3 (0..1) */
     const snd_t *snd;
 } voice_t;
 enum { ST_ATTACK, ST_HOLD, ST_SUSTAIN, ST_RELEASE, ST_FADE };
 typedef struct { int pad, semis, vel; uint32_t frame; } ev_t;
-enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW };
+enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER };
 typedef struct {
     int kind, pad, place, n, from;
     uint32_t id, gen;
@@ -66,6 +70,12 @@ struct kit {
     /* the engine's */
     snd_t snd[KIT_PADS];
     int16_t v[KIT_PADS][KIT_P_N];
+    uint32_t st_us[KIT_PADS];     /* (3b) Stretch: the microseconds start..end lasts (0: its pitch) */
+    int mix[5];                   /* (3b) the kit's strip: level, pan, sends 1..3 (0..127) */
+    float dry[2 * RBUF], sb[3][2 * RBUF];   /* .. the voices before it */
+    char kits[KIT_PATH];          /* saved kits' folder ("" none) */
+    kit_kit_t save;               /* (mu) the kit a save works on, save_busy while it does */
+    int save_busy;
     voice_t vo[NV];
     uint32_t age;
     ev_t ev[NEV];
@@ -486,6 +496,63 @@ static void take_name(const tl_row_t *t, char *o, int cap)   /* a take's row: "M
         snprintf(o, (size_t)cap, "%c %u.%u s", s, (unsigned)(ms / 1000u), (unsigned)(ms % 1000u / 100u));
     }
 }
+/* ---- (stage 3b) saved kits: a folder each in k->kits with its kit.json */
+static int natcmp(const char *a, const char *b)         /* names with numbers in order: Kit 2 before Kit 10 */
+{
+    while (*a && *b) {
+        if (isdigit((unsigned char)*a) && isdigit((unsigned char)*b)) {
+            const long x = strtol(a, (char **)&a, 10), y = strtol(b, (char **)&b, 10);
+            if (x != y)
+                return x < y ? -1 : 1;
+            continue;
+        }
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+            return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+        a++, b++;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+static int cmp_nat(const void *a, const void *b) { return natcmp(*(const char *const *)a, *(const char *const *)b); }
+/* the kits saved, in name order (names[] malloc'd, each too; free with kits_free): how many */
+static int kits_list(const kit_t *k, char ***names)
+{
+    DIR *d;
+    struct dirent *e;
+    int n = 0;
+    *names = NULL;
+    if (!k->kits[0] || !(d = opendir(k->kits)))
+        return 0;
+    if (!(*names = calloc(KITS_MAX, sizeof **names))) {
+        closedir(d);
+        return 0;
+    }
+    while ((e = readdir(d)) && n < KITS_MAX) {
+        char p[KIT_PATH];
+        struct stat st;
+        if (e->d_name[0] == '.' || strlen(e->d_name) >= KIT_NAME)
+            continue;
+        snprintf(p, sizeof p, "%s/%s/kit.json", k->kits, e->d_name);
+        if (stat(p, &st) || !S_ISREG(st.st_mode))
+            continue;
+        if (((*names)[n] = strdup(e->d_name)))
+            n++;
+    }
+    closedir(d);
+    qsort(*names, (size_t)n, sizeof **names, cmp_nat);
+    return n;
+}
+static void kits_free(char **names, int n)
+{
+    while (n-- > 0)
+        free(names[n]);
+    free(names);
+}
+static uint32_t kit_id(const char *name)
+{
+    char t[64];
+    snprintf(t, sizeof t, "kits:%s", name);
+    return fnv(t);
+}
 static void do_rows(kit_t *k, const req_t *r)
 {
     ans_t a;
@@ -526,6 +593,22 @@ static void do_rows(kit_t *k, const req_t *r)
             }
         }
         a.a.n = i;
+    } else if (r->place == KIT_PL_KITS) {               /* (3b) the kits saved, a row each */
+        char **names;
+        const int n = kits_list(k, &names);
+        a.a.total = n;
+        for (i = 0; i < r->n && i < KIT_ROWS && r->from + i < n; i++) {
+            kit_row_t *o = &a.a.rows[i];
+            char rel[64];
+            o->id = kit_id(names[r->from + i]), o->kind = KIT_ROW_KIT;
+            snprintf(o->name, sizeof o->name, "%s", names[r->from + i]);
+            snprintf(rel, sizeof rel, "kits:%s", names[r->from + i]);
+            pthread_mutex_lock(&k->mu);
+            id_keep(k, o->id, rel);
+            pthread_mutex_unlock(&k->mu);
+        }
+        a.a.n = i;
+        kits_free(names, n);
     }
     answer(k, &a);
 }
@@ -606,6 +689,253 @@ static void do_preview(kit_t *k, const req_t *r)
         a.pcm = load_sound(path, (uint64_t)KIT_PREVIEW_S * 4u * 192000u, KIT_PREVIEW_S * 96000u, &a.a.frames, &a.a.rate, &st);
     answer(k, &a);
 }
+/* ---- (stage 3b) a kit saved, opened; a folder onto the pads */
+static const char *const PKEY[KIT_P_N] = { "pitch", "start", "end", "mode", "attack", "hold", "release", "choke",
+                                           "reverse", "level", "pan", "mute", "stretch", "send1", "send2", "send3" };
+static int mkdirs(const char *path)                     /* the folder and its parents: 0 there */
+{
+    char p[KIT_PATH];
+    size_t i;
+    struct stat st;
+    snprintf(p, sizeof p, "%s", path);
+    for (i = 1; p[i]; i++)
+        if (p[i] == '/') {
+            p[i] = 0;
+            mkdir(p, 0755);
+            p[i] = '/';
+        }
+    mkdir(p, 0755);
+    return !stat(p, &st) && S_ISDIR(st.st_mode) ? 0 : -1;
+}
+static int copy_file(const char *from, const char *to)
+{
+    FILE *a = fopen(from, "rb"), *b;
+    char buf[65536];
+    size_t n;
+    int bad = 0;
+    if (!a)
+        return -1;
+    if (!(b = fopen(to, "wb"))) {
+        fclose(a);
+        return -1;
+    }
+    while ((n = fread(buf, 1, sizeof buf, a)) > 0)
+        bad |= fwrite(buf, 1, n, b) != n;
+    bad |= ferror(a);
+    fclose(a);
+    bad |= fclose(b) != 0;
+    if (bad)
+        remove(to);
+    return bad ? -1 : 0;
+}
+static void do_save(kit_t *k)
+{
+    ans_t a;
+    kit_kit_t *x = malloc(sizeof *x);
+    char dir[KIT_PATH], name[KIT_NAME], files[KIT_PADS][KIT_NAME + 8];
+    char **names;
+    int n, i, j, top = 0, ok = 0;
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_SAVED, a.a.status = KIT_FAILED;
+    if (x) {
+        pthread_mutex_lock(&k->mu);
+        *x = k->save;
+        pthread_mutex_unlock(&k->mu);
+    }
+    if (x && k->kits[0] && !mkdirs(k->kits)) {
+        n = kits_list(k, &names);                       /* (Kit N: one past the highest) */
+        for (i = 0; i < n; i++) {
+            int v;
+            char c;
+            if (sscanf(names[i], "Kit %d%c", &v, &c) == 1 && v > top)
+                top = v;
+        }
+        kits_free(names, n);
+        {
+            DIR *d = opendir(k->kits);                  /* (a "Kit N" folder with no kit.json: past it too) */
+            struct dirent *e;
+            while (d && (e = readdir(d))) {
+                int v;
+                char c;
+                if (sscanf(e->d_name, "Kit %d%c", &v, &c) == 1 && v > top)
+                    top = v;
+            }
+            if (d)
+                closedir(d);
+        }
+        snprintf(name, sizeof name, "Kit %d", top + 1);
+        snprintf(dir, sizeof dir, "%s/%s", k->kits, name);
+        ok = !mkdirs(dir);
+    }
+    if (ok) {
+        FILE *f;
+        char tmp[KIT_PATH], fin[KIT_PATH], esc[256];
+        for (i = 0; i < KIT_PADS; i++) {                /* the sounds copied (the same file once; a name taken by
+                                                         * another file: the pad's number before it) */
+            const char *b;
+            files[i][0] = 0;
+            if (!x->path[i][0])
+                continue;
+            for (j = 0; j < i; j++)
+                if (!strcmp(x->path[j], x->path[i]) && files[j][0])
+                    snprintf(files[i], sizeof files[i], "%s", files[j]);
+            if (files[i][0])
+                continue;
+            b = strrchr(x->path[i], '/');
+            b = b ? b + 1 : x->path[i];
+            snprintf(files[i], sizeof files[i], "%.*s", KIT_NAME - 1, b);
+            for (j = 0; j < i; j++)
+                if (!strcmp(files[j], files[i])) {
+                    snprintf(files[i], sizeof files[i], "%02d %.*s", i + 1, KIT_NAME - 1, b);
+                    break;
+                }
+            snprintf(fin, sizeof fin, "%s/%s", dir, files[i]);
+            if (copy_file(x->path[i], fin))
+                files[i][0] = 0;                        /* (gone: the pad saved empty) */
+        }
+        snprintf(tmp, sizeof tmp, "%s/kit.json.tmp", dir);
+        snprintf(fin, sizeof fin, "%s/kit.json", dir);
+        if ((f = fopen(tmp, "w"))) {
+            int bad;
+            mj_escape(name, esc, sizeof esc);
+            fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 1, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
+            fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d],\n  \"pads\": [\n", x->mix[0], x->mix[1], x->mix[2], x->mix[3], x->mix[4]);
+            for (i = 0; i < KIT_PADS; i++) {
+                mj_escape(files[i], esc, sizeof esc);
+                fprintf(f, "    { \"file\": \"%s\"", esc);
+                for (j = 0; j < KIT_P_N; j++)
+                    fprintf(f, ", \"%s\": %d", PKEY[j], x->v[i][j]);
+                fprintf(f, " }%s\n", i + 1 < KIT_PADS ? "," : "");
+            }
+            fprintf(f, "  ]\n}\n");
+            bad = ferror(f);
+            bad |= fclose(f) != 0;
+            if (!bad && !rename(tmp, fin)) {
+                a.a.status = KIT_OK;
+                snprintf(a.a.name, sizeof a.a.name, "%s", name);
+            } else
+                remove(tmp);
+        }
+    }
+    free(x);
+    pthread_mutex_lock(&k->mu);
+    k->save_busy = 0;
+    pthread_mutex_unlock(&k->mu);
+    answer(k, &a);
+}
+static char *read_all(const char *path, long cap)       /* a small file, NUL-terminated (NULL: none, too big) */
+{
+    FILE *f = fopen(path, "rb");
+    char *b;
+    long n;
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) || (n = ftell(f)) < 0 || n > cap || fseek(f, 0, SEEK_SET) || !(b = malloc((size_t)n + 1))) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(b, 1, (size_t)n, f) != (size_t)n) {
+        free(b);
+        fclose(f);
+        return NULL;
+    }
+    b[n] = 0;
+    fclose(f);
+    return b;
+}
+static void do_open(kit_t *k, const req_t *r)
+{
+    ans_t *a = calloc(1, sizeof *a);
+    char rel[256], path[KIT_PATH], *js = NULL;
+    if (!a)
+        return;
+    a->a.kind = KIT_A_KIT, a->a.status = KIT_FAILED;
+    if (id_rel(k, r->id, rel, sizeof rel) && !strncmp(rel, "kits:", 5) && k->kits[0]) {
+        snprintf(path, sizeof path, "%s/%s/kit.json", k->kits, rel + 5);
+        js = read_all(path, 1 << 20);
+    }
+    if (js) {
+        kit_kit_t *x = &a->a.kit;
+        const char *it = mj_find(js, "pads"), *e;
+        long v;
+        int i = 0, j;
+        snprintf(x->name, sizeof x->name, "%s", rel + 5);   /* (its folder's name: renamed there, renamed here) */
+        x->layout = !mj_int(js, "layout", &v) ? (int)v : 0;
+        x->mix[0] = 100, x->mix[1] = 64;
+        if ((e = mj_find(js, "mix")) && *e == '[') {
+            const char *m = e, *y;
+            for (j = 0; j < 5 && (y = mj_elem(&m)); j++)
+                x->mix[j] = (uint8_t)clampi((int)strtol(y, NULL, 10), 0, 127);
+        }
+        for (i = 0; i < KIT_PADS; i++)
+            x->v[i][KIT_P_END] = KIT_FRAC;
+        if (it && *it != '[')
+            it = NULL;
+        for (i = 0; it && i < KIT_PADS && (e = mj_elem(&it)); i++) {
+            char file[256];
+            for (j = 0; j < KIT_P_N; j++)
+                if (!mj_int(e, PKEY[j], &v))
+                    x->v[i][j] = (int16_t)clampi((int)v, -32768, 32767);
+            if (!mj_string(e, "file", file, sizeof file) && file[0] && !strchr(file, '/') && strcmp(file, "..") &&
+                strlen(k->kits) + strlen(rel + 5) + strlen(file) + 3 <= KIT_KPATH)
+                snprintf(x->path[i], sizeof x->path[i], "%s/%s/%s", k->kits, rel + 5, file);
+        }
+        a->a.status = KIT_OK;
+        free(js);
+    }
+    answer(k, a);
+    free(a);
+}
+static int cmp_name(const void *a, const void *b) { return natcmp(*(const char *const *)a, *(const char *const *)b); }
+static void do_folder(kit_t *k, const req_t *r)
+{
+    char rel[256] = "", dir[KIT_PATH], **names = NULL;
+    DIR *d = NULL;
+    struct dirent *e;
+    int n = 0, cap = 0, i;
+    if (r->place == KIT_PL_SAMPLES && k->samples[0] && (!r->id || id_rel(k, r->id, rel, sizeof rel))) {
+        snprintf(dir, sizeof dir, "%s%s%s", k->samples, rel[0] ? "/" : "", rel);
+        d = opendir(dir);
+    }
+    while (d && (e = readdir(d))) {                     /* its sounds (no folders), by name */
+        char p[KIT_PATH];
+        struct stat st;
+        if (e->d_name[0] == '.' || !sound_file(e->d_name))
+            continue;
+        snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+        if (stat(p, &st) || !S_ISREG(st.st_mode))
+            continue;
+        if (n == cap) {
+            char **g = realloc(names, sizeof *names * (size_t)(cap = cap ? cap * 2 : 64));
+            if (!g)
+                break;
+            names = g;
+        }
+        if ((names[n] = strdup(e->d_name)))
+            n++;
+    }
+    if (d)
+        closedir(d);
+    if (n)
+        qsort(names, (size_t)n, sizeof names[0], cmp_name);
+    for (i = 0; i < KIT_PADS; i++) {                    /* the first 16 onto pads 1..16, the rest of the pads emptied */
+        req_t q;
+        memset(&q, 0, sizeof q);
+        q.kind = RQ_LOAD, q.pad = i;
+        if (i < n) {
+            snprintf(q.path, sizeof q.path, "%s/%s", dir, names[i]);
+            do_load(k, &q);
+        } else {
+            ans_t a;
+            memset(&a, 0, sizeof a);
+            a.a.kind = KIT_A_LOADED, a.a.pad = i, a.a.status = KIT_EMPTY;
+            answer(k, &a);
+        }
+    }
+    for (i = 0; i < n; i++)
+        free(names[i]);
+    free(names);
+}
 void kit_work(void *arg)
 {
     kit_t *k = arg;
@@ -631,6 +961,9 @@ void kit_work(void *arg)
         case RQ_LOAD_ROW: do_load(k, &r); break;
         case RQ_ROWS: do_rows(k, &r); break;
         case RQ_PREVIEW: do_preview(k, &r); break;
+        case RQ_SAVE: do_save(k); break;
+        case RQ_OPEN: do_open(k, &r); break;
+        case RQ_FOLDER: do_folder(k, &r); break;
         default: return;                                /* (nothing more) */
         }
     }
@@ -667,6 +1000,8 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     if (!k->cfg.max_bytes)
         k->cfg.max_bytes = KIT_MAX_BYTES;
     snprintf(k->samples, sizeof k->samples, "%s", cfg->samples_dir ? cfg->samples_dir : "");
+    snprintf(k->kits, sizeof k->kits, "%s", cfg->kits_dir ? cfg->kits_dir : "");
+    k->mix[0] = 127, k->mix[1] = 64;                    /* (unity until the core's MIX says) */
     for (p = 0; p < KIT_PADS; p++)
         k->v[p][KIT_P_END] = KIT_FRAC;
     pthread_mutex_init(&k->mu, NULL);
@@ -786,7 +1121,8 @@ int kit_poll(kit_t *k, kit_ans_t *out)
         }
         if (a.a.kind == KIT_A_LOADED && (a.pcm || (a.a.status == KIT_OK && !a.a.path[0]) || a.a.status != KIT_OK)) {
             snd_t *s = &k->snd[a.a.pad];
-            if (a.pcm || a.a.status == KIT_OK) {        /* (a sound, or emptied: the old one goes) */
+            if (a.pcm || a.a.status == KIT_OK || a.a.status == KIT_EMPTY) {   /* (a sound, or emptied: the old one
+                                                         * goes) */
                 voice_kill_pad(k, a.a.pad);
                 garbage(k, s->pcm);
                 s->pcm = a.pcm, s->frames = a.pcm ? a.a.frames : 0, s->rate = a.pcm ? a.a.rate : 0;
@@ -830,6 +1166,31 @@ static void fade(kit_t *k, voice_t *v, int ms)
         v->fade_n = 1;
 }
 static uint32_t ms_n(const kit_t *k, int ms) { return (uint32_t)((uint64_t)k->cfg.fs * (uint32_t)(ms < 0 ? 0 : ms) / 1000u); }
+/* a pad's region [s0, e0) in source frames (at least one frame) */
+static void region(const kit_t *k, int pad, double *s0, double *e0)
+{
+    const snd_t *s = &k->snd[pad];
+    const int16_t *p = k->v[pad];
+    *s0 = (double)s->frames * p[KIT_P_START] / KIT_FRAC;
+    *e0 = (double)s->frames * p[KIT_P_END] / KIT_FRAC;
+    if (*e0 <= *s0 + 1)
+        *e0 = *s0 + 1 < s->frames ? *s0 + 1 : s->frames, *s0 = *e0 - 1;
+}
+/* a voice's source frames an output frame: its pitch (and the right half's semitones), or (3b) stretched: the region
+ * in its microseconds, the semitones over that */
+double kit_rate_of(const kit_t *k, int pad, int semis)
+{
+    const snd_t *s;
+    if (!k || pad < 0 || pad >= KIT_PADS)
+        return 1.0;
+    s = &k->snd[pad];
+    if (k->st_us[pad] && s->frames) {
+        double s0, e0;
+        region(k, pad, &s0, &e0);
+        return (e0 - s0) / ((double)k->st_us[pad] * 1e-6 * k->cfg.fs) * pow(2.0, semis / 12.0);
+    }
+    return pow(2.0, (k->v[pad][KIT_P_PITCH] + semis * 100) / 1200.0) * (double)s->rate / k->cfg.fs;
+}
 static void note_on(kit_t *k, int pad, int semis, int vel)
 {
     const int16_t *p = k->v[pad];
@@ -867,11 +1228,8 @@ static void note_on(kit_t *k, int pad, int semis, int vel)
         v = &k->vo[q];
     }
     memset(v, 0, sizeof *v);
-    s0 = (double)s->frames * p[KIT_P_START] / KIT_FRAC;
-    e0 = (double)s->frames * p[KIT_P_END] / KIT_FRAC;
-    if (e0 <= s0 + 1)
-        e0 = s0 + 1 < s->frames ? s0 + 1 : s->frames, s0 = e0 - 1;
-    ratio = pow(2.0, (p[KIT_P_PITCH] + semis * 100) / 1200.0) * (double)s->rate / k->cfg.fs;
+    region(k, pad, &s0, &e0);
+    ratio = kit_rate_of(k, pad, semis);
     v->on = 1, v->pad = pad, v->semis = semis, v->age = ++k->age, v->snd = s;
     v->s = s0, v->e = e0, v->dir = p[KIT_P_REVERSE] ? -1 : 1;
     v->pos = v->dir > 0 ? s0 : e0 - 1;
@@ -887,6 +1245,8 @@ static void note_on(kit_t *k, int pad, int semis, int vel)
         const int pan = clampi(p[KIT_P_PAN], -50, 50);
         v->gl = (float)(g * (pan > 0 ? 1.0 - pan / 50.0 : 1.0));
         v->gr = (float)(g * (pan < 0 ? 1.0 + pan / 50.0 : 1.0));
+        for (i = 0; i < 3; i++)                         /* (3b) its sends, after its level and pan */
+            v->sg[i] = (float)clampi(p[KIT_P_SEND1 + i], 0, 100) / 100.0f;
     }
 }
 static void note_off(kit_t *k, int pad, int semis)
@@ -902,8 +1262,8 @@ static void release(voice_t *v, uint32_t n)
 {
     v->stage = ST_RELEASE, v->t = 0, v->r_from = v->env, v->rel_n = n;
 }
-/* one voice, frames [0, n) of acc */
-static void voice_run(voice_t *v, float *acc, uint32_t n)
+/* one voice, frames [0, n) of acc (and its sends' buses sb[0..2], the same frames) */
+static void voice_run(voice_t *v, float *acc, float *const sb[3], uint32_t n)
 {
     const int16_t *pcm = v->snd->pcm;
     const uint32_t last = v->snd->frames - 1;
@@ -954,8 +1314,13 @@ static void voice_run(voice_t *v, float *acc, uint32_t n)
             const float fr = (float)(ps - a);
             const float l = pcm[2 * a] + (pcm[2 * b] - pcm[2 * a]) * fr;
             const float r = pcm[2 * a + 1] + (pcm[2 * b + 1] - pcm[2 * a + 1]) * fr;
-            acc[2 * i] += l * v->env * v->gl;
-            acc[2 * i + 1] += r * v->env * v->gr;
+            const float ol = l * v->env * v->gl, orr = r * v->env * v->gr;
+            int j;
+            acc[2 * i] += ol;
+            acc[2 * i + 1] += orr;
+            for (j = 0; j < 3; j++)
+                if (v->sg[j] > 0.0f)
+                    sb[j][2 * i] += ol * v->sg[j], sb[j][2 * i + 1] += orr * v->sg[j];
         }
         v->pos += v->dir * v->inc;
         if (v->mode == KIT_M_LOOP) {                    /* round start..end while held (and through its release) */
@@ -967,27 +1332,70 @@ static void voice_run(voice_t *v, float *acc, uint32_t n)
         }
     }
 }
-void kit_render(kit_t *k, float *acc, uint32_t frames)
+/* frames [at0, at0 + n) of the call (n <= RBUF) into k->dry and k->sb, the notes due in them first (*e: the next) */
+static void render_part(kit_t *k, uint32_t at0, uint32_t n, int *e)
 {
     uint32_t at = 0;
-    int i, e = 0;
-    if (!k)
-        return;
-    while (at < frames) {                               /* in parts between the notes' frames */
-        uint32_t end = frames;
-        while (e < k->nev && k->ev[e].frame <= at) {
-            const ev_t *x = &k->ev[e++];
+    int i, j;
+    memset(k->dry, 0, sizeof(float) * 2u * n);
+    for (j = 0; j < 3; j++)
+        memset(k->sb[j], 0, sizeof(float) * 2u * n);
+    while (at < n) {                                    /* in parts between the notes' frames */
+        uint32_t end = n;
+        float *sb[3];
+        while (*e < k->nev && k->ev[*e].frame <= at0 + at) {
+            const ev_t *x = &k->ev[(*e)++];
             if (x->vel > 0)
                 note_on(k, x->pad, x->semis, x->vel);
             else
                 note_off(k, x->pad, x->semis);
         }
-        if (e < k->nev && k->ev[e].frame < end)
-            end = k->ev[e].frame;
+        if (*e < k->nev && k->ev[*e].frame < at0 + end)
+            end = k->ev[*e].frame - at0;
+        for (j = 0; j < 3; j++)
+            sb[j] = k->sb[j] + 2 * at;
         for (i = 0; i < NV; i++)
             if (k->vo[i].on)
-                voice_run(&k->vo[i], acc + 2 * at, end - at);
+                voice_run(&k->vo[i], k->dry + 2 * at, sb, end - at);
         at = end;
+    }
+}
+void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, uint32_t frames)
+{
+    uint32_t at0 = 0, i;
+    int e = 0, j;
+    float gl, gr, sg[3];
+    if (!k)
+        return;
+    {                                                   /* (3b) the kit's strip: level, pan (a balance), sends */
+        const float g = (float)clampi(k->mix[0], 0, 127) / 127.0f;
+        const int pan = clampi(k->mix[1], 0, 127);
+        gl = gr = g;
+        if (pan < 64)
+            gr = g * (float)pan / 64.0f;
+        else if (pan > 64)
+            gl = g * (float)(127 - pan) / 63.0f;
+        for (j = 0; j < 3; j++)
+            sg[j] = (float)clampi(k->mix[2 + j], 0, 127) / 127.0f;
+    }
+    while (at0 < frames) {
+        const uint32_t n = frames - at0 < RBUF ? frames - at0 : RBUF;
+        render_part(k, at0, n, &e);
+        for (i = 0; i < n; i++) {
+            const float l = k->dry[2 * i] * gl, r = k->dry[2 * i + 1] * gr;
+            acc[2 * (at0 + i)] += l, acc[2 * (at0 + i) + 1] += r;
+            if (own) {
+                const long a = lrintf(l), b = lrintf(r);
+                own[2 * (at0 + i)] = (int16_t)(a > 32767 ? 32767 : a < -32768 ? -32768 : a);
+                own[2 * (at0 + i) + 1] = (int16_t)(b > 32767 ? 32767 : b < -32768 ? -32768 : b);
+            }
+            for (j = 0; send && j < 3; j++)             /* a pad's own send and the strip's, after the strip's level */
+                if (send[j]) {
+                    send[j][2 * (at0 + i)] += (k->sb[j][2 * i] + k->dry[2 * i] * sg[j]) * gl;
+                    send[j][2 * (at0 + i) + 1] += (k->sb[j][2 * i + 1] + k->dry[2 * i + 1] * sg[j]) * gr;
+                }
+        }
+        at0 += n;
     }
     for (; e < k->nev; e++)                             /* (a frame past the block: now) */
         if (k->ev[e].vel > 0)
@@ -995,6 +1403,66 @@ void kit_render(kit_t *k, float *acc, uint32_t frames)
         else
             note_off(k, k->ev[e].pad, k->ev[e].semis);
     k->nev = 0;
+}
+void kit_render(kit_t *k, float *acc, uint32_t frames) { kit_render_bus(k, acc, NULL, NULL, frames); }
+void kit_stretch(kit_t *k, int pad, uint32_t us)
+{
+    int i;
+    if (!k || pad < 0 || pad >= KIT_PADS)
+        return;
+    k->st_us[pad] = us;
+    for (i = 0; i < NV; i++)                            /* (a voice sounding: re-fitted at once) */
+        if (k->vo[i].on && k->vo[i].pad == pad)
+            k->vo[i].inc = kit_rate_of(k, pad, k->vo[i].semis);
+}
+void kit_mix(kit_t *k, int level, int pan, const int sends[3])
+{
+    int j;
+    if (!k)
+        return;
+    k->mix[0] = clampi(level, 0, 127), k->mix[1] = clampi(pan, 0, 127);
+    for (j = 0; j < 3; j++)
+        k->mix[2 + j] = sends ? clampi(sends[j], 0, 127) : 0;
+}
+void kit_save(kit_t *k, const kit_kit_t *kit)
+{
+    req_t r;
+    int busy;
+    if (!k || !kit)
+        return;
+    pthread_mutex_lock(&k->mu);
+    busy = k->save_busy;
+    if (!busy)
+        k->save = *kit, k->save_busy = 1;
+    pthread_mutex_unlock(&k->mu);
+    if (busy) {                                         /* (one at a time) */
+        ans_t a;
+        memset(&a, 0, sizeof a);
+        a.a.kind = KIT_A_SAVED, a.a.status = KIT_FAILED;
+        answer(k, &a);
+        return;
+    }
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_SAVE;
+    request(k, &r);
+}
+void kit_open(kit_t *k, uint32_t id)
+{
+    req_t r;
+    if (!k)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_OPEN, r.id = id;
+    request(k, &r);
+}
+void kit_folder(kit_t *k, int place, uint32_t id)
+{
+    req_t r;
+    if (!k)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_FOLDER, r.place = place, r.id = id;
+    request(k, &r);
 }
 void kit_preview_mix(kit_t *k, int16_t *out, uint32_t frames)
 {
