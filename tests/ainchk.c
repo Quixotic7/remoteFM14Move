@@ -12,7 +12,12 @@
  *   ainchk trimmed TAKE.wav ORIG.wav FROM   TAKE is ORIG's frames from FROM on, sample for sample, the take library's
  *                              132 frames faded at a cut end (tests/takes_e2e.sh); exit 0, else 1
  *   ainchk reversed A.wav B.wav   A is B's frames in the reverse order; exit 0, else 1
- *   ainchk rawpeak F.raw       a capture's (--capture: stereo int16, no header) "frames N peak P loud L" */
+ *   ainchk rawpeak F.raw       a capture's (--capture: stereo int16, no header) "frames N peak P loud L"
+ *   ainchk listen OUT.raw MIX.raw   Listen here (tests/listen_e2e.sh): what went to the Move against the mix, frame by
+ *                              frame (the same frames, in order): "frames N same S silenced Z ramp R other O run F
+ *                              after A": the Move's frame the mix's, zero where the mix sounds, between (the ramps), none
+ *                              of these; the longest silenced run (frames, quiet mix frames inside it allowed), the
+ *                              frames the same and sounding after that run */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -158,6 +163,41 @@ int main(int argc, char **argv)
         }
         fclose(f);
         printf("frames %ld peak %d loud %ld\n", n, pk, loud);
+        return 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "listen")) {
+        FILE *o = fopen(argv[2], "rb"), *m = fopen(argv[3], "rb");
+        int16_t a[2], b[2];
+        long n = 0, same = 0, sil = 0, ramp = 0, other = 0, run = 0, best = 0, best_end = -1, after = 0, silenced_in = 0;
+        if (!o || !m)
+            return printf("ainchk: no file\n"), 1;
+        while (fread(a, 2, 2, o) == 2 && fread(b, 2, 2, m) == 2) {
+            const int quiet = abs(b[0]) < 64 && abs(b[1]) < 64;
+            if (a[0] == b[0] && a[1] == b[1]) {
+                same++;
+                if (!quiet) {
+                    if (run > best)
+                        best = run, best_end = n, after = 0;
+                    run = 0, silenced_in = 0;
+                    if (best_end >= 0)
+                        after++;
+                } else if (run)
+                    run++;   /* (a quiet stretch of the mix inside a silenced run) */
+            } else if (!a[0] && !a[1]) {
+                sil++, run++, silenced_in++;
+            } else if (abs(a[0]) <= abs(b[0]) && abs(a[1]) <= abs(b[1]) && (a[0] == 0 || (a[0] < 0) == (b[0] < 0))
+                       && (a[1] == 0 || (a[1] < 0) == (b[1] < 0))) {
+                ramp++;
+            } else
+                other++;
+            n++;
+        }
+        if (run > best)
+            best = run, best_end = n;
+        (void)silenced_in;
+        fclose(o), fclose(m);
+        printf("frames %ld same %ld silenced %ld ramp %ld other %ld run %ld after %ld\n", n, same, sil, ramp, other, best,
+               after);
         return 0;
     }
     fprintf(stderr, "usage: ainchk make OUT.wav | find TAKE.wav IN.wav | same A.wav B.wav | gaps TAKE.wav IN.wav | info F.wav"

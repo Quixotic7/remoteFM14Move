@@ -44,6 +44,7 @@
 #include "recorder.h"
 #include "takes.h"
 #include "kit.h"
+#include "listen.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
 #include "wasm-rt.h"
@@ -78,9 +79,23 @@ static uint32_t g_cap_mix_n, g_cap_raw_n, g_cap_max;
 static int engine_audio_fw(int16_t *out, int frames);
 int engine_audio(void *ctx, int16_t *out, int frames)
 {
+    int fw, have;
     (void)ctx;
     /* Schwung's screen reader over the firmwares (announce.h; nothing when it is off) */
-    return ann_mix(out, frames, engine_audio_fw(out, frames));
+    fw = engine_audio_fw(out, frames);
+    have = ann_mix(out, frames, fw);
+    if (have < frames)   /* (the rest is silence for the Move: so it is for the page) */
+        memset(out + 2 * (have < 0 ? 0 : have), 0, (size_t)(frames - (have < 0 ? 0 : have)) * 4u);
+    /* Listen here (listen.h): the page's copy of what the Move plays, then the Move silenced while a page asks */
+    listen_audio(out, frames);
+    if (g_cap_out && fw == frames) {   /* (--capture's out.raw: what went to the Move, the blocks the engine gave) */
+        const uint32_t n = g_cap_out_n;
+        if (n + (uint32_t)frames <= g_cap_max) {
+            memcpy(g_cap_out + 2u * n, out, (size_t)frames * 4u);
+            g_cap_out_n = n + (uint32_t)frames;
+        }
+    }
+    return have;
 }
 
 static int engine_audio_fw(int16_t *out, int frames)
@@ -95,13 +110,6 @@ static int engine_audio_fw(int16_t *out, int frames)
     mr_ring_pop(&g_ring, out, (uint32_t)frames);
     g_rt_started = 1;
     g_rt_blocks++;
-    if (g_cap_out) {
-        const uint32_t n = g_cap_out_n;
-        if (n + (uint32_t)frames <= g_cap_max) {
-            memcpy(g_cap_out + 2u * n, out, (size_t)frames * 4u);
-            g_cap_out_n = n + (uint32_t)frames;
-        }
-    }
     return frames;
 }
 
@@ -5184,17 +5192,19 @@ static void housekeeping(uint32_t now)
         char tmp[sizeof g_status], esc[2][600];
         int n;
         const uint32_t dt = last_stat ? now - last_stat : 1000u;
+        listen_info_t li;
+        listen_get(&li);
         last_stat = now;
         g_peak = g_peak_acc;
         g_peak_acc = 0;
         n = snprintf(tmp, sizeof tmp, "{\"blocks\":%u,\"late\":%u,\"rt_blocks\":%u,\"ring\":%u,\"limited\":%u,"
                      "\"peak\":%d,\"session\":%d,\"mode\":%d,\"inputs\":%u,\"led_writes\":%u,\"screens\":%u,"
                      "\"active\":%d,\"master\":%d,\"move_mode\":%d,\"tk_shown\":%d,\"seq_playing\":%d,"
-                     "\"seq_following\":%d,",
+                     "\"seq_following\":%d,\"listeners\":%d,\"listen_muted\":%d,",
                      g_blocks, g_late, g_rt_blocks, mr_ring_count(&g_ring), g_mix.limited, g_peak, S->st.state,
                      S->st.mode, S->st.inputs, S->st.led_writes, S->st.screens, g_active, g_master,
                      rfm_move_mode(&S->core), rfm_move_tk_shown(&S->core), S->core.seq.playing ? 1 : 0,
-                     S->core.seq.following ? 1 : 0);
+                     S->core.seq.following ? 1 : 0, li.listeners, li.muted);
         if (C.test_api) {   /* (tests: the pads' colours as last written to the Move, 6 hex digits each) */
             int p;
             n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"move_pads\":\"");
@@ -5745,7 +5755,7 @@ int engine_start(const engine_cfg_t *cfg)
             g_cat->from == 2 ? "downloaded" : g_cat->from == 1 ? "bundled" : "none", g_cat->generated);
     fw_json();
     g_lead = (uint32_t)(C.lead_blocks < 4 ? 4 : C.lead_blocks > 8 ? 8 : C.lead_blocks) * FW_BLOCK;
-    if (mr_ring_init(&g_ain, 4, AIN_RING) != 0 || mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
+    if (mr_ring_init(&g_ain, 4, AIN_RING) != 0 || mr_ring_init(&g_ring, 4, RING_FRAMES) != 0 || listen_init() != 0 || !(g_tx = malloc(TX_CAP)) || !(S = calloc(1, sizeof *S)))
         return -1;
     {   /* the FM-1 on USB-A: its hooks are set before Move Remote's core starts (main.c: after engine_start) */
         fm1link_cfg_t lc;

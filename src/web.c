@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "engine.h"
+#include "listen.h"
 #include "files.h"
 #include "fm1link.h"
 #include "fsvc.h"
@@ -85,6 +86,11 @@ typedef struct {
     uint32_t smp_seq, kit_seq;
     /* the page's Update (POST /api/update): the body is an .rfm1u (update.h), streamed to update.c's file */
     int up_upd;
+    /* Listen here (/ws/audio, listen.h): a listener (lis), whether it keeps the Move's speaker on (lis_spk), when it
+     * last said anything (lis_heard: its heartbeat), the audio frames dropped for it (a slow reader) */
+    int lis, lis_spk;
+    uint64_t lis_heard;
+    uint32_t lis_drop;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -96,6 +102,8 @@ static pthread_t g_thr;
 static volatile int g_run;
 static engine_view_t g_v;    /* (the thread's copy) */
 static uint32_t g_vseq;
+static uint32_t g_lis_seq;   /* Listen here: audio frames sent (each frame's number) */
+static int g_lis_shown = -1; /* (the state last sent to the listeners: listeners << 1 | muted) */
 
 static uint64_t now_ms(void)
 {
@@ -1903,6 +1911,32 @@ static void request(client_t *c, const char *body)
             http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
         return;
     }
+    if (!strcmp(path, "/ws/audio") && header(req, "Sec-WebSocket-Key", key, sizeof key)) {   /* Listen here */
+        char acc[32], h[256], v[8];
+        int k;
+        mr_ws_accept(key, acc);
+        k = snprintf(h, sizeof h, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                  "Sec-WebSocket-Accept: %s\r\n\r\n", acc);
+        put(c, h, (size_t)k);
+        c->ws = 1;
+        c->lis = 1;
+        c->lis_spk = qparam(query, "spk", v, sizeof v) == 0 && v[0] == '1';   /* (default: the Move silent) */
+        c->lis_heard = now_ms();
+        c->in_n = 0;
+        g_lis_shown = -1;   /* (the state goes to every listener, this one too) */
+        return;
+    }
+    if (!strcmp(path, "/api/listen")) {
+        listen_info_t li;
+        char j[256];
+        listen_get(&li);
+        snprintf(j, sizeof j, "{\"listeners\":%d,\"muted\":%d,\"silent\":%d,\"tap_peak\":%d,\"out_peak\":%d,"
+                              "\"tapped\":%u,\"dropped\":%u,\"sent\":%u,\"rate\":%d,\"frame\":%d}",
+                 li.listeners, li.muted, li.silent, li.tap_peak, li.out_peak, li.tapped, li.dropped, g_lis_seq,
+                 LISTEN_RATE, LISTEN_FRAME);
+        json_reply(c, "200 OK", j);
+        return;
+    }
     if (!strcmp(path, "/ws") && header(req, "Sec-WebSocket-Key", key, sizeof key)) {
         char acc[32], h[256];
         int k;
@@ -2083,7 +2117,15 @@ static int ws_in(client_t *c)
             const uint8_t *d = f + h + 4;
             if (op == 0x8)
                 return -1;
-            if (op == 0x9)
+            if (c->lis) {   /* a listener: anything is its heartbeat; "spk 0" / "spk 1" its Move-speaker choice */
+                c->lis_heard = now_ms();
+                if (op == 0x9)
+                    ws_send(c, 0xA, NULL, 0, d, plen > 125 ? 125 : plen);
+                else if (op == 0x1 && plen == 5 && !memcmp(d, "spk ", 4) && (d[4] == '0' || d[4] == '1')) {
+                    c->lis_spk = d[4] == '1';
+                    g_lis_shown = -1;
+                }
+            } else if (op == 0x9)
                 ws_send(c, 0xA, NULL, 0, d, plen > 125 ? 125 : plen);
             else if (op == 0x2 && plen >= 1 && d[0] == 32)   /* MIDI for the active firmware (its editors' SysEx) */
                 midi_bytes(c, d + 1, plen - 1);
@@ -2251,6 +2293,66 @@ static void push(client_t *c)
     }
 }
 
+/* Listen here (listen.h): who listens and whether the Move is silent (a listener quiet for LIS_QUIET ms is gone: a
+ * page frozen in the background never leaves the Move silent), the state to the listeners when it changed, then the
+ * audio queued: one binary frame each LISTEN_FRAME frames, LIS_HDR bytes then the PCM (stereo int16, little-endian):
+ *   0 'L', 1 version 1, 2..3 frames, 4..7 the frame's number (from 0, one a frame: a gap is a frame dropped),
+ *   8..11 the sample rate
+ * A listener with more than LIS_QUEUE bytes still to read gets no new frame (dropped whole, never queued without end). */
+#define LIS_HDR 12
+#define LIS_QUEUE (48 * 1024)
+#define LIS_QUIET 3000u
+static void listen_step(uint64_t ms)
+{
+    static int16_t pcm[LISTEN_FRAME * 2];
+    int i, n = 0, mute = 0;
+    for (i = 0; i < MAXC; i++) {
+        client_t *c = &g_c[i];
+        if (c->fd < 0 || !c->lis || c->closing)
+            continue;
+        if (ms > c->lis_heard && ms - c->lis_heard > LIS_QUIET) {
+            fprintf(stderr, "listen: a listener quiet for %u ms: closed\n", (unsigned)(ms - c->lis_heard));
+            c->closing = 2;
+            continue;
+        }
+        n++;
+        if (!c->lis_spk)
+            mute = 1;
+    }
+    listen_set(n, mute);
+    if ((n << 1 | mute) != g_lis_shown) {
+        g_lis_shown = n << 1 | mute;
+        for (i = 0; i < MAXC; i++) {
+            client_t *c = &g_c[i];
+            char j[160];
+            int k;
+            if (c->fd < 0 || !c->lis || c->closing)
+                continue;
+            k = snprintf(j, sizeof j, "{\"type\":\"listen\",\"listeners\":%d,\"muted\":%d,\"spk\":%d,\"rate\":%d,"
+                                      "\"frame\":%d}", n, n > 0 && mute, c->lis_spk, LISTEN_RATE, LISTEN_FRAME);
+            ws_send(c, 0x1, NULL, 0, (const uint8_t *)j, (size_t)k);
+        }
+    }
+    if (!n)
+        return;
+    while (listen_read(pcm)) {
+        uint8_t hdr[LIS_HDR];
+        const uint32_t seq = g_lis_seq++;
+        hdr[0] = 'L', hdr[1] = 1, hdr[2] = LISTEN_FRAME & 0xFF, hdr[3] = LISTEN_FRAME >> 8;
+        for (i = 0; i < 4; i++)
+            hdr[4 + i] = (uint8_t)(seq >> (8 * i)), hdr[8 + i] = (uint8_t)((uint32_t)LISTEN_RATE >> (8 * i));
+        for (i = 0; i < MAXC; i++) {
+            client_t *c = &g_c[i];
+            if (c->fd < 0 || !c->lis || c->closing)
+                continue;
+            if (c->out_n - c->out_off > LIS_QUEUE)
+                c->lis_drop++;
+            else
+                ws_send(c, 0x2, hdr, LIS_HDR, (const uint8_t *)pcm, sizeof pcm);
+        }
+    }
+}
+
 static void *web_main(void *arg)
 {
     (void)arg;
@@ -2301,12 +2403,13 @@ static void *web_main(void *arg)
             if (pc[i]->fd == pf[i].fd && (pf[i].revents & (POLLIN | POLLHUP | POLLERR)))
                 cread(pc[i]);
         engine_view(&g_v, &g_vseq);
+        listen_step(now_ms());
         ms = now_ms();   /* (cread and cwrite stamp born with now_ms(): ages from a time taken before them underflowed) */
         for (i = 0; i < MAXC; i++) {
             client_t *c = &g_c[i];
             if (c->fd < 0)
                 continue;
-            if (c->ws && !c->closing)
+            if (c->ws && !c->closing && !c->lis)
                 push(c);
             else if (c->sreq > 0)   /* a States or projects request: answered once the engine has done it */
                 store_poll(c, ms);

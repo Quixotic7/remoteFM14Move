@@ -5,6 +5,7 @@
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make test-sampler the sampler's tests alone (tests/sampler_suite.sh, the kit's among them); make test-kit the kit's
+#   make test-listen  Listen here (the Move's output on the page, the Move silent meanwhile) on the simulator
 #   make test-update  the page's Update (src/update.c, tools/make_update.py): natively, then on the simulator
 #   make update       dist/updates/remotefm1-<version>-<commit>.rfm1u: this build as a signed update for the page's Update
 #                     (tools/make_update.py with UPDATE_SIGNING_KEY, default ~/.config/remotefm14move/update-signing-key.pem)
@@ -92,6 +93,11 @@ test-sampler: all
 test-kit: all
 	tests/kit_test.sh && $(DOCKER_RUN) tests/kit_e2e.sh
 
+# Listen here (src/listen.c, web.c /ws/audio): the Move's output streamed to a page, the Move silent meanwhile
+.PHONY: test-listen
+test-listen: all
+	$(DOCKER_RUN) tests/listen_e2e.sh
+
 # Global settings' Exit (the host leaves through Move Remote's QUIT) on the simulator
 test-exit: all
 	$(DOCKER_RUN) tests/exit_e2e.sh
@@ -164,7 +170,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c p
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/update.c src/gz.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
-            src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
+            src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c src/listen.c \
             src/fmwords.c src/fmreader.c src/recorder.c src/takes.c src/kit.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
@@ -176,7 +182,7 @@ HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h bui
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix in-tkdemo
 in-all: in-tools in-fw in-testfw in-cpu2fix in-tkdemo in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
-in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/ainchk build/tools/fake-tts \
+in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/listenprobe build/tools/ainchk build/tools/fake-tts \
           build/tools/rtpmidi-peer
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT) $(FW_DEV_OUT)
@@ -325,6 +331,10 @@ $(FXM)/audio_fx/%.so: tests/fxmods/audio_fx/%.c
 	$(CC) -O2 -shared -fPIC -w -I$(SW) -o $@ $< -lm
 
 build/tools/wsprobe: tests/wsprobe.c
+	mkdir -p build/tools
+	$(CC) $(CFLAGS) $(WARN) -o $@ $<
+# Listen here's page from the test's side (tests/listen_e2e.sh)
+build/tools/listenprobe: tests/listenprobe.c
 	mkdir -p build/tools
 	$(CC) $(CFLAGS) $(WARN) -o $@ $<
 
