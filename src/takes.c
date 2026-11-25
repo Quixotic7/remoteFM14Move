@@ -1254,6 +1254,10 @@ static void *worker(void *arg)
             a->mode = q.mode;
             a->has_row = tl_row_of(l, q.path, &a->row);
             break;
+        case TL_Q_JOB:                                  /* (the kit's file work: no answer) */
+            if (q.job)
+                q.job(q.arg);
+            continue;
         default: continue;                              /* (dropped) */
         }
         answer(l, a);

@@ -92,7 +92,8 @@ int tl_row_json(const tl_row_t *r, char *out, int cap);
 int tl_file(tl_t *l, uint32_t id, char *path, size_t pcap, char *wav, size_t wcap, tl_row_t *row);
 
 /* ---- the worker: requests in, answers out */
-enum { TL_Q_ROWS = 1, TL_Q_PEAKS, TL_Q_EDIT, TL_Q_UNDO, TL_Q_SAVED, TL_Q_LIST, TL_Q_FILE, TL_Q_RENAME };
+enum { TL_Q_ROWS = 1, TL_Q_PEAKS, TL_Q_EDIT, TL_Q_UNDO, TL_Q_SAVED, TL_Q_LIST, TL_Q_FILE, TL_Q_RENAME,
+       TL_Q_JOB };            /* (the kit, kit.h) JOB: job(arg) runs on the worker, no answer */
 typedef struct {
     int kind;             /* TL_Q_* */
     uint32_t take;        /* ROWS: the folder; PEAKS, EDIT, FILE, RENAME: the take; LIST: the day */
@@ -102,6 +103,8 @@ typedef struct {
     int mode;             /* SAVED: the mode it was recorded in (given back) */
     char path[1024];      /* SAVED: the file the recorder saved; RENAME: the new name */
     uint32_t tag;         /* (the page's requests: not 0, given back; PEAKS with a tag are never dropped for a newer) */
+    void (*job)(void *);  /* JOB: another module's file work on this thread (the kit's sounds) */
+    void *arg;
 } tl_req_t;
 typedef struct {
     int kind;             /* the request's */
