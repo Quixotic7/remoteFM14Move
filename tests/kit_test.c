@@ -5,7 +5,8 @@
  * the attack, the one shot's tail ending at its end, the hold's gate, a choke group, a pad again, mute, level and pan,
  * velocity, 24 voices and the oldest stolen), Samples' rows (folders first, by name, the pictures, a folder entered),
  * Takes' rows from the take library and a take loaded, the preview (after the tap: kit_preview_mix), the file work on
- * the take library's worker (TL_Q_JOB) and on the kit's own thread. Ends with ALL KIT TESTS PASSED.
+ * the take library's worker (TL_Q_JOB) and on the kit's own thread; (stage 3b) Stretch, the sends and the kit's
+ * strip, kits saved / listed / opened, a whole folder onto the pads. Ends with ALL KIT TESTS PASSED.
  *   tests/kit_test.sh */
 #include <math.h>
 #include <stdio.h>
@@ -407,6 +408,162 @@ static void t_thread(void)
     kit_free(k);
 }
 
+/* (stage 3b) Stretch: the region lasts its microseconds (a voice sounding re-fitted), the right half's semitones over it */
+static void t_stretch(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int len;
+    snprintf(p, sizeof p, "%s/st.wav", DIRP), wav(p, 48000, 2, 16, 0, 48000);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    CHECK(fabs(kit_rate_of(k, 0, 0) - 1.0) < 1e-9);
+    kit_set(k, 0, KIT_P_STRETCH, 4), kit_stretch(k, 0, 500000);   /* (4 steps of 125 ms: half a second) */
+    CHECK(fabs(kit_rate_of(k, 0, 0) - 2.0) < 1e-9 && fabs(kit_rate_of(k, 0, 12) - 4.0) < 1e-9);
+    kit_set(k, 0, KIT_P_PITCH, 700);                    /* (Pitch ignored) */
+    CHECK(fabs(kit_rate_of(k, 0, 0) - 2.0) < 1e-9);
+    kit_note(k, 0, 0, 127, 0);
+    run(k, 48000);
+    len = nonzero_until(48000);
+    CHECK(len >= 23990 && len <= 24010);
+    kit_set(k, 0, KIT_P_END, KIT_FRAC / 2);             /* (half the region in the same time) */
+    CHECK(fabs(kit_rate_of(k, 0, 0) - 1.0) < 1e-3);
+    kit_set(k, 0, KIT_P_END, KIT_FRAC);
+    kit_note(k, 0, 0, 127, 0);
+    run(k, 128);
+    kit_stretch(k, 0, 2000000);                         /* (the tempo halved: the voice sounding follows) */
+    run(k, 48000 - 128);
+    CHECK(nonzero_until(48000 - 128) >= 48000 - 129);   /* (a quarter of the sound a second: still on) */
+    kit_set(k, 0, KIT_P_STRETCH, 0), kit_stretch(k, 0, 0);
+    CHECK(fabs(kit_rate_of(k, 0, 0) - pow(2.0, 7.0 / 12.0)) < 1e-9);
+    kit_free(k);
+}
+/* (stage 3b) the sends: a pad's own after its level and pan, the kit's strip (level, pan, sends) over all; its own
+ * output (the sampler's Kit source) */
+static float S1[2 * 512], S2[2 * 512], S3[2 * 512];
+static int16_t OWN[2 * 512];
+static void bus_run(kit_t *k, uint32_t n, int with)
+{
+    float *const s[3] = { S1, S2, with ? S3 : NULL };
+    memset(B, 0, sizeof(float) * 2 * n), memset(S1, 0, sizeof S1), memset(S2, 0, sizeof S2), memset(S3, 0, sizeof S3);
+    kit_render_bus(k, B, s, OWN, n);
+}
+static void t_sends(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    const int s0[3] = { 0, 0, 0 }, sk[3] = { 0, 127, 127 };
+    snprintf(p, sizeof p, "%s/se.wav", DIRP), wav(p, 4800, 2, 16, 0, 48000);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_set(k, 0, KIT_P_SEND1, 50);
+    kit_note(k, 0, 0, 127, 0);
+    bus_run(k, 512, 1);
+    CHECK(fabsf(B[2 * 300] - ramp(300)) < 0.01f && fabsf(S1[2 * 300] - ramp(300) * 0.5f) < 0.01f && S2[2 * 300] == 0.0f &&
+          OWN[2 * 300] == ramp(300) && OWN[2 * 300 + 1] == -ramp(300));   /* (the strip at unity at first) */
+    kit_mix(k, 127, 64, sk);                            /* (the strip's sends 2 and 3: the whole kit) */
+    bus_run(k, 512, 0);
+    CHECK(fabsf(S2[2 * 100] - B[2 * 100]) < 0.01f && fabsf(S1[2 * 100] - B[2 * 100] * 0.5f) < 0.01f && S3[2 * 100] == 0.0f &&
+          fabsf(B[2 * 100]) > 100.0f);                  /* (send 3's FX not running: nothing there) */
+    kit_mix(k, 0, 64, s0);                              /* (level 0: nothing anywhere) */
+    bus_run(k, 512, 1);
+    CHECK(B[2 * 50] == 0.0f && S1[2 * 50] == 0.0f && OWN[2 * 50] == 0);
+    kit_mix(k, 127, 0, s0);                             /* (panned hard left) */
+    bus_run(k, 512, 1);
+    CHECK(fabsf(B[2 * 50]) > 100.0f && B[2 * 50 + 1] == 0.0f);
+    kit_free(k);
+}
+/* (stage 3b) kits: saved (Kit 1, Kit 2: the sounds copied, a name taken twice numbered, kit.json), listed (Files'
+ * Kits), opened; one save at a time; a whole folder onto the pads (in name order, the rest emptied) */
+static void t_kits(void)
+{
+    char d[600], kd[700], p[800], q[800];
+    kit_cfg_t c;
+    kit_ans_t a;
+    kit_t *k;
+    static kit_kit_t x;
+    struct stat st;
+    int i, kit1 = 0;
+    snprintf(d, sizeof d, "%s/KS", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/F", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/G", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/F/sub", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/F/b 10.wav", d), wav(p, 300, 1, 16, 0, 48000);
+    snprintf(p, sizeof p, "%s/F/b 9.wav", d), wav(p, 200, 1, 16, 0, 48000);
+    snprintf(p, sizeof p, "%s/F/a.wav", d), wav(p, 100, 1, 16, 0, 48000);
+    snprintf(p, sizeof p, "%s/G/a.wav", d), wav(p, 400, 1, 16, 0, 48000);
+    snprintf(kd, sizeof kd, "%s/RemoteFM1/Kits", d);
+    memset(&c, 0, sizeof c);
+    c.samples_dir = d, c.kits_dir = kd;
+    k = kit_new(&c);
+    /* saved */
+    memset(&x, 0, sizeof x);
+    x.layout = 1, x.mix[0] = 90, x.mix[1] = 40, x.mix[4] = 7;
+    for (i = 0; i < KIT_PADS; i++)
+        x.v[i][KIT_P_END] = KIT_FRAC, x.v[i][KIT_P_PITCH] = (int16_t)(i * 10 - 50);
+    x.v[3][KIT_P_STRETCH] = 16, x.v[3][KIT_P_SEND2] = 60;
+    snprintf(x.path[0], sizeof x.path[0], "%s/F/a.wav", d);
+    snprintf(x.path[1], sizeof x.path[1], "%s/F/a.wav", d);   /* (the same file: one copy) */
+    snprintf(x.path[3], sizeof x.path[3], "%s/G/a.wav", d);   /* (another a.wav: "04 a.wav") */
+    snprintf(x.path[5], sizeof x.path[5], "%s/gone.wav", d);  /* (not there: the pad saved empty) */
+    kit_save(k, &x);
+    kit_save(k, &x);                                    /* (one at a time: refused) */
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_SAVED && a.status == KIT_FAILED);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_SAVED && a.status == KIT_OK && !strcmp(a.name, "Kit 1"));
+    snprintf(p, sizeof p, "%s/Kit 1/a.wav", kd), snprintf(q, sizeof q, "%s/Kit 1/04 a.wav", kd);
+    CHECK(!stat(p, &st) && st.st_size == 44 + 200 && !stat(q, &st) && st.st_size == 44 + 800);
+    snprintf(p, sizeof p, "%s/Kit 1/kit.json", kd);
+    CHECK(!stat(p, &st) && st.st_size > 100);
+    kit_save(k, &x);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.status == KIT_OK && !strcmp(a.name, "Kit 2"));
+    /* listed: Files' Kits */
+    kit_rows(k, KIT_PL_KITS, 0, 0, 3);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_ROWS && a.place == KIT_PL_KITS && a.total == 2 && a.n == 2 &&
+          a.rows[0].kind == KIT_ROW_KIT && !strcmp(a.rows[0].name, "Kit 1") && !strcmp(a.rows[1].name, "Kit 2"));
+    kit1 = (int)a.rows[0].id;
+    /* opened */
+    kit_open(k, (uint32_t)kit1);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_KIT && a.status == KIT_OK && !strcmp(a.kit.name, "Kit 1") && a.kit.layout == 1 &&
+          a.kit.mix[0] == 90 && a.kit.mix[1] == 40 && a.kit.mix[4] == 7);
+    snprintf(p, sizeof p, "%s/Kit 1/a.wav", kd), snprintf(q, sizeof q, "%s/Kit 1/04 a.wav", kd);
+    CHECK(!strcmp(a.kit.path[0], p) && !strcmp(a.kit.path[1], p) && !strcmp(a.kit.path[3], q) && !a.kit.path[5][0] &&
+          !a.kit.path[2][0] && a.kit.v[3][KIT_P_STRETCH] == 16 && a.kit.v[3][KIT_P_SEND2] == 60 &&
+          a.kit.v[15][KIT_P_PITCH] == 100 && a.kit.v[7][KIT_P_END] == KIT_FRAC);
+    kit_open(k, 4242);                                  /* (no such kit) */
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_KIT && a.status == KIT_FAILED);
+    /* a folder onto the pads: a, b 9, b 10 (names in order, numbers as numbers), the rest emptied */
+    for (i = 0; i < 6; i++) {
+        snprintf(p, sizeof p, "%s/G/a.wav", d);
+        kit_load(k, i, p);
+    }
+    kit_work(k);
+    while (kit_poll(k, &a)) {}
+    kit_rows(k, KIT_PL_SAMPLES, 0, 0, 3);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.rows[0].kind == KIT_ROW_DIR && !strcmp(a.rows[0].name, "F"));
+    kit_folder(k, KIT_PL_SAMPLES, a.rows[0].id);
+    kit_work(k);
+    {
+        int got = 0, empty = 0, order = 1;
+        while (kit_poll(k, &a)) {
+            got++;
+            if (a.status == KIT_EMPTY)
+                empty++;
+            else
+                order &= (a.pad == 0 && strstr(a.path, "/F/a.wav")) || (a.pad == 1 && strstr(a.path, "/F/b 9.wav")) ||
+                         (a.pad == 2 && strstr(a.path, "/F/b 10.wav"));
+        }
+        CHECK(got == KIT_PADS && empty == 13 && order);
+    }
+    CHECK(kit_frames(k, 0) == 100 && kit_frames(k, 2) == 300 && kit_frames(k, 3) == 0 && kit_frames(k, 5) == 0);
+    kit_free(k);
+}
+
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -418,6 +575,9 @@ int main(void)
     t_samples();
     t_takes();
     t_thread();
+    t_stretch();
+    t_sends();
+    t_kits();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

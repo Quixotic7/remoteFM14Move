@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 CC=${CC:-cc}
 B=build/kit-test
 mkdir -p "$B"
-SRC="tests/kit_test.c src/kit.c src/takes.c"
+SRC="tests/kit_test.c src/kit.c src/takes.c src/minijson.c"
 FLAGS="-std=gnu11 -Wall -Wextra -O2 -g"   # (gnu11 as the Makefile: gcc on Linux wants it for the POSIX calls)
 fail=0
 run() {   # name, extra flags

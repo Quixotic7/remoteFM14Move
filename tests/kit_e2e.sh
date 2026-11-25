@@ -8,8 +8,14 @@
 #   - the pad played: a voice; a step entered and Play: the sequencer plays the pad by itself; knob 1: its pitch;
 #   - a pad held + Sample (the sampler's Manual mode): a take recorded into pad 2, the pad let go ends it, the take on
 #     the pad;
+#   - (stage 3b) Stretch: knob 3, the pad's rate fitted to its steps at the tempo, again when the tempo halves;
+#   - a pad's Send 1 (knob 8) into audio FX 1 (freeverb: its return sounds);
+#   - the Mixer's fourth strip, the kit's (knob 4: its level);
+#   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
+#   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
+#   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
 #   - the output has the kit (the host's mix, --capture);
-#   - a second start: the project's kit back (both pads loaded from their paths, the routing).
+#   - a second start: the project's kit back (its pads loaded from their paths, the routing, its name).
 #   tests/kit_e2e.sh      (after make)
 set -u
 cd "$(dirname "$0")/.."
@@ -21,10 +27,11 @@ T=$(mktemp -d /tmp/rfm14kit.XXXXXX)
 FWS=$T/fws; mkdir -p "$FWS"
 cp build/fw/felucca-1.8.2.* build/fw/choralroot-0.43.* "$FWS/"
 SIM=$T/sim; R=$T/root; SMP=$T/Samples; LIB=$SMP/RemoteFM1; CAP=$T/cap
-mkdir -p "$SIM" "$R" "$SMP/Drums" "$LIB" "$CAP"
+mkdir -p "$SIM" "$R" "$SMP/Drums" "$SMP/Kit808" "$LIB" "$CAP"
 echo "http://127.0.0.1:1" > "$R/catalog-url"
 build/tools/ainchk make "$SMP/Drums/Tone.wav" >/dev/null || { echo "  FAIL  ainchk"; exit 1; }
 cp "$SMP/Drums/Tone.wav" "$SMP/Drums/Zap.wav"
+for f in c b a; do cp "$SMP/Drums/Tone.wav" "$SMP/Kit808/$f.wav"; done   # (3b: a folder for All To Pads)
 PORT=17839; U="http://127.0.0.1:$PORT"; L=$T/host.log
 mkdir -p build/test-out
 status() { curl -s "$U/api/status"; }
@@ -39,12 +46,15 @@ set_() { jog 6 127; jog 1 1; jog "$1" 1; click; if [ "$2" -ge 0 ]; then jog "$2"
 shot() { rm -f "$SIM/mr-screen.pbm"; cmd shot; wait_for 3 '[ -s "$SIM/mr-screen.pbm" ]'; }
 start() {
     build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" --firmwares "$FWS" --site build/site --fw felucca \
-        --test-api --no-fm1 --takes-dir "$LIB" --samples-dir "$SMP" "$@" >>"$L" 2>&1 &
+        --test-api --no-fm1 --takes-dir "$LIB" --samples-dir "$SMP" --fx-dir build/fxmods "$@" >>"$L" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
         && wait_for 15 '[ "$(field session)" = 2 ] && grep -q "drew=1" "$SIM/mr-state" && [ -n "$(field kit_cur)" ]'
 }
 stop() { cmd quit; wait $HOST; RC=$?; }
+edit() { curl -s -o /dev/null -X POST --data "{\"op\":$1,\"a\":$2,\"b\":$3}" "$U/api/edit"; }   # (the page's ops)
+twice() { awk -v x="$1" 'BEGIN { print x * 2 }'; }
+near() { awk -v a="$1" -v b="$2" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(b != 0 && d / b < 0.01) }'; }
 
 # ---------------------------------------------------------------- the Kit view, Files, a sound onto a pad
 start --capture "$CAP" --capture-seconds 120 || { bad "the host did not start"; tail -20 "$L"; exit 1; }
@@ -56,8 +66,8 @@ wait_for 3 '[ "$(field kit_shown)" = 1 ]' && [ "$(field kit_route)" = 61440 ] &&
 sleep 1.1; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_rest.pbm
 jog 1 127; click; jog 2 1; click; jog 1 1   # the tabs, Files, its places (Takes chosen)
 jog 1 1; click                               # Samples
-wait_for 3 '[ "$(field kit_place)" = 2 ] && [ "$(field kit_total)" = 2 ]' \
-    && ok "Files, Samples: its two folders (Drums, RemoteFM1) listed" \
+wait_for 3 '[ "$(field kit_place)" = 2 ] && [ "$(field kit_total)" = 3 ]' \
+    && ok "Files, Samples: its folders (Drums, Kit808, RemoteFM1) listed" \
     || bad "Samples: place '$(field kit_place)' total '$(field kit_total)' rows answered '$(field kit_rows)'"
 shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_samples.pbm
 click                                        # Drums
@@ -87,6 +97,46 @@ cmd "cc 71 6"; sleep 0.2
 wait_for 2 '[ "$(field kit_pitch)" = 300 ]' && ok "knob 1: pad 1's pitch +3" || bad "knob 1: pitch '$(field kit_pitch)'"
 cmd "cc 71 122"; sleep 0.2                                  # (back to 0)
 
+# ---------------------------------------------------------------- (stage 3b) Stretch: knob 3, the tempo
+cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 0.2      # (pad 1 chosen)
+cmd "cc 73 12"; sleep 0.3                                   # 4 steps (3 ticks a step): 4 x 125 ms at 120 BPM
+r1=$(field kit_rate)
+[ "$(field kit_stretch)" = 4 ] && near "$r1" 4 && ok "knob 3: Stretch 4 steps, Tone (88200 frames) at $r1 a frame (half a second)" \
+    || bad "Stretch: '$(field kit_stretch)' rate '$r1'"
+cmd "cc 49 127"; hit 20; cmd "cc 49 0"; sleep 0.2            # Shift + step 5: Tempo
+cmd "cc 71 68"; sleep 0.3; press 51; sleep 0.3               # knob 1: -60 BPM
+wait_for 3 'near "$(twice "$(field kit_rate)")" "$r1"' \
+    && ok "the tempo halved (60 BPM): the stretch re-fitted ($r1 -> $(field kit_rate))" \
+    || bad "the tempo: rate '$r1' -> '$(field kit_rate)'"
+cmd "cc 49 127"; hit 20; cmd "cc 49 0"; sleep 0.2; cmd "cc 71 60"; sleep 0.3; press 51; sleep 0.3   # (120 again)
+cmd "cc 73 116"; sleep 0.3                                  # (Stretch Off)
+[ "$(field kit_stretch)" = 0 ] || bad "Stretch Off: '$(field kit_stretch)'"
+
+# ---------------------------------------------------------------- a pad's send into audio FX 1
+edit 20 4 2                                                 # (freeverb on audio FX 1)
+wait_for 5 '[ "$(field afx0)" = freeverb ]' || bad "freeverb: '$(field afx0)'"
+cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
+s0=$(field rpeak0)
+cmd "cc 78 60"; sleep 0.3                                   # knob 8: Send 1 60 %
+cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
+s1=$(field rpeak0)
+[ "${s0:-1}" = 0 ] && [ "${s1:-0}" -gt 500 ] && ok "knob 8: pad 1's Send 1 into freeverb (its return $s0 -> $s1)" \
+    || bad "the send: return $s0 -> $s1"
+cmd "cc 78 68"; sleep 0.2
+
+# ---------------------------------------------------------------- the Mixer's fourth strip
+m0=$(field kit_mix)
+cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # Track 4: Kit -> the Mixer
+wait_for 3 '[ "$(field kit_shown)" = 0 ]' || bad "the Mixer: kit shown '$(field kit_shown)'"
+cmd "cc 74 78"; sleep 0.4                                   # knob 4: the kit's level -50
+wait_for 3 '[ "$(field kit_level)" = 50 ]' && [ "$(field kit_mix)" -gt "${m0:-0}" ] \
+    && ok "the Mixer: knob 4 the kit's strip (its level 100 -> 50, MIX slot 3 to the host)" \
+    || bad "the kit's strip: level '$(field kit_level)' mix '$(field kit_mix)' (from $m0)"
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_mixer.pbm
+cmd "cc 74 50"; sleep 0.3
+cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6; cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6   # Routing, the Kit
+wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "back to the Kit: '$(field kit_shown)'"
+
 # ---------------------------------------------------------------- a pad held + Sample: a take into pad 2
 press 118                                                   # (the sampler app: Manual mode)
 wait_for 3 '[ "$(field smp_shown)" = 1 ]' || bad "the sampler: shown '$(field smp_shown)'"
@@ -98,6 +148,57 @@ cmd "note 69 110"; sleep 0.2; press 118; sleep 1.5; cmd "note 69 0"
 wait_for 5 '[ "$(field rec_takes)" = 1 ]' && wait_for 5 '[ "$(field kit_pads)" = 3 ]' && [ "$(field kit_recs)" = 1 ] \
     && ok "pad 2 held + Sample: a take recorded into it, the pad let go ends it, the take on pad 2" \
     || bad "the take into pad 2: takes '$(field rec_takes)' pads '$(field kit_pads)' recs '$(field kit_recs)' rec '$(field kit_rec)'"
+
+# ---------------------------------------------------------------- All To Pads; Undo
+press 51; sleep 0.3                                         # (Drums: up to Samples)
+wait_for 3 '[ "$(field kit_total)" = 3 ]' || bad "Samples again: '$(field kit_total)'"
+jog 1 1                                                     # Kit808
+cmd "cc 49 127"; click; cmd "cc 49 0"; sleep 0.2            # Shift + the click: its actions
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_folder.pbm
+click                                                       # All To Pads
+wait_for 5 '[ "$(field kit_pads)" = 7 ]' && ok "Shift + the click on Kit808: All To Pads (a, b, c on pads 1..3, the rest emptied)" \
+    || bad "All To Pads: pads '$(field kit_pads)'"
+press 56
+wait_for 5 '[ "$(field kit_pads)" = 3 ]' && ok "Undo: the kit back (Tone, the take)" || bad "Undo: pads '$(field kit_pads)'"
+
+# ---------------------------------------------------------------- Save; a new project; Load
+jog 6 127; click; jog 1 127; click; jog 2 1                 # the tabs, the Kit tab, Save
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_kittab.pbm
+click
+wait_for 8 '[ "$(field kit_saved)" = 1 ]' && [ "$(field kit_saved_name)" = "Kit 1" ] && [ -s "$LIB/Kits/Kit 1/kit.json" ] \
+    && grep -q '"file": "Tone.wav"' "$LIB/Kits/Kit 1/kit.json" && [ -s "$LIB/Kits/Kit 1/Tone.wav" ] \
+    && ok "Save: Kit 1 (Samples/RemoteFM1/Kits/Kit 1: its sounds and kit.json; \"Saved / Kit 1\")" \
+    || bad "Save: saved '$(field kit_saved)' '$(field kit_saved_name)': $(ls "$LIB/Kits" "$LIB/Kits/Kit 1" 2>&1 | tr '\n' ' ')"
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_saved.pbm
+sleep 2.5                                                   # (the project's autosave)
+cmd "cc 40 127"; sleep 0.4; hit 96; cmd "cc 40 0"; sleep 0.5   # Track 4 held + pad 5: the projects
+hit 28                                                      # step 13: a new project
+wait_for 15 '[ "$(field proj_cur)" = 1 ] && [ "$(field pfw_loading)" = 0 ]' && wait_for 5 '[ "$(field kit_pads)" = 0 ]' \
+    && ok "a new project: an empty kit" || bad "the new project: cur '$(field proj_cur)' pads '$(field kit_pads)'"
+press 51; sleep 0.3
+cmd "cc 40 127"; sleep 0.4; hit 94; cmd "cc 40 0"; sleep 0.5   # the Kit again
+wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "the Kit view: '$(field kit_shown)'"
+jog 1 127; click                                            # Load: Files' Kits
+wait_for 3 '[ "$(field kit_place)" = 3 ] && [ "$(field kit_total)" = 1 ]' || bad "Kits: place '$(field kit_place)' total '$(field kit_total)'"
+shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_kits.pbm
+click
+wait_for 8 '[ "$(field kit_kits)" = 1 ] && [ "$(field kit_pads)" = 3 ]' && [ "$(field kit_name)" = "Kit 1" ] \
+    && ok "Load: Kit 1 in the new project (its two sounds from its folder, its name)" \
+    || bad "Load: kits '$(field kit_kits)' pads '$(field kit_pads)' name '$(field kit_name)'"
+
+# ---------------------------------------------------------------- the sampler: Source Kit, To Kit
+t0=$(field rec_takes)
+edit 26 0 7; edit 26 6 2; edit 26 1 3; sleep 0.3            # (the page's Sampler window: Kit, To Kit, Manual)
+edit 27 0 0; sleep 0.3                                      # record
+cmd "note 68 110"; sleep 0.8; cmd "note 68 0"; sleep 0.3
+edit 27 0 0                                                 # .. stop: the take
+wait_for 8 '[ "$(field rec_takes)" = $((t0 + 1)) ]' && wait_for 8 '[ "$(field kit_pads)" = 7 ] && [ "$(field kit_to)" = 1 ]' \
+    && ok "Source Kit, To Kit: the take onto the next empty pad (pad 3)" \
+    || bad "To Kit: takes '$(field rec_takes)' (from $t0) pads '$(field kit_pads)' to '$(field kit_to)'"
+tk=$(ls -t "$LIB"/*/*Kit*.wav 2>/dev/null | head -1)
+info=$(build/tools/ainchk info "$tk" 2>/dev/null); pk=$(echo "$info" | sed -n 's/.* peak \([0-9]*\).*/\1/p')
+[ -n "$tk" ] && [ "${pk:-0}" -gt 1000 ] && ok "the take is the kit's output alone ($(basename "$tk"): $info)" \
+    || bad "the Kit take: '$tk' $info"
 sleep 2.5   # (the project's autosave)
 stop
 mix=$(build/tools/ainchk rawpeak "$CAP/mix.raw"); xp=$(echo "$mix" | sed -n 's/.* peak \([0-9]*\) .*/\1/p')
@@ -105,9 +206,9 @@ mix=$(build/tools/ainchk rawpeak "$CAP/mix.raw"); xp=$(echo "$mix" | sed -n 's/.
 
 # ---------------------------------------------------------------- a second start: the project's kit back
 start || { bad "the host did not start (2)"; tail -20 "$L"; exit 1; }
-wait_for 8 '[ "$(field kit_pads)" = 3 ]' && [ "$(field kit_route)" = 61440 ] \
-    && ok "a second start: the project's kit back (pads 1 and 2 loaded from their paths, the routing)" \
-    || bad "the kit after a start: pads '$(field kit_pads)' route '$(field kit_route)' loads '$(field kit_loads)'"
+wait_for 8 '[ "$(field kit_pads)" = 7 ]' && [ "$(field kit_route)" = 61440 ] && [ "$(field kit_name)" = "Kit 1" ] \
+    && ok "a second start: the project's kit back (pads 1..3 loaded from their paths, the routing, its name)" \
+    || bad "the kit after a start: pads '$(field kit_pads)' route '$(field kit_route)' name '$(field kit_name)' loads '$(field kit_loads)'"
 stop
 cp "$L" build/test-out/kit_host.log
 echo "kit_e2e: $checks checks, $fail failed (the host's log: build/test-out/kit_host.log; screens build/test-out/kit_*.pbm)"
