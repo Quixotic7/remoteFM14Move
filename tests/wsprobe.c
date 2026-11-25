@@ -162,7 +162,8 @@ int main(int argc, char **argv)
                 break;
             if ((buf[0] & 0x0F) == 1) {
                 infos++;
-                snprintf(info, sizeof info, "%.*s", (int)(len < 500 ? len : 500), (char *)buf + h);
+                if (len < 13 || memcmp(buf + h, "{\"type\":\"smp\"", 13))   /* (the Sampler window's state: not the info) */
+                    snprintf(info, sizeof info, "%.*s", (int)(len < 500 ? len : 500), (char *)buf + h);
             } else if ((buf[0] & 0x0F) == 2 && len >= 1) {
                 if (buf[h] == 1 && len >= 3) {
                     rows += buf[h + 2];

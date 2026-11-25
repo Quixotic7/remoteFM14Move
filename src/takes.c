@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -514,7 +515,9 @@ static void day_row(const tl_t *l, const char *name, tl_row_t *r)
     r->takes = takes_in(l, name, &t);
     free(t);
 }
-static void take_row(tl_t *l, const char *day, const char *name, tl_row_t *r)
+static void take_row_(tl_t *l, const char *day, const char *name, tl_row_t *r, int pic);
+static void take_row(tl_t *l, const char *day, const char *name, tl_row_t *r) { take_row_(l, day, name, r, 1); }
+static void take_row_(tl_t *l, const char *day, const char *name, tl_row_t *r, int pic)   /* pic 0: no picture */
 {
     char p[1400];
     wav_t w;
@@ -537,7 +540,7 @@ static void take_row(tl_t *l, const char *day, const char *name, tl_row_t *r)
             close(fd);
         }
     }
-    if ((t = ptab(l, p, NULL)) && t->frames) {
+    if (pic && (t = ptab(l, p, NULL)) && t->frames) {
         for (c = 0; c < TL_THUMB; c++) {
             const uint64_t a = t->frames * (uint64_t)c / TL_THUMB, b = t->frames * (uint64_t)(c + 1) / TL_THUMB;
             uint64_t j;
@@ -946,14 +949,195 @@ void tl_set_labels(tl_t *l, const char *const labels[3])
     pthread_mutex_unlock(&l->mu);
 }
 
+/* ------------------------------------------------------------------ the page's: rename, the list, the files --- */
+static int bad_name(const char *s)
+{
+    const unsigned char *p;
+    int seen = 0;
+    if (!s || !*s || *s == '.' || strlen(s) > TL_NAME_MAX)
+        return 1;
+    for (p = (const unsigned char *)s; *p; p++) {
+        if (*p < 0x20 || *p == 0x7F || *p == '/' || *p == '\\')
+            return 1;
+        seen |= *p != ' ';
+    }
+    return !seen;
+}
+static int rename_locked(tl_t *l, uint32_t id, const char *name, tl_row_t *after)
+{
+    tl_row_t r;
+    char nm[TL_REL], rel[TL_REL + 16], from[1400], to[1400], day[11];
+    const char *base;
+    struct stat sb;
+    memset(after, 0, sizeof *after);
+    if (bad_name(name))
+        return -1;
+    if (!find_locked(l, id, &r, 0) || r.kind != TL_TAKE || !(base = strrchr(r.rel, '/')))
+        return 0;                                       /* (a stems take keeps its name: its files are named in it) */
+    base++;
+    snprintf(day, sizeof day, "%.10s", r.rel);
+    if (is_head(name) && !strncmp(name, base, 12))     /* (its own head kept; another one's: a name after ours) */
+        snprintf(nm, sizeof nm, "%s", name);
+    else
+        snprintf(nm, sizeof nm, "%.12s%s", base, name);
+    if (!ends(nm, ".wav") && strlen(nm) + 4 < sizeof nm)
+        strcat(nm, ".wav");
+    if (!ends(nm, ".wav"))
+        return -1;
+    if (!strcmp(nm, base)) {                            /* (the same name: nothing to do) */
+        take_row_(l, day, nm, after, 0);
+        return 1;
+    }
+    snprintf(rel, sizeof rel, "%s/%s", day, nm);
+    snprintf(from, sizeof from, "%s/%s", l->dir, r.rel);
+    snprintf(to, sizeof to, "%s/%s", l->dir, rel);
+    if (!lstat(to, &sb))
+        return -2;
+    if (rename(from, to))
+        return 0;
+    ptab_forget(l, from);
+    if (l->undo_op && !strcmp(l->undo_rel, r.rel)) {    /* (the undo follows the take: its copy renamed too) */
+        char tp[1400];
+        trash_path(l, rel, tp, sizeof tp);
+        if (!rename(l->undo_trash, tp)) {
+            snprintf(l->undo_rel, sizeof l->undo_rel, "%s", rel);
+            snprintf(l->undo_trash, sizeof l->undo_trash, "%s", tp);
+            undo_save(l);
+        } else
+            undo_drop(l);
+    }
+    take_row_(l, day, nm, after, 0);
+    return 1;
+}
+int tl_rename(tl_t *l, uint32_t id, const char *name, tl_row_t *after)
+{
+    int r;
+    pthread_mutex_lock(&l->mu);
+    r = rename_locked(l, id, name, after);
+    pthread_mutex_unlock(&l->mu);
+    return r;
+}
+
+static int jesc(const char *s, char *out, size_t cap)   /* a JSON string's inside */
+{
+    size_t k = 0;
+    for (; *s && k + 7 < cap; s++) {
+        const unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\')
+            out[k++] = '\\', out[k++] = (char)c;
+        else if (c < 0x20)
+            k += (size_t)snprintf(out + k, cap - k, "\\u%04x", c);
+        else
+            out[k++] = (char)c;
+    }
+    out[k] = 0;
+    return (int)k;
+}
+int tl_row_json(const tl_row_t *r, char *out, int cap)
+{
+    char e[TL_REL * 2];
+    const char *base = strrchr(r->rel, '/');
+    int n;
+    jesc(base ? base + 1 : r->rel, e, sizeof e);
+    n = snprintf(out, (size_t)cap, "{\"id\":%u,\"kind\":\"%s\",\"src\":%d,\"name\":\"%s\",\"date\":\"%04d-%02d-%02d\","
+                 "\"bars\":%u,\"bpm\":%.2f,\"frames\":%llu,\"rate\":%u}", r->id,
+                 r->kind == TL_DAY ? "day" : r->kind == TL_STEMS ? "stems" : "take", r->src, e, r->year, r->month, r->day,
+                 r->bars, r->bpm, (unsigned long long)r->frames, r->rate);
+    return n < 0 ? 0 : n >= cap ? cap - 1 : n;
+}
+typedef struct { char *s; size_t n, cap; int bad; } sb_t;
+static void sb_put(sb_t *b, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void sb_put(sb_t *b, const char *fmt, ...)
+{
+    va_list ap;
+    int k;
+    if (b->bad)
+        return;
+    for (;;) {
+        va_start(ap, fmt);
+        k = vsnprintf(b->s + b->n, b->cap - b->n, fmt, ap);
+        va_end(ap);
+        if (k < 0) {
+            b->bad = 1;
+            return;
+        }
+        if ((size_t)k < b->cap - b->n) {
+            b->n += (size_t)k;
+            return;
+        }
+        {
+            char *t = realloc(b->s, b->cap * 2 + (size_t)k);
+            if (!t) {
+                b->bad = 1;
+                return;
+            }
+            b->s = t, b->cap = b->cap * 2 + (size_t)k;
+        }
+    }
+}
+char *tl_list_json(tl_t *l, uint32_t day)
+{
+    char (*dv)[TL_REL] = NULL, (*tv)[TL_REL] = NULL;
+    char row[TL_REL * 2 + 256];
+    sb_t b = { malloc(4096), 0, 4096, 0 };
+    int nd, nt, i, d = -1;
+    tl_row_t r;
+    if (!b.s)
+        return NULL;
+    pthread_mutex_lock(&l->mu);
+    nd = days(l, &dv);
+    for (i = 0; i < nd && d < 0 && day && day != TL_NEWEST; i++)
+        if (fnv(dv[i]) == day)
+            d = i;
+    if (d < 0 && nd)                                    /* (the newest; a day gone meanwhile: the newest too) */
+        d = 0;
+    sb_put(&b, "{\"day\":%u,\"undo\":%d,\"days\":[", d >= 0 ? fnv(dv[d]) : 0u, l->undo_op != 0);
+    for (i = 0; i < nd; i++) {
+        day_row(l, dv[i], &r);
+        sb_put(&b, "%s{\"id\":%u,\"date\":\"%s\",\"today\":%d,\"takes\":%d}", i ? "," : "", r.id, dv[i], r.today, r.takes);
+    }
+    sb_put(&b, "],\"takes\":[");
+    nt = d >= 0 ? takes_in(l, dv[d], &tv) : 0;
+    for (i = 0; i < nt; i++) {
+        take_row_(l, dv[d], tv[i], &r, 0);
+        tl_row_json(&r, row, sizeof row);
+        sb_put(&b, "%s%s", i ? "," : "", row);
+    }
+    sb_put(&b, "]}");
+    pthread_mutex_unlock(&l->mu);
+    free(tv);
+    free(dv);
+    if (b.bad) {
+        free(b.s);
+        return NULL;
+    }
+    return b.s;
+}
+int tl_file(tl_t *l, uint32_t id, char *path, size_t pcap, char *wav, size_t wcap, tl_row_t *row)
+{
+    tl_row_t r;
+    int ok;
+    pthread_mutex_lock(&l->mu);
+    ok = find_locked(l, id, &r, 0) && r.kind != TL_DAY;
+    if (ok) {
+        snprintf(path, pcap, "%s/%s", l->dir, r.rel);
+        take_file(l, r.rel, wav, wcap);
+        if (row)
+            *row = r;
+    }
+    pthread_mutex_unlock(&l->mu);
+    return ok;
+}
+
 /* ------------------------------------------------------------------ the worker --- */
 void tl_post(tl_t *l, const tl_req_t *q)
 {
     int i;
     pthread_mutex_lock(&l->qmu);
-    if (q->kind == TL_Q_PEAKS)                          /* (a newer view: the older one not started is dropped) */
+    if (q->kind == TL_Q_PEAKS && !q->tag)               /* (a newer view: the older one not started is dropped; the
+                                                         * page's are each answered) */
         for (i = 0; i < l->qn; i++)
-            if (l->q[(l->qh + i) % QN].kind == TL_Q_PEAKS)
+            if (l->q[(l->qh + i) % QN].kind == TL_Q_PEAKS && !l->q[(l->qh + i) % QN].tag)
                 l->q[(l->qh + i) % QN].kind = 0;
     if (l->qn == QN)
         l->qh = (l->qh + 1) % QN, l->qn--;
@@ -977,8 +1161,10 @@ int tl_poll(tl_t *l, tl_ans_t *a)
 static void answer(tl_t *l, const tl_ans_t *a)
 {
     pthread_mutex_lock(&l->amu);
-    if (l->an == AN)
+    if (l->an == AN) {
+        free(l->ans[l->ah].text);                       /* (an answer never polled: its text with it) */
         l->ah = (l->ah + 1) % AN, l->an--;
+    }
     l->ans[(l->ah + l->an) % AN] = *a;
     l->an++;
     pthread_mutex_unlock(&l->amu);
@@ -1002,8 +1188,29 @@ static void *worker(void *arg)
         l->qh = (l->qh + 1) % QN, l->qn--;
         pthread_mutex_unlock(&l->qmu);
         memset(a, 0, sizeof *a);
-        a->kind = q.kind;
+        a->kind = q.kind, a->tag = q.tag;
         switch (q.kind) {
+        case TL_Q_LIST:
+            a->asked = q.take;
+            a->text = tl_list_json(l, q.take);
+            a->ok = a->text != NULL;
+            break;
+        case TL_Q_FILE: {
+            char p[1400], w[1400];
+            a->asked = q.take;
+            a->ok = tl_file(l, q.take, p, sizeof p, w, sizeof w, &a->row);
+            if (a->ok && (a->text = malloc(strlen(p) + strlen(w) + 2)))
+                snprintf(a->text, strlen(p) + strlen(w) + 2, "%s\n%s", p, w);
+            a->ok = a->ok && a->text;
+            a->has_row = a->ok;
+            break;
+        }
+        case TL_Q_RENAME:
+            a->asked = q.take;
+            q.path[sizeof q.path - 1] = 0;
+            a->ok = tl_rename(l, q.take, q.path, &a->row);
+            a->has_row = a->ok == 1;
+            break;
         case TL_Q_ROWS:
             a->asked = q.take, a->from = (int)q.from;
             a->n = tl_rows(l, q.take, (int)q.from, q.n, a->rows, &a->total, &a->folder);
@@ -1229,6 +1436,8 @@ void tl_free(tl_t *l)
     }
     for (k = 0; k < NCACHE; k++)
         free(l->cache[k].pk);
+    for (k = 0; l->ans && k < l->an; k++)
+        free(l->ans[(l->ah + k) % AN].text);
     free(l->ans);
     free(l->ring);
     pthread_mutex_destroy(&l->mu);

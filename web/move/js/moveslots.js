@@ -12,6 +12,8 @@
 //     (js/movebrowse.js: the Move's whole catalog as tiles, downloads, the filters)
 //   - the Move's States and projects (js/movestore.js): the header's States and Projects caps (desktop), "States of
 //     slot n" in a slot's load menu, States and Projects in the phone's slot menu
+//   - the Sampler window (js/movesmp.js): the header's Sampler cap (desktop), Sampler in the phone's slot menu; it and
+//     Mix & FX take turns over the faceplate
 //   - keys: ⌥1 ⌥2 ⌥3 play a slot (an empty one: its load menu), ⌥M the Mix & FX view, Esc back to the faceplate
 //     (when nothing is latched: the panel's Esc lets latches go first).
 // The faceplate follows the playing slot by itself (movehost.js "moved": main.js followMove).
@@ -23,6 +25,9 @@ import { mountMoveFiles } from "./movefiles.js";
 import { mountMoveWifi } from "./movewifi.js";
 import { mountMoveBrowse } from "./movebrowse.js";
 import { mountMoveStore, STORE_IC } from "./movestore.js";
+import { SmpView } from "./movesmp.js";
+
+const SMP_CAP_IC = '<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.6" fill="currentColor"/>';
 
 const PHONE = "(max-width: 640px)";
 
@@ -195,7 +200,8 @@ class SlotsUi {
       h("button", { class: "mv-pill", onclick: () => { this.menuSub = act; this.fillMenu(); } }, `Load into slot ${act + 1}`)),
       h("div", { class: "mv-ip-foot" },
         h("button", { class: "mv-pill", id: "mv-ip-states", onclick: () => { this.closeMenus(); this.storeView.open("states", act); } }, svg(STORE_IC.states, 14), "States"),
-        h("button", { class: "mv-pill", id: "mv-ip-projects", onclick: () => { this.closeMenus(); this.storeView.open("projects"); } }, svg(STORE_IC.projects, 14), "Projects")));
+        h("button", { class: "mv-pill", id: "mv-ip-projects", onclick: () => { this.closeMenus(); this.storeView.open("projects"); } }, svg(STORE_IC.projects, 14), "Projects"),
+        h("button", { class: "mv-pill", id: "mv-ip-smp", onclick: () => { this.closeMenus(); this.smpView.open(); } }, svg(SMP_CAP_IC, 14), "Sampler")));
   }
   closeMenus() {
     let any = closePop();
@@ -223,6 +229,7 @@ class SlotsUi {
         if (this.browse.isOpen) { e.preventDefault(); e.stopImmediatePropagation(); this.browse.close(); return; }
         if (this.storeView && this.storeView.isOpen) { e.preventDefault(); e.stopImmediatePropagation(); this.storeView.escape(); return; }
         if (popOpen() || this.menuEl) { e.preventDefault(); e.stopImmediatePropagation(); this.closeMenus(); return; }
+        if (this.smpView && this.smpView.isOpen && !(this.o.controls && this.o.controls.anyLatched())) { e.preventDefault(); e.stopImmediatePropagation(); this.smpView.escape(); return; }
         if (this.view.isOpen && !(this.o.controls && this.o.controls.anyLatched())) { e.preventDefault(); e.stopImmediatePropagation(); this.view.close(); }
       }
     }, true);
@@ -251,6 +258,12 @@ export function mountMoveUi(o) {
   ui.projectsBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-projectsbtn", id: "mv-projectsbtn", title: "The sequencer's 32 projects on the Move",
     onclick: () => ui.storeView.toggle("projects") }, svg(STORE_IC.projects, 15), h("span", {}, "Projects"));
   ui.filesBtn.before(ui.statesBtn, ui.projectsBtn);
+  // the Sampler window (js/movesmp.js): the Move's sampler app and its takes, laid out as Mix & FX (one of the two open)
+  ui.smpView = new SmpView({ store: ui.store, ui, player: o.player, phone: ui.phone });
+  ui.smpBtn = h("button", { class: "cap mv-mixbtn mv-filesbtn mv-smpbtn", id: "mv-smpbtn", "aria-pressed": "false", title: "Sampler",
+    onclick: () => ui.smpView.toggle() }, svg(SMP_CAP_IC, 15), h("span", {}, "Sampler"));
+  ui.mixBtn.before(ui.smpBtn);
+  { const mixOpen = ui.view.open.bind(ui.view); ui.view.open = () => { ui.smpView.close(); mixOpen(); }; }
   // the FM-1's Wi-Fi set up over the Move's USB-A (js/movewifi.js): the settings sheet's FM-1 Wi-Fi section, ?wifi
   ui.wifi = mountMoveWifi(o).view;
   return ui;

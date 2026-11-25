@@ -70,27 +70,47 @@ int tl_peaks(tl_t *l, uint32_t id, uint64_t from, uint64_t count, int n, uint8_t
 int tl_edit(tl_t *l, uint32_t id, int op, uint64_t from, uint64_t count, int ms, tl_row_t *after);
 int tl_undo(tl_t *l, tl_row_t *after);                                /* the last edit or delete undone: 1 */
 int tl_has_undo(tl_t *l);                                             /* (any thread) */
+/* (the page's Sampler window, README "The take library") */
+/* a take renamed (a WAV take only, not a stems take): name the new file name, or its part after the head; the take's
+ * own "<MMDD>-<HHMMSS> " head is put in front when the name lacks it, ".wav" after it when missing, so the list still
+ * parses it. 1 done (*after: the take now, its new id; the undo follows it), 0 no such take (or a stems take, or the
+ * rename failed), -1 a bad name ("/", a leading ".", empty, control characters, too long), -2 the name is taken */
+#define TL_NAME_MAX 160
+int tl_rename(tl_t *l, uint32_t id, const char *name, tl_row_t *after);
+/* the takes for the page as JSON (malloc'd; NULL: no memory): {"day": the day listed (its id; 0: no takes), "days":
+ * [{"id", "date": "YYYY-MM-DD", "today", "takes"}] newest first, "takes": [the day's takes as tl_row_json, newest first,
+ * no pictures (tl_peaks has them)], "undo"}; day: a day's id, 0 or TL_NEWEST the newest with takes */
+char *tl_list_json(tl_t *l, uint32_t day);
+/* a row as JSON: {"id", "kind": "take" | "stems" | "day", "src", "name" (the file's), "date", "bars", "bpm", "frames",
+ * "rate"}; the bytes written (cap - 1 at most) */
+int tl_row_json(const tl_row_t *r, char *out, int cap);
+/* a take's files: path its own (a WAV, or a stems take's folder), wav the WAV that stands for it (a stems take: its
+ * Master.wav). 1 found (a take, not a day) */
+int tl_file(tl_t *l, uint32_t id, char *path, size_t pcap, char *wav, size_t wcap, tl_row_t *row);
 
 /* ---- the worker: requests in, answers out */
-enum { TL_Q_ROWS = 1, TL_Q_PEAKS, TL_Q_EDIT, TL_Q_UNDO, TL_Q_SAVED };
+enum { TL_Q_ROWS = 1, TL_Q_PEAKS, TL_Q_EDIT, TL_Q_UNDO, TL_Q_SAVED, TL_Q_LIST, TL_Q_FILE, TL_Q_RENAME };
 typedef struct {
     int kind;             /* TL_Q_* */
-    uint32_t take;        /* ROWS: the folder; PEAKS, EDIT: the take */
+    uint32_t take;        /* ROWS: the folder; PEAKS, EDIT, FILE, RENAME: the take; LIST: the day */
     uint64_t from, count; /* ROWS: rows; PEAKS, EDIT (TRIM): frames */
     int n;                /* ROWS: rows wanted; PEAKS: columns */
     int op, value;        /* EDIT: TL_OP_*, FADE's ms */
     int mode;             /* SAVED: the mode it was recorded in (given back) */
-    char path[1024];      /* SAVED: the file the recorder saved */
+    char path[1024];      /* SAVED: the file the recorder saved; RENAME: the new name */
+    uint32_t tag;         /* (the page's requests: not 0, given back; PEAKS with a tag are never dropped for a newer) */
 } tl_req_t;
 typedef struct {
     int kind;             /* the request's */
+    uint32_t tag;         /* the request's */
+    char *text;           /* LIST: its JSON; FILE: "<path>\n<wav>" (malloc'd: the poller frees it; NULL none) */
     uint32_t asked;       /* ROWS: the folder asked; PEAKS: the take */
     uint32_t folder;      /* ROWS: the folder answered */
     int total, from, n;   /* ROWS: its rows, the first, the rows given; PEAKS: n peaks */
     uint64_t pfrom, pcount;   /* PEAKS: the window */
     uint8_t pk[TL_WPEAKS];
-    int op, ok, mode;     /* EDIT / UNDO: the op, done; SAVED: the mode */
-    int has_row;          /* EDIT, UNDO, SAVED: row is the take now */
+    int op, ok, mode;     /* EDIT / UNDO: the op, done; RENAME: tl_rename's; LIST, FILE: 1 done; SAVED: the mode */
+    int has_row;          /* EDIT, UNDO, SAVED, RENAME, FILE: row is the take now */
     tl_row_t row;
     tl_row_t rows[TL_ROWS];
 } tl_ans_t;

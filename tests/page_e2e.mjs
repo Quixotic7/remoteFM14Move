@@ -35,6 +35,10 @@
 //     folder, --takes-dir) a folder with its rename and delete off, a take in it listed and downloaded through the
 //     link, a folder made, a file dropped into it, renamed, deleted, a folder
 //     deleted with what is in it, firmwares/ read-only; Export states and Export all projects as real downloads;
+//   - the Sampler window (js/movesmp.js): opened as Mix & FX; settings both ways (the page to the core and the
+//     recorder, the Move's Track + Sample to the page); a take recorded from the page; browser playback and Range;
+//     Trim, Normalize, Undo, Rename and its rules, Delete and Undo, Download, Play on the Move; on the phone, no
+//     sideways scroll; screenshots build/test-out/sampler-*.png;
 //   - the phone (390 x 844): the slot button, its menu, the Mix & FX sheet; FM-1 Wi-Fi (js/movewifi.js) from the
 //     settings sheet: the USB-A line, a canned list, a password picked and shown (move-page-phone-wifi.png);
 //   - screenshots: docs/move-page.png (or --shot=FILE), move-page-slots.png, move-page-fxpages.png, move-page-mixfx.png,
@@ -154,6 +158,154 @@ const shot = async (file) => {
 };
 const active = async () => { const st = await status(); return st ? st.active : -1; };
 const dv = (sel) => js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return e ? e.dataset.v : null; })()`);
+
+// ---- the Sampler window (js/movesmp.js; src/web.c /api/smp, /api/takes; rfm1cs rfm_move_smp_set): the header's
+// Sampler cap opens it as Mix & FX opens (the same panel); a setting changed on the page reaches the core (GET /api/smp)
+// and the recorder (the status's rec_*), one changed on the Move (Track 1 held + Sample: the source) shows on the page;
+// Record from the page makes a take that the Takes list shows; Play in the browser fetches its WAV (a Range answered:
+// 206, 416 past the end); Trim (two markers dragged), Normalize (the peak -0.3 dBFS), Undo (byte for byte), Rename (its
+// rules: "/", a leading ".", a name taken), Delete and Undo, Download, Play on the Move; screenshots in build/test-out/
+const OUT = join(ROOT, "build/test-out");
+const moveCmd = async (...lines) => {   // (the simulator's command pipe: the Move's own controls)
+  for (const l of lines) { execFileSync("docker", ["exec", cid, "sh", "-c", `printf '%s\\n' '${l}' > /tmp/s/mr-cmd`]); await sleep(150); }
+};
+function smallWav(frames, amp) {
+  const d = frames * 4, b = Buffer.alloc(44 + d);
+  b.write("RIFF", 0); b.writeUInt32LE(36 + d, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(2, 22); b.writeUInt32LE(44100, 24); b.writeUInt32LE(176400, 28); b.writeUInt16LE(4, 32); b.writeUInt16LE(16, 34);
+  b.write("data", 36); b.writeUInt32LE(d, 40);
+  for (let i = 0; i < frames * 2; i++) b.writeInt16LE(Math.round(amp * Math.sin(i / 9)), 44 + 2 * i);
+  return b;
+}
+async function sampler(responses) {
+  mkdirSync(OUT, { recursive: true });
+  const hdr = await js(`(() => { const t = document.getElementById("top"), r = [...t.querySelectorAll("button, a")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right);
+    return { w: innerWidth, right: Math.max(...r), sw: document.documentElement.scrollWidth, cap: !!document.getElementById("mv-smpbtn").offsetParent }; })()`);
+  ok(hdr.cap && hdr.right <= hdr.w + 1 && hdr.sw <= hdr.w, `the header at ${hdr.w} px holds the Sampler cap too (its last control ends at ${Math.round(hdr.right)})`);
+  const smpNow = () => api("smp").catch(() => null);
+  const takes = (day) => api(`takes${day ? `?day=${day}` : ""}`).catch(() => null);
+  const total = (l) => (l && l.days ? l.days.reduce((n, d) => n + d.takes, 0) : -1);
+  const wavOf = async (id) => Buffer.from(await (await fetch(`${API}takes/wav?id=${id}`)).arrayBuffer());
+  const peakOf = (b) => { let m = 0; for (let i = 44; i + 1 < b.length; i += 2) m = Math.max(m, Math.abs(b.readInt16LE(i))); return m; };
+  const post = (p, body) => fetch(API + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  await click("#mv-smpbtn");
+  ok(await until(`document.querySelector("#mv-smp.open") && document.getElementById("mv-smpbtn").classList.contains("lit") && FM1MoveUi.smpView.on && document.querySelector('#mv-smp [data-ctl="mode"]') && document.getElementById("mv-smp-rec")`, 6000, "the Sampler"),
+    "the header's Sampler cap opens the Sampler window: Record, the Move's settings, the record button");
+  await sleep(500);   // (it slides in)
+  const geo = await js(`(() => { const e = document.getElementById("mv-smp"), b = e.getBoundingClientRect(), hh = parseFloat(getComputedStyle(document.getElementById("mv-view")).top);
+    return { panel: e.classList.contains("mv-view"), top: b.top, hh, w: b.width, mix: !!document.querySelector("#mv-view.open") }; })()`);
+  ok(geo.panel && !geo.mix && Math.abs(geo.top - geo.hh) < 2 && geo.w >= 1270, `laid out as Mix & FX (its panel over the faceplate under the header, top ${Math.round(geo.top)}), Mix & FX closed`);
+  // a setting on the page: the core has it (GET /api/smp's set: rfm_move_smp_value) and the recorder follows (the status)
+  for (const [ctl, v, k, f, what] of [["mode", 3, 1, "rec_mode", "Mode Manual"], ["length", 4, 2, "rec_len", "Length 4 bars"], ["source", 2, 0, "rec_src", "Source Slot 2"]]) {
+    await click(`#mv-smp [data-ctl="${ctl}"] [data-v="${v}"]`);
+    ok(await untilApi(async () => { const s = await status(), j = await smpNow(); return s && j && s[f] === v && j.set[k] === v; }, 5000),
+      `${what} on the page: the Move's core (set[${k}] ${v}) and the recorder (${f} ${v})`);
+  }
+  await js(`document.querySelector('#mv-smp [data-ctl="threshold"]').focus()`);
+  await key("ArrowUp", { keyName: "ArrowUp", vk: 38 });
+  const thrPeak = Math.round(32767 * Math.pow(10, -23 / 20));
+  ok(await untilApi(async () => { const s = await status(), j = await smpNow(); return j.set[3] === -23 && Math.abs(s.rec_thr - thrPeak) <= 1; }, 5000),
+    `Threshold up a dB on the page: -23 dB in the core, the recorder's ${thrPeak}`);
+  // from the Move: Track 1 held + Sample (the app with slot 1 as its source): the page shows it
+  await moveCmd("cc 43 127"); await sleep(300); await moveCmd("cc 118 127", "cc 118 0"); await sleep(200); await moveCmd("cc 43 0");
+  ok(await until(`document.querySelector('#mv-smp [data-ctl="source"]').dataset.v === "1" && document.querySelector('#mv-smp [data-ctl="source"] .mv-seg.on[data-v="1"]') && !document.querySelector("#mv-smp .mv-smp-live").hidden`, 5000, "the Move's change"),
+    "on the Move, Track 1 held + Sample: Source Slot 1 shows on the page at once (and \"On the Move's screen\")");
+  await click(`#mv-smp [data-ctl="source"] [data-v="0"]`);
+  ok(await untilApi(async () => (await status()).rec_src === 0, 5000), "Source Master again from the page");
+  // record from the page (Manual): a note held on the Move meanwhile; the take in the list
+  const before = total(await takes());
+  await click("#mv-smp-rec");
+  ok(await until(`document.getElementById("mv-smp-state").dataset.state === "recording" && /^0:0/.test(document.getElementById("mv-smp-count").textContent)`, 5000, "recording"),
+    "the record button: recording (the state, the time running)");
+  await moveCmd("note 68 120");
+  await sleep(1400);
+  await shot(join(OUT, "sampler-record.png"));
+  await moveCmd("note 68 0");
+  await sleep(300);
+  await click("#mv-smp-rec");
+  ok(await untilApi(async () => total(await takes()) === before + 1, 10000) && await until(`document.getElementById("mv-smp-state").dataset.state === "idle"`, 5000, "idle"),
+    `the record button again: the take saved (${before} -> ${before + 1} takes), idle`);
+  const l1 = await takes(), nt = l1.takes[0];
+  ok(nt && / Master /.test(nt.name) && nt.frames > 44100 && nt.kind === "take", `the newest take: ${nt && nt.name} (${nt && nt.frames} frames)`);
+  // Takes: the days, the take's row, its wave
+  await click('#mv-smp .mv-tab[data-tab="1"]');
+  ok(await until(`document.querySelector('#mv-smp .mv-smp-take[data-take="${nt.id}"] canvas[data-ok]') && document.querySelector('#mv-smp .mv-smp-days .mv-pg.on')`, 8000, "the row"),
+    "Takes: the days, the new take's row on top with its wave (its peaks from the library)");
+  ok(await js(`document.querySelector("#mv-smp .mv-smp-take").dataset.take === "${nt.id}"`), "newest first");
+  // in the browser: the <audio> on its WAV; a Range answered
+  await click(`#mv-smp .mv-smp-take[data-take="${nt.id}"] .mv-smp-play`);
+  ok(await until(`FM1MoveUi.smpView.playing === ${nt.id} && FM1MoveUi.smpView.audio.currentTime > 0.05 && !document.querySelector('#mv-smp .mv-smp-ph[data-take="${nt.id}"]').hidden`, 8000, "playing"),
+    "Play: the take plays in the browser (the <audio>'s time moves, the line over its wave)");
+  ok([...responses].some(([u, s]) => u.includes(`api/takes/wav?id=${nt.id}`) && (s === 200 || s === 206)), "its WAV fetched through /api/takes/wav");
+  const rg = await js(`fetch("api/takes/wav?id=${nt.id}", { headers: { Range: "bytes=0-99" } }).then(async (r) => ({ s: r.status, n: (await r.arrayBuffer()).byteLength, cr: r.headers.get("Content-Range"), t: r.headers.get("Content-Type") }))`);
+  const full = await wavOf(nt.id);
+  const r416 = await fetch(`${API}takes/wav?id=${nt.id}`, { headers: { Range: `bytes=${full.length + 10}-` } });
+  const rsuf = await fetch(`${API}takes/wav?id=${nt.id}`, { headers: { Range: "bytes=-4" } });
+  const sufb = Buffer.from(await rsuf.arrayBuffer());
+  ok(rg.s === 206 && rg.n === 100 && rg.cr === `bytes 0-99/${full.length}` && rg.t === "audio/wav" && r416.status === 416 && rsuf.status === 206 &&
+    sufb.equals(full.subarray(full.length - 4)), `a Range answered: 206 (${rg.cr}), the last 4 bytes, 416 past its end`);
+  await click(`#mv-smp .mv-smp-take[data-take="${nt.id}"] .mv-smp-play`);
+  ok(await until(`!FM1MoveUi.smpView.playing && FM1MoveUi.smpView.audio.paused`, 3000, "stopped"), "Play again: stopped");
+  // Tools: Trim by two markers
+  await click(`#mv-smp .mv-smp-take[data-take="${nt.id}"] .mv-smp-tools`);
+  ok(await until(`document.querySelector('#mv-smp .mv-smp-tools-p[data-take="${nt.id}"] canvas[data-ok]')`, 5000, "the Tools"), "Tools: the take's wave with Trim's markers, the edits");
+  { const b = await box("#mv-smp-trim"); await drag(b.x + 3, b.y + b.h / 2, b.x + b.w * 0.2, b.y + b.h / 2); await drag(b.x + b.w - 3, b.y + b.h / 2, b.x + b.w * 0.85, b.y + b.h / 2); }
+  const sel = await js(`({ a: FM1MoveUi.smpView.trim.a, b: FM1MoveUi.smpView.trim.b })`);
+  ok(sel.a > 0 && sel.b < nt.frames && sel.b > sel.a, `the markers dragged: keep frames ${sel.a}..${sel.b} of ${nt.frames}`);
+  await sleep(300);
+  await shot(join(OUT, "sampler-takes.png"));
+  await click('#mv-smp .mv-smp-op[data-op="trim"]');
+  ok(await untilApi(async () => { const t = (await takes()).takes.find((x) => x.id === nt.id); return t && t.frames === sel.b - sel.a; }, 8000),
+    `Trim: the file holds exactly the part kept (${sel.b - sel.a} frames)`);
+  // Normalize, then the one Undo (the Move's): byte for byte
+  await until(`FM1MoveUi.smpView.take(${nt.id}) && FM1MoveUi.smpView.take(${nt.id}).frames === ${sel.b - sel.a} && document.querySelector('#mv-smp .mv-smp-tools-p[data-take="${nt.id}"] canvas[data-ok]')`, 5000, "the list again");
+  await sleep(400);
+  const pre = await wavOf(nt.id);
+  ok(peakOf(pre) > 300, `the take has sound (its peak ${peakOf(pre)})`);
+  await until(`!document.querySelector('#mv-smp .mv-smp-op[data-op="normalize"]').disabled`, 2000, "Normalize");
+  await click('#mv-smp .mv-smp-op[data-op="normalize"]');
+  ok(await untilApi(async () => peakOf(await wavOf(nt.id)) === 31656, 8000), "Normalize: its peak -0.3 dBFS (31656)");
+  ok(await until(`!document.getElementById("mv-smp-undo").disabled`, 3000, "Undo on"), "Undo on (the take library's one undo)");
+  await click("#mv-smp-undo");
+  ok(await untilApi(async () => (await wavOf(nt.id)).equals(pre), 8000) && (await smpNow()).undo === 0, "Undo: the take as before Normalize, byte for byte (the Move's undo used)");
+  // Rename: the rules (the API), then from the page
+  const head = nt.name.slice(0, 12);
+  const bad1 = await post("takes/rename", { id: nt.id, name: "a/b" }), bad2 = await post("takes/rename", { id: nt.id, name: ".hidden" });
+  const put = await fetch(`${API}fs/put?path=${encodeURIComponent(`audio/rec/${nt.date}`)}&name=${encodeURIComponent(`${head}Taken.wav`)}`, { method: "POST", body: smallWav(100, 1000) });
+  const bad3 = await post("takes/rename", { id: nt.id, name: "Taken" });
+  ok(bad1.status === 400 && bad2.status === 400 && put.ok && bad3.status === 409 && (await takes()).takes.some((t) => t.id === nt.id),
+    `Rename refused: "a/b" (${bad1.status}), ".hidden" (${bad2.status}), a name taken (${bad3.status}); the take as it was`);
+  await js(`window.prompt = () => "Page take"`);
+  await click(`#mv-smp .mv-smp-take[data-take="${nt.id}"] .mv-smp-ren`);
+  let rn = null;
+  ok(await untilApi(async () => { const l = await takes(); rn = l.takes.find((t) => t.name === `${head}Page take.wav`); return rn && !l.takes.some((t) => t.id === nt.id); }, 6000),
+    `Rename from the page: "${head}Page take.wav" (the head and .wav kept)`);
+  ok(rn && await until(`document.querySelector('#mv-smp .mv-smp-take[data-take="${rn.id}"]') && /Page take/.test(document.querySelector('#mv-smp .mv-smp-take[data-take="${rn.id}"] .mv-smp-tn b').textContent)`, 5000, "renamed row"),
+    "the list shows it renamed");
+  // Delete, then Undo
+  await click(`#mv-smp .mv-smp-take[data-take="${rn.id}"] .mv-smp-del`);
+  ok(await untilApi(async () => !(await takes()).takes.some((t) => t.id === rn.id), 6000) && await until(`!document.querySelector('#mv-smp .mv-smp-take[data-take="${rn.id}"]')`, 5000, "gone"),
+    "Delete: the take gone (into the library's trash), its row too");
+  await click("#mv-smp-undo");
+  ok(await untilApi(async () => (await takes()).takes.some((t) => t.id === rn.id), 6000) && await until(`document.querySelector('#mv-smp .mv-smp-take[data-take="${rn.id}"]')`, 5000, "back"),
+    "Undo: the take back");
+  // Download
+  const dl = join(tmp, "dl-smp");
+  mkdirSync(dl, { recursive: true });
+  await cdp("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl, eventsEnabled: true });
+  await click(`#mv-smp .mv-smp-take[data-take="${rn.id}"] .mv-smp-dl`);
+  ok(await untilApi(async () => { try { return readdirSync(dl).includes(`${head}Page take.wav`); } catch { return false; } }, 8000) &&
+    readFileSync(join(dl, `${head}Page take.wav`)).equals(await wavOf(rn.id)), "Download: the take's WAV, as it is on the Move");
+  // on the Move: the toggle, Play (the take library's reader, tl_play), Play again stops it
+  await click("#mv-smp-where");
+  await click(`#mv-smp .mv-smp-take[data-take="${rn.id}"] .mv-smp-play`);
+  ok(await untilApi(async () => (await status()).tl_play === rn.id, 4000), "on the Move: Play plays it through the Move (tl_play)");
+  await click(`#mv-smp .mv-smp-take[data-take="${rn.id}"] .mv-smp-play`);
+  ok(await untilApi(async () => !(await status()).tl_play, 4000), "Play again: stopped");
+  await click("#mv-smp-where");
+  ok(await js(`!FM1MoveUi.smpView.onMove`), "back to playing in the browser");  await esc();
+  ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "Esc"), "Esc closes the Sampler window");
+}
 
 // ---- States and projects (js/movestore.js, src/web.c /api/store): every action from the panel, checked on the Move's
 // side (/api/store, the status, the files through /api/fs, the host's log), the Move's own pads seen by the page,
@@ -956,6 +1108,9 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
     ok(await until(`document.getElementById("mv-fs").hidden`, 3000, "Esc"), "Esc closes the file browser");
   }
 
+  // ---- the Sampler window (js/movesmp.js over src/web.c /api/smp, /api/takes and the ops SMP_SET / SMP_PRESS)
+  await sampler(responses);
+
   // ---- States and projects (js/movestore.js over the host's /api/store: the Move's own, done as its pads do them)
   await storeChecks();
 
@@ -1008,6 +1163,32 @@ navigator.requestMIDIAccess({ sysex: true }).then((a) => {
   await edit(18, 1 * 8, 100);
   await click(".mv-close");
   ok(await until(`!document.querySelector("#mv-view.open")`, 3000, "close"), "the sheet's close button goes back to the faceplate");
+
+  // ---- the Sampler on the phone: from the slot menu, the full-screen sheet, no sideways scroll (Record, Takes, Tools)
+  await click("#mv-slotbtn");
+  await until(`document.getElementById("mv-ip-smp")`, 3000, "the menu again");
+  await click("#mv-ip-smp");
+  ok(await until(`document.querySelector("#mv-smp.open.phone") && FM1MoveUi.smpView.on`, 5000, "the phone's Sampler"), "Sampler from the slot menu: the full-screen sheet");
+  await sleep(600);   // (it slides in: a tap before it is there pans the viewport)
+  const phWide = () => js(`(() => { const v = document.getElementById("mv-smp"), b = v.getBoundingClientRect();
+    const out = [...v.querySelectorAll("button, canvas, .mv-segs, .mv-bar, .mv-smp-tn b")].filter((e) => e.offsetParent && e.getBoundingClientRect().right > innerWidth + 1).length;
+    return { w: b.width, x: b.left, sw: document.documentElement.scrollWidth, bw: v.querySelector(".mv-body").scrollWidth, cw: v.querySelector(".mv-body").clientWidth, out }; })()`);
+  await click('#mv-smp .mv-tab[data-tab="0"]');
+  await until(`document.getElementById("mv-smp-rec")`, 3000, "Record");
+  await sleep(500);
+  let pw = await phWide();
+  ok(pw.w >= 389 && pw.x <= 1 && pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Record on the phone: the whole width (${Math.round(pw.w)} px), no sideways scroll, nothing past the edge (${pw.out})`);
+  await shot(join(OUT, "sampler-phone-record.png"));
+  await click('#mv-smp .mv-tab[data-tab="1"]');
+  await until(`document.querySelector("#mv-smp .mv-smp-take canvas[data-ok]")`, 6000, "the phone's takes");
+  await click("#mv-smp .mv-smp-take .mv-smp-tools");
+  await until(`document.querySelector("#mv-smp .mv-smp-tools-p canvas[data-ok]")`, 5000, "the phone's Tools");
+  await sleep(500);
+  pw = await phWide();
+  ok(pw.sw <= 390 && pw.bw <= pw.cw + 1 && !pw.out, `Takes and Tools on the phone: no sideways scroll, nothing past the edge (${pw.out})`);
+  await shot(join(OUT, "sampler-phone-takes.png"));
+  await click("#mv-smp .mv-close");
+  ok(await until(`!document.querySelector("#mv-smp.open")`, 3000, "close"), "its close button goes back to the faceplate");
 
   // ---- States and projects on the phone: from the slot menu, the whole screen
   await click("#mv-slotbtn");

@@ -12,6 +12,10 @@
  *   GET /api/mix            the slots, the FX setup and the mix ({"type":"mix",..}: as /ws sends it)
  *   GET /api/fx             the installed Schwung FX modules and their parameters (fx.h fx_lib_json)
  *   POST /api/edit          {"op", "a", "b"}: a Mix & FX edit or a slot switch (engine.h ENG_OP_*), as /ws's ops
+ *   GET /api/smp            the Sampler window's state: the sampler's settings, the recorder now (engine.c smp_json;
+ *                           /ws sends it as text when it changes)
+ *   GET/POST /api/takes...  the Sampler window's takes (web.c "the Sampler window's takes": list, peaks, wav with
+ *                           Range, edit, undo, rename, play), done by the take library's worker
  *   POST /api/test/midi     {"track", "b0", "b1", "b2"}: sequencer MIDI from outside (--test-api only; else 403)
  *   GET /ws                 a WebSocket. Out (binary): 1 y0 n rows   the screen's rows y0..y0+n-1 that changed (RGB565 BE)
  *                                                      2 leds[44] play_green
@@ -20,9 +24,10 @@
  *                                                      5 bytes...   the active firmware's MIDI out (SysEx and channel
  *                                                                   messages, any chunking; real time: the sequencer's)
  *                                            (text): the /api/info JSON when it changes, the /api/mix JSON
- *                                                    ("type":"mix") when it changes
+ *                                                    ("type":"mix") when it changes, the /api/smp JSON ("type":"smp")
+ *                                                    when it changes
  *                           In (binary, 4 bytes each): op a b_lo b_hi (fwrt.h FWI_*: 1 KEY a vel|0, 2 LEAN a 0..100,
- *                                            3 BTN a 1|0, 4 ENC a detents, 5 MASTER b 0..1023; 16..24 engine.h
+ *                                            3 BTN a 1|0, 4 ENC a detents, 5 MASTER b 0..1023; 16..27 engine.h
  *                                            ENG_OP_*: slots, mix, routing, FX; other ops are dropped);
  *                                            a frame that starts with 32: MIDI bytes for the active firmware (its
  *                                            editors' SysEx, any chunking: whole messages to its rfm1_midi_in)

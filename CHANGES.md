@@ -5,6 +5,15 @@
 rfm1cs-abletonmove's `sampler` branch (local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a take
 recording, one Sample press brings the app back and ends the take; stage 2, the takes).
 
+- **The page's Sampler window** (the owner's 2026-11-25; README "The page's Sampler window"): `web/move/js/movesmp.js`
+  from the header's Sampler cap (the phone: the slot menu), laid out as Mix & FX. Record: the app's settings (the ops
+  `ENG_OP_SMP_SET` 26, `ENG_OP_SMP_PRESS` 27 through rfm1cs's new `rfm_move_smp_set`), the state, the level, the wave
+  (`/ws` `{"type":"smp"}`, `GET /api/smp`). Takes: the days and takes, play in the browser (`GET /api/takes/wav`, Range
+  answered) or on the Move, download, rename, delete, Trim / Normalize / Reverse / Fades, the one undo
+  (`/api/takes`, `/api/takes/peaks`, `/api/takes/edit`, `/undo`, `/rename`, `/play`), done by the take library's worker
+  (`engine_take`, tagged requests). takes.h: `tl_rename`, `tl_list_json`, `tl_row_json`, `tl_file`, `TL_Q_LIST`,
+  `TL_Q_FILE`, `TL_Q_RENAME`, the requests' `tag` and the answers' `text`. rfm1cs pinned to d96cbfe (local `sampler`).
+  Tests: `takes_test.c` (rename, the list, files, tags), `page_e2e.mjs` (the window end to end).
 - **The sampler, stage 2: the Takes and Tools tabs** (README "The take library"). `src/takes.c`: the takes folder
   listed (days, takes newest first, the source / bars / tempo from the names, stems folders; `.part`, dot files and
   the trash never), pictures and the peaks of any window (scaled to the take's peak), playback through a reader thread

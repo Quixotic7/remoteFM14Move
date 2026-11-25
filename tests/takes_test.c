@@ -597,6 +597,115 @@ static void t_play(void)
     tl_free(l);
 }
 
+/* (the page's Sampler window) rename: the rules, the head and .wav kept, the undo follows; the list as JSON; a take's
+ * files; the page's tagged requests on the worker (never dropped for a newer view) */
+static void t_page(void)
+{
+    tl_t *l;
+    tl_row_t after;
+    tl_req_t q;
+    tl_ans_t *a = malloc(sizeof *a);
+    char *j, p[1400], w[1400];
+    uint32_t id, nid;
+    int i, n, tags;
+    root("page");
+    fixture();
+    l = tl_new(ROOT, fixed_now);
+    id = id_of(l, TOLD);
+    check(tl_rename(l, id, "a/b", &after) == -1 && tl_rename(l, id, ".hidden", &after) == -1 &&
+          tl_rename(l, id, "", &after) == -1 && tl_rename(l, id, "   ", &after) == -1 &&
+          tl_rename(l, id, "x\ny", &after) == -1 && tl_rename(l, id, "back\\slash", &after) == -1 && exists(TOLD),
+          "Rename: \"/\", a leading \".\", empty, control characters refused; the file as it was");
+    check(tl_rename(l, id, "Felucca 120bpm 2b", &after) == 1 && !exists(TOLD) &&
+          exists(D24 "/1124-130000 Felucca 120bpm 2b.wav") && after.id == id_of(l, D24 "/1124-130000 Felucca 120bpm 2b.wav") &&
+          after.id != id && after.bars == 2 && after.bpm == 120 && after.frames == 132300,
+          "Rename: the head and .wav kept, the list parses it (bars, tempo), a new id");
+    nid = after.id;
+    check(tl_rename(l, nid, "1124-130000 Old one.wav", &after) == 1 && exists(D24 "/1124-130000 Old one.wav"),
+          "Rename: a full name with its own head taken as it is");
+    nid = after.id;
+    wav(D24 "/1124-130000 Taken.wav", 100, 2, 100);
+    check(tl_rename(l, nid, "Taken", &after) == -2 && exists(D24 "/1124-130000 Old one.wav"),
+          "Rename: an existing name refused (-2)") ;
+    check(tl_rename(l, nid, "1124-153000 Master 120bpm 4b.wav", &after) == 1 &&
+          exists(D24 "/1124-130000 1124-153000 Master 120bpm 4b.wav") && exists(TM),
+          "Rename: another take's head is a name after ours (never over that take)");
+    nid = after.id;
+    check(tl_rename(l, id_of(l, TST), "Mine", &after) == 0 && exists(TST "/Master.wav"), "Rename: a stems take keeps its name");
+    check(tl_rename(l, 4242, "x", &after) == 0, "Rename: no such take");
+    check(tl_edit(l, nid, TL_OP_REVERSE, 0, 0, 0, &after) && tl_has_undo(l) &&
+          tl_rename(l, nid, "Reversed", &after) == 1 && exists(D24 "/1124-130000 Reversed.wav") &&
+          tl_undo(l, &after) && !strcmp(after.rel, D24 "/1124-130000 Reversed.wav") &&
+          !exists(D24 "/1124-130000 1124-153000 Master 120bpm 4b.wav"),
+          "Rename: the undo follows the take (the edit undone under its new name)");
+    j = tl_list_json(l, TL_NEWEST);
+    check(j && strstr(j, "\"days\":[{\"id\":") && strstr(j, "\"date\":\"2026-11-24\",\"today\":1,\"takes\":6") &&
+          strstr(j, "\"date\":\"2026-11-23\",\"today\":0,\"takes\":1") &&
+          strstr(j, "\"name\":\"1124-153000 Master 120bpm 4b.wav\",\"date\":\"2026-11-24\",\"bars\":4,\"bpm\":120.00,"
+                    "\"frames\":352800,\"rate\":44100") &&
+          strstr(j, "\"kind\":\"stems\",\"src\":5") && strstr(j, "\"name\":\"1124-130000 Reversed.wav\"") &&
+          strstr(j, "\"undo\":0") && !strstr(j, ".part") && !strstr(j, "notes"),
+          "List JSON: the days, the newest day's takes (names, bars, tempo, frames; stems), no .part");
+    free(j);
+    {
+        tl_row_t dv[4];
+        int t;
+        uint32_t f;
+        n = tl_rows(l, 0, 0, 4, dv, &t, &f);
+        j = n == 2 ? tl_list_json(l, dv[1].id) : NULL;
+        check(j && strstr(j, "1123-090000 Master 2.25s (2).wav") && !strstr(j, "Reversed"), "List JSON: an older day by its id");
+        free(j);
+        j = tl_list_json(l, 4242);
+        check(j && strstr(j, "Reversed"), "List JSON: a day not there: the newest");
+        free(j);
+    }
+    check(tl_file(l, id_of(l, TST), p, sizeof p, w, sizeof w, &after) && after.kind == TL_STEMS &&
+          strstr(p, "1124-120000 Stems 120bpm 1b") && !strstr(p, "Master.wav") && strstr(w, "Stems 120bpm 1b/Master.wav") &&
+          tl_file(l, id_of(l, TM), p, sizeof p, w, sizeof w, NULL) && !strcmp(p, w) && strstr(p, TM) &&
+          !tl_file(l, 4242, p, sizeof p, w, sizeof w, NULL),
+          "Files: a take's WAV; a stems take's folder and its Master.wav");
+    /* the worker: the page's requests answered with their tags, every PEAKS answered */
+    memset(&q, 0, sizeof q);
+    for (i = 0; i < 4; i++) {
+        q.kind = TL_Q_PEAKS, q.take = id_of(l, TM), q.from = 0, q.count = 0, q.n = 32, q.tag = 100 + (uint32_t)i;
+        tl_post(l, &q);
+    }
+    q.kind = TL_Q_LIST, q.take = 0, q.tag = 200;
+    tl_post(l, &q);
+    q.kind = TL_Q_FILE, q.take = id_of(l, TM), q.tag = 201;
+    tl_post(l, &q);
+    q.kind = TL_Q_RENAME, q.take = id_of(l, TIN), q.tag = 202;
+    snprintf(q.path, sizeof q.path, "%s", "Voice 1.5s");
+    tl_post(l, &q);
+    q.kind = TL_Q_RENAME, q.take = id_of(l, TM), q.tag = 203;
+    snprintf(q.path, sizeof q.path, "%s", ".x");
+    tl_post(l, &q);
+    tags = 0;
+    while (poll_for(l, a, 3000)) {
+        if (a->kind == TL_Q_PEAKS && a->tag >= 100 && a->tag < 104 && a->n == 32 && a->pk[0] > 0)
+            tags |= 1 << (a->tag - 100);
+        if (a->kind == TL_Q_LIST && a->tag == 200 && a->ok && a->text && strstr(a->text, "\"takes\":["))
+            tags |= 1 << 4;
+        if (a->kind == TL_Q_FILE && a->tag == 201 && a->ok && a->text && strchr(a->text, '\n') && strstr(a->text, TM))
+            tags |= 1 << 5;
+        if (a->kind == TL_Q_RENAME && a->tag == 202 && a->ok == 1 && a->has_row &&
+            !strcmp(a->row.rel, D24 "/1124-140000 Voice 1.5s.wav"))
+            tags |= 1 << 6;
+        if (a->kind == TL_Q_RENAME && a->tag == 203 && a->ok == -1 && !a->has_row)
+            tags |= 1 << 7;
+        free(a->text);
+    }
+    check(tags == 0xFF, "Worker: the page's PEAKS (each answered), LIST, FILE, RENAME (done, refused) with their tags "
+                        "(%02x)", tags);
+    for (i = 0; i < 40; i++) {                          /* (answers never polled: their texts freed, ASan sees) */
+        q.kind = TL_Q_LIST, q.take = 0, q.tag = 300 + (uint32_t)i;
+        tl_post(l, &q);
+    }
+    usleep(300000);
+    tl_free(l);
+    free(a);
+}
+
 int main(void)
 {
     struct tm tm;
@@ -610,6 +719,7 @@ int main(void)
     t_delete();
     t_worker();
     t_play();
+    t_page();
     printf("takes_test: %d checks, %d failed\n", checks, fails);
     if (!fails)
         printf("ALL TAKES TESTS PASSED\n");

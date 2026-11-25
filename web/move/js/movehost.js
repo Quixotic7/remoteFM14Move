@@ -20,8 +20,10 @@
 //           moveLink(up) the WebSocket went away / came back; error(text) a pick the Move could not start
 //   Mix & FX (js/moveslots.js, js/movemix.js): p.listen({ mix(m), meters(u8[7]), mini(slot, px565[48*48]) }) adds a
 //           listener (it gets the last ones at once); p.mix / p.meters / p.minis the last ones; p.edit(op, a, b) one
-//           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 24 FXPG) over /ws (POST /api/edit while /ws is
-//           down)
+//           of the host's Mix & FX ops (engine.h ENG_OP_*: 16 ACTIVE .. 24 FXPG; 26 SMP_SET, 27 SMP_PRESS: the Sampler
+//           window's) over /ws (POST /api/edit while /ws is down)
+//   Sampler (js/movesmp.js): p.listen({ smp(j) }): the sampler's settings and the recorder now (/ws {"type":"smp"},
+//           GET /api/smp); p.smp the last one
 //   MIDI (the firmware editors' SysEx, js/editor-panel.js): p.midi(bytes) to the firmware in the Move's active slot (/ws
 //           frames: 32 + the bytes, in pieces); its MIDI out (SysEx and channel messages, /ws binary 5) comes back as
 //           the worklet's midiOut(bytes) event. moveEditors(catalog): which firmware has which editor, as on
@@ -153,6 +155,7 @@ export class MoveHostPlayer {
     this.ready = new Promise((r) => { this.readyNow = r; });
     this.subs = [];                              // Mix & FX listeners (listen)
     this.mix = null; this.meters = new Uint8Array(7); this.minis = [null, null, null];
+    this.smp = null;                             // the sampler's settings and the recorder now (/ws "smp")
     // (Player's surface that main.js touches; nothing of it applies here)
     this.ctx = null; this.node = null; this.current = null; this.volume = 1; this.muted = false; this.tapOn = false;
   }
@@ -164,6 +167,7 @@ export class MoveHostPlayer {
   listen(l) {
     this.subs.push(l);
     if (this.mix && l.mix) l.mix(this.mix);
+    if (this.smp && l.smp) l.smp(this.smp);
     this.minis.forEach((px, s) => { if (px && l.mini) l.mini(s, px); });
     return () => { this.subs = this.subs.filter((x) => x !== l); };
   }
@@ -199,7 +203,9 @@ export class MoveHostPlayer {
       if (typeof m.data === "string") {
         let j;
         try { j = JSON.parse(m.data); } catch (e) { console.warn("movehost: info", e); return; }
-        if (j && j.type === "mix") { this.mix = j; this.emit("mix", j); } else this.onInfo(j);
+        if (j && j.type === "mix") { this.mix = j; this.emit("mix", j); }
+        else if (j && j.type === "smp") { this.smp = j; this.emit("smp", j); }   // (the Sampler window's: js/movesmp.js)
+        else this.onInfo(j);
         return;
       }
       const d = new Uint8Array(m.data);

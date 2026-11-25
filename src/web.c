@@ -30,6 +30,7 @@
 #include "memsnap.h"
 #include "projmem.h"
 #include "storage.h"
+#include "takes.h"
 #ifdef RFM14_PLAT_SIM
 #include "fm1sim.h"
 #endif
@@ -76,6 +77,11 @@ typedef struct {
     int sreq;
     uint64_t sreq_ms;
     char sdir[ST_PATH + 64];
+    /* the Sampler window (/api/takes, /api/smp): a take request the library does (treq, answered when done: tkr how);
+     * a Range asked (rg 1: rg_a..rg_b, rg_b ~0 to the end; 2: the last rg_a bytes) */
+    int treq, tkr, rg;
+    uint64_t treq_ms, rg_a, rg_b;
+    uint32_t smp_seq;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -1190,6 +1196,235 @@ static void api_store_zip(client_t *c, const char *what, const char *q)
     fprintf(stderr, "web: %s as a file (%llu bytes)\n", top, (unsigned long long)len);
 }
 
+/* ------------------------------------------------------------------ the Sampler window's takes (/api/takes) --- */
+/* The page's Sampler window (js/movesmp.js; README "The page's Sampler window"): the take library's requests, done by
+ * its worker (engine_take: never the engine's thread, never this one), answered once done:
+ *   GET  /api/smp                          the sampler's settings and the recorder now (engine.c smp_json; /ws sends it
+ *                                          as it changes); its settings and record key: the ops ENG_OP_SMP_SET / _PRESS
+ *   GET  /api/takes[?day=ID]               the days, a day's takes newest first (takes.h tl_list_json; none: the newest)
+ *   GET  /api/takes/peaks?id=ID[&from=F&count=N&n=C]   C (<= 64) peaks 0..255 of the take's frames [F, F + N) (N 0: to
+ *                                          its end); a take gone meanwhile: "gone": 1, no peaks
+ *   GET  /api/takes/wav?id=ID[&dl=1]       the take's WAV (a stems take: its Master.wav) as audio/wav, a Range answered
+ *                                          (206; 416 past its end); dl=1: as an attachment (a stems take: its folder
+ *                                          as a .zip)
+ *   POST /api/takes/edit {"id", "op": "delete" | "trim" | "normalize" | "reverse" | "fade-in" | "fade-out", "from",
+ *                         "count" (trim: frames kept), "ms" (fades)}   as the Move's Tools (the one undo kept)
+ *   POST /api/takes/undo                   the one undo, the Move's too
+ *   POST /api/takes/rename {"id", "name"}  (takes.h tl_rename: 400 not a name for a take, 409 the name is taken)
+ *   POST /api/takes/play {"id" (0: stop), "from", "count"}   on the Move's output (as the app's Play)
+ * The page names takes by the library's ids only: no path from it reaches the files. */
+enum { TKR_JSON = 1, TKR_WAV, TKR_DL };
+static void take_wait(client_t *c, const eng_take_t *r, int how)
+{
+    const int id = engine_take(r);
+    if (id <= 0) {
+        fs_err(c, "503 Service Unavailable", "no takes here, or the Move is busy: try again");
+        return;
+    }
+    c->treq = id, c->tkr = how, c->treq_ms = now_ms();
+    c->closing = 0;
+}
+static int qnum(const char *q, const char *key, uint64_t *v)
+{
+    char s[32], *e;
+    unsigned long long x;
+    if (qparam(q, key, s, sizeof s) != 0 || !s[0])
+        return -1;
+    x = strtoull(s, &e, 10);
+    if (*e)
+        return -1;
+    *v = x;
+    return 0;
+}
+static void api_takes_get(client_t *c, const char *what, const char *q, const char *req)
+{
+    eng_take_t r;
+    uint64_t v = 0;
+    memset(&r, 0, sizeof r);
+    if (!*what) {
+        r.kind = ENG_TK_LIST;
+        if (!qnum(q, "day", &v))
+            r.id = (uint32_t)v;
+        take_wait(c, &r, TKR_JSON);
+        return;
+    }
+    if (qnum(q, "id", &v) || !v || v > 0xFFFFFFFFu) {
+        fs_err(c, "400 Bad Request", "want id");
+        return;
+    }
+    r.id = (uint32_t)v;
+    if (!strcmp(what, "/peaks")) {
+        r.kind = ENG_TK_PEAKS, r.n = 64;
+        qnum(q, "from", &r.from);
+        qnum(q, "count", &r.count);
+        if (!qnum(q, "n", &v))
+            r.n = v < 1 ? 1 : v > TL_WPEAKS ? TL_WPEAKS : (int)v;
+        take_wait(c, &r, TKR_JSON);
+    } else if (!strcmp(what, "/wav")) {
+        char rg[64];
+        unsigned long long a, b;
+        r.kind = ENG_TK_FILE;
+        c->rg = 0;
+        if (!qnum(q, "dl", &v) && v) {
+            take_wait(c, &r, TKR_DL);
+            return;
+        }
+        if (header(req, "Range", rg, sizeof rg)) {
+            if (!strncmp(rg, "bytes=-", 7)) {   /* (the last N bytes; %llu would take "-N" as a number) */
+                if (sscanf(rg + 7, "%llu", &a) == 1 && a)
+                    c->rg = 2, c->rg_a = a;
+            } else if (strncmp(rg, "bytes=", 6) || rg[6] < '0' || rg[6] > '9') {
+                /* (not a range we read: the whole file) */
+            } else if (sscanf(rg, "bytes=%llu-%llu", &a, &b) == 2 && b >= a)
+                c->rg = 1, c->rg_a = a, c->rg_b = b;
+            else if (sscanf(rg, "bytes=%llu-", &a) == 1)
+                c->rg = 1, c->rg_a = a, c->rg_b = ~0ull;
+        }
+        take_wait(c, &r, TKR_WAV);
+    } else
+        http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+}
+static void api_takes_post(client_t *c, const char *what, const char *body)
+{
+    static const char *const OPS[] = { "delete", "trim", "normalize", "reverse", "fade-in", "fade-out" };   /* TL_OP_* */
+    eng_take_t r;
+    long id = 0, from = 0, count = 0, ms = 0;
+    char op[16] = "";
+    int i;
+    memset(&r, 0, sizeof r);
+    if (!strcmp(what, "/undo")) {
+        r.kind = ENG_TK_UNDO;
+        take_wait(c, &r, TKR_JSON);
+        return;
+    }
+    if (!body || mj_int(body, "id", &id) || id < 0 || id > 0xFFFFFFFFL) {
+        fs_err(c, "400 Bad Request", "want {id}");
+        return;
+    }
+    r.id = (uint32_t)id;
+    mj_int(body, "from", &from);
+    mj_int(body, "count", &count);
+    r.from = (uint64_t)(from < 0 ? 0 : from), r.count = (uint64_t)(count < 0 ? 0 : count);
+    if (!strcmp(what, "/play")) {
+        r.kind = ENG_TK_PLAY;
+    } else if (!strcmp(what, "/rename")) {
+        r.kind = ENG_TK_RENAME;
+        if (!id || mj_string(body, "name", r.name, sizeof r.name)) {
+            fs_err(c, "400 Bad Request", "want {id, name}");
+            return;
+        }
+    } else if (!strcmp(what, "/edit")) {
+        r.kind = ENG_TK_EDIT;
+        mj_string(body, "op", op, sizeof op);
+        for (i = 0; i < 6 && strcmp(OPS[i], op); i++) {}
+        if (i == 6 || !id) {
+            fs_err(c, "400 Bad Request", "want {id, op}");
+            return;
+        }
+        mj_int(body, "ms", &ms);
+        r.op = TL_OP_DELETE + i, r.value = (int)(ms < 0 ? 0 : ms > 60000 ? 60000 : ms);
+        if (r.op == TL_OP_TRIM && !r.count) {
+            fs_err(c, "400 Bad Request", "trim: want {from, count}");
+            return;
+        }
+    } else {
+        http_reply(c, "404 Not Found", "text/plain", "not found\n", 10);
+        return;
+    }
+    take_wait(c, &r, TKR_JSON);
+}
+/* the take's file, as asked: a WAV (a Range: 206), or the download (a stems take's folder as a .zip) */
+static void take_send(client_t *c, char *text)
+{
+    char *wav = strchr(text, '\n'), *own = text, h[512];
+    struct stat st;
+    uint64_t size, a = 0, b;
+    int fd, k;
+    if (!wav) {
+        fs_err(c, "500 Internal Server Error", "no file");
+        return;
+    }
+    *wav++ = 0;
+    if (c->tkr == TKR_DL && !stat(own, &st) && S_ISDIR(st.st_mode)) {   /* (a stems take: its folder) */
+        char *slash = strrchr(own, '/'), name[FILES_SEG_MAX + 8];
+        const char *why = NULL;
+        uint64_t len = 0;
+        *slash = 0;
+        if (!(c->zip = files_zip_plan(own, slash + 1, &len, &why))) {
+            fs_err(c, "500 Internal Server Error", why ? why : "no zip");
+            return;
+        }
+        snprintf(name, sizeof name, "%s.zip", slash + 1);
+        stream_head(c, "application/zip", len, name);
+        c->closing = 0;
+        return;
+    }
+    if ((fd = open(wav, O_RDONLY | O_CLOEXEC)) < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        if (fd >= 0)
+            close(fd);
+        fs_err(c, "404 Not Found", "no such take");
+        return;
+    }
+    size = (uint64_t)st.st_size;
+    if (c->tkr == TKR_DL) {
+        stream_head(c, "audio/wav", size, strrchr(wav, '/') ? strrchr(wav, '/') + 1 : wav);
+        c->dl_fd = fd, c->dl_left = size, c->closing = size ? 0 : 1;
+        return;
+    }
+    b = size ? size - 1 : 0;
+    if (c->rg == 1)
+        a = c->rg_a, b = c->rg_b < b ? c->rg_b : b;
+    else if (c->rg == 2)
+        a = c->rg_a >= size ? 0 : size - c->rg_a;
+    if (c->rg && (a >= size || a > b)) {
+        close(fd);
+        k = snprintf(h, sizeof h, "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */%llu\r\nContent-Length: 0\r\n"
+                                  "Connection: close\r\n\r\n", (unsigned long long)size);
+        put(c, h, (size_t)k);
+        c->closing = 1;
+        return;
+    }
+    if (c->rg && lseek(fd, (off_t)a, SEEK_SET) != (off_t)a) {
+        close(fd);
+        fs_err(c, "500 Internal Server Error", "seek");
+        return;
+    }
+    if (c->rg)
+        k = snprintf(h, sizeof h, "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/wav\r\nContent-Length: %llu\r\n"
+                                  "Content-Range: bytes %llu-%llu/%llu\r\nAccept-Ranges: bytes\r\nCache-Control: no-cache\r\n"
+                                  "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+                     (unsigned long long)(b - a + 1), (unsigned long long)a, (unsigned long long)b, (unsigned long long)size);
+    else
+        k = snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: %llu\r\nAccept-Ranges: bytes\r\n"
+                                  "Cache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+                     (unsigned long long)size);
+    put(c, h, (size_t)k);
+    c->dl_fd = fd, c->dl_left = size ? b - a + 1 : 0;
+    c->closing = c->dl_left ? 0 : 1;
+    if (!c->dl_left)
+        close(fd), c->dl_fd = -1;
+}
+static void take_poll(client_t *c, uint64_t ms)
+{
+    char *text = NULL;
+    int code = 0;
+    const int st = engine_take_done(c->treq, &text, &code);
+    if (st == 0 && ms - c->treq_ms < 30000u) {
+        c->born = ms;
+        return;
+    }
+    c->treq = 0;
+    if (st == 1 && text && c->tkr == TKR_JSON)
+        json_reply(c, "200 OK", text);
+    else if (st == 1 && text)
+        take_send(c, text);
+    else
+        fs_err(c, st == 0 || st == -2 ? "504 Gateway Timeout" : code == -1 ? "400 Bad Request"
+                  : code == -2 ? "409 Conflict" : text && !strcmp(text, "no such take") ? "404 Not Found" : "409 Conflict",
+               st == 0 ? "the Move did not answer in time" : st == -2 ? "the Move lost the request" : text ? text : "not done");
+    free(text);
+}
+
 static int store_put_start(client_t *c, const char *q, long want)
 {
     char v[16], kind[16] = "";
@@ -1545,6 +1780,8 @@ static void request(client_t *c, const char *body)
         }
         else if (!strncmp(path, "/api/fs/", 8))
             api_fs_post(c, path + 8, query);
+        else if (!strncmp(path, "/api/takes/", 11))
+            api_takes_post(c, path + 10, body);
         else if (!strncmp(path, "/api/fm1/wifi/", 14))
             api_fm1_wifi(c, path + 14, body);
 #ifdef RFM14_PLAT_SIM
@@ -1602,6 +1839,10 @@ static void request(client_t *c, const char *body)
         http_reply(c, "200 OK", "application/json", g_v.info, strlen(g_v.info));
     else if (!strcmp(path, "/api/mix"))
         http_reply(c, "200 OK", "application/json", g_v.mix, strlen(g_v.mix));
+    else if (!strcmp(path, "/api/smp"))
+        json_reply(c, "200 OK", g_v.smp[0] ? g_v.smp : "{\"type\":\"smp\",\"on\":0}");
+    else if (!strcmp(path, "/api/takes") || !strncmp(path, "/api/takes/", 11))
+        api_takes_get(c, path + 10, query, req);
     else if (!strcmp(path, "/api/fx")) {
         char *j = engine_fx_modules();
         json_reply(c, "200 OK", j ? j : "{\"midi\":[],\"audio\":[]}");
@@ -1856,6 +2097,10 @@ static void push(client_t *c)
         c->mix_seq = g_v.mix_seq;
         ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.mix, strlen(g_v.mix));
     }
+    if (c->smp_seq != g_v.smp_seq && g_v.smp[0]) {   /* (the Sampler window's: the settings, the recorder now) */
+        c->smp_seq = g_v.smp_seq;
+        ws_send(c, 0x1, NULL, 0, (const uint8_t *)g_v.smp, strlen(g_v.smp));
+    }
     if (c->meters_seq != g_v.meters_seq) {
         uint8_t m[8];
         c->meters_seq = g_v.meters_seq;
@@ -1950,6 +2195,8 @@ static void *web_main(void *arg)
                 push(c);
             else if (c->sreq > 0)   /* a States or projects request: answered once the engine has done it */
                 store_poll(c, ms);
+            else if (c->treq > 0)   /* a take request: answered once the take library has done it */
+                take_poll(c, ms);
             else if (c->dl_fd > 0 || c->zip) {   /* a download under way: more while the page takes it */
                 stream_fill(c);
                 if (ms > c->born && ms - c->born > 30000u)

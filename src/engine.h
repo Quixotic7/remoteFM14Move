@@ -89,6 +89,10 @@ typedef struct {
     /* each slot's screen, 48 x 48 RGB565 big-endian (a box average of the 240 x 240), at most 4 a second when it changed */
     uint8_t mini[3][ENG_MINI * ENG_MINI * 2];
     uint32_t mini_seq[3];
+    /* (the page's Sampler window) the sampler's settings and the recorder now, JSON ({"type":"smp",..}: engine.c
+     * smp_json): when it changes, at most 15 a second */
+    char smp[1536];
+    uint32_t smp_seq;
 } engine_view_t;
 /* copies the view when its seq is not *seq (then *seq = the new one): 1 copied, 0 unchanged */
 int engine_view(engine_view_t *v, uint32_t *seq);
@@ -130,9 +134,34 @@ int engine_load(int slot, const char *id, int activate);   /* activate: then mak
  *   3 the Mixer) | (row + 1) << 2 (0: the slot selected stays)
  *   (rfm1cs 0.5.0) ENG_OP_FXPAR a param 0..127, b kind<<9 | slot<<7 | value 0..127 | ENG_OP_FXPG a kind*4+slot, b the
  *   page its knobs are on (the Move's fw.fx_pg)
- *   (rfm1cs 0.6.6) ENG_OP_MROUTE a slot 0..2, b its MIDI routes (bits 0..2 the slots, 8 Out; refused: a cycle, its own) */
+ *   (rfm1cs 0.6.6) ENG_OP_MROUTE a slot 0..2, b its MIDI routes (bits 0..2 the slots, 8 Out; refused: a cycle, its own)
+ *   (the page's Sampler window, rfm1cs rfm_move_smp_set) ENG_OP_SMP_SET a the setting (RFM_MOVE_SMP_*), b its value as
+ *   SMP_SET sends it (Length: the bars) | ENG_OP_SMP_PRESS: the app's record key (Sample in the app: SMP_PRESS) */
 enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOAD, ENG_OP_FXPARAM, ENG_OP_PAGE,
-       ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_MROUTE, ENG_OP_LAST = ENG_OP_MROUTE };
+       ENG_OP_FXPAR, ENG_OP_FXPG, ENG_OP_MROUTE, ENG_OP_SMP_SET, ENG_OP_SMP_PRESS, ENG_OP_LAST = ENG_OP_SMP_PRESS };
+/* the page's Sampler window: the take library (takes.h; web.c /api/takes), each request handed by the engine's thread
+ * to the library's worker (the files never on the engine's thread), its answer kept for the page:
+ *   ENG_TK_LIST    id a day (0: the newest): tl_list_json
+ *   ENG_TK_PEAKS   id, from, count (0: to its end), n columns (<= 64): {"id", "from", "count", "peaks": [0..255]}
+ *   ENG_TK_EDIT    id, op (takes.h TL_OP_DELETE .. FADE_OUT), from / count (TRIM), value (FADE: ms): as the Move's
+ *   ENG_TK_UNDO    the library's one undo (the Move's too)
+ *   ENG_TK_RENAME  id, name (tl_rename's rules)
+ *   ENG_TK_FILE    id: "<path>\n<wav>" (the take's own file or stems folder, the WAV that stands for it)
+ *   ENG_TK_PLAY    id (0: stop), from, count: on the Move's output (tl_play, as SMP_PLAY), answered at once
+ * EDIT, UNDO and RENAME done tell the core (rfm_move_smp_done: the Move's list and Tools follow) */
+enum { ENG_TK_LIST = 1, ENG_TK_PEAKS, ENG_TK_EDIT, ENG_TK_UNDO, ENG_TK_RENAME, ENG_TK_FILE, ENG_TK_PLAY };
+typedef struct {
+    int kind;
+    uint32_t id;
+    uint64_t from, count;
+    int n, op, value;
+    char name[200];
+} eng_take_t;
+/* queued: the request's number (> 0), or -1 (no take library, the queue is full) */
+int engine_take(const eng_take_t *r);
+/* its answer: 0 under way, 1 done (*text: malloc'd JSON or FILE's paths, the caller frees), -1 refused or failed
+ * (*text: why, malloc'd, may be NULL; RENAME: *code -1 a bad name, -2 the name taken), -2 unknown (too old) */
+int engine_take_done(int req, char **text, int *code);
 /* the installed FX modules, fx.h fx_lib_json (malloc'd copy), or NULL */
 char *engine_fx_modules(void);
 

@@ -1301,6 +1301,50 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
+## The page's Sampler window
+
+The owner's words (2026-11-25): "work in a web sampler window, similar to the MIXer popup, should have the sampler
+features and also file browsing and audio playback." `web/move/js/movesmp.js`: the header's Sampler cap (the phone:
+Sampler in the slot menu) opens it as Mix & FX opens (the same panel over the faceplate; the phone's full-screen
+sheet; Esc or its close button back; it and Mix & FX take turns). One state, two views: the page shows what the
+Move's core has and every change goes through the core.
+
+- **Record:** Source (Master, Slot 1..3 by the firmware's name, Input, Stems: what the host offers), Mode, Length
+  (Open, "Auto" in Capture), Threshold, Input level; the record button is Sample in the app; the state (idle, armed,
+  listening, recording, saving), the bar of the bars or the time, the level (-60..0 dB) with the threshold's mark,
+  the running wave (the history, or a take with bars filling its length). A setting: the op `ENG_OP_SMP_SET` (26:
+  a the setting, b its value as `SMP_SET` sends it) over `/ws` (or `POST /api/edit`), done on the engine's thread by
+  rfm1cs's `rfm_move_smp_set` (the Move's app shows it at once, `SMP_SET` comes back to the recorder, the settings
+  saved; refused while a take runs); the record button `ENG_OP_SMP_PRESS` (27: the core's `SMP_PRESS`). The state:
+  `{"type":"smp", "set", "srcs", "sets", "state", "listening", "bar", "bars", "level", "frames", "rate", "span",
+  "peaks" (hex), "play", "pos", "undo", "takes_ver", ...}` (engine.c `smp_json`), on `/ws` when it changes (at most 15
+  a second), `GET /api/smp`.
+- **Takes:** the days and a day's takes, newest first (`GET /api/takes[?day=ID]`: takes.h `tl_list_json`), each with
+  its source's sign, time, length (bars or seconds), tempo and wave (`GET /api/takes/peaks?id=&n=64`); per take Play,
+  Download (`GET /api/takes/wav?id=&dl=1`; a stems take: its folder as a .zip), Rename (`POST /api/takes/rename`),
+  Tools, Delete; Tools: Trim (two markers dragged on the take's wave, or the arrow keys), Normalize, Reverse, Fade in,
+  Fade out with a length (`POST /api/takes/edit`); Undo (`POST /api/takes/undo`): the take library's one undo, the
+  Move's too. A stems take: Play, Download, Delete. The list is read again when `takes_ver` moves (a take saved, an
+  edit from either side).
+- **Playback:** in the browser by default (an `<audio>` on `GET /api/takes/wav?id=`: `audio/wav`, a Range answered
+  206, 416 past the end), the line over the take's wave from its time; the Move toggle plays it on the Move's output
+  instead (`POST /api/takes/play`: the library's reader, as the app's Play; never recorded), its line from `play` /
+  `pos`. Nothing in the window starts the song.
+- **Rename:** the take library's `tl_rename`: refused (400) for `/`, `\`, a leading `.`, an empty name, control
+  characters, more than 160 bytes; 409 when the name is taken. The take's own `<MMDD>-<HHMMSS> ` head goes in front
+  when the name lacks it and `.wav` after it, so the list still parses it; the undo follows the take.
+- **Threads:** every file request goes from the web thread to the engine's (`engine_take`: a queue under the view's
+  mutex), which posts it to the take library's worker with a tag; the answer comes back through `tl_poll` and waits
+  for the page's request (`engine_take_done`, the web thread polls it as it polls the States and projects). Neither
+  the engine's thread nor the web thread lists or edits files; the web thread only streams the WAV the worker named.
+  The page names takes by the library's ids only: no path from it reaches the files.
+
+Tests: `tests/takes_test.c` (rename's rules, the head and `.wav`, the undo following it, the list's JSON, a take's
+files, the tagged requests on the worker), rfm1cs's `move_sampler` 31 (the setter), `tests/page_e2e.mjs` (the window
+opens; a setting from the page reaches the core and the recorder, one from the Move shows on the page; a take recorded
+from the page appears; browser playback and the Range; Trim, Normalize, Undo, Rename and its rules, Delete and Undo,
+Download, Play on the Move; desktop and phone screenshots in `build/test-out/sampler-*.png`).
+
 ## The recorder (src/recorder.c)
 
 Takes of the engine's streams as WAV files (the sampler above drives it). Seven streams: Master,

@@ -12,7 +12,8 @@
 
 export const NSLOT = 3;
 // engine.h ENG_OP_*: FXPAR a parameter 0..127 (b kind<<9 | slot<<7 | value), FXPG a slot's page (rfm1cs 0.5.0)
-export const OP = { ACTIVE: 16, UNLOAD: 17, MIX: 18, ROUTE: 19, FXLOAD: 20, FXPARAM: 21, PAGE: 22, FXPAR: 23, FXPG: 24 };
+export const OP = { ACTIVE: 16, UNLOAD: 17, MIX: 18, ROUTE: 19, FXLOAD: 20, FXPARAM: 21, PAGE: 22, FXPAR: 23, FXPG: 24,
+  SMP_SET: 26, SMP_PRESS: 27 };   // (the Sampler window's: a setting a | value b, the record key)
 // the Move's FX setup (rfm1cs 0.5.0: one layer): its columns (settings.fx_page 0..2) and the Mixer (3)
 export const COLS = ["MIDI FX", "Firmwares", "Audio FX"];
 export const MIXP = ["Level", "Pan", "Send 1", "Send 2", "Send 3"];                                     // RFM_MOVE_MIXP_*

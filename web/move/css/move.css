@@ -85,6 +85,8 @@
 @media (max-width: 1180px) { .mv-filesbtn > span:not(.mv-ic) { display: none; } .mv-filesbtn { padding: 0 10px; } }
 /* (the States and Projects caps, js/movestore.js: their words first to go, their icons and tooltips stay) */
 @media (max-width: 1400px) { .mv-statesbtn > span:not(.mv-ic), .mv-projectsbtn > span:not(.mv-ic) { display: none; } .mv-statesbtn, .mv-projectsbtn { padding: 0 10px; } }
+/* (the Sampler cap, js/movesmp.js: its word goes with theirs) */
+@media (max-width: 1400px) { .mv-smpbtn > span:not(.mv-ic) { display: none; } .mv-smpbtn { padding: 0 10px; } }
 @media (max-width: 1080px) { .mv-chip { width: 128px; } .mv-mixbtn > span:not(.mv-ic) { display: none; } .mv-mixbtn { padding: 0 10px; } }
 
 /* ---- phone: the slot button (the iOS app's top-left pill) and its menu */
@@ -355,8 +357,99 @@ button.mv-card:hover { background: var(--raised-hover); }
 .mv-view.phone .mv-knobs .mv-param.enum .mv-pname { font-size: 11px; color: var(--muted); }
 .mv-view.phone .mv-st { height: 34px; font-size: 11px; }
 
+/* ---- the Sampler window (js/movesmp.js): the Mix & FX view's panel and sheet; Record (the monitor, the settings), Takes */
+.mv-smp-body { display: flex; flex-direction: column; }
+.mv-smp-rec-l { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.mv-smp-mon { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+.mv-smp-sets { display: flex; flex-direction: column; gap: 16px; padding: 4px 2px; min-width: 0; }
+.mv-smp-set { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.mv-smp-segs { justify-content: flex-start; align-self: flex-start; }
+.mv-smp-segs .mv-seg { display: inline-flex; align-items: center; gap: 6px; text-transform: none; }
+.mv-smp-segs .mv-seg .mv-dot { width: 8px; height: 8px; }
+.mv-smp-segs .mv-seg-t { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-smp-segs.off, .mv-smp-segs .mv-seg:disabled { opacity: .45; cursor: default; }
+.mv-smp-sign { --c: var(--accent); width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font: 700 12px/1 var(--hw); color: #17140F; background: var(--c); }
+.mv-smp-state { --c: var(--muted); display: inline-flex; align-items: center; gap: 8px; font: 700 12px/1 var(--hw); letter-spacing: .12em; text-transform: uppercase; color: var(--c); }
+.mv-smp-state i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.mv-smp-state[data-state="armed"] i, .mv-smp-state[data-state="recording"] i { animation: mv-pulse .9s ease-in-out infinite; }
+.mv-smp-state[data-state="recording"] i { animation-duration: 1.6s; }
+.mv-smp-count { font-size: 20px; color: var(--text); }
+.mv-smp-rec { width: 64px; height: 64px; border-radius: 50%; flex: none; display: grid; place-items: center; cursor: pointer; color: #FF5F57;
+  background: var(--bezel); border: 0; box-shadow: inset 0 2px 0 #2c2823, 0 3px 0 #000, 0 0 0 2px rgba(255,95,87,.35); transition: background-color .15s, box-shadow .15s, transform .06s; }
+.mv-smp-rec:hover { box-shadow: inset 0 2px 0 #2c2823, 0 3px 0 #000, 0 0 0 2px #FF5F57, 0 0 18px -4px #FF5F57; }
+.mv-smp-rec:active { transform: translateY(2px); }
+.mv-smp-rec.armed { animation: mv-pulse .9s ease-in-out infinite; }
+.mv-smp-rec.on { background: #FF5F57; color: #17140F; box-shadow: 0 3px 0 #000, 0 0 22px -4px #FF5F57; }
+.mv-smp-rec:disabled { opacity: .5; cursor: default; }
+.mv-smp-wavew { height: 120px; border-radius: 12px; background: var(--well); border: 1px solid var(--line); overflow: hidden; }
+.mv-smp-wave { display: block; width: 100%; height: 100%; }
+.mv-smp-lv { flex: 1; height: 8px; border-radius: 4px; background: var(--well); position: relative; overflow: visible; }
+.mv-smp-lv i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(to right, #3BD47A 70%, #F5A524 88%, #FF5F57); transition: width .08s linear; }
+.mv-smp-lv b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: #F5A524; border-radius: 1px; }
+.mv-smp-lv b[hidden] { display: none; }
+.mv-smp-lvt { width: 52px; text-align: right; }
+.mv-smp-none { min-height: 220px; }
+/* Takes */
+.mv-smp-takes { gap: 12px; }
+.mv-smp-thead { flex-wrap: wrap; row-gap: 8px; }
+.mv-smp-days .mv-pg { display: inline-flex; align-items: center; gap: 7px; }
+.mv-smp-n { font: 500 10px/1 "DM Mono", monospace; opacity: .7; }
+.mv-smp-where.on { background: var(--accent); color: #17140F; border-color: transparent; }
+.mv-smp-list { display: flex; flex-direction: column; }
+.mv-smp-take { --c: var(--accent); display: grid; grid-template-columns: 40px 30px minmax(120px, 1.1fr) minmax(0, 2fr) auto; align-items: center; gap: 12px;
+  min-height: 58px; padding: 6px 8px; border-radius: 12px; border-bottom: 1px solid var(--line); }
+.mv-smp-take:hover { background: var(--raised-hover, rgba(255,255,255,.04)); }
+.mv-smp-take.sel { background: var(--raised); border-bottom-color: transparent; border-radius: 12px 12px 0 0; }
+.mv-smp-tn { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mv-smp-tn b { font: 700 14px/1.2 var(--ui); }
+.mv-smp-tn .mv-val { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mv-smp-tww { position: relative; height: 40px; min-width: 0; }
+.mv-smp-tw { display: block; width: 100%; height: 40px; }
+.mv-smp-ph { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; box-shadow: 0 0 6px rgba(255,255,255,.6); pointer-events: none; }
+.mv-smp-ph[hidden] { display: none; }
+.mv-smp-acts { display: flex; gap: 2px; }
+.mv-smp-ib { width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; color: var(--knob-off, #aaa); border-radius: 999px; cursor: pointer; padding: 0; flex: none; }
+.mv-smp-ib:hover { background: var(--raised); color: var(--text); }
+.mv-smp-ib.on { color: var(--c); }
+.mv-smp-play { width: 40px; height: 40px; background: var(--well); color: var(--text); }
+.mv-smp-play.on { background: var(--c); color: #17140F; }
+.mv-smp-tools-p { display: flex; flex-direction: column; gap: 12px; padding: 4px 12px 14px; background: var(--raised); border-radius: 0 0 12px 12px; margin-bottom: 6px; }
+.mv-smp-bigw { position: relative; height: 120px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); cursor: ew-resize; touch-action: none; user-select: none; }
+.mv-smp-big { display: block; width: 100%; height: 100%; }
+.mv-smp-shade { position: absolute; top: 0; bottom: 0; background: rgba(10,8,6,.62); pointer-events: none; }
+.mv-smp-shade.a { left: 0; border-radius: 10px 0 0 10px; }
+.mv-smp-shade.b { right: 0; border-radius: 0 10px 10px 0; }
+.mv-smp-mk { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1.5px; background: #F5A524; border-radius: 2px; outline: none; }
+.mv-smp-mk::after { content: ""; position: absolute; left: -6px; top: 0; width: 15px; height: 12px; border-radius: 3px; background: #F5A524; }
+.mv-smp-mk:focus-visible { box-shadow: 0 0 0 2px var(--text); }
+.mv-smp-ops { flex-wrap: wrap; row-gap: 8px; gap: 8px; }
+.mv-smp-op { height: 34px; }
+.mv-smp-trimt { font-size: 11px; }
+.mv-smp-ops .mv-choice b { text-transform: none; }
+
+@media (max-width: 1000px) { .mv-smp-rec-l { grid-template-columns: minmax(0, 1fr); } }
+/* phone: the full-screen sheet; a take's wave under its name, its actions under that */
+.mv-view.phone .mv-smp-rec-l { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.mv-view.phone .mv-smp-mon { padding: 12px; gap: 10px; }
+.mv-view.phone .mv-smp-wavew { height: 88px; }
+.mv-view.phone .mv-smp-rec { width: 56px; height: 56px; }
+.mv-view.phone .mv-smp-segs { display: flex; flex-wrap: wrap; width: 100%; }
+.mv-view.phone .mv-smp-segs .mv-seg { flex: 1 1 auto; justify-content: center; padding: 11px 8px; }
+.mv-view.phone .mv-smp-take { grid-template-columns: 40px 30px minmax(0, 1fr); grid-template-areas: "p s n" "w w w" "a a a"; gap: 8px 10px; padding: 8px 4px; }
+.mv-view.phone .mv-smp-take > .mv-smp-play { grid-area: p; }
+.mv-view.phone .mv-smp-take > .mv-smp-sign { grid-area: s; }
+.mv-view.phone .mv-smp-take > .mv-smp-tn { grid-area: n; }
+.mv-view.phone .mv-smp-take > .mv-smp-tww { grid-area: w; }
+.mv-view.phone .mv-smp-take > .mv-smp-acts { grid-area: a; justify-content: flex-end; }
+.mv-view.phone .mv-smp-tools-p { padding: 4px 8px 12px; }
+.mv-view.phone .mv-smp-opt { display: none; }
+.mv-view.phone .mv-smp-op { width: 40px; padding: 0; justify-content: center; }
+.mv-view.phone .mv-smp-days { flex-wrap: wrap; }
+
 @media (prefers-reduced-motion: reduce) {
   .mv-view, .mv-view.open { transition: none; }
+  .mv-smp-rec.armed, .mv-smp-state i { animation: none !important; }
   .mv-body, .mv-ipmenu, .mv-pop, .mv-dim { animation: none; }
   .mv-meter i { transition: none; }
 }

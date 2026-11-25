@@ -10,6 +10,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -968,6 +969,8 @@ static void speech_sync(void)
 static void rec_setting(int index, int value);
 static rec_t *g_rec;
 static tl_t *g_tl;                       /* (rfm1cs 0.15.0 stage 2) the take library: the Takes and Tools tabs */
+static int g_smp_force;                  /* (the page's Sampler window) its JSON made again at once (smp_json) */
+static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
 static void on_action(const rfm1cs_event_t *ev)
 {
@@ -3012,6 +3015,21 @@ static void page_edit(int op, int a, int b)
         g_mix_ver++;
         break;
     }
+    case ENG_OP_SMP_SET:   /* (the page's Sampler window) a setting, as the app's popup sets it: SMP_SET back to us */
+        g_smp_force = 1;   /* (refused or not: the page sees what is) */
+        if (rfm_move_smp_set(m, a, b) <= 0)
+            return;
+        break;
+    case ENG_OP_SMP_PRESS: {   /* .. its record button: Sample in the app (SMP_PRESS: the recorder's key) */
+        rfm_move_act_t act;
+        if (!g_rec || !(m->fw.caps & RFM_MOVE_CAP_SAMPLER))
+            return;
+        memset(&act, 0, sizeof act);
+        act.kind = RFM_MOVE_ACT_SMP_PRESS, act.down = 1, act.value = (int16_t)rfm_move_smp_value(m, RFM_MOVE_SMP_MODE);
+        emit(&act);
+        g_smp_force = 1;
+        return;
+    }
     default:
         return;
     }
@@ -4198,6 +4216,180 @@ static void tl_row_core(const tl_row_t *t, rfm_move_smp_row_t *r)
     r->folder = t->folder;
     memcpy(r->thumb, t->thumb, sizeof r->thumb);
 }
+/* ---- the page's Sampler window: its take requests (engine_take, web.c /api/takes) handed to the library's worker on
+ * this thread, the answers kept (g_vmu) until the page's request reads them (engine_take_done) */
+#define TKQ 16
+#define TKD 32
+static struct { int id; eng_take_t r; } g_tkq[TKQ];
+static int g_ntkq, g_tk_next;
+static struct { int id, st, code; char *text; } g_tkd[TKD];
+static int g_tkd_at;
+int engine_take(const eng_take_t *r)
+{
+    int id = -1;
+    if (!g_tl)
+        return -1;
+    pthread_mutex_lock(&g_vmu);
+    if (g_ntkq < TKQ) {
+        int i;
+        id = ++g_tk_next;
+        g_tkq[g_ntkq].id = id;
+        g_tkq[g_ntkq].r = *r;
+        g_tkq[g_ntkq++].r.name[sizeof r->name - 1] = 0;
+        i = g_tkd_at++ % TKD;   /* (under way) */
+        free(g_tkd[i].text);
+        g_tkd[i].id = id, g_tkd[i].st = 0, g_tkd[i].code = 0, g_tkd[i].text = NULL;
+    }
+    pthread_mutex_unlock(&g_vmu);
+    return id;
+}
+int engine_take_done(int req, char **text, int *code)
+{
+    int i, st = -2;
+    *text = NULL;
+    if (code)
+        *code = 0;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < TKD; i++)
+        if (g_tkd[i].id == req) {
+            st = g_tkd[i].st;
+            if (st) {   /* (read once: the answer is the caller's) */
+                *text = g_tkd[i].text, g_tkd[i].text = NULL, g_tkd[i].id = 0;
+                if (code)
+                    *code = g_tkd[i].code;
+            }
+            break;
+        }
+    pthread_mutex_unlock(&g_vmu);
+    return st;
+}
+static void tk_done(int id, int st, int code, char *text)   /* (text: ours to keep, or free) */
+{
+    int i;
+    pthread_mutex_lock(&g_vmu);
+    for (i = 0; i < TKD; i++)
+        if (g_tkd[i].id == id && !g_tkd[i].st) {
+            g_tkd[i].st = st, g_tkd[i].code = code, g_tkd[i].text = text, text = NULL;
+            break;
+        }
+    pthread_mutex_unlock(&g_vmu);
+    free(text);   /* (no one asks any more) */
+}
+static char *tk_text(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static char *tk_text(const char *fmt, ...)
+{
+    va_list ap;
+    char *s = NULL;
+    va_start(ap, fmt);
+    if (vasprintf(&s, fmt, ap) < 0)
+        s = NULL;
+    va_end(ap);
+    return s;
+}
+/* (rec_tick) the page's requests to the library (PLAY at once: the reader never waits) */
+static void tk_requests(void)
+{
+    static struct { int id; eng_take_t r; } q[TKQ];   /* (4 KB: not on the stack of the engine's loop) */
+    int n, i;
+    pthread_mutex_lock(&g_vmu);
+    n = g_ntkq;
+    memcpy(q, g_tkq, sizeof q[0] * (size_t)n);
+    g_ntkq = 0;
+    pthread_mutex_unlock(&g_vmu);
+    for (i = 0; i < n; i++) {
+        const eng_take_t *r = &q[i].r;
+        tl_req_t t;
+        if (r->kind == ENG_TK_PLAY) {   /* (on the Move's output, after the recorder's tap: never recorded) */
+            if (r->id)
+                tl_play(g_tl, r->id, r->from, r->count);
+            else
+                tl_stop(g_tl);
+            tk_done(q[i].id, 1, 0, tk_text("{\"ok\":true}"));
+            continue;
+        }
+        memset(&t, 0, sizeof t);
+        t.tag = (uint32_t)q[i].id, t.take = r->id, t.from = r->from, t.count = r->count;
+        switch (r->kind) {
+        case ENG_TK_LIST: t.kind = TL_Q_LIST; break;
+        case ENG_TK_PEAKS: t.kind = TL_Q_PEAKS, t.n = r->n < 1 ? 1 : r->n > TL_WPEAKS ? TL_WPEAKS : r->n; break;
+        case ENG_TK_EDIT:
+            if (r->op < TL_OP_DELETE || r->op > TL_OP_FADE_OUT) {
+                tk_done(q[i].id, -1, 0, tk_text("no such edit"));
+                continue;
+            }
+            t.kind = TL_Q_EDIT, t.op = r->op, t.value = r->value;
+            if (r->op == TL_OP_DELETE) {   /* (its file goes: what plays stops, as the Move's Delete) */
+                uint32_t pid;
+                uint64_t pos;
+                tl_playing(g_tl, &pid, &pos);
+                if (pid == r->id)
+                    tl_stop(g_tl);
+            }
+            break;
+        case ENG_TK_UNDO: t.kind = TL_Q_UNDO; break;
+        case ENG_TK_RENAME: t.kind = TL_Q_RENAME, snprintf(t.path, sizeof t.path, "%s", r->name); break;
+        case ENG_TK_FILE: t.kind = TL_Q_FILE; break;
+        default:
+            tk_done(q[i].id, -1, 0, tk_text("no such request"));
+            continue;
+        }
+        tl_post(g_tl, &t);
+    }
+}
+/* a page's answer from the library: kept for it; an edit, undo or rename done: the Move's list and Tools follow. 1: redraw */
+static int tk_answer(tl_ans_t *a)
+{
+    char row[TL_REL * 2 + 256];
+    int redraw = 0, k;
+    switch (a->kind) {
+    case TL_Q_LIST:
+    case TL_Q_FILE:
+        tk_done((int)a->tag, a->ok ? 1 : -1, 0, a->ok ? a->text : tk_text("no such take"));
+        if (!a->ok)
+            free(a->text);
+        a->text = NULL;
+        return 0;
+    case TL_Q_PEAKS: {
+        char pk[TL_WPEAKS * 4 + 8];
+        int n = 0;
+        for (k = 0; k < a->n && k < TL_WPEAKS; k++)
+            n += snprintf(pk + n, sizeof pk - (size_t)n, "%s%d", k ? "," : "", a->pk[k]);
+        pk[n] = 0;
+        if (a->n)
+            tk_done((int)a->tag, 1, 0, tk_text("{\"id\":%u,\"from\":%llu,\"count\":%llu,\"peaks\":[%s]}", a->asked,
+                                                (unsigned long long)a->pfrom, (unsigned long long)a->pcount, pk));
+        else   /* (a take gone meanwhile, renamed or deleted: no peaks, not an error the page logs) */
+            tk_done((int)a->tag, 1, 0, tk_text("{\"id\":%u,\"gone\":1,\"peaks\":[]}", a->asked));
+        return 0;
+    }
+    default: break;   /* EDIT, UNDO, RENAME */
+    }
+    fprintf(stderr, "engine: the page's take %s %s: %s\n", a->kind == TL_Q_UNDO ? "undo" : a->kind == TL_Q_RENAME ? "rename" : "edit",
+            a->has_row ? a->row.rel : "", a->ok == 1 ? "done" : "not done");
+    if (a->ok != 1) {
+        tk_done((int)a->tag, -1, a->ok, tk_text(a->kind == TL_Q_RENAME && a->ok == -2 ? "that name is taken"
+                                                : a->kind == TL_Q_RENAME && a->ok == -1 ? "not a name for a take"
+                                                : "not done"));
+        return 0;
+    }
+    if (a->has_row)
+        tl_row_json(&a->row, row, sizeof row);
+    tk_done((int)a->tag, 1, 0, tk_text("{\"ok\":true,\"take\":%s}", a->has_row ? row : "null"));
+    g_takes_ver++, g_smp_force = 1;
+    fsvc_bump_changed();   /* (audio/rec changed) */
+    if (a->kind == TL_Q_RENAME) {   /* (a new id: the Move's take chosen is the old one; its list again) */
+        rfm_move_smp_changed(&S->core);
+        return 0;
+    }
+    {
+        rfm_move_smp_row_t one;
+        if (a->has_row)
+            tl_row_core(&a->row, &one);
+        redraw = rfm_move_smp_done(&S->core, a->op, 1, a->has_row ? &one : NULL);
+    }
+    return redraw;
+}
+
 /* (rec_tick) the library's answers to the core; 1: redraw */
 static int tl_answers(void)
 {
@@ -4205,6 +4397,13 @@ static int tl_answers(void)
     int redraw = 0, i;
     while (g_tl && tl_poll(g_tl, &a)) {
         rfm_move_smp_row_t rows[TL_ROWS], one;
+        if (a.tag) {   /* (the page's) */
+            redraw |= tk_answer(&a);
+            free(a.text);
+            continue;
+        }
+        free(a.text);   /* (none of the core's carries one) */
+        a.text = NULL;
         switch (a.kind) {
         case TL_Q_ROWS:
             for (i = 0; i < a.n && i < TL_ROWS; i++)
@@ -4226,7 +4425,7 @@ static int tl_answers(void)
             redraw |= rfm_move_smp_done(&S->core, a.op, a.ok, a.has_row ? &one : NULL);
             g_tl_t_edits++, g_tl_t_last_op = a.op, g_tl_t_last_ok = a.ok;
             if (a.ok)
-                fsvc_bump_changed();   /* (audio/rec changed) */
+                fsvc_bump_changed(), g_takes_ver++, g_smp_force = 1;   /* (audio/rec changed; the page lists again) */
             break;
         case TL_Q_SAVED:
             if (a.has_row) {
@@ -4318,6 +4517,43 @@ static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const
     g_rec_blocks++;
 }
 
+/* (rec_tick) the page's Sampler window: the settings (as the core has them), the recorder now (as the Move's app
+ * shows it), what plays on the Move, the undo, the takes' version: g_view.smp when it changed, at most 15 a second (at
+ * once after a page's change, g_smp_force) */
+static void smp_json(const rfm_move_smp_status_t *st, uint32_t now)
+{
+    static uint32_t last;
+    static char prev[sizeof g_view.smp];
+    char j[sizeof g_view.smp], pk[2 * RFM_MOVE_SMP_PEAKS + 1];
+    const rfm_move_t *m = &S->core;
+    int n, k;
+    if (!g_smp_force && now - last < 66u)
+        return;
+    for (k = 0; k < st->npeaks && k < RFM_MOVE_SMP_PEAKS; k++)
+        snprintf(pk + 2 * k, 3, "%02x", st->peaks[k]);
+    pk[2 * k] = 0;
+    n = snprintf(j, sizeof j, "{\"type\":\"smp\",\"on\":1,\"takes_on\":%d,\"shown\":%d,\"set\":[", g_tl != NULL,
+                 rfm_move_smp_shown(m));
+    for (k = 0; k < RFM_MOVE_SMP_N && n < (int)sizeof j; k++)
+        n += snprintf(j + n, sizeof j - (size_t)n, "%s%d", k ? "," : "", rfm_move_smp_value(m, k));
+    if (n < (int)sizeof j)
+        snprintf(j + n, sizeof j - (size_t)n,
+                 "],\"srcs\":%u,\"sets\":%u,\"state\":%d,\"listening\":%d,\"bar\":%d,\"bars\":%d,\"level\":%d,"
+                 "\"frames\":%u,\"rate\":%u,\"span\":%d,\"peaks\":\"%s\",\"play\":%u,\"pos\":%u,\"undo\":%d,\"bpm10\":%d,"
+                 "\"saved\":%u,\"takes_ver\":%u}", m->smp.srcs, m->smp.sets, st->state, st->listening, st->bar, st->bars,
+                 st->level, st->frames, st->rate, st->span, pk, st->play_take, st->play_pos, st->undo,
+                 rfm_move_seq_bpm10(m), g_rec_takes, g_takes_ver);
+    if (!g_smp_force && !strcmp(j, prev))
+        return;
+    g_smp_force = 0, last = now;
+    memcpy(prev, j, sizeof prev);
+    pthread_mutex_lock(&g_vmu);
+    memcpy(g_view.smp, j, sizeof j);
+    g_view.smp_seq++;
+    g_view.seq++;
+    pthread_mutex_unlock(&g_vmu);
+}
+
 /* (engine_main, ~30 times a second) the recorder's status to the core's app; each finished take as an event */
 static void rec_tick(uint32_t now)
 {
@@ -4349,6 +4585,7 @@ static void rec_tick(uint32_t now)
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_SAVED, (int)t.bars, (int)lrint(t.bpm * 10.0),
                                          (int)(t.frames * 1000u / FW_FS), NULL);
             fsvc_bump_changed();   /* (audio/rec has a new file) */
+            g_takes_ver++, g_smp_force = 1;   /* (the page's Sampler window lists again) */
             if (g_tl) {   /* (stage 2) its row from the library (its picture read there), then rfm_move_smp_saved */
                 tl_req_t q;
                 memset(&q, 0, sizeof q);
@@ -4358,6 +4595,8 @@ static void rec_tick(uint32_t now)
             }
         }
     }
+    if (g_tl)
+        tk_requests();   /* (the page's Sampler window: to the library's worker) */
     redraw |= tl_answers();
     if (now - last >= REC_STATUS_MS) {
         last = now;
@@ -4401,6 +4640,7 @@ static void rec_tick(uint32_t now)
             st.undo = (uint8_t)tl_has_undo(g_tl);
         }
         redraw |= rfm_move_smp_status(&S->core, &st);
+        smp_json(&st, now);
         rfm1cs_session_flush_leds(S);   /* (Sample's light follows the state) */
         if (C.test_api) {   /* (tests: Sample's green flashes and the app's messages, as they come) */
             static int was_g, was_m, was_r;
@@ -5352,6 +5592,14 @@ void engine_stop(void)
     }
     tl_free(g_tl);   /* (the take library: its worker and reader) */
     g_tl = NULL;
+    {   /* (the page's take answers no one read) */
+        int i;
+        pthread_mutex_lock(&g_vmu);
+        for (i = 0; i < TKD; i++)
+            free(g_tkd[i].text), g_tkd[i].text = NULL, g_tkd[i].id = 0;
+        g_ntkq = 0;
+        pthread_mutex_unlock(&g_vmu);
+    }
     fmr_stop();
     st_worker_stop();
     if (C.capture_out && g_cap_out)
