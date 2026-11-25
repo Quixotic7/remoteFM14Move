@@ -4,6 +4,7 @@
 #   make              everything, in the build image (docker/Dockerfile, linux/arm64): the host for the Move and for
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
+#   make test-sampler the sampler's tests alone (tests/sampler_suite.sh, the kit's among them); make test-kit the kit's
 #   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1" (with the starter firmwares of
 #                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there; first
 #                     version-check: src/main.c, module/module.json and release.json name the same version)
@@ -67,6 +68,12 @@ test: all testcat testcat-v
 .PHONY: test-sampler
 test-sampler: all
 	tests/sampler_suite.sh
+
+# the kit's tests alone (rfm1cs stage 3a): src/kit.c natively (plain, ASan + UBSan, TSan), then the kit on the
+# simulator in the image; about a minute
+.PHONY: test-kit
+test-kit: all
+	tests/kit_test.sh && $(DOCKER_RUN) tests/kit_e2e.sh
 
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
 # signed with the catalog's key (CATALOG_SIGNING_KEY; its public half must be src/catalog_key.h's)
