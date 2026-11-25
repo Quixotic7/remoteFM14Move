@@ -43,6 +43,7 @@
 #include "projmem.h"
 #include "recorder.h"
 #include "takes.h"
+#include "kit.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
 #include "wasm-rt.h"
@@ -969,6 +970,12 @@ static void speech_sync(void)
 static void rec_setting(int index, int value);
 static rec_t *g_rec;
 static tl_t *g_tl;                       /* (rfm1cs 0.15.0 stage 2) the take library: the Takes and Tools tabs */
+static kit_t *g_kit;                     /* (rfm1cs stage 3a) the kit: its sounds, voices, the Kit bus (README "The kit") */
+static int g_kit_adv;                    /* (render_block_) inside the sequencer's advance: a KIT_NOTE's frame counts */
+static int g_kit_rec = -1;               /* a pad recorded into (KIT_REC): the take goes onto it, -1 none */
+static uint32_t g_kit_rec_blk;           /* .. the recorder's blocks at its press */
+static uint32_t g_kit_t_notes, g_kit_t_loads, g_kit_t_rows, g_kit_t_recs;   /* (tests) */
+static void kit_action(const rfm_move_act_t *a);
 static int g_smp_force;                  /* (the page's Sampler window) its JSON made again at once (smp_json) */
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
@@ -1033,6 +1040,14 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_SMP_PRESS:   /* .. Sample in the app: the recorder's key (the mode says what it does) */
         if (g_rec)
             rec_press(g_rec);
+        break;
+    case RFM_MOVE_ACT_KIT_NOTE:    /* (rfm1cs stage 3a) the kit: its voices, its sounds, Files (README "The kit") */
+    case RFM_MOVE_ACT_KIT_SET:
+    case RFM_MOVE_ACT_KIT_LOAD:
+    case RFM_MOVE_ACT_KIT_ROWS:
+    case RFM_MOVE_ACT_KIT_PREVIEW:
+    case RFM_MOVE_ACT_KIT_REC:
+        kit_action(a);
         break;
     case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
     case RFM_MOVE_ACT_SMP_PEAKS:
@@ -4554,6 +4569,86 @@ static void smp_json(const rfm_move_smp_status_t *st, uint32_t now)
     pthread_mutex_unlock(&g_vmu);
 }
 
+/* ------------------------------------------------------------------ the kit (README "The kit") --- */
+/* the core's KIT_* actions (on_action): the voices at once (a note's frame within the block the sequencer stamped it
+ * in), the sounds and Files to the kit's file work (the take library's worker), a pad recorded into through the
+ * recorder with the sampler's settings */
+static void kit_action(const rfm_move_act_t *a)
+{
+    if (!g_kit)
+        return;
+    switch (a->kind) {
+    case RFM_MOVE_ACT_KIT_NOTE:
+        kit_note(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0);
+        g_kit_t_notes++;
+        break;
+    case RFM_MOVE_ACT_KIT_SET: kit_set(g_kit, a->index, a->param, a->value); break;
+    case RFM_MOVE_ACT_KIT_LOAD:
+        if (a->data && a->len) {
+            char p[KIT_PATH];
+            snprintf(p, sizeof p, "%.*s", (int)(a->len < sizeof p ? a->len : sizeof p - 1), (const char *)a->data);
+            kit_load(g_kit, a->index, p);
+        } else if (a->take)
+            kit_load_row(g_kit, a->index, a->value, a->take);
+        else
+            kit_load(g_kit, a->index, NULL);
+        break;
+    case RFM_MOVE_ACT_KIT_ROWS: kit_rows(g_kit, a->value, a->take, (int)a->from, (int)a->count); break;
+    case RFM_MOVE_ACT_KIT_PREVIEW: kit_preview(g_kit, a->value, a->take, a->down); break;
+    case RFM_MOVE_ACT_KIT_REC:   /* the recorder as Sample in the app; the pad let go: a take recording ends, an armed one
+                                  * (or a press not yet seen) is dropped; a take ended by its length: nothing more */
+        if (!g_rec)
+            break;
+        if (a->down) {
+            rec_status_t r;
+            rec_get(g_rec, &r);
+            if (r.state != REC_IDLE && r.state != REC_SAVING)
+                break;   /* (a take of the sampler's under way: not this one) */
+            g_kit_rec = a->index, g_kit_rec_blk = g_rec_blocks;
+            rec_press(g_rec);
+            g_kit_t_recs++;
+        } else if (g_kit_rec == a->index && a->value != RFM_MOVE_SMP_M_CAPTURE) {
+            rec_status_t r;
+            rec_get(g_rec, &r);
+            if (r.state == REC_RECORDING)
+                rec_press(g_rec);
+            else if (r.state == REC_ARMED || (r.state == REC_IDLE && g_rec_blocks == g_kit_rec_blk))
+                rec_press(g_rec), g_kit_rec = -1;   /* (dropped: no take for the pad) */
+        }
+        break;
+    default: break;
+    }
+}
+/* (rec_tick) the kit's answers to the core; 1: redraw */
+static int kit_answers(void)
+{
+    static kit_ans_t a;   /* (5 KB: not on the stack of the engine's loop) */
+    int redraw = 0;
+    while (g_kit && kit_poll(g_kit, &a)) {
+        if (a.kind == KIT_A_ROWS) {
+            rfm_move_kit_row_t rows[KIT_ROWS];
+            int i;
+            memset(rows, 0, sizeof rows);
+            for (i = 0; i < a.n && i < KIT_ROWS; i++) {
+                rows[i].id = a.rows[i].id, rows[i].kind = (uint8_t)a.rows[i].kind;
+                snprintf(rows[i].name, sizeof rows[i].name, "%s", a.rows[i].name);
+                rows[i].frames = a.rows[i].frames, rows[i].rate = a.rows[i].rate;
+                memcpy(rows[i].thumb, a.rows[i].thumb, sizeof rows[i].thumb);
+            }
+            redraw |= rfm_move_kit_rows(&S->core, a.place, a.folder, a.total, a.from, a.n, rows);
+            g_kit_t_rows++;
+        } else if (a.kind == KIT_A_LOADED) {
+            if (a.status == KIT_OK && !a.path[0])
+                continue;   /* (a pad emptied: the core already shows it) */
+            if (a.status != KIT_OK)
+                fprintf(stderr, "engine: kit pad %d: %s not loaded (%d)\n", a.pad + 1, a.path, a.status);
+            redraw |= rfm_move_kit_loaded(&S->core, a.pad, a.status, a.name, a.path, a.frames, a.rate, a.npk, a.pk);
+            g_kit_t_loads++;
+        }
+    }
+    return redraw;
+}
+
 /* (engine_main, ~30 times a second) the recorder's status to the core's app; each finished take as an event */
 static void rec_tick(uint32_t now)
 {
@@ -4569,6 +4664,11 @@ static void rec_tick(uint32_t now)
         if (t.take == g_rec_last_take && t.reason != REC_END_NOTHING)
             continue;   /* (a stems take: one event, its first file's) */
         g_rec_last_take = t.take;
+        if (g_kit_rec >= 0) {   /* (the kit: the take onto the pad it was recorded into) */
+            if (t.reason < REC_END_NOTHING && t.path[0])
+                kit_load(g_kit, g_kit_rec, t.path);
+            g_kit_rec = -1;
+        }
         if (t.reason == REC_END_NOTHING)
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_NOTHING, 0, 0, 0, NULL);
         else if (t.reason >= REC_END_DISK_LOW || !t.path[0]) {
@@ -4598,6 +4698,7 @@ static void rec_tick(uint32_t now)
     if (g_tl)
         tk_requests();   /* (the page's Sampler window: to the library's worker) */
     redraw |= tl_answers();
+    redraw |= kit_answers();
     if (now - last >= REC_STATUS_MS) {
         last = now;
         rec_get(g_rec, &r);
@@ -4692,8 +4793,10 @@ static void render_block_(uint32_t now)
         g_beat = run ? g_beat + (double)FW_BLOCK / FW_FS * bpm / 60.0 : 0.0;
         fx_clock(bpm, run, g_beat);
     }
+    g_kit_adv = 1;
     rfm1cs_session_advance(S, now, FW_BLOCK, FW_FS);   /* the sequencer: its MIDI stamped within this block (through
                                                          * the MIDI FX: route_midi) */
+    g_kit_adv = 0;
     spos = rfm_move_seq_pos(&S->core, &sper);   /* (the recorder: the song's position, rfm1cs 0.15.0) */
     midi_fx_tick();
     do_deferred();
@@ -4784,6 +4887,8 @@ static void render_block_(uint32_t now)
         }
         do_deferred();   /* (what the active slot's clock made the sequencer do: after every slot's block is mixed) */
     }
+    if (g_kit)
+        kit_render(g_kit, g_mix.acc, FW_BLOCK);   /* (the kit: its bus into the mix, before the recorder's tap) */
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
         if (sends >> k & 1) {
             fxs_t *x = &FX[RFM_MOVE_FX_AUDIO][k];
@@ -4807,6 +4912,8 @@ static void render_block_(uint32_t now)
     rec_feed(out, dry, ain, spos, sper);   /* (the recorder: the mix as heard, the slots dry, the input) */
     if (g_tl)
         tl_mix(g_tl, out, FW_BLOCK);   /* (stage 2) a take playing: after the recorder's tap, so never recorded */
+    if (g_kit)
+        kit_preview_mix(g_kit, out, FW_BLOCK);   /* (the kit's Files: a sound heard as the jog lands on it, never recorded) */
     mr_ring_push(&g_ring, out, FW_BLOCK);
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
         memcpy(g_cap_mix + 2u * g_cap_mix_n, out, sizeof out);
@@ -5162,6 +5269,21 @@ static void housekeeping(uint32_t now)
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"mroute\":[%d,%d,%d]", g_mroute[0], g_mroute[1],
                       g_mroute[2]);   /* (rfm1cs 0.6.6: each slot's MIDI routes, as the engine forwards them) */
+        if (g_kit) {   /* (rfm1cs stage 3a) the kit: its view, the voices, the sounds, Files (tests) */
+            const rfm_move_kit_t *t = &S->core.kit;
+            unsigned pads = 0;
+            int p;
+            for (p = 0; p < KIT_PADS; p++)
+                pads |= (kit_frames(g_kit, p) ? 1u : 0u) << p;
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_shown\":%d,\"kit_cur\":%d,\"kit_tab\":%d,\"kit_row\":%d,"
+                          "\"kit_place\":%d,\"kit_total\":%d,\"kit_route\":%u,\"kit_pads\":%u,\"kit_voices\":%d,"
+                          "\"kit_bytes\":%u,\"kit_prev\":%d,\"kit_notes\":%u,\"kit_loads\":%u,\"kit_rows\":%u,"
+                          "\"kit_recs\":%u,\"kit_rec\":%d,\"kit_pitch\":%d,\"kit_st\":%d",
+                          rfm_move_kit_shown(&S->core), t->cur, t->tab, t->row, t->place, t->known ? t->total : -1,
+                          t->route, pads, kit_voices(g_kit), kit_bytes(g_kit), kit_previewing(g_kit), g_kit_t_notes,
+                          g_kit_t_loads, g_kit_t_rows, g_kit_t_recs, t->rec_pad, t->pad[t->cur].v[RFM_MOVE_KIT_P_PITCH],
+                          t->pad[t->cur].st);
+        }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
             n += midiout_json(tmp + n, (int)sizeof tmp - n);
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
@@ -5464,7 +5586,15 @@ int engine_start(const engine_cfg_t *cfg)
     /* (rfm1cs 0.13.0) a project holds its firmwares: before the projects (rfm_move_project_dir: a fresh install's first
      * project gets the new-project defaults) and before the list */
     rec_start();   /* (README "The sampler": before the capability, which sends every setting's SMP_SET) */
-    rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0));
+    {   /* (the kit: its file work on the take library's worker, else a thread of its own) */
+        kit_cfg_t kc;
+        memset(&kc, 0, sizeof kc);
+        kc.fs = FW_FS, kc.samples_dir = C.samples_dir, kc.tl = g_tl, kc.own_thread = g_tl == NULL;
+        if (!(g_kit = kit_new(&kc)))
+            fprintf(stderr, "engine: no kit (no memory)\n");
+    }
+    rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
+                                   (g_kit ? RFM_MOVE_CAP_KIT : 0));
     /* the sampler app offers: Master, Slot 1..3, Input, Stems; Source, Mode, Length, Threshold, Input level (not
      * Monitor, To: later); the Record tab, (stage 2) Takes and Tools with the take library; takes to Files */
     rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
@@ -5592,6 +5722,8 @@ void engine_stop(void)
     }
     tl_free(g_tl);   /* (the take library: its worker and reader) */
     g_tl = NULL;
+    kit_free(g_kit);   /* (after the worker that runs its file work) */
+    g_kit = NULL;
     {   /* (the page's take answers no one read) */
         int i;
         pthread_mutex_lock(&g_vmu);
