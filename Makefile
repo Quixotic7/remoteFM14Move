@@ -5,6 +5,9 @@
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make test-sampler the sampler's tests alone (tests/sampler_suite.sh, the kit's among them); make test-kit the kit's
+#   make test-update  the page's Update (src/update.c, tools/make_update.py): natively, then on the simulator
+#   make update       dist/updates/remotefm1-<version>-<commit>.rfm1u: this build as a signed update for the page's Update
+#                     (tools/make_update.py with UPDATE_SIGNING_KEY, default ~/.config/remotefm14move/update-signing-key.pem)
 #   make package      dist/remotefm1-module.tar.gz: the Schwung tool "RemoteFM1" (with the starter firmwares of
 #                     module/bundle.txt and the catalog's snapshot, from dist/move-catalog when it is there; first
 #                     version-check: src/main.c, module/module.json and release.json name the same version)
@@ -33,9 +36,23 @@ FM1VST_REF ?= origin/rfm1-manager
 IMAGE ?= rfm14move-build
 DOCKER_RUN = docker run --rm -v "$(abspath .)":/w -w /w $(IMAGE)
 
-.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim snapsafe
-all: image inputs site
+.PHONY: all test package sim-run image inputs site clean catalog testcat testcat-v wifisim snapsafe buildinfo update test-update
+all: image inputs site buildinfo
 	$(DOCKER_RUN) make -j4 in-all
+
+# build/gen/buildinfo.h: the commits and date the host names (scripts/buildinfo.sh: git, on the Mac)
+buildinfo:
+	scripts/buildinfo.sh
+
+# the page's Update (README "Updating from the page"): this build as a signed .rfm1u
+UPDATE_SIGNING_KEY ?= $(HOME)/.config/remotefm14move/update-signing-key.pem
+update: all
+	python3 tools/make_update.py --key "$(UPDATE_SIGNING_KEY)"
+
+# its tests: the format, the signatures, the payload's rules and gzip natively (tests/update_test.sh, which also makes
+# the fixtures with tools/make_update.py and the test key), then an install and an Undo on the simulator
+test-update: all
+	tests/update_test.sh && $(DOCKER_RUN) tests/update_e2e.sh
 
 # the page: RemoteFM1's web/site built for the Move (scripts/build_site.sh: git, patch and rsync, on the Mac)
 site:
@@ -142,7 +159,7 @@ CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c p
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
-HOST_SRC := src/main.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
+HOST_SRC := src/main.c src/update.c src/gz.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
             src/fmwords.c src/fmreader.c src/recorder.c src/takes.c src/kit.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
@@ -151,7 +168,7 @@ RF := third_party/RemoteFM1
 RF_SRC := $(addprefix $(RF)/host/src/,codec.c screen.c panel.c session.c audio.c)
 RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
 RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
-HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h
+HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h build/gen/buildinfo.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix in-tkdemo
 in-all: in-tools in-fw in-testfw in-cpu2fix in-tkdemo in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
@@ -231,7 +248,8 @@ HOST_LIBS = -rdynamic -ldl -lm -lpthread
 # the Move's trusts only src/catalog_key.h's (tests/in_image.sh checks)
 TEST_BUILD = -DRFM14_TEST_BUILD -Ibuild/testkey
 build/%/remotefm1-host: $(HOST_SRC) $(HOST_HDR) $(CS_SRC) $(MR_SRC) $(MR)/device/plat_sim.c $(MR)/device/plat_move.c \
-                        $(RF_SRC) $(RF_SIM_SRC) build/obj/wasm-rt-impl.o build/testkey/catalog_test_key.h
+                        $(RF_SRC) $(RF_SIM_SRC) build/obj/wasm-rt-impl.o build/testkey/catalog_test_key.h \
+                        build/testkey/update_test_key.h
 	mkdir -p build/$*
 	$(CC) $(HOST_CFLAGS) $(WARN) -DRFM14_PLAT_$(shell echo $* | tr a-z A-Z) $(if $(filter sim,$*),$(TEST_BUILD)) -o $@ $(HOST_SRC) \
 	    $(MR)/device/plat_$*.c $(MR_SRC) $(CS_SRC) $(RF_SRC) $(if $(filter sim,$*),$(RF_SIM_SRC)) build/obj/wasm-rt-impl.o \
@@ -270,6 +288,20 @@ build/testkey/catalog_test_key.h:
 	  echo 'static const uint8_t CAT_TEST_KEY[32] = {'; \
 	  openssl pkey -in build/testkey/test-key.pem -pubout -outform DER | tail -c 32 | xxd -i; echo '};'; } > $@.tmp
 	mv $@.tmp $@
+
+# the tests' update signing key (as the catalog's: never the real one, ~/.config/remotefm14move/update-signing-key.pem)
+build/testkey/update_test_key.h:
+	mkdir -p build/testkey
+	[ -f build/testkey/update-test-key.pem ] || (umask 077; openssl genpkey -algorithm ed25519 -out build/testkey/update-test-key.pem)
+	{ echo '/* the tests update key (Makefile; build/testkey/update-test-key.pem): RFM14_TEST_BUILD only */'; \
+	  echo 'static const uint8_t UPD_TEST_KEY[32] = {'; \
+	  openssl pkey -in build/testkey/update-test-key.pem -pubout -outform DER | tail -c 32 | xxd -i; echo '};'; } > $@.tmp
+	mv $@.tmp $@
+
+# (made on the Mac by scripts/buildinfo.sh; a build without it, in the image alone, names no commit)
+build/gen/buildinfo.h:
+	mkdir -p build/gen
+	printf '#define RFM14_GIT "unknown"\n#define RFM14_GIT_CORE "unknown"\n#define RFM14_BUILT ""\n' > $@
 
 # the test FX modules (the simulator's "installed Schwung modules"): Schwung's own arp, chord and freeverb (MIT, their
 # sources at the commit third_party/schwung-api names) and three of ours (crashfx: a crash in create; hogfx: CPU;

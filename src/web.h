@@ -19,6 +19,12 @@
  *                           | save | open, ...}: done on the engine's thread as the Move's own controls (web.c api_kit_post)
  *   GET/POST /api/takes...  the Sampler window's takes (web.c "the Sampler window's takes": list, peaks, wav with
  *                           Range, edit, undo, rename, play), done by the take library's worker
+ *   GET /api/update         the page's Update (update.h): {"state": idle | receiving | checking | installing | undoing |
+ *                           done | failed, "msg", "running", "installed", "staged", "undo", "undo_to", "backup",
+ *                           "layout", "can", "why", "max"}
+ *   POST /api/update        an .rfm1u as the body (Content-Length; streamed to a file beside the RemoteFM1 folder): 202,
+ *                           then checked and installed on update.c's worker (GET follows it); 4xx/507 refused at once
+ *   POST /api/update/undo   the previous build back (202; 409 none, or busy)
  *   POST /api/test/midi     {"track", "b0", "b1", "b2"}: sequencer MIDI from outside (--test-api only; else 403)
  *   GET /ws                 a WebSocket. Out (binary): 1 y0 n rows   the screen's rows y0..y0+n-1 that changed (RGB565 BE)
  *                                                      2 leds[44] play_green

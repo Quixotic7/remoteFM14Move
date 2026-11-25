@@ -31,6 +31,7 @@
 #include "projmem.h"
 #include "storage.h"
 #include "takes.h"
+#include "update.h"
 #ifdef RFM14_PLAT_SIM
 #include "fm1sim.h"
 #endif
@@ -82,6 +83,8 @@ typedef struct {
     int treq, tkr, rg;
     uint64_t treq_ms, rg_a, rg_b;
     uint32_t smp_seq, kit_seq;
+    /* the page's Update (POST /api/update): the body is an .rfm1u (update.h), streamed to update.c's file */
+    int up_upd;
 } client_t;
 #define UP_MAX (256ull * 1024 * 1024)      /* a WAV's size cap */
 #define UP_RESERVE (64ull * 1024 * 1024)   /* left free on the disk after an upload */
@@ -106,6 +109,8 @@ static void cfree(client_t *c)
     if (c->up_fd > 0) {      /* (an upload cut short: nothing kept) */
         close(c->up_fd);
         unlink(c->up_tmp);
+        if (c->up_upd)
+            upd_recv_abort("the upload was cut short");
     }
     if (c->dl_fd > 0)
         close(c->dl_fd);
@@ -581,6 +586,39 @@ static int upload_start(client_t *c, const char *req, long want)
         c->closing = 0;
         return store_put_start(c, path + 15, want);
     }
+    if (!strcmp(path, "/api/update") || !strncmp(path, "/api/update?", 12)) {   /* (update.h) */
+        char why[160], j[256], e[200];
+        const int rc = want <= 0 ? 411 : upd_recv_begin((uint64_t)want, c->up_tmp, sizeof c->up_tmp, why, sizeof why);
+        c->closing = 0;
+        if (rc) {
+            static const char *const ST[][2] = { { "400", "400 Bad Request" }, { "409", "409 Conflict" },
+                                                 { "411", "411 Length Required" }, { "413", "413 Payload Too Large" },
+                                                 { "507", "507 Insufficient Storage" } };
+            const char *status = "500 Internal Server Error";
+            char code[8];
+            size_t i;
+            if (rc == 411)
+                snprintf(why, sizeof why, "the file, with its Content-Length");
+            snprintf(code, sizeof code, "%d", rc);
+            for (i = 0; i < sizeof ST / sizeof ST[0]; i++)
+                if (!strcmp(ST[i][0], code))
+                    status = ST[i][1];
+            mj_escape(why, e, sizeof e);
+            snprintf(j, sizeof j, "{\"ok\":false,\"error\":\"%s\"}", e);
+            json_reply(c, status, j);
+            return 1;
+        }
+        c->up_fd = open(c->up_tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (c->up_fd <= 0) {
+            c->up_fd = -1;
+            upd_recv_abort("cannot write the upload on the Move");
+            json_reply(c, "500 Internal Server Error", "{\"ok\":false,\"error\":\"cannot write the upload on the Move\"}");
+            return 1;
+        }
+        c->up_upd = 1, c->up_fs = 1, c->up_magic = 0, c->up_store = 0;
+        c->up_left = c->up_total = (uint64_t)want;
+        return 1;
+    }
     if (strncmp(path, "/api/files/audio/", 17))
         return 0;
     path[strcspn(path, "?#")] = 0;
@@ -628,6 +666,8 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
             close(c->up_fd);
             c->up_fd = -1;
             unlink(c->up_tmp);
+            if (c->up_upd)
+                upd_recv_abort("the upload could not be written (the disk full?)");
             json_reply(c, "507 Insufficient Storage", "{\"ok\":false,\"error\":\"the write failed (disk full?)\"}");
             return;
         }
@@ -635,6 +675,19 @@ static void upload_feed(client_t *c, const uint8_t *b, size_t n)
     }
     if (c->up_left)
         return;
+    if (c->up_upd) {   /* (an update: checked and installed by update.c's worker; GET /api/update follows it) */
+        const int bad = close(c->up_fd) != 0;
+        c->up_fd = -1;
+        c->up_upd = 0;
+        if (bad) {
+            upd_recv_abort("the upload could not be written (the disk full?)");
+            json_reply(c, "507 Insufficient Storage", "{\"ok\":false,\"error\":\"the upload could not be written\"}");
+        } else if (upd_recv_done() != 0)
+            json_reply(c, "500 Internal Server Error", "{\"ok\":false,\"error\":\"cannot start the install\"}");
+        else
+            json_reply(c, "202 Accepted", "{\"ok\":true}");
+        return;
+    }
     close(c->up_fd);
     c->up_fd = -1;
     if (c->up_store) {   /* (a state or project file: checked, then the engine puts it in place) */
@@ -1752,7 +1805,17 @@ static void request(client_t *c, const char *body)
         path[0] = 0;
     path[strcspn(path, "?#")] = 0;
     if (post) {
-        if (!strcmp(path, "/api/load"))
+        if (!strcmp(path, "/api/update/undo")) {   /* (update.h) */
+            char why[160], j[256], e[200];
+            const int rc = upd_undo_start(why, sizeof why);
+            if (!rc)
+                json_reply(c, "202 Accepted", "{\"ok\":true}");
+            else {
+                mj_escape(why, e, sizeof e);
+                snprintf(j, sizeof j, "{\"ok\":false,\"error\":\"%s\"}", e);
+                json_reply(c, rc == 409 ? "409 Conflict" : "500 Internal Server Error", j);
+            }
+        } else if (!strcmp(path, "/api/load"))
             api_load(c, body);
         else if (!strcmp(path, "/api/store"))
             api_store(c, body);
@@ -1869,6 +1932,11 @@ static void request(client_t *c, const char *body)
     else if (!strcmp(path, "/api/fm1/wifi")) {
         static char s[12288];   /* (the web thread's) */
         const int n = fm1link_wifi_json(s, sizeof s);
+        http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
+    }
+    else if (!strcmp(path, "/api/update")) {   /* (update.h) */
+        char s[4096];
+        const int n = upd_status_json(s, sizeof s);
         http_reply(c, "200 OK", "application/json", s, (size_t)(n > 0 ? n : 0));
     }
     else if (!strcmp(path, "/api/info"))
