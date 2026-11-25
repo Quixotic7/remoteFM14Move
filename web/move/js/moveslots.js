@@ -23,6 +23,7 @@ import { MixView } from "./movemix.js";
 import { LAYOUTS } from "./panel.js";
 import { mountMoveFiles } from "./movefiles.js";
 import { mountMoveWifi } from "./movewifi.js";
+import { mountMoveUpdate } from "./moveupdate.js";
 import { mountMoveBrowse } from "./movebrowse.js";
 import { mountMoveStore, STORE_IC } from "./movestore.js";
 import { SmpView } from "./movesmp.js";
@@ -266,6 +267,8 @@ export function mountMoveUi(o) {
   { const mixOpen = ui.view.open.bind(ui.view); ui.view.open = () => { ui.smpView.close(); mixOpen(); }; }
   // the FM-1's Wi-Fi set up over the Move's USB-A (js/movewifi.js): the settings sheet's FM-1 Wi-Fi section, ?wifi
   ui.wifi = mountMoveWifi(o).view;
+  // the page's Update (js/moveupdate.js): the settings sheet's Update section, after Files
+  ui.update = mountMoveUpdate(o);
   return ui;
 }
 export { NSLOT };
