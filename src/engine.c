@@ -4959,7 +4959,7 @@ static void render_block_(uint32_t now)
         for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)
             ks[k] = sends >> k & 1 ? g_bus[k].acc : NULL;
         kit_render_bus(g_kit, g_mix.acc, ks, g_kit_blk, FW_BLOCK);
-        g_kit_blk_on = 1;
+        g_kit_blk_on = kit_bytes(g_kit) > 0;   /* (a stream present only with a sound in the kit: no empty Kit stem) */
     }
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
         if (sends >> k & 1) {
