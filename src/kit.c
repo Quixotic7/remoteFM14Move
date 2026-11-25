@@ -658,7 +658,12 @@ static int row_path(kit_t *k, int place, uint32_t id, char *path, size_t cap, ch
         tl_row_t t;
         if (!tl_file(k->cfg.tl, id, own, sizeof own, path, cap, &t))
             return 0;
-        tl_find(k->cfg.tl, id, &t);                     /* (its source, bars, length: as its row shows them) */
+        {                                               /* (its source, bars, length: as its row shows them; 3c: not
+                                                         * found there, tl_file's row stands) */
+            tl_row_t f;
+            if (tl_find(k->cfg.tl, id, &f))
+                t = f;
+        }
         take_name(&t, name, ncap);
         if (tr)
             *tr = t;
