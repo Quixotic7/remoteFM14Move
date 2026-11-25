@@ -54,7 +54,9 @@ stop() { cmd quit; wait $HOST; }
 post() { curl -s -o "$T/post.json" -w '%{http_code}' -X POST --data-binary @"$1" -H 'Content-Type: application/octet-stream' "$U/api/update"; }
 settle() { wait_for 60 '[ "$(state)" = done ] || [ "$(state)" = failed ]'; }   # (the install's worker)
 tree() { (cd "$1" && find . -type f -exec md5sum {} + | sort -k2) | md5sum | cut -c1-32; }
-backups() { ls "$D"/remotefm1-data-backup-*.tar.gz 2>/dev/null | wc -l | tr -d ' '; }
+backups() { ls "$D" | grep -cE '^remotefm1-data-backup-[0-9]{8}-[0-9]{6}\.tar\.gz$'; }   # (the feature's own)
+# hand-made backups named like the owner's (they sort before the feature's by name): never counted, never deleted
+for h in before-sampler-fixes before-sampler-s2 before-sampler-s2b; do echo hand > "$D/remotefm1-data-backup-20261125-$h.tar.gz"; done
 refused() {   # file, what the message says
     code=$(post "$F/$1")
     settle
@@ -139,7 +141,10 @@ code=$(post $F/full.rfm1u); settle
     || bad "full: '$(state)' '$(msg)'"
 sleep 1.1
 code=$(post $F/good.rfm1u); settle
-[ "$(state)" = done ] && [ "$(backups)" = 3 ] && ok "a fourth install: the backups pruned to the newest 3" \
+NEWEST=$(ls "$D" | grep -E '^remotefm1-data-backup-[0-9]{8}-[0-9]{6}\.tar\.gz$' | sort | tail -1)
+[ "$(state)" = done ] && [ "$(backups)" = 3 ] && [ "$(ls "$D"/remotefm1-data-backup-20261125-before-* | wc -l | tr -d ' ')" = 3 ] \
+    && [ -n "$NEWEST" ] && st | grep -q "\"backup\":\"$NEWEST\"" \
+    && ok "a fourth install: its own backups pruned to the newest 3 (this one's kept: $NEWEST), the 3 hand-made ones untouched" \
     || bad "the backups: $(backups) ('$(state)' '$(msg)')"
 stop
 

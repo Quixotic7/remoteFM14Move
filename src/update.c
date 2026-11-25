@@ -1119,6 +1119,19 @@ static const char *host_ok(const char *dir)
     }
     return NULL;
 }
+/* one of this feature's own backups: exactly remotefm1-data-backup-YYYYMMDD-HHMMSS.tar.gz. Hand-made backups with
+ * other names (remotefm1-data-backup-20261125-before-x.tar.gz) are never counted or deleted: by name they sorted
+ * before the new one, which was then pruned as the oldest (the Move, 2026-11-25). */
+static int own_backup(const char *s)
+{
+    int i;
+    if (strlen(s) != 44 || strncmp(s, "remotefm1-data-backup-", 22) || strcmp(s + 37, ".tar.gz") || s[30] != '-')
+        return 0;
+    for (i = 22; i < 37; i++)
+        if (i != 30 && (s[i] < '0' || s[i] > '9'))
+            return 0;
+    return 1;
+}
 static void prune_backups(void)
 {
     DIR *d = opendir(G.beside);
@@ -1127,11 +1140,9 @@ static void prune_backups(void)
     int n = 0, i, j;
     if (!d)
         return;
-    while ((e = readdir(d)) && n < 64) {
-        const size_t k = strlen(e->d_name);
-        if (!strncmp(e->d_name, "remotefm1-data-backup-", 22) && k > 29 && k < 128 && !strcmp(e->d_name + k - 7, ".tar.gz"))
+    while ((e = readdir(d)) && n < 64)
+        if (own_backup(e->d_name))
             snprintf(names[n++], sizeof names[0], "%s", e->d_name);
-    }
     closedir(d);
     for (i = 1; i < n; i++)   /* (by name: the date and time in it) */
         for (j = i; j > 0 && strcmp(names[j - 1], names[j]) > 0; j--) {
