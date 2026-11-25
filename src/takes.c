@@ -732,11 +732,20 @@ static void undo_load(tl_t *l)
     if (fgets(line, sizeof line, f))
         op = atoi(line);
     if (op >= TL_OP_DELETE && op <= TL_OP_FADE_OUT && fgets(line, sizeof line, f)) {
+        char day[11];
+        int y, m, d;
         line[strcspn(line, "\n")] = 0;
-        snprintf(l->undo_rel, sizeof l->undo_rel, "%s", line);
-        trash_path(l, l->undo_rel, l->undo_trash, sizeof l->undo_trash);
-        if (!access(l->undo_trash, F_OK))
-            l->undo_op = op, ST(&l->has_undo, 1);
+        snprintf(day, sizeof day, "%s", line);
+        /* (only a take's own path, "<YYYY-MM-DD>/<name>": the undo never puts a file anywhere else) */
+        if (strlen(line) > 11 && line[10] == '/' && is_day(day, &y, &m, &d) && line[11] != '.' &&
+            !strchr(line + 11, '/')) {
+            snprintf(l->undo_rel, sizeof l->undo_rel, "%s", line);
+            trash_path(l, l->undo_rel, l->undo_trash, sizeof l->undo_trash);
+            if (!access(l->undo_trash, F_OK))
+                l->undo_op = op, ST(&l->has_undo, 1);
+            else
+                l->undo_rel[0] = l->undo_trash[0] = 0;
+        }
     }
     fclose(f);
 }
@@ -848,8 +857,8 @@ static int edit_locked(tl_t *l, uint32_t id, int op, uint64_t from, uint64_t cou
     char p[1400], tmp[1500], tp[1400], dir[1100];
     uint64_t nf = 0;
     memset(after, 0, sizeof *after);
-    if (!find_locked(l, id, &r, 0))
-        return 0;
+    if (!find_locked(l, id, &r, 0) || (r.kind != TL_TAKE && r.kind != TL_STEMS))
+        return 0;                                       /* (a day is never deleted or edited: only a take) */
     snprintf(dir, sizeof dir, "%s/.trash", l->dir);
     mkdir(dir, 0755);
     trash_path(l, r.rel, tp, sizeof tp);

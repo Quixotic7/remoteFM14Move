@@ -446,6 +446,21 @@ static void t_delete(void)
         check(!tl_has_undo(l) && exists(TM), "A bad undo.txt ('..'): no undo, nothing removed");
         tl_free(l);
     }
+    {   /* an undo.txt naming a path outside a day, its trash file there: still no undo */
+        FILE *u;
+        snprintf(p, sizeof p, "%s/.trash/undo.txt", ROOT);
+        u = fopen(p, "w");
+        fputs("1\n../escaped.wav\n", u);
+        fclose(u);
+        wav(".trash/_._escaped.wav", 10, 2, 10);
+        l = tl_new(ROOT, fixed_now);
+        check(!tl_has_undo(l) && !tl_undo(l, &after) && exists(".trash/_._escaped.wav"),
+              "An undo.txt with a path outside the days: no undo, nothing moved");
+        n = tl_rows(l, 0, 0, 8, r, &total, &f);
+        check(n >= 1 && r[n - 1].kind == TL_DAY && !tl_edit(l, r[n - 1].id, TL_OP_DELETE, 0, 0, 0, &after) &&
+              exists(T23) && !tl_has_undo(l), "Delete asked for a day: nothing (only a take is deleted)");
+        tl_free(l);
+    }
 }
 
 /* the worker: requests posted, answers polled; a newer PEAKS replaces one not started */
