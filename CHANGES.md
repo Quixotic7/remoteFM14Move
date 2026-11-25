@@ -2,6 +2,11 @@
 
 ## Unreleased: the kit (stages 3a, 3b and 3c)
 
+- **Listen here:** the headphones button in the page's header plays the Move's whole output on that iPad or phone
+  (AirPods too), the Move silent meanwhile; the speaker button beside it keeps the Move playing too. Turning it off,
+  closing or hiding the page brings the Move's sound back (and so does a page that stops answering for 3 s).
+  Recording still records while you listen.
+
 - **Update from the page:** the settings sheet's Update section installs a new build sent as an `.rfm1u` file (from
   an iPad's Files too): the Move checks its signature, backs up your projects and settings
   (`/data/UserData/remotefm1-data-backup-*.tar.gz`), installs it and asks you to relaunch RemoteFM1. **Undo last

@@ -926,6 +926,39 @@ sound, then starts it (its first calls on the engine's thread, between two block
 second after a burst of 20, the rest counted ("N lines dropped"); the log file (stderr's) is moved to `<log>.1` past
 1 MB (`--log-cap`).
 
+## Listening on the page
+
+The Move's whole output can be heard on the device that has its page open (an iPad, a phone with AirPods): the
+**headphones** cap in the page's header, on the phone too. A tap starts it (iOS starts audio only from a tap); its
+dot is amber while it connects, green while it plays, amber again for a few seconds after it ran dry. While it
+listens the Move's own output is silent. The **speaker** button that appears beside it keeps the Move playing too, for this listener
+(remembered on the device); the Move is silent if any listener has its speaker off. Tap the headphones again, close
+or hide the page (another tab, the screen locked) and the Move's sound comes back.
+
+- **What is heard:** exactly what the Move would play: the mix after master level and FX, a take or the kit's preview
+  playing, the screen reader's words. The recorder, the meters and the sampler still get the real mix while the Move
+  is silent: a take recorded while listening has the sound.
+- **How** (`src/listen.c`, `src/web.c`): the audio thread copies each block it gives the Move into a lock-free
+  single-producer ring (16384 frames), only while a page listens (otherwise it costs a flag's load), then silences
+  it for the Move, ramped over 256 frames (5.8 ms) each way. The web thread sends it on its own WebSocket,
+  `/ws/audio` (`?spk=1`: keep the Move's speaker on), as binary frames of 882 frames (20 ms): 12 bytes (`'L'`,
+  version 1, the frame count u16, the frame's number u32, the sample rate u32, little-endian), then stereo int16. A
+  listener with more than 48 KB still to read gets no new frame (dropped whole). The page sends `hb` every second
+  and `spk 0` / `spk 1`; a listener not heard from for 3 s is closed (a page frozen in the background never leaves the
+  Move silent). Text messages tell the listeners `{"type":"listen","listeners":N,"muted":0|1,"spk":0|1,...}`.
+  `GET /api/listen`: listeners, muted, the tap's and the Move's peaks, frames tapped, dropped, sent; the status has
+  `listeners` and `listen_muted`. The log says `listen: 1 listener, the Move silent`, `listen: no listener, the Move's
+  sound back`.
+- **The page** (`web/move/js/movelisten.js`): a jitter buffer (150 ms to start, 50 ms more after each time it runs
+  dry, up to 500 ms, back down after 20 s without; 2 % faster when more than 60 ms behind, a jump when 400 ms
+  behind) with a linear resampler to the device's rate (44100 or 48000). In an AudioWorklet on a secure page
+  (https, localhost); on the Move's plain `http://` page, where browsers give no AudioWorklet, the same code in a
+  ScriptProcessor (2048 frames). Expect about 0.2 to 0.25 s from the Move to the ear, plus Bluetooth's own
+  (AirPods: another 0.15 s or so): for listening, not for playing in time with the pads' sound.
+- **Tests:** `make test-listen` (tests/listen_e2e.sh, in the image: frames with sound and no gap, the Move silent by
+  its own peak and by `--capture`'s out.raw against mix.raw, the sound back after a close, after a listener quiet
+  for 3 s, the speaker kept on, two listeners, a take recorded while silent). Part of `make test`.
+
 ## Updating from the page
 
 A new build can be installed from the Move's own page, with no computer: open `http://remotefm1.local:7730/`, the
