@@ -41,6 +41,7 @@
 #include "mr_core.h"
 #include "projmem.h"
 #include "recorder.h"
+#include "takes.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
 #include "wasm-rt.h"
@@ -966,6 +967,8 @@ static void speech_sync(void)
 
 static void rec_setting(int index, int value);
 static rec_t *g_rec;
+static tl_t *g_tl;                       /* (rfm1cs 0.15.0 stage 2) the take library: the Takes and Tools tabs */
+static void tl_action(const rfm_move_act_t *a);
 static void on_action(const rfm1cs_event_t *ev)
 {
     const rfm_move_act_t *a = ev->act;
@@ -1027,6 +1030,13 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_SMP_PRESS:   /* .. Sample in the app: the recorder's key (the mode says what it does) */
         if (g_rec)
             rec_press(g_rec);
+        break;
+    case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
+    case RFM_MOVE_ACT_SMP_PEAKS:
+    case RFM_MOVE_ACT_SMP_PLAY:
+    case RFM_MOVE_ACT_SMP_EDIT:
+    case RFM_MOVE_ACT_SMP_UNDO:
+        tl_action(a);
         break;
     case RFM_MOVE_ACT_SETTINGS: {
         char p[ST_PATH];
@@ -4139,6 +4149,106 @@ static void rec_start(void)
         fprintf(stderr, "engine: the recorder's takes go to %s (a folder a day)%s\n", g_takes_dir,
                 g_rec_link == 1 ? ", audio/rec links to them" : "");
     g_rec_last_take = ~0u;
+    if (g_rec && !(g_tl = tl_new(g_takes_dir, NULL)))   /* (stage 2: the Takes and Tools tabs; without it: Record) */
+        fprintf(stderr, "engine: no take library (no memory)\n");
+}
+
+/* ---- (rfm1cs 0.15.0 stage 2) the take library as the sampler's Takes and Tools (README "The take library"): the
+ * core's SMP_* actions to it (its worker does the files; playback through its reader), its answers back from rec_tick */
+static uint32_t g_tl_t_rows, g_tl_t_peaks, g_tl_t_edits, g_tl_t_saved;   /* (tests: answers given to the core) */
+static int g_tl_t_last_op = -1, g_tl_t_last_ok = -1;
+static void tl_action(const rfm_move_act_t *a)
+{
+    tl_req_t q;
+    if (!g_tl)
+        return;
+    if (a->kind == RFM_MOVE_ACT_SMP_PLAY) {   /* (the reader: never waits) */
+        if (a->value)
+            tl_play(g_tl, a->take, a->from, a->count);
+        else
+            tl_stop(g_tl);
+        return;
+    }
+    memset(&q, 0, sizeof q);
+    q.take = a->take, q.from = a->from, q.count = a->count;
+    switch (a->kind) {
+    case RFM_MOVE_ACT_SMP_ROWS: q.kind = TL_Q_ROWS, q.n = (int)(a->count > TL_ROWS ? TL_ROWS : a->count); break;
+    case RFM_MOVE_ACT_SMP_PEAKS: q.kind = TL_Q_PEAKS, q.n = a->value; break;
+    case RFM_MOVE_ACT_SMP_EDIT:
+        q.kind = TL_Q_EDIT, q.op = a->index, q.value = a->value;
+        if (a->index == RFM_MOVE_SMP_OP_DELETE)
+            tl_stop(g_tl);   /* (its file goes: what plays stops; an edit's reader keeps the file it opened) */
+        break;
+    default: q.kind = TL_Q_UNDO; break;
+    }
+    tl_post(g_tl, &q);
+}
+static void tl_row_core(const tl_row_t *t, rfm_move_smp_row_t *r)
+{
+    memset(r, 0, sizeof *r);
+    r->id = t->id;
+    r->kind = (uint8_t)(t->kind == TL_DAY ? RFM_MOVE_SMP_ROW_DAY : t->kind == TL_STEMS ? RFM_MOVE_SMP_ROW_STEMS
+                                                                                        : RFM_MOVE_SMP_ROW_TAKE);
+    r->src = (uint8_t)(t->src >= 0 && t->src < RFM_MOVE_SMP_SRC_N ? t->src : RFM_MOVE_SMP_SRC_NONE);
+    r->day = (uint8_t)t->day, r->month = (uint8_t)t->month, r->today = (uint8_t)t->today;
+    r->takes = (uint16_t)(t->takes > 65535 ? 65535 : t->takes);
+    r->bars = (uint8_t)(t->bars > 255 ? 255 : t->bars);
+    r->bpm10 = (uint16_t)(t->bpm > 0 && t->bpm < 6553 ? lrint(t->bpm * 10.0) : 0);
+    r->frames = (uint32_t)(t->frames > 0xFFFFFFFFu ? 0xFFFFFFFFu : t->frames), r->rate = t->rate;
+    r->folder = t->folder;
+    memcpy(r->thumb, t->thumb, sizeof r->thumb);
+}
+/* (rec_tick) the library's answers to the core; 1: redraw */
+static int tl_answers(void)
+{
+    static tl_ans_t a;   /* (5 KB: not on the stack of the engine's loop) */
+    int redraw = 0, i;
+    while (g_tl && tl_poll(g_tl, &a)) {
+        rfm_move_smp_row_t rows[TL_ROWS], one;
+        switch (a.kind) {
+        case TL_Q_ROWS:
+            for (i = 0; i < a.n && i < TL_ROWS; i++)
+                tl_row_core(&a.rows[i], &rows[i]);
+            redraw |= rfm_move_smp_rows(&S->core, a.asked, a.folder, a.total, a.from, a.n, rows);
+            g_tl_t_rows++;
+            break;
+        case TL_Q_PEAKS:
+            if (a.n)
+                redraw |= rfm_move_smp_peaks(&S->core, a.asked, (uint32_t)a.pfrom, (uint32_t)a.pcount, a.n, a.pk);
+            g_tl_t_peaks++;
+            break;
+        case TL_Q_EDIT:
+        case TL_Q_UNDO:
+            if (a.has_row)
+                tl_row_core(&a.row, &one);
+            fprintf(stderr, "engine: take %s %s: %s\n", a.kind == TL_Q_UNDO ? "undo" : "edit",
+                    a.has_row ? a.row.rel : "", a.ok ? "done" : "not done");
+            redraw |= rfm_move_smp_done(&S->core, a.op, a.ok, a.has_row ? &one : NULL);
+            g_tl_t_edits++, g_tl_t_last_op = a.op, g_tl_t_last_ok = a.ok;
+            if (a.ok)
+                fsvc_bump_changed();   /* (audio/rec changed) */
+            break;
+        case TL_Q_SAVED:
+            if (a.has_row) {
+                rec_status_t r;
+                rec_get(g_rec, &r);   /* (the core's last status may still say recording: the state now, first) */
+                if (S->core.smp.st.state != (uint8_t)r.state) {
+                    rfm_move_smp_status_t st = S->core.smp.st;
+                    st.state = (uint8_t)r.state;
+                    rfm_move_smp_status(&S->core, &st);
+                }
+                tl_row_core(&a.row, &one);
+                redraw |= rfm_move_smp_saved(&S->core, &one, a.mode);
+            } else
+                rfm_move_smp_changed(&S->core);
+            fprintf(stderr, "engine: the take library: %s (%llu frames, mode %d)%s\n", a.has_row ? a.row.rel : "no row",
+                    (unsigned long long)a.row.frames, a.mode, S->core.smp.scr ? ": its preview / Trim" : "");
+            g_tl_t_saved++;
+            break;
+        default: break;
+        }
+    }
+    return redraw;
 }
 
 /* SMP_SET: the setting's value as the core sends it (move.h RFM_MOVE_SMP_*) */
@@ -4218,6 +4328,7 @@ static void rec_tick(uint32_t now)
     int redraw = 0, wanted;
     if (!g_rec || !g_session_on)
         return;
+    rec_get(g_rec, &r);   /* (the mode in force: a saved take's, for the core's preview / Trim) */
     while (rec_poll_take(g_rec, &t)) {
         if (t.take == g_rec_last_take && t.reason != REC_END_NOTHING)
             continue;   /* (a stems take: one event, its first file's) */
@@ -4238,8 +4349,16 @@ static void rec_tick(uint32_t now)
             redraw |= rfm_move_smp_event(&S->core, RFM_MOVE_SMP_EV_SAVED, (int)t.bars, (int)lrint(t.bpm * 10.0),
                                          (int)(t.frames * 1000u / FW_FS), NULL);
             fsvc_bump_changed();   /* (audio/rec has a new file) */
+            if (g_tl) {   /* (stage 2) its row from the library (its picture read there), then rfm_move_smp_saved */
+                tl_req_t q;
+                memset(&q, 0, sizeof q);
+                q.kind = TL_Q_SAVED, q.mode = r.mode;
+                snprintf(q.path, sizeof q.path, "%s", t.path);
+                tl_post(g_tl, &q);
+            }
         }
     }
+    redraw |= tl_answers();
     if (now - last >= REC_STATUS_MS) {
         last = now;
         rec_get(g_rec, &r);
@@ -4275,6 +4394,12 @@ static void rec_tick(uint32_t now)
             st.npeaks = (uint8_t)(r.hist_n > RFM_MOVE_SMP_PEAKS ? RFM_MOVE_SMP_PEAKS : r.hist_n);
             memcpy(st.peaks, r.hist, st.npeaks);
         }
+        if (g_tl) {   /* (stage 2) what plays, where; the library's undo */
+            uint64_t pos;
+            tl_playing(g_tl, &st.play_take, &pos);
+            st.play_pos = (uint32_t)(pos > 0xFFFFFFFFu ? 0xFFFFFFFFu : pos);
+            st.undo = (uint8_t)tl_has_undo(g_tl);
+        }
         redraw |= rfm_move_smp_status(&S->core, &st);
         rfm1cs_session_flush_leds(S);   /* (Sample's light follows the state) */
         if (C.test_api) {   /* (tests: Sample's green flashes and the app's messages, as they come) */
@@ -4296,8 +4421,14 @@ static void rec_tick(uint32_t now)
 static void rec_labels(void)
 {
     int s;
-    for (s = 0; g_rec && s < NSLOT; s++)
+    const char *lab[3] = { "", "", "" };
+    for (s = 0; g_rec && s < NSLOT; s++) {
         rec_set_label(g_rec, REC_ST_SLOT1 + s, SL[s].on ? fw_name(SL[s].fw.id) : NULL);
+        if (s < 3 && SL[s].on)
+            lab[s] = fw_name(SL[s].fw.id);
+    }
+    if (g_tl)   /* (the take library: an older take named only after its firmware, by the slot it is in) */
+        tl_set_labels(g_tl, lab);
 }
 
 /* ------------------------------------------------------------------ the clock --- */
@@ -4433,8 +4564,10 @@ static void render_block_(uint32_t now)
         if (v > g_peak_win)
             g_peak_win = v;
     }
-    mr_ring_push(&g_ring, out, FW_BLOCK);
     rec_feed(out, dry, ain, spos, sper);   /* (the recorder: the mix as heard, the slots dry, the input) */
+    if (g_tl)
+        tl_mix(g_tl, out, FW_BLOCK);   /* (stage 2) a take playing: after the recorder's tap, so never recorded */
+    mr_ring_push(&g_ring, out, FW_BLOCK);
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
         memcpy(g_cap_mix + 2u * g_cap_mix_n, out, sizeof out);
         g_cap_mix_n += FW_BLOCK;
@@ -4772,6 +4905,20 @@ static void housekeeping(uint32_t now)
                           "\"smp_shown\":%d,\"takes_dir\":\"%s\"", r.state, r.source, r.mode, r.length_bars, r.threshold,
                           rfm_move_smp_value(&S->core, RFM_MOVE_SMP_INPUT), g_rec_takes, g_rec_blocks, r.overruns,
                           g_rec_link, rfm_move_smp_shown(&S->core), esc[0]);
+            if (g_tl) {   /* (stage 2) the takes' screens, what plays, the library's answers (tests) */
+                const rfm_move_smp_t *p = &S->core.smp;
+                uint32_t pid;
+                uint64_t pos;
+                tl_playing(g_tl, &pid, &pos);
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"smp_tabs\":%d,\"smp_tab\":%d,\"smp_scr\":%d,\"smp_days\":%d,"
+                              "\"smp_total\":%d,\"smp_sel\":%d,\"smp_cur\":%u,\"smp_cur_frames\":%u,\"smp_t_start\":%u,"
+                              "\"smp_t_end\":%u,\"smp_t_i\":%d,\"smp_ti\":%d,\"smp_ai\":%d,\"tl_play\":%u,\"tl_pos\":%llu,"
+                              "\"tl_undo\":%d,\"tl_rows\":%u,\"tl_peaks\":%u,\"tl_edits\":%u,\"tl_saved\":%u,"
+                              "\"tl_op\":%d,\"tl_ok\":%d", p->tabs, p->tab, p->scr, p->days, p->known ? p->total : -1, p->sel,
+                              p->cur.id, p->cur.frames, p->t_start, p->t_end, p->t_i, p->ti, p->ai, pid,
+                              (unsigned long long)pos, tl_has_undo(g_tl), g_tl_t_rows, g_tl_t_peaks, g_tl_t_edits,
+                              g_tl_t_saved, g_tl_t_last_op, g_tl_t_last_ok);
+            }
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"mroute\":[%d,%d,%d]", g_mroute[0], g_mroute[1],
                       g_mroute[2]);   /* (rfm1cs 0.6.6: each slot's MIDI routes, as the engine forwards them) */
@@ -5079,11 +5226,12 @@ int engine_start(const engine_cfg_t *cfg)
     rec_start();   /* (README "The sampler": before the capability, which sends every setting's SMP_SET) */
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0));
     /* the sampler app offers: Master, Slot 1..3, Input, Stems; Source, Mode, Length, Threshold, Input level (not
-     * Monitor, To: later); the Record tab; takes to Files */
+     * Monitor, To: later); the Record tab, (stage 2) Takes and Tools with the take library; takes to Files */
     rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
                        1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS,
                        1u << RFM_MOVE_SMP_SOURCE | 1u << RFM_MOVE_SMP_MODE | 1u << RFM_MOVE_SMP_LENGTH |
-                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT, 1u << RFM_MOVE_SMP_TAB_RECORD,
+                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT,
+                       1u << RFM_MOVE_SMP_TAB_RECORD | (g_tl ? 1u << RFM_MOVE_SMP_TAB_TAKES | 1u << RFM_MOVE_SMP_TAB_TOOLS : 0),
                        1u << RFM_MOVE_SMP_TO_FILES);
     rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
@@ -5202,6 +5350,8 @@ void engine_stop(void)
         g_rec = NULL;
         fprintf(stderr, "engine: the recorder stopped (%u take(s) saved)\n", g_rec_takes);
     }
+    tl_free(g_tl);   /* (the take library: its worker and reader) */
+    g_tl = NULL;
     fmr_stop();
     st_worker_stop();
     if (C.capture_out && g_cap_out)

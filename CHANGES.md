@@ -2,8 +2,19 @@
 
 ## Unreleased
 
-rfm1cs-abletonmove's `sampler` branch (2a78cfe, local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a
-take recording, one Sample press brings the app back and ends the take).
+rfm1cs-abletonmove's `sampler` branch (local: 0.15.0's sampler app and `rfm_move_seq_pos`; closed with a take
+recording, one Sample press brings the app back and ends the take; stage 2, the takes).
+
+- **The sampler, stage 2: the Takes and Tools tabs** (README "The take library"). `src/takes.c`: the takes folder
+  listed (days, takes newest first, the source / bars / tempo from the names, stems folders; `.part`, dot files and
+  the trash never), pictures and the peaks of any window (scaled to the take's peak), playback through a reader thread
+  added to the output after the recorder's tap (never recorded), delete into a hidden `.trash/` and trim / normalize
+  (-0.3 dBFS) / reverse / fade in / out, each atomic on the file, with one undo (kept over a restart). The engine
+  offers Record, Takes, Tools and passes the core's `SMP_ROWS` .. `SMP_UNDO` to it; a saved take's row goes to
+  `rfm_move_smp_saved` (the Capture preview, Trim after Manual or Threshold). A slot's takes are named
+  `Track N <firmware>` (the source in the name). `/api/status` `smp_*`, `tl_*`. Help "Sampler". Tests:
+  `tests/takes_test.sh` (plain, ASan + UBSan, TSan), `tests/takes_e2e.sh` (in `in_image.sh`), `ainchk trimmed`,
+  `reversed`, `rawpeak`; `recorder_test.c` the slot's name.
 
 - (rfm1cs 5d76ada) **Down in the FM-1 layout does nothing** (the owner's 2026-11-25: the Track buttons switch
   firmwares); the help's two mentions of it are gone.

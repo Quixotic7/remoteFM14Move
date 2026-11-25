@@ -312,6 +312,9 @@ make test
   ports, syncs the clock; the messages sent from the engine's block (`/api/test/midiout`) arrive as sent (a 1500-byte
   SysEx in two segments), F8 does not; RS, BY; with the fake FM-1 linked on USB-A Out skips it, a plain device there
   gets Out's note.
+- `tests/takes_e2e.sh` (the take library, below): Trim by itself after a Manual take, the knobs, Keep (the file the
+  kept frames exactly), the Takes tab on the screen, Undo, Normalize, Reverse, Delete and Undo, Play, the Capture
+  preview; a take played while the master records: in the output, not in the take.
 - `tests/rec_e2e.sh` (the sampler, below): Felucca and the input on the simulator, the takes in a sample library
   (`--takes-dir`): Sample opens the app (its screen, Sample white, the defaults); Manual, Bars (one bar exactly, the
   sequencer playing), Capture, Threshold on the Input (the input sample for sample from 50 ms before the click; the
@@ -1204,7 +1207,7 @@ flag (and later fetches RemoteFM1's built site instead of patching it).
 
 The recorder below as rfm1cs-abletonmove's sampler app (its README "The sampler"): the host sets
 `RFM_MOVE_CAP_SAMPLER` and offers Master, Slot 1..3, Input and Stems; Source, Mode, Length, Threshold and Input level
-(Monitor and To later); the Record tab; Files. Sample opens the app (in the FM-1 layout: a Track held + Sample); in it
+(Monitor and To later); the Record, Takes and Tools tabs (the take library, below); Files. Sample opens the app (in the FM-1 layout: a Track held + Sample); in it
 Sample is the record key (`SMP_PRESS` -> `rec_press`); Track 1..3 held + Sample: that slot the source, Track 4 the
 master; the jog picks a setting, its click changes it (`SMP_SET` -> `rec_set_*`; Threshold dB to a peak, the Input
 level a gain on the input stream only); Back closes it and a take goes on. The help page's "Sampler" says the same.
@@ -1239,6 +1242,64 @@ level a gain on the input stream only); Back closes it and a take goes on. The h
 - The capture memory: 32 s a stream, five streams (~30 MB). `/api/status`: `rec_state`, `rec_src`, `rec_mode`,
   `rec_len`, `rec_thr`, `rec_in_db`, `rec_takes`, `rec_link`, `smp_shown`, `takes_dir` (and with `--test-api`
   Sample's light, its green flashes and the app's messages).
+- **Stage 2: the Takes and Tools tabs** (rfm1cs 0.15.0 stage 2, its README "The takes (stage 2)"). With the take
+  library below the host offers Record, Takes and Tools (`rfm_move_smp_offer` tabs 0x7; without it: Record, as
+  before). The core's `SMP_ROWS`, `SMP_PEAKS`, `SMP_EDIT`, `SMP_UNDO` go to the library's worker (`tl_post`), its
+  answers back from `rec_tick` (`rfm_move_smp_rows`, `_peaks`, `_done`); `SMP_PLAY` to its reader (`tl_play` /
+  `tl_stop`); the status carries `play_take`, `play_pos`, `undo`. A saved take (its file from `rec_poll_take`) goes
+  to the library for its row (its picture is read there, never on the engine's thread), then `rfm_move_smp_saved`
+  with the recorder's mode, after a status with the recorder's state now (else the core's last status might still say
+  recording, and the preview or Trim would not come). The take playing is added to the block after `rec_feed` and
+  before the output ring (`render_block_`): what plays from Takes is never in a take, whatever its source, and is in
+  the output (`--capture`'s `mix.raw`). The slots' firmware names go to the library too (an older take named after
+  its firmware alone is that slot's). `/api/status` with the library: `smp_tabs`, `smp_tab`, `smp_scr`, `smp_days`,
+  `smp_total`, `smp_sel`, `smp_cur`, `smp_cur_frames`, `smp_t_start`, `smp_t_end`, `smp_t_i`, `smp_ti`, `smp_ai`,
+  `tl_play`, `tl_pos`, `tl_undo`, and the answers given (`tl_rows`, `tl_peaks`, `tl_edits`, `tl_saved`, the last
+  edit's `tl_op` and `tl_ok`).
+
+## The take library (src/takes.c)
+
+The recorder's folder as the sampler's Takes and Tools (the section above). libc + pthreads, natively testable
+(`tests/takes_test.sh`). The folder is the truth: each call lists it again (names only), so a take the recorder adds,
+a file the page removes, a new day, all show without being told.
+
+- **Listing:** the days (`YYYY-MM-DD/` with at least one take), newest first; a day's takes newest first (by name:
+  `<MMDD>-<HHMMSS>` leads), a take a WAV or a stems folder (`<MMDD>-<HHMMSS> Stems ...`, its `Master.wav` stands for
+  it: its length, its picture, what Play plays). Never listed: `*.part` (the recorder still writes it, a file or a
+  stems folder), dot files (`.trash/`, the edits' `.<name>.tmp`), names without the time at their head. From the
+  name: the source (`Master`, `Input`, `Looper`, `Kit`, `Track N ...` or `Slot N`, `Stems`; else a slot's firmware
+  name: that slot; else not known, "?"), the bars and tempo (`<bpm>bpm <bars>b`), ` (2)` ignored; the length and rate
+  from the header (PCM 16-bit, 1 or 2 channels). Ids: FNV-1a of the path in the folder (a day: its name), the same
+  after an edit, an undo, a restart.
+- **Peaks:** a peak table a take (one peak each 256 frames, the last six takes cached, checked against the file's size
+  and time) gives the 14-peak picture and any window at 256 frames a column or more; a narrower one (Trim zoomed)
+  reads its frames. Every picture is scaled to the take's own peak (a quiet take shows its shape; one scale in every
+  window, so zooming does not change heights).
+- **Playback:** a reader thread fills a ring (32768 frames, read 4096 at a time) from the file; the engine's
+  `tl_mix` adds what is there to its block and never waits (an empty ring: nothing that block); a new play or a stop
+  is a generation the engine takes at its next block (the ring dropped); the position (`tl_playing`) is the frames
+  given. One at a time; to the end or `count` frames.
+- **Edits** (the worker, streaming: never a whole take in memory; stereo 16-bit only, the recorder's): TRIM keeps
+  [from, from + count), 132 frames (3 ms) faded linearly at a cut end (none at the take's own start or end);
+  NORMALIZE scales to a peak of 31656 (-0.3 dBFS), rounded; REVERSE; FADE IN / OUT linear over `ms` (`s * i / N`). Each
+  writes `.<name>.tmp` beside the take, fsyncs it, keeps the file before it (a hard link into `.trash/`; a volume with
+  no links: renamed there), then renames the new file over the take. A stems take: delete only in this stage.
+- **Delete and the one undo:** DELETE renames the take (a file or a stems folder) into `.trash/` (its path with `/`
+  as `_`). One undo, for the last DELETE or edit: its copy in `.trash/` and `.trash/undo.txt` (the op, the path: kept
+  over a restart); a new DELETE or edit removes the one before for good. Undo renames it back (never over a take of
+  the same name made meanwhile). The trash is hidden from the page and the firmwares (dot names).
+- **Threads:** `tl_post` / `tl_poll` (the engine's: a short mutex around a copy), a worker for the files, the reader
+  for playback; a newer `TL_Q_PEAKS` drops an older one not started. The library's own mutex is the worker's and the
+  reader's, never the engine's.
+
+`tests/takes_test.sh` (no make): `tests/takes_test.c` plain, with ASan + UBSan and with TSan: the listing and its
+names, pictures and windows against a known envelope, trim / normalize / reverse / fades sample-exact against a known
+signal, undo (one step, after a restart, never over a new take, a bad `undo.txt`), delete and undelete (a stems
+folder too), the worker, playback sample-exact on the test's thread as the engine's. `tests/takes_e2e.sh` (in the
+image after make; in `tests/in_image.sh`): on the simulator, Trim after a Manual take (the knobs, Keep: the file the
+kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo, Normalize and Reverse checked on the
+file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
+master records is in the output (`mix.raw`) and not in the master's take.
 
 ## The recorder (src/recorder.c)
 
@@ -1267,7 +1328,8 @@ frames the writer still needs: it drops the block instead and ends a running tak
 
 Settings change at a block while no take records (a running take keeps its own). Names:
 `<MMDD>-<HHMMSS> <label> <bpm>bpm <bars>b.wav`, or `<seconds>s.wav` when not bar-cut, in `YYYY-MM-DD/` with
-`day_folders`; labels keep letters, digits, space and `_ - . , ( ) +`. A stems take is a folder of its own,
+`day_folders`; labels keep letters, digits, space and `_ - . , ( ) +`. A slot's label is `Track N <its label>`
+(`Track 2 Felucca`; `Track 2` with none), as its stems file: the take library reads the source from it. A stems take is a folder of its own,
 `<MMDD>-<HHMMSS> Stems <bpm>bpm <bars>b` (or `<seconds>s`), holding `Master.wav`, `Track 1 <label>.wav` ..
 `Track 3 <label>.wav` (`Track 1.wav` with no label), `Input.wav`, `Looper.wav`, `Kit.wav` (the present streams):
 `<MMDD>-<HHMMSS> Stems.part/` while it records (its files readable after a crash), named when whole (an empty folder

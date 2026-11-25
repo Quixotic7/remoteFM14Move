@@ -8,7 +8,11 @@
  *   ainchk gaps TAKE.wav IN.wav   as find, but frames of silence in TAKE where IN has sound are allowed (the input
  *                              path's under-runs: a block of silence in place of one): prints where it starts and the
  *                              silent frames; exit 0, else 1
- *   ainchk info F.wav          "frames N peak P" (the recorder's takes: tests/rec_e2e.sh); exit 1 when unreadable */
+ *   ainchk info F.wav          "frames N peak P" (the recorder's takes: tests/rec_e2e.sh); exit 1 when unreadable
+ *   ainchk trimmed TAKE.wav ORIG.wav FROM   TAKE is ORIG's frames from FROM on, sample for sample, the take library's
+ *                              132 frames faded at a cut end (tests/takes_e2e.sh); exit 0, else 1
+ *   ainchk reversed A.wav B.wav   A is B's frames in the reverse order; exit 0, else 1
+ *   ainchk rawpeak F.raw       a capture's (--capture: stereo int16, no header) "frames N peak P loud L" */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,6 +110,57 @@ int main(int argc, char **argv)
         printf("frames %u peak %d\n", n, pk);
         return 0;
     }
-    fprintf(stderr, "usage: ainchk make OUT.wav | find TAKE.wav IN.wav | same A.wav B.wav | gaps TAKE.wav IN.wav | info F.wav\n");
+    if (argc == 5 && !strcmp(argv[1], "trimmed")) {   /* (the take library's Trim: tests/takes_e2e.sh) */
+        const char *why = NULL;
+        const uint32_t from = (uint32_t)strtoul(argv[4], NULL, 10), F0 = 132;   /* (takes.h TL_CUT_FADE) */
+        uint32_t nt = 0, no = 0, i, F;
+        int16_t *t = wav_read(argv[2], &nt, &why), *o;
+        if (!t || !(o = wav_read(argv[3], &no, &why)))
+            return printf("ainchk: %s\n", why), 1;
+        if (!nt || from + nt > no)
+            return printf("ainchk: %u frames from %u: past the original's %u\n", nt, from, no), 1;
+        F = F0 < nt / 2 ? F0 : nt / 2;
+        for (i = 0; i < 2 * nt; i++) {
+            const uint32_t f = i / 2;
+            int64_t s = o[2 * from + i];
+            if (from > 0 && f < F)
+                s = s * (int64_t)f / (int64_t)F;
+            if (from + nt < no && f >= nt - F)
+                s = s * (int64_t)(nt - 1 - f) / (int64_t)F;
+            if (t[i] != (int16_t)s)
+                return printf("ainchk: frame %u differs (%d, want %d)\n", f, t[i], (int)s), 1;
+        }
+        printf("ainchk: %u frames, the original's from %u on, exact (%u frames faded at a cut end)\n", nt, from, F);
+        return 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "reversed")) {
+        const char *why = NULL;
+        uint32_t na = 0, nb = 0, i;
+        int16_t *a = wav_read(argv[2], &na, &why), *b;
+        if (!a || !(b = wav_read(argv[3], &nb, &why)))
+            return printf("ainchk: %s\n", why), 1;
+        for (i = 0; i < na && na == nb && !memcmp(a + 2 * i, b + 2 * (nb - 1 - i), 4); i++) {}
+        printf("ainchk: %u and %u frames, %s\n", na, nb, na == nb && i == na ? "the one reversed" : "not reversed");
+        return na == nb && i == na ? 0 : 1;
+    }
+    if (argc == 3 && !strcmp(argv[1], "rawpeak")) {   /* a capture (stereo int16, no header): its peak, its loud frames */
+        FILE *f = fopen(argv[2], "rb");
+        int16_t s[2];
+        long n = 0, loud = 0;
+        int pk = 0;
+        if (!f)
+            return printf("ainchk: %s: no file\n", argv[2]), 1;
+        while (fread(s, 2, 2, f) == 2) {
+            const int a = abs(s[0]) > abs(s[1]) ? abs(s[0]) : abs(s[1]);
+            pk = a > pk ? a : pk;
+            loud += a > 1000;
+            n++;
+        }
+        fclose(f);
+        printf("frames %ld peak %d loud %ld\n", n, pk, loud);
+        return 0;
+    }
+    fprintf(stderr, "usage: ainchk make OUT.wav | find TAKE.wav IN.wav | same A.wav B.wav | gaps TAKE.wav IN.wav | info F.wav"
+                    " | trimmed TAKE.wav ORIG.wav FROM | reversed A.wav B.wav | rawpeak F.raw\n");
     return 2;
 }

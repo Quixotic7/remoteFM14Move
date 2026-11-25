@@ -131,7 +131,7 @@ CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c \
-            src/fmwords.c src/fmreader.c src/recorder.c
+            src/fmwords.c src/fmreader.c src/recorder.c src/takes.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
 RF := third_party/RemoteFM1

@@ -21,6 +21,8 @@
 #   - Arm, then Play: stopped, Bars, Length 1: Sample arms (Sample blinking red, the app's screen waiting), Play starts
 #     the take at the song's first frame, it ends by itself one bar of frames later; Length Open: at the bar line after
 #     a second Sample; quitting during a take: its file finished;
+#   - (rfm1cs 0.15.0 stage 2) after a Manual or Threshold take Trim comes up, after a Capture its preview: Back
+#     leaves them (tests/takes_e2e.sh tests them);
 #   - without --takes-dir (no sample library here): the takes in audio/rec itself; a real audio/rec folder with
 #     --takes-dir elsewhere: left as it is, said once in the log.
 #   tests/rec_e2e.sh      (after make)
@@ -61,6 +63,9 @@ newest() { ls -t "$1"/*/*.wav 2>/dev/null | head -1; }
 frames() { build/tools/ainchk info "$1" | sed -n 's/^frames \([0-9]*\) .*/\1/p'; }
 peak() { build/tools/ainchk info "$1" | sed -n 's/.* peak \([0-9]*\)$/\1/p'; }
 takes() { field rec_takes; }
+# (rfm1cs 0.15.0 stage 2) after a Manual or Threshold take Trim comes up, after a Capture its preview: Back to the tab
+leave() { wait_for 4 '[ "$(field smp_scr)" != 0 ]' && sleep 1.1 && press 51 && wait_for 3 '[ "$(field smp_scr)" = 0 ]' \
+    || bad "$1: Trim / the preview did not come or go (scr '$(field smp_scr)')"; }
 start() {
     build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" --firmwares "$FWS" --site build/site --fw felucca \
         --test-api --no-fm1 --sim-audio-in "$T/in.wav" "$@" >>"$L" 2>&1 &
@@ -116,6 +121,7 @@ wait_for 3 '[ "$(field smp_greens)" -gt "$g0" ] && [ "$(field smp_msgs)" -gt "$m
     && wait_for 3 white \
     && ok "the saved message (SMP_EV_SAVED), Sample green for a moment, then white again" \
     || bad "the save's message / light: greens $g0 -> $(field smp_greens), msgs $m0 -> $(field smp_msgs) ($(field smp_msg)), light $(sample)"
+leave Manual
 
 # ---------------------------------------------------------------- Bars, 1 bar, the sequencer playing
 set_ 1 -2   # Mode: Manual -> Bars
@@ -148,6 +154,7 @@ F=$(newest "$LIB"); n=$(frames "$F")
 [ "$n" -gt 44100 ] && [ "$n" -lt $((44100 * 4)) ] && [ "$(peak "$F")" -gt 1000 ] && wait_for 3 '[ "$(field smp_msgs)" -gt "$m0" ] && [ "$(field smp_msg)" = 1 ]' \
     && ok "Capture after playing: '$(basename "$F")', $n frames, peak $(peak "$F") (back to the silence before the note)" \
     || bad "the capture: '$F', $n frames, peak $(peak "$F"), msgs $m0 -> $(field smp_msgs)"
+leave Capture
 
 # ---------------------------------------------------------------- Threshold on the Input
 set_ 0 3    # Source: Slot 1 -> Input
@@ -169,6 +176,7 @@ if r=$(build/tools/ainchk gaps "$F" "$T/in.wav"); then
         && ok "Threshold: '$(basename "$F")', one bar ($n frames) of the input, from $off frames before a click (50 ms + the block), sample for sample but $z silent frames (the input path's under-runs: $u0 -> $u1 blocks)" \
         || bad "the threshold take: $n frames, $off frames before a click, $z silent ($r)"
 else bad "the threshold take is not the input: $r ('$F'; build/test-out/rec_threshold.wav)"; cp "$F" build/test-out/rec_threshold.wav; cp "$T/in.wav" build/test-out/rec_in.wav; fi
+leave Threshold
 set_ 4 -6   # Input level: 0 -> -6 dB
 set_ 1 1    # Mode: Threshold -> Manual
 wait_for 3 '[ "$(field rec_in_db)" = -6 ] && [ "$(field rec_mode)" = 3 ]' || bad "Input level: '$(field rec_in_db)', mode '$(field rec_mode)'"
@@ -176,6 +184,7 @@ press 118; sleep 1.2; press 118
 wait_for 5 '[ "$(takes)" = 5 ]'
 F=$(newest "$LIB"); p=$(peak "$F")
 [ "$p" -ge 9900 ] && [ "$p" -le 10150 ] && ok "the Input level, -6 dB: the input's 20000 clicks at $p" || bad "the Input level: peak $p ('$F')"
+leave "the Manual take of the input"
 set_ 4 6
 
 # ---------------------------------------------------------------- Stems
@@ -223,6 +232,7 @@ sleep 1; [ "$(takes)" = 7 ] && [ "$(field rec_state)" = 0 ] && [ "$(field smp_sh
     && ok "...and no new take after it (state idle, the app shown)" || bad "after the one press: takes $(takes), state $(field rec_state)"
 nw=$(wavs "$LIB" | wc -l | tr -d ' ')
 [ "$(takes)" = 7 ] && [ "$nw" = 9 ] && ok "the take count: 7 takes (9 files: the stems take's 3)" || bad "the count: $(takes) takes, $nw files"
+leave "the take over Back"
 
 # ---------------------------------------------------------------- Arm, then Play: the take starts with the song
 # (stopped, Bars: Sample arms, the transport's first playing frame starts the take; rec_play_f / rec_first_f: the

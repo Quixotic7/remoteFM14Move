@@ -627,7 +627,8 @@ static void t_manual(void)
     block(&S);
     if (takes(S.r, &t, 1, 5000) == 1) {
         expect_take(&t, REC_ST_SLOT2, 20 * BLK, 100 * BLK, 0, "Manual: from the press's block to the press's block");
-        check(strstr(base(t.path), " Slot 2 ") != NULL, "Manual: slot 2's default label ('%s')", base(t.path));
+        check(strstr(base(t.path), " Track 2 ") != NULL, "Manual: slot 2 named 'Track 2' (no label: nothing more; '%s')",
+              base(t.path));
     } else
         check(0, "Manual: no take");
     rec_free(S.r);

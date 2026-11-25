@@ -902,7 +902,7 @@ static void open_take(rec_t *r, wtake_t *w)
         }
     }
     for (s = 0; s < REC_NST; s++) {
-        char lab[REC_LABEL];
+        char lab[REC_LABEL + 16];
         uint8_t h[44];
         int fd = -1, k;
         if (!(w->c.mask >> s & 1))
@@ -911,6 +911,10 @@ static void open_take(rec_t *r, wtake_t *w)
             stem_name(w->name[s], sizeof w->name[s], s, w->c.label[s]);
             snprintf(w->part[s], sizeof w->part[s], "%s/%s.wav", w->sdir, w->name[s]);
             fd = open(w->part[s], O_WRONLY | O_CREAT | O_EXCL, 0644);
+        } else if (s >= REC_ST_SLOT1 && s <= REC_ST_SLOT3) {   /* (a slot: "Track 2 Felucca", as a stems file: the
+                                                         * take library knows its source by it) */
+            stem_name(lab, sizeof lab, s, w->c.label[s]);
+            snprintf(w->name[s], sizeof w->name[s], "%s %s", head, lab);
         } else {
             sanitize(lab, sizeof lab, w->c.label[s], DEF_LABEL[s]);
             snprintf(w->name[s], sizeof w->name[s], "%s %s", head, lab);
