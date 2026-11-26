@@ -977,6 +977,35 @@ static void t_master_plock(void)
     CHECK(nonzero_until(5000) > 4700);                  /* (the next hit: the pad's own End, untouched) */
     kit_free(k);
 }
+/* (2026-11-26) a ghost trigger (rfm1cs KIT_GHOST): its locks onto the pad's sounding voice (Level -inf: silent; -6 dB:
+ * half), a note-on-only setting ignored, the next hit its own */
+static void t_ghost(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int16_t pv[KIT_P_N];
+    float full, pk;
+    snprintf(p, sizeof p, "%s/gh.wav", DIRP), wav(p, 40000, 2, 16, 0, 48000);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_note(k, 0, 0, 127, 0), run(k, 4000), full = peak_of(4000);
+    memset(pv, 0, sizeof pv);
+    pv[KIT_P_LEVEL] = -6;
+    kit_ghost(k, 0, 0, 1ull << KIT_P_LEVEL, pv), run(k, 4000), pk = peak_of(4000);
+    CHECK(full > 2900 && fabsf(pk / full - 0.501f) < 0.02f && kit_voices(k) == 1);
+    pv[KIT_P_START] = KIT_FRAC / 2;
+    kit_ghost(k, 0, 0, 1ull << KIT_P_START, pv), run(k, 4000);   /* (Start: a note-on's, not the voice's) */
+    CHECK(fabsf(peak_of(4000) - pk) < 1.0f);
+    pv[KIT_P_LEVEL] = -60;
+    kit_ghost(k, 1, 0, 1ull << KIT_P_LEVEL, pv), run(k, 4000);   /* (another pad's: not this voice) */
+    CHECK(fabsf(peak_of(4000) - pk) < 1.0f);
+    kit_ghost(k, 0, 0, 1ull << KIT_P_LEVEL, pv), run(k, 4000);
+    CHECK(peak_of(4000) == 0.0f);
+    kit_note(k, 0, 0, 127, 0), run(k, 4000);           /* (the next hit: the pad's own Level) */
+    CHECK(fabsf(peak_of(4000) - full) < 1.0f);
+    kit_free(k);
+    printf("  ok    a ghost trigger: Level -6 dB halves the sounding voice, -inf silences it, Start ignored, the next hit its own\n");
+}
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -995,6 +1024,7 @@ int main(void)
     t_slice();
     t_rounda();
     t_master_plock();
+    t_ghost();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

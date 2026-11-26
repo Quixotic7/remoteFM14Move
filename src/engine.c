@@ -1080,6 +1080,7 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_PEAKS:
     case RFM_MOVE_ACT_KIT_AUDITION:
     case RFM_MOVE_ACT_KIT_KEEP:    /* (round C; 2026-11-26: it never reached the kit, so no browse was copied in) */
+    case RFM_MOVE_ACT_KIT_GHOST:   /* (2026-11-26) a ghost trigger's locks onto the pad's sounding voices */
         kit_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
@@ -4693,6 +4694,9 @@ static void kit_action(const rfm_move_act_t *a)
                     a->klk_mask, a->klk, a->kp_mask, a->kp, a->from);   /* (round B: the step's locks on this hit;
                                                          * 2026-11-26: every setting's) */
         g_kit_t_notes++;
+        break;
+    case RFM_MOVE_ACT_KIT_GHOST:
+        kit_ghost(g_kit, a->index, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0, a->kp_mask, a->kp);
         break;
     case RFM_MOVE_ACT_KIT_SET:
         if (a->index == RFM_MOVE_KIT_BUS) {             /* (pages v2) the kit bus's low-pass */

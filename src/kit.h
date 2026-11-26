@@ -177,6 +177,9 @@ void kit_note_lk(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask
 void kit_note_pl(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk, uint64_t pm,
                  const int16_t *pv, uint32_t us);
 void kit_set(kit_t *k, int pad, int param, int value);
+/* (2026-11-26, rfm1cs KIT_GHOST) a ghost trigger at frame: bit p of pm, pv[p] onto the pad's voices sounding then (the
+ * continuous settings only: filter, Morph, Env Amount, Level, Pan, Sends, Pitch, Speed, Warp Pitch); they keep them */
+void kit_ghost(kit_t *k, int pad, uint32_t frame, uint64_t pm, const int16_t *pv);
 /* (stage 3b) Stretch's microseconds (KIT_SET's `from`): the pad's start..end lasts so long (0: its Pitch); a voice
  * sounding follows at once */
 void kit_stretch(kit_t *k, int pad, uint32_t us);

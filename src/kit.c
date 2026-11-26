@@ -103,6 +103,7 @@ typedef struct {
     uint64_t pm;
     int16_t pl[KIT_P_N];
     uint32_t us_lk;
+    int vel;                      /* (2026-11-26) its velocity (a ghost trigger's Level / Pan again) */
 } voice_t;
 enum { ST_ATTACK, ST_HOLD, ST_DECAY, ST_SUSTAIN, ST_RELEASE, ST_FADE };
 enum { B_ONE, B_MOM, B_LOOP, B_HELD };   /* (pages v2) a voice's play: once, held once, round its loop, held (Granular) */
@@ -2415,6 +2416,21 @@ void kit_note_pl(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask
         memcpy(e->pv, pv, sizeof e->pv);
 }
 void kit_note(kit_t *k, int pad, int semis, int vel, uint32_t frame) { kit_note_lk(k, pad, semis, vel, frame, 0, NULL); }
+/* (2026-11-26, rfm1cs KIT_GHOST) a ghost trigger at frame: its locks onto the pad's voices sounding then (queued as a
+ * note, vel -1) */
+#define GHOST_P (1ull << KIT_P_CUTOFF | 1ull << KIT_P_RESO | 1ull << KIT_P_MORPH | 1ull << KIT_P_FENV | 1ull << KIT_P_LEVEL | \
+                 1ull << KIT_P_PAN | 1ull << KIT_P_SEND1 | 1ull << KIT_P_SEND2 | 1ull << KIT_P_SEND3 | 1ull << KIT_P_PITCH | \
+                 1ull << KIT_P_SPEED | 1ull << KIT_P_WPITCH)
+void kit_ghost(kit_t *k, int pad, uint32_t frame, uint64_t pm, const int16_t *pv)
+{
+    ev_t *e;
+    if (!k || pad < 0 || pad >= KIT_PADS || !pv || !(pm & GHOST_P) || k->nev == NEV)
+        return;
+    e = &k->ev[k->nev++];
+    memset(e, 0, sizeof *e);
+    e->pad = pad, e->vel = -1, e->frame = frame, e->pm = pm & GHOST_P;
+    memcpy(e->pv, pv, sizeof e->pv);
+}
 static void fade(kit_t *k, voice_t *v, int ms)
 {
     if (v->stage == ST_FADE)
@@ -2502,6 +2518,7 @@ static uint32_t rnd32(voice_t *v)                       /* (xorshift: the grains
 }
 static float rnd_bi(voice_t *v) { return (float)(rnd32(v) >> 8) * (2.0f / 16777216.0f) - 1.0f; }   /* -1..1 */
 static void release(voice_t *v, uint32_t n);
+static void level_pan(voice_t *v, const int16_t *p, int mask, const int16_t *lk, int vel);
 static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16_t *lk, uint64_t pm, const int16_t *pv,
                     uint32_t us)
 {
@@ -2548,7 +2565,7 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
         v = &k->vo[q];
     }
     memset(v, 0, sizeof *v);
-    v->pad = pad, v->pm = pm, v->us_lk = us;
+    v->pad = pad, v->pm = pm, v->us_lk = us, v->vel = vel;
     if (pm)
         memcpy(v->pl, pv, sizeof v->pl);
     region_p(k, pad, p, &s0, &e0);
@@ -2622,17 +2639,56 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
             v->gr[1].on = 1, v->gr[1].pos = v->pos, v->gr[1].inc = v->ginc, v->gr[1].age = 0;
         }
     }
-    {
-        const int lvl = mask & 1 << KIT_LK_LEVEL ? lk[KIT_LK_LEVEL] : p[KIT_P_LEVEL];
-        const double lin = lvl <= -60 ? 0.0 : pow(10.0, lvl / 20.0);
-        const double g = lin * (vel < 1 ? 1 : vel > 127 ? 127 : vel) / 127.0;
-        const int pan = clampi(mask & 1 << KIT_LK_PAN ? lk[KIT_LK_PAN] : p[KIT_P_PAN], -50, 50);
-        v->gl = (float)(g * (pan > 0 ? 1.0 - pan / 50.0 : 1.0));
-        v->gr2 = (float)(g * (pan < 0 ? 1.0 + pan / 50.0 : 1.0));
-        for (i = 0; i < 3; i++)                         /* (3b) its sends, after its level and pan */
-            v->sg[i] = (float)clampi(p[KIT_P_SEND1 + i], 0, 100) / 100.0f;
+    level_pan(v, p, mask, lk, vel);
+}
+/* a voice's level, pan and sends (its velocity; a step's LK locks over p) */
+static void level_pan(voice_t *v, const int16_t *p, int mask, const int16_t *lk, int vel)
+{
+    const int lvl = mask & 1 << KIT_LK_LEVEL ? lk[KIT_LK_LEVEL] : p[KIT_P_LEVEL];
+    const double lin = lvl <= -60 ? 0.0 : pow(10.0, lvl / 20.0);
+    const double g = lin * (vel < 1 ? 1 : vel > 127 ? 127 : vel) / 127.0;
+    const int pan = clampi(mask & 1 << KIT_LK_PAN ? lk[KIT_LK_PAN] : p[KIT_P_PAN], -50, 50);
+    int i;
+    v->gl = (float)(g * (pan > 0 ? 1.0 - pan / 50.0 : 1.0));
+    v->gr2 = (float)(g * (pan < 0 ? 1.0 + pan / 50.0 : 1.0));
+    for (i = 0; i < 3; i++)                             /* (3b) its sends, after its level and pan */
+        v->sg[i] = (float)clampi(p[KIT_P_SEND1 + i], 0, 100) / 100.0f;
+}
+/* (2026-11-26) a ghost trigger's locks onto the pad's sounding voices: they keep them */
+static void ghost_on(kit_t *k, int pad, uint64_t pm, const int16_t *pv)
+{
+    int i, j;
+    for (i = 0; i < NV; i++) {
+        voice_t *v = &k->vo[i];
+        int16_t pp[KIT_P_N];
+        const int16_t *p;
+        if (!v->on || v->pad != pad || v->stage == ST_FADE)
+            continue;
+        v->pm |= pm;
+        for (j = 0; j < KIT_P_N; j++)
+            if (pm >> j & 1)
+                v->pl[j] = pv[j];
+        p = vparams(k, v, pp);
+        if (pm >> KIT_P_MORPH & 1)
+            v->morph_lk = 0, v->morph = (float)clampi(p[KIT_P_MORPH], 0, 100) / 100.0f;
+        if (pm >> KIT_P_FENV & 1)
+            v->fenv_lk = 0, v->fe_amt = (float)clampi(p[KIT_P_FENV], -100, 100) * 0.08f;
+        if (pm & (1ull << KIT_P_CUTOFF | 1ull << KIT_P_RESO | 1ull << KIT_P_MORPH | 1ull << KIT_P_FENV)) {
+            if (pm >> KIT_P_CUTOFF & 1)
+                v->cut_lk = 0;
+            if (pm >> KIT_P_RESO & 1)
+                v->res_lk = 0;
+            flt_aim(k, v, p[KIT_P_CUTOFF], p[KIT_P_RESO], 0);   /* (gliding there, no zipper) */
+        }
+        if (pm & (1ull << KIT_P_LEVEL | 1ull << KIT_P_PAN | 1ull << KIT_P_SEND1 | 1ull << KIT_P_SEND2 | 1ull << KIT_P_SEND3))
+            level_pan(v, p, 0, NULL, v->vel);
+        if (pm >> KIT_P_PITCH & 1)
+            v->cents = p[KIT_P_PITCH];
+        if (pm & (1ull << KIT_P_PITCH | 1ull << KIT_P_SPEED | 1ull << KIT_P_WPITCH))
+            retune(k, v);
     }
 }
+
 static void note_off(kit_t *k, int pad, int semis)
 {
     int i;
@@ -3029,6 +3085,8 @@ static void render_part(kit_t *k, uint32_t at0, uint32_t n, int *e)
             const ev_t *x = &k->ev[(*e)++];
             if (x->vel > 0)
                 note_on(k, x->pad, x->semis, x->vel, x->mask, x->lk, x->pm, x->pv, x->us);
+            else if (x->vel < 0)
+                ghost_on(k, x->pad, x->pm, x->pv);      /* (2026-11-26) a ghost trigger */
             else
                 note_off(k, x->pad, x->semis);
         }
@@ -3084,6 +3142,8 @@ void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, ui
         if (k->ev[e].vel > 0)
             note_on(k, k->ev[e].pad, k->ev[e].semis, k->ev[e].vel, k->ev[e].mask, k->ev[e].lk, k->ev[e].pm, k->ev[e].pv,
                     k->ev[e].us);
+        else if (k->ev[e].vel < 0)
+            ghost_on(k, k->ev[e].pad, k->ev[e].pm, k->ev[e].pv);
         else
             note_off(k, k->ev[e].pad, k->ev[e].semis);
     k->nev = 0;

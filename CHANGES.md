@@ -2,6 +2,13 @@
 
 ## 0.6.0 (prepared 2026-11-26, not yet released)
 
+**Step preview, locks on any step, ghost triggers (rfm1cs a4d74dc).** Stopped, a Kit view step's press plays the
+chosen pad's hits there once (the sequencer's voice path), its release lets them go. A step held + a knob locks with
+or without a hit; a lock on a step without the pad's hit is a ghost trigger (Elektron's trigless lock), shown dim and
+steady in the pad's colour. When the sequence passes it the core sends KIT_GHOST and the kit (`kit_ghost`, queued at
+its frame as a note: real-time safe) applies its Cutoff, Resonance, Morph, Env Amount, Level, Pan, Sends, Pitch, Speed
+and Warp Pitch locks to that pad's voices sounding then; they keep them till they end. tests/kit_test.c t_ghost.
+
 **Every level in dB, one popup (rfm1cs 00df8ed).** A firmware's level, the kit's and a pad's all show the same popup
 (title, the value in dB, the source's name, a bar per sibling) wherever they are set, and turn 0.5 dB a detent. The
 host's gain law is unchanged (a 0..127 level is a linear gain, 127 unity, for a slot and the kit alike: 100 is
