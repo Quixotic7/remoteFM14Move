@@ -41,8 +41,8 @@ int pm_json_str(const char *json_path, const char *key, char *out, size_t cap);
  * ruled out first when it has one; a candidate is always compared byte for byte. mem: the working memory's hash that
  * goes with the bytes (a .json's "mem", memsnap.h; "" or NULL none): the state's must be the same (none: none) */
 int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t n, const char *mem);
-/* the firmware ids a project blob holds (its version 9 part; rfm1cs projfw.c's layout): 1 and ids filled; 0 a blob
- * of version 1..8 (or too short: no firmwares) */
+/* the firmware ids a project blob holds (its version 9 part, before the kit's from version 11; rfm1cs project.c's
+ * layout): 1 and ids filled; 0 a blob of version 1..8 or newer than this build's (or too short: no firmwares) */
 int pm_blob_ids(const uint8_t *b, uint32_t n, char ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX]);
 
 #endif

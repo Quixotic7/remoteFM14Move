@@ -1091,6 +1091,27 @@ static void projmem(void)
     blob[4] = 8;
     CHECK(pm_blob_ids(blob, sizeof blob, ids) == 0 && !ids[0][0], "projmem: a version 8 blob holds no firmwares");
     CHECK(pm_blob_ids(blob, 10, ids) == 0 && pm_blob_ids(NULL, 0, ids) == 0, "projmem: a short blob, none: no firmwares");
+    {   /* (2026-11-26) version 11 and up: the kit's part after the firmwares' (its size by version), a pad's
+         * settings there never read as a firmware's id */
+        static const struct { int ver; uint32_t kb; } KV[] = { { 11, RFM_MOVE_KIT_BYTES_V11 }, { 12, RFM_MOVE_KIT_BYTES_V12 },
+            { 13, RFM_MOVE_KIT_BYTES_V12 }, { 14, RFM_MOVE_KIT_BYTES_V14 }, { 15, RFM_MOVE_KIT_BYTES } };
+        static uint8_t kb[200 + RFM_MOVE_PFW_BYTES + RFM_MOVE_KIT_BYTES + 4];
+        unsigned v;
+        for (v = 0; v < sizeof KV / sizeof KV[0]; v++) {
+            const uint32_t n = 200 + RFM_MOVE_PFW_BYTES + KV[v].kb + 4;
+            uint8_t *f = kb + n - 4 - KV[v].kb - RFM_MOVE_PFW_BYTES;
+            memset(kb, 0, sizeof kb);
+            memcpy(kb, "RMSQ", 4);
+            kb[4] = (uint8_t)KV[v].ver;
+            memcpy(f + RFM_MOVE_PFW_SLOT_BYTES, "felucca", 7);
+            memset(kb + n - 4 - KV[v].kb, 0, KV[v].kb);   /* (the kit empty: zeros, as a fresh project's paths) */
+            CHECK(pm_blob_ids(kb, n, ids) == 1 && !ids[0][0] && !strcmp(ids[1], "felucca") && !ids[2][0],
+                  "projmem: a version %d blob's firmwares before its kit (%u bytes): '%s' '%s' '%s'", KV[v].ver,
+                  (unsigned)KV[v].kb, ids[0], ids[1], ids[2]);
+        }
+        kb[4] = RFM_MOVE_PROJECT_VERSION + 1;
+        CHECK(pm_blob_ids(kb, sizeof kb, ids) == 0, "projmem: a newer version's blob: no firmwares read (nothing dropped)");
+    }
 }
 
 /* README "The working memory": a working memory's file (memsnap.h) back as it was written; a damaged one refused */

@@ -94,7 +94,7 @@ const cid = execFileSync("docker", ["run", "-d", "--rm", "-p", `127.0.0.1:${PORT
   (TC ? `busybox httpd -p 127.0.0.1:18090 -h ${TC} && ` : "") +
   // (the sampler's takes in a sample library outside the folder, one take in it: audio/rec their link)
   "mkdir -p /tmp/s /tmp/lib/RemoteFM1/2026-11-24 && build/tools/ainchk make '/tmp/lib/RemoteFM1/2026-11-24/1124-153000 Felucca 120bpm 1b.wav' >/dev/null && " +
-  "exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --takes-dir /tmp/lib/RemoteFM1 --catalog-url " +
+  "exec build/sim/remotefm1-host --root /tmp/r --sim-dir /tmp/s --firmwares build/fw --site build/site --fw felucca --takes-dir /tmp/lib/RemoteFM1 --samples-dir /tmp/lib --catalog-url " +
   (TC ? "http://127.0.0.1:18090" : "http://127.0.0.1:1") + " --fx-dir build/fxmods" +
   (TC ? ` --catalog-index ${TC}/index.json` : "")],
   { encoding: "utf8" }).trim();
@@ -321,10 +321,16 @@ async function kitChecks() {
   for (let i = 0; i < 3 && (await status()).smp_shown; i++) { await moveCmd("cc 51 127", "cc 51 0"); await sleep(300); }   // (the Move's sampler app closed)
   await moveCmd("cc 40 127"); await sleep(400); await moveCmd("note 94 100", "note 94 0", "cc 40 0"); await sleep(500);
   ok(await untilApi(async () => (await status()).kit_shown === 1, 5000), "on the Move, Track 4 held + pad 3: the Kit view");
-  await moveCmd("cc 14 127", "cc 3 127", "cc 3 0", "cc 14 1", "cc 14 1", "cc 3 127", "cc 3 0", "cc 14 1", "cc 3 127", "cc 3 0");
-  await untilApi(async () => (await status()).kit_total > 0, 5000);
-  await sleep(400);
-  await moveCmd("cc 3 127", "cc 3 0");   // (Files, Takes, the newest take onto pad 1)
+  // (2026-11-26: the kit's pages and the browser's root, My Samples and the Move Library; the takes in My Samples'
+  // RemoteFM1, as on the Move) the jog to Pad Sample, the click: the root (My Samples chosen); My Samples (RemoteFM1);
+  // RemoteFM1 (its first folder, 2026-11-24); that folder: the jog lands on its take, which goes onto pad 1
+  await moveCmd("cc 14 1"); await sleep(300);
+  for (let i = 0; i < 4; i++) {
+    await moveCmd("cc 3 127", "cc 3 0");
+    await untilApi(async () => (await status()).kit_total > 0, 3000);
+    await sleep(400);
+  }
+  await moveCmd("cc 3 127", "cc 3 0");   // (the click: kept, Files closed)
   ok(await untilApi(async () => { const k = await kitNow(); return k && k.on && k.pads && k.pads[0].has && k.pads[0].f > 0 && k.pads[0].pk.length === 128; }, 8000),
     "a take onto pad 1 on the Move: GET /api/kit has it (its name, frames, wave)");
   await click("#mv-smpbtn");
@@ -355,9 +361,9 @@ async function kitChecks() {
   ok(await untilApi(async () => (await status()).kit_pitch === 200, 4000), "Pitch +2 on the page: the Move's core has it (+200 cents)");
   await click('#mv-smp [data-ctl="k3"] .mv-seg:nth-child(3)');
   ok(await untilApi(async () => { const k = await kitNow(); return k.pads[0].v[3] === 2; }, 4000), "Play Loop on the page: pad 1's mode in the core");
-  // from the Move: knob 1 a semitone more, the page follows
-  await moveCmd("cc 71 2");
-  ok(await until(`document.querySelector('#mv-smp [data-ctl="k0"]').dataset.v === "3"`, 4000, "the Move's knob"), "on the Move, knob 1: the page's Pitch follows (+3)");
+  // from the Move: (pages v2) Pad Sample's knob 3, Transpose, a semitone more, the page follows
+  await moveCmd("cc 73 2");
+  ok(await until(`document.querySelector('#mv-smp [data-ctl="k0"]').dataset.v === "3"`, 4000, "the Move's knob"), "on the Move, Pad Sample's knob 3: the page's Pitch follows (+3)");
   await sleep(300);
   await shot(join(OUT, "sampler-kit.png"));
   // Save from the page; Pitch changed; Load the kit saved: its Pitch back

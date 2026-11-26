@@ -9,6 +9,9 @@
   take playback follows the volume knob. A step's click is gated (a hold toggles nothing); a pitch held + a step
   enters that pitch, a held step lights its pitches; Layout in the Kit view sets the right half; every pad setting
   can be step-locked. Core ee916e0.
+- **Fix:** saving a project no longer deletes its firmwares' own copies (`move-project-NN.fwK.*`). The storage thread
+  read the firmware ids where the kit's part now sits (project version 11 and up), found none and dropped every copy,
+  so a project came back with fresh firmwares.
 - **Fix:** a sound kept from the browser is now copied into the project's own folder (round C's KIT_KEEP never reached
   the kit).
 - **Pages v2:** Sample Kit, Pad Sample, Trig, Pad Sample 2, Warp, Filter, Pad Mix, Kit Mix. A page is a picture;

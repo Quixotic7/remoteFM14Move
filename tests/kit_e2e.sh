@@ -343,6 +343,22 @@ click                                                       # Files again: on Hi
 wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 4 ]' \
     && ok "Files again: on the pad's sound in the Move Library (KIT_FIND through its copy)" \
     || bad "Files on Hit: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
+press 51; press 51; press 51; sleep 0.3                     # (Back: out of Files)
+# (2026-11-26) pad 5's pages v2 settings from the page (a = pad * 64 + setting): Warp Grains (33), the Loop's fade 30
+# (22), Morph 70 (39), the filter envelope -40 (40); saved, a third start: the project's own copy ("@/") and each back
+edit 30 289 2; edit 30 278 30; edit 30 295 70; edit 30 296 -40; sleep 0.3
+padv() { curl -s "$U/api/kit" | awk -v p="$1" -v i="$2" 'BEGIN { RS = "\"n\":" } NR == p + 2 { sub(/.*"v":\[/, ""); sub(/\].*/, ""); split($0, a, ","); print a[i + 1] }'; }
+[ "$(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)" = 2/30/70/-40 ] || bad "pad 5's settings: $(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)"
+sleep 2.5   # (the project's autosave)
+stop
+start || { bad "the host did not start (3)"; tail -20 "$L"; exit 1; }
+wait_for 8 '[ "$(field kit_pads)" -ge 15 ]' || bad "the kit after the third start: pads '$(field kit_pads)'"
+cmd "cc 40 127"; sleep 0.4; hit 94; cmd "cc 40 0"; sleep 0.3   # the Kit view
+cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.3           # (Shift + pad 5: chosen)
+wait_for 5 '[ "$(field kit_cur)" = 4 ] && [ "$(field kit_own)" = 1 ] && [ "$(field kit_file)" = Hit.wav ]' \
+    && [ "$(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)" = 2/30/70/-40 ] \
+    && ok "a third start: pad 5's sound from the project's own copy (\"@/\" Hit.wav), its Warp, Loop fade, Morph, filter envelope kept" \
+    || bad "pad 5 after a start: cur '$(field kit_cur)' own '$(field kit_own)' file '$(field kit_file)' settings $(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)"
 stop
 cp "$L" build/test-out/kit_host.log
 echo "kit_e2e: $checks checks, $fail failed (the host's log: build/test-out/kit_host.log; screens build/test-out/kit_*.pbm)"

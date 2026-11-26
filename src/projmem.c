@@ -155,15 +155,29 @@ int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t 
     return -1;
 }
 
+/* (rfm1cs project.c kit_bytes) the kit part after the firmwares' from version 11: its size by version. A version
+ * this file does not know stops the build: its layout must be added here first */
+typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 15 ? 1 : -1];
+static uint32_t kit_bytes(int ver)
+{
+    return ver >= 15 ? RFM_MOVE_KIT_BYTES : ver == 14 ? RFM_MOVE_KIT_BYTES_V14 : ver >= 12 ? RFM_MOVE_KIT_BYTES_V12
+         : ver == 11 ? RFM_MOVE_KIT_BYTES_V11 : 0;
+}
 int pm_blob_ids(const uint8_t *b, uint32_t n, char ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX])
 {
     const uint8_t *p;
+    uint32_t kb;
     int s;
     memset(ids, 0, PM_SLOTS * RFM_MOVE_FW_ID_MAX);
-    /* "RMSQ", the version, ..., the version 9 part, a 4-byte check (rfm1cs project.c: b + n - 4 - RFM_MOVE_PFW_BYTES) */
-    if (!b || n < 5u + 4u + RFM_MOVE_PFW_BYTES || memcmp(b, "RMSQ", 4) || b[4] < 9)
+    /* "RMSQ", the version, ..., the version 9 part, (version 11 and up) the kit, a 4-byte check (rfm1cs project.c
+     * pfw_part: b + n - 4 - kit_bytes - RFM_MOVE_PFW_BYTES; 2026-11-26: the kit's part was read as the firmwares',
+     * so a save of a project with a kit dropped its firmware copies) */
+    if (!b || n < 5 || memcmp(b, "RMSQ", 4) || b[4] < 9 || b[4] > RFM_MOVE_PROJECT_VERSION)
         return 0;
-    p = b + n - 4 - RFM_MOVE_PFW_BYTES;
+    kb = kit_bytes(b[4]);
+    if (n < 5u + 4u + RFM_MOVE_PFW_BYTES + kb)
+        return 0;
+    p = b + n - 4 - kb - RFM_MOVE_PFW_BYTES;
     for (s = 0; s < PM_SLOTS; s++, p += RFM_MOVE_PFW_SLOT_BYTES) {
         memcpy(ids[s], p, RFM_MOVE_FW_ID_MAX);
         ids[s][RFM_MOVE_FW_ID_MAX - 1] = 0;

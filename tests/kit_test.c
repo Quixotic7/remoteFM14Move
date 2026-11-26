@@ -413,8 +413,11 @@ static void t_stretch(void)
     snprintf(p, sizeof p, "%s/st.wav", DIRP), wav(p, 48000, 2, 16, 0, 48000);
     CHECK(load(k, 0, p, &a) == KIT_OK);
     CHECK(fabs(kit_rate_of(k, 0, 0) - 1.0) < 1e-9);
+    kit_set(k, 0, KIT_P_WARP, KIT_W_REPITCH);           /* (pages v2: Sync stretches only with Warp on, Repitch) */
     kit_set(k, 0, KIT_P_STRETCH, 4), kit_stretch(k, 0, 500000);   /* (4 steps of 125 ms: half a second) */
-    CHECK(fabs(kit_rate_of(k, 0, 0) - 2.0) < 1e-9 && fabs(kit_rate_of(k, 0, 12) - 4.0) < 1e-9);
+    /* (pages v2, KIT-SPEC "Warp": Repitch with Sync on, the fit sets the rate; the right half's pitches ignored, the
+     * owner's rule; they still apply with Sync off) */
+    CHECK(fabs(kit_rate_of(k, 0, 0) - 2.0) < 1e-9 && fabs(kit_rate_of(k, 0, 12) - 2.0) < 1e-9);
     kit_set(k, 0, KIT_P_PITCH, 700);                    /* (Pitch ignored) */
     CHECK(fabs(kit_rate_of(k, 0, 0) - 2.0) < 1e-9);
     kit_note(k, 0, 0, 127, 0);
@@ -429,8 +432,8 @@ static void t_stretch(void)
     kit_stretch(k, 0, 2000000);                         /* (the tempo halved: the voice sounding follows) */
     run(k, 48000 - 128);
     CHECK(nonzero_until(48000 - 128) >= 48000 - 129);   /* (a quarter of the sound a second: still on) */
-    kit_set(k, 0, KIT_P_STRETCH, 0), kit_stretch(k, 0, 0);
-    CHECK(fabs(kit_rate_of(k, 0, 0) - pow(2.0, 7.0 / 12.0)) < 1e-9);
+    kit_set(k, 0, KIT_P_STRETCH, 0), kit_stretch(k, 0, 0), kit_set(k, 0, KIT_P_WARP, KIT_W_OFF);
+    CHECK(fabs(kit_rate_of(k, 0, 0) - pow(2.0, 7.0 / 12.0)) < 1e-9 && fabs(kit_rate_of(k, 0, 12) - pow(2.0, 19.0 / 12.0)) < 1e-9);
     kit_free(k);
 }
 /* (stage 3b) the sends: a pad's own after its level and pan, the kit's strip (level, pan, sends) over all; its own
@@ -936,6 +939,44 @@ static void t_rounda(void)
     printf("  ok    KIT_FIND: Samples/fd/sub/b.wav (its folders, their rows), a take outside My Samples (nowhere), nowhere\n");
 }
 
+/* (2026-11-26) the volume knob's MASTER on the kit's whole output (an audio taper: the square), 0 silent; and a step
+ * lock on a setting outside the nine LK locks (KIT_NOTE's kp_mask / kp[]: here End) on that hit's voice only */
+static float peak_of(uint32_t n)
+{
+    float pk = 0;
+    uint32_t i;
+    for (i = 0; i < 2 * n; i++)
+        pk = fabsf(B[i]) > pk ? fabsf(B[i]) : pk;
+    return pk;
+}
+static void t_master_plock(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int16_t pv[KIT_P_N];
+    float full, half;
+    snprintf(p, sizeof p, "%s/mp.wav", DIRP), wav(p, 4800, 2, 16, 0, 48000);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_note(k, 0, 0, 127, 0), run(k, 5000), full = peak_of(5000);
+    kit_master(k, 511);
+    kit_note(k, 0, 0, 127, 0), run(k, 5000), half = peak_of(5000);
+    CHECK(full > 2900 && fabsf(half / full - (511.0f / 1023.0f) * (511.0f / 1023.0f)) < 0.01f);
+    kit_master(k, 0);
+    kit_note(k, 0, 0, 127, 0), run(k, 5000);
+    CHECK(peak_of(5000) == 0.0f);
+    kit_master(k, 1023);
+    kit_note(k, 0, 0, 127, 0), run(k, 5000);
+    CHECK(fabsf(peak_of(5000) - full) < 0.5f);
+    memset(pv, 0, sizeof pv);
+    pv[KIT_P_END] = KIT_FRAC / 4;                       /* (a lock on End: a quarter of the sound, this hit only) */
+    kit_note_pl(k, 0, 0, 127, 0, 0, NULL, 1ull << KIT_P_END, pv, 0);
+    run(k, 5000);
+    CHECK(nonzero_until(5000) >= 1150 && nonzero_until(5000) <= 1250);
+    kit_note(k, 0, 0, 127, 0), run(k, 5000);
+    CHECK(nonzero_until(5000) > 4700);                  /* (the next hit: the pad's own End, untouched) */
+    kit_free(k);
+}
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -953,6 +994,7 @@ int main(void)
     t_make();
     t_slice();
     t_rounda();
+    t_master_plock();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

@@ -129,7 +129,7 @@ wait_for 3 '[ "$(field fx_page)" = 3 ]' && ok "the page's tab: the Move's FX set
 tap "cc 40"
 wait_for 3 '[ "$(field fx_page)" = 1 ] && mix | grep -q "\"page\":1"' && ok "the Move's Track 4 tap on the Mixer: Routing, and the page follows (page 1)" \
     || bad "the Move's page: $(field fx_page)"
-tap "cc 40"   # (Track 4 again: the Mixer)
+tap "cc 40"; tap "cc 40"   # (Track 4 again: the Kit (stage 3a: the host has the kit, Track 4's third page), then the Mixer)
 edit 18 0 50 >/dev/null
 wait_for 3 '[ "$(field level0)" = 50 ]' || bad "the page's level: $(field level0)"
 cmd "cc 71 3"; sleep 0.4

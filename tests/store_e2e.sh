@@ -266,8 +266,9 @@ stop
 # the storage thread at start, as the Move's grid needs them too); a damaged file and a newer one said in a word
 cp "$P/move-project-03.rfmmove" "$P/move-project-20.rfmmove"
 printf 'Z' | dd of="$P/move-project-20.rfmmove" bs=1 seek=60 conv=notrunc 2>/dev/null
-cp "$P/move-project-03.rfmmove" "$P/move-project-21.rfmmove"
-printf '\013' | dd of="$P/move-project-21.rfmmove" bs=1 seek=22 conv=notrunc 2>/dev/null
+cp "$P/move-project-03.rfmmove" "$P/move-project-21.rfmmove"   # (its version byte past any this host reads: 11 was
+                                                                # when it read 10; the kit's version 15 on 2026-11-26)
+printf '\377' | dd of="$P/move-project-21.rfmmove" bs=1 seek=22 conv=notrunc 2>/dev/null
 start || { bad "the host did not start again"; tail -20 "$T/host.log"; exit 1; }
 curl -s "$U/api/store" > "$T/store1.json"
 # (the projects' array, one object a line: k, bpm, read and the first firmware)
