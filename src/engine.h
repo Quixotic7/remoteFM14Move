@@ -57,6 +57,7 @@ typedef struct {
     /* the recorder (recorder.h; README "The sampler"): its takes' folder (--takes-dir; NULL: the Move's sample library's
      * RemoteFM1/ when samples_dir is a folder, else <root>/audio/rec), and that library (/data/UserData/UserLibrary/Samples) */
     const char *takes_dir, *samples_dir;
+    const char *core_library;   /* (2026-11-26) the Move Library: Move's factory sounds, read-only (/data/CoreLibrary) */
 } engine_cfg_t;
 
 int engine_start(const engine_cfg_t *cfg);

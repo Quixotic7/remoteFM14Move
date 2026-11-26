@@ -1079,6 +1079,7 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_FIND:    /* (round A) pad-first loading, the close-up of Start / End */
     case RFM_MOVE_ACT_KIT_PEAKS:
     case RFM_MOVE_ACT_KIT_AUDITION:
+    case RFM_MOVE_ACT_KIT_KEEP:    /* (round C; 2026-11-26: it never reached the kit, so no browse was copied in) */
         kit_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
@@ -4688,8 +4689,9 @@ static void kit_action(const rfm_move_act_t *a)
     kit_proj_sync();
     switch (a->kind) {
     case RFM_MOVE_ACT_KIT_NOTE:
-        kit_note_lk(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0,
-                    a->klk_mask, a->klk);   /* (round B: the step's locks on this hit) */
+        kit_note_pl(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0,
+                    a->klk_mask, a->klk, a->kp_mask, a->kp, a->from);   /* (round B: the step's locks on this hit;
+                                                         * 2026-11-26: every setting's) */
         g_kit_t_notes++;
         break;
     case RFM_MOVE_ACT_KIT_SET:
@@ -5191,10 +5193,18 @@ static void render_block_(uint32_t now)
             g_peak_win = v;
     }
     rec_feed(out, dry, ain, spos, sper);   /* (the recorder: the mix as heard, the slots dry, the input) */
-    if (g_tl)
-        tl_mix(g_tl, out, FW_BLOCK);   /* (stage 2) a take playing: after the recorder's tap, so never recorded */
-    if (g_kit)
-        kit_preview_mix(g_kit, out, FW_BLOCK);   /* (the kit's Files: a sound heard as the jog lands on it, never recorded) */
+    if (g_tl) {   /* (stage 2) a take playing: after the recorder's tap, so never recorded; (2026-11-26) at the volume
+                   * knob's master (the firmwares' audio taper), no longer full blast */
+        static int16_t tk[FW_BLOCK * 2];
+        const float mg = g_master < 0 ? 1.0f : (float)g_master * (float)g_master / (1023.0f * 1023.0f);
+        memset(tk, 0, sizeof tk);
+        tl_mix(g_tl, tk, FW_BLOCK);
+        for (s = 0; s < FW_BLOCK * 2; s++) {
+            const long v = out[s] + lrintf(tk[s] * mg);
+            out[s] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+        }
+    }
+    /* (2026-11-26, the owner's rule) no kit preview path: the kit's sounds, slices too, are its voices on its bus */
     mr_ring_push(&g_ring, out, FW_BLOCK);
     if (g_cap_mix && g_cap_mix_n + FW_BLOCK <= g_cap_max) {
         memcpy(g_cap_mix + 2u * g_cap_mix_n, out, sizeof out);
@@ -5904,6 +5914,7 @@ int engine_start(const engine_cfg_t *cfg)
         memset(&kc, 0, sizeof kc);
         static char kits[1024];
         kc.fs = FW_FS, kc.samples_dir = C.samples_dir, kc.tl = g_tl, kc.own_thread = g_tl == NULL;
+        kc.core_dir = C.core_library;   /* (2026-11-26: the browser's Move Library; missing: none) */
         if (g_takes_dir[0])   /* (stage 3b: saved kits in Samples/RemoteFM1/Kits) */
             snprintf(kits, sizeof kits, "%s/Kits", g_takes_dir), kc.kits_dir = kits;
         if (!(g_kit = kit_new(&kc)))
@@ -5916,6 +5927,7 @@ int engine_start(const engine_cfg_t *cfg)
     }
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
                                    (g_kit ? RFM_MOVE_CAP_KIT : 0) | RFM_MOVE_CAP_EXIT);
+    rfm_move_kit_core_lib(&S->core, kit_has_core(g_kit));   /* (2026-11-26: the browser's second place, when there) */
     /* the sampler app offers: Master, Slot 1..3, Input, Stems, (stage 3b, with the kit) Kit; Source, Mode, Length,
      * Threshold, Input level, (3b) To (not Monitor: later); the Record tab, (stage 2) Takes and Tools with the take
      * library; takes to Files, (3b) to the Kit (the next empty pad) */

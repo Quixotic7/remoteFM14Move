@@ -1554,6 +1554,13 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   `kit.json` version 2 (the new keys, `"bus"`; version 1 mapped). `POST /api/kit` op `set`: param 0..44, 63 the Trim
   silence (it was 31); the page's Kit tab has rows for the new pad settings. kit_test's Toggle test removed.
 
+(2026-11-26, KIT-SPEC "Browser, 2026-11-26") Files' places: My Samples (`KIT_PL_SAMPLES`) and the Move Library
+(`KIT_PL_CORE`: `--core-library DIR`, default `/data/CoreLibrary`, its `Samples/` when there; indexed once on the file
+thread, only folders with sounds the host reads, FLAC and compressed AIFF-C hidden). No preview or audition path:
+`kit_preview` and `kit_audition` do nothing, the slices and Tap's pass are voices of a hidden pad on the kit's bus. The
+sampler's take playback (`tl_mix`) scaled by the volume knob's master. `kit_note_pl`: a hit's locks on any setting
+(KIT_NOTE's `kp_mask` / `kp[]`, a locked Sync's microseconds), kept per voice.
+
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
 the region, loop, momentary, the attack, the one shot's tail, the hold, choke, a pad again, mute, level and pan,

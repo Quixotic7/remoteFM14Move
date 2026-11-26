@@ -3,10 +3,12 @@
 # The kit (src/kit.c; rfm1cs-abletonmove's stage 3a, README "The kit") on the simulator, in the build image after make,
 # through the simulator's command pipe (the Move's pads, steps, knobs, the jog, Sample) and the status:
 #   - Track 4 held + its pad 3: the Kit view; a new project's tracks 13..16 routed to the kit;
-#   - Files: the places, Samples (--samples-dir: a folder of the test's, its folders first), a folder entered; (round A)
+#   - Files: the root (2026-11-26: My Samples, the Move Library: --core-library a folder of the test's, its folder
+#     without sounds hidden; a sound there kept: copied into the project's folder, Files again on it there), My Samples
+#     (--samples-dir: a folder of the test's, its folders first), a folder entered; (round A)
 #     the jog at rest on a sound puts it on the chosen pad, heard (the pad's voice, the output's peak), the jog back:
 #     the other, its click keeps it (loaded, in memory) and closes Files; Files again: on the pad's sound
-#     (KIT_FIND: a take's, in Takes);
+#     (KIT_FIND: a take's, in My Samples' RemoteFM1);
 #   - the pad played: a voice; a step entered and Play: the sequencer plays the pad by itself; (pages v2) Pad Sample's
 #     knob 3: its Transpose;
 #   - a pad held + Sample (the sampler's Manual mode): a take recorded into pad 2, the pad let go ends it, the take on
@@ -37,12 +39,14 @@ echo "kit_e2e"
 T=$(mktemp -d /tmp/rfm14kit.XXXXXX)
 FWS=$T/fws; mkdir -p "$FWS"
 cp build/fw/felucca-1.8.2.* build/fw/choralroot-0.43.* "$FWS/"
-SIM=$T/sim; R=$T/root; SMP=$T/Samples; LIB=$SMP/RemoteFM1; CAP=$T/cap
-mkdir -p "$SIM" "$R" "$SMP/Drums" "$SMP/Kit808" "$LIB" "$CAP"
+SIM=$T/sim; R=$T/root; SMP=$T/Samples; LIB=$SMP/RemoteFM1; CAP=$T/cap; CORE=$T/CoreLibrary
+mkdir -p "$SIM" "$R" "$SMP/Drums" "$SMP/Kit808" "$LIB" "$CAP" "$CORE/Drum Hits" "$CORE/Presets"
 echo "http://127.0.0.1:1" > "$R/catalog-url"
 build/tools/ainchk make "$SMP/Drums/Tone.wav" >/dev/null || { echo "  FAIL  ainchk"; exit 1; }
 cp "$SMP/Drums/Tone.wav" "$SMP/Drums/Zap.wav"
 for f in c b a; do cp "$SMP/Drums/Tone.wav" "$SMP/Kit808/$f.wav"; done   # (3b: a folder for All To Pads)
+cp "$SMP/Drums/Tone.wav" "$CORE/Drum Hits/Hit.wav"   # (2026-11-26: the Move Library: one folder with a sound, one without)
+echo x > "$CORE/Drum Hits/Hit.flac"; echo '{}' > "$CORE/Presets/Kit.ablpreset"
 PORT=17839; U="http://127.0.0.1:$PORT"; L=$T/host.log
 mkdir -p build/test-out
 status() { curl -s "$U/api/status"; }
@@ -57,7 +61,7 @@ set_() { jog 6 127; jog 1 1; jog "$1" 1; click; if [ "$2" -ge 0 ]; then jog "$2"
 shot() { rm -f "$SIM/mr-screen.pbm"; cmd shot; wait_for 3 '[ -s "$SIM/mr-screen.pbm" ]'; }
 start() {
     build/sim/remotefm1-host --root "$R" --port $PORT --sim-dir "$SIM" --firmwares "$FWS" --site build/site --fw felucca \
-        --test-api --no-fm1 --takes-dir "$LIB" --samples-dir "$SMP" --fx-dir build/fxmods "$@" >>"$L" 2>&1 &
+        --test-api --no-fm1 --takes-dir "$LIB" --samples-dir "$SMP" --core-library "$CORE" --fx-dir build/fxmods "$@" >>"$L" 2>&1 &
     HOST=$!
     wait_for 10 '[ -p "$SIM/mr-cmd" ] && grep -q "host=RemoteFM1 on Move" "$SIM/mr-state" 2>/dev/null' \
         && wait_for 15 '[ "$(field session)" = 2 ] && grep -q "drew=1" "$SIM/mr-state" && [ -n "$(field kit_cur)" ]'
@@ -75,8 +79,15 @@ wait_for 3 '[ "$(field kit_shown)" = 1 ]' && [ "$(field kit_route)" = 61440 ] &&
     && ok "Track 4 held + pad 3: the Kit view (pad 1 chosen), tracks 13..16 routed to the kit" \
     || bad "the Kit view: shown '$(field kit_shown)' route '$(field kit_route)' pad '$(field kit_cur)'"
 sleep 1.1; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_rest.pbm
-jog 1 1; click                               # (pages) Pad Sample; the click: the browser's root (Takes chosen)
-jog 1 1; click                               # Samples
+jog 1 1; click                               # (pages) Pad Sample; the click: the browser's root (My Samples chosen)
+jog 1 1; click                               # (2026-11-26) the Move Library
+wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 1 ]' \
+    && ok "the root's Move Library: its one folder with sounds (Presets hidden)" \
+    || bad "the Move Library: place '$(field kit_place)' total '$(field kit_total)'"
+click                                        # Drum Hits: Hit (the FLAC hidden)
+wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Drum Hits: total '$(field kit_total)'"
+press 51; press 51; sleep 0.2                # (Back: the folder up, the root)
+jog 1 127; click                             # My Samples
 wait_for 3 '[ "$(field kit_place)" = 2 ] && [ "$(field kit_total)" = 3 ]' \
     && ok "Files, Samples: its folders (Drums, Kit808, RemoteFM1) listed" \
     || bad "Samples: place '$(field kit_place)' total '$(field kit_total)' rows answered '$(field kit_rows)'"
@@ -177,13 +188,12 @@ wait_for 5 '[ "$(field rec_takes)" = 1 ]' && wait_for 5 '[ "$(field kit_pads)" =
 # ---------------------------------------------------------------- All To Pads; Undo
 f0=$(field kit_finds)
 click                                                       # (Files: on pad 2's take, round A)
-wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 1 ]' \
-    && ok "Files again: on pad 2's sound (KIT_FIND: the take, in Takes)" \
+wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 2 ]' \
+    && ok "Files again: on pad 2's sound (KIT_FIND: the take, in My Samples' RemoteFM1)" \
     || bad "Files on the pad's sound: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
-press 51; sleep 0.3                                         # (Back: the places)
-jog 1 1; click                                              # Samples
-wait_for 3 '[ "$(field kit_total)" = 3 ]' || bad "Samples again: '$(field kit_total)'"
-jog 1 1                                                     # Kit808
+press 51; press 51; sleep 0.3                               # (Back: RemoteFM1, My Samples' top)
+wait_for 3 '[ "$(field kit_total)" = 3 ]' || bad "My Samples again: '$(field kit_total)'"
+jog 1 127                                                   # Kit808 (from RemoteFM1)
 cmd "cc 49 127"; click; cmd "cc 49 0"; sleep 0.2            # Shift + the click: its actions
 shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_folder.pbm
 click                                                       # All To Pads
@@ -258,7 +268,7 @@ wait_for 8 '[ "$(field kit_sl_n)" = 8 ]' || bad "Equal 8: n '$(field kit_sl_n)'"
 cmd "cc 49 127"; hit 68; cmd "cc 49 0"; sleep 0.2             # Shift + pad 1: from pad 1
 p0=$(field kit_slplay); hit 70                               # pad 3: slice 3 heard
 wait_for 3 '[ "$(field kit_slplay)" = $((p0 + 1)) ]' && [ "$(field kit_sl_first)" = 0 ] \
-    && ok "Equal 8; Shift + pad 1 the first pad; pad 3 plays slice 3 (the preview path)" \
+    && ok "Equal 8; Shift + pad 1 the first pad; pad 3 plays slice 3 (a kit voice on the kit's bus)" \
     || bad "the slices' pads: play '$(field kit_slplay)' (from $p0) first '$(field kit_sl_first)'"
 sleep 0.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_slice.pbm
 click
@@ -314,6 +324,25 @@ start || { bad "the host did not start (2)"; tail -20 "$L"; exit 1; }
 wait_for 8 '[ "$(field kit_pads)" = 15 ]' && [ "$(field kit_route)" = 61440 ] && [ "$(field kit_name)" = "Kit 1" ] \
     && ok "a second start: the project's kit back (pads 1..4 loaded from their paths, the routing, its name)" \
     || bad "the kit after a start: pads '$(field kit_pads)' route '$(field kit_route)' name '$(field kit_name)' loads '$(field kit_loads)'"
+# (2026-11-26) a Move Library sound onto pad 5, kept: copied into the project's folder; Files again on it there
+cmd "cc 40 127"; sleep 0.4; hit 94; cmd "cc 40 0"; sleep 0.3   # the Kit view
+wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "the Kit view (2): '$(field kit_shown)'"
+cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.2           # (Shift + pad 5: chosen)
+jog 1 1; click; sleep 0.3                                   # (Pad Sample; the browser: the root)
+jog 1 1; click                                              # the Move Library
+wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 1 ]' || bad "the Move Library (2): place '$(field kit_place)' total '$(field kit_total)'"
+click; wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Drum Hits (2): total '$(field kit_total)'"
+jog 1 1                                                     # Hit: on pad 5
+wait_for 5 '[ "$(field kit_file)" = Hit.wav ]' || bad "Hit: file '$(field kit_file)' cur '$(field kit_cur)'"
+click                                                       # kept: copied into the project's folder
+wait_for 5 'ls "$LIB"/Kits/Projects/*/Hit.wav >/dev/null 2>&1' \
+    && ok "a Move Library sound kept: copied into the project's folder ($(ls "$LIB"/Kits/Projects/*/Hit.wav 2>/dev/null | sed "s|$T/||"))" \
+    || bad "the Move Library's copy-in: cur '$(field kit_cur)' owned '$(field kit_owned)' $(grep 'kept where' "$L" | tail -1)"
+f0=$(field kit_finds)
+click                                                       # Files again: on Hit, in the Move Library
+wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 4 ]' \
+    && ok "Files again: on the pad's sound in the Move Library (KIT_FIND through its copy)" \
+    || bad "Files on Hit: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
 stop
 cp "$L" build/test-out/kit_host.log
 echo "kit_e2e: $checks checks, $fail failed (the host's log: build/test-out/kit_host.log; screens build/test-out/kit_*.pbm)"

@@ -4,9 +4,11 @@
  * past it refused: KIT_TOO_LONG); voices (16 pads plus the right half's pitches, 24 at once, the oldest stolen) with
  * linear interpolation, an attack / hold / release envelope, one shot, momentary and loop, reverse, level and pan,
  * choke groups with short fades; a Kit bus the engine adds to its mix (before the recorder's tap: it is in the master's
- * takes); a preview voice (Files: a sound heard as the jog lands on it) added after the recorder's tap (never recorded).
+ * takes). (2026-11-26, the owner's rule) no preview path: every sound the kit makes, the slicing screen's slices and
+ * Tap's pass too, is a voice on its bus (its level, pan, sends, filter, the FX, the master volume), and only a pad or
+ * the sequencer starts one.
  *
- * Threads: kit_note .. kit_poll, kit_render, kit_preview_mix from the engine's thread (never blocking: a short mutex
+ * Threads: kit_note .. kit_poll, kit_render from the engine's thread (never blocking: a short mutex
  * around a copy at most); every file is read on the file thread: the take library's worker (cfg.tl: tl_post's
  * TL_Q_JOB runs kit_work there), or, without one, the kit's own thread (cfg.own_thread), or the caller's (tests:
  * kit_work). The memory a sound leaves is freed there too, never on the engine's thread. libc + pthreads (+ libm).
@@ -87,7 +89,7 @@ enum { KIT_LK_PITCH, KIT_LK_START, KIT_LK_CUTOFF, KIT_LK_RESO, KIT_LK_LEVEL, KIT
  * (3) is gone: the core loads it as Loop; an older kit.json too */
 enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_PITCHENV, KIT_M_LOFI, KIT_M_GRANULAR, KIT_M_N };
 /* Files' places (as rfm1cs's RFM_MOVE_KIT_PL_*), a row's kind, a load's status (as RFM_MOVE_KIT_ROW_*, RFM_MOVE_KIT_*) */
-enum { KIT_PL_TAKES = 1, KIT_PL_SAMPLES = 2, KIT_PL_KITS = 3 };
+enum { KIT_PL_TAKES = 1, KIT_PL_SAMPLES = 2, KIT_PL_KITS = 3, KIT_PL_CORE = 4 };   /* (CORE 2026-11-26: Move Library) */
 enum { KIT_ROW_DIR = 1, KIT_ROW_FILE = 2, KIT_ROW_KIT = 3 };
 enum { KIT_OK = 0, KIT_TOO_LONG = 1, KIT_FAILED = 2, KIT_MISSING = 3, KIT_EMPTY = 5 };   /* (EMPTY: All To Pads past the
                                                                                       * folder's sounds) */
@@ -96,6 +98,8 @@ typedef struct {
     uint32_t fs;                  /* the engine's frames a second (0: 48000) */
     uint32_t max_bytes;           /* 0: KIT_MAX_BYTES */
     const char *samples_dir;      /* Samples: the Move's sample library (NULL: none) */
+    const char *core_dir;         /* (2026-11-26) the Move Library: Move's factory sounds, read-only (/data/CoreLibrary;
+                                   * its Samples/ when there; NULL or missing: none) */
     const char *kits_dir;         /* (stage 3b) saved kits, a folder each (Samples/RemoteFM1/Kits; NULL: none) */
     struct tl *tl;                /* Takes, and the file thread (NULL: none) */
     int own_thread;               /* no tl: a thread of the kit's own does the files (0: kit_work by the caller) */
@@ -168,6 +172,10 @@ void kit_free(kit_t *k);
 void kit_note(kit_t *k, int pad, int semis, int vel, uint32_t frame);
 /* (round B) .. a note-on with its step's locks (bit l of mask: lk[l], KIT_LK_*) on this voice only */
 void kit_note_lk(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk);
+/* (2026-11-26) .. and every other step lock: bit p of pm (KIT_P_*), pv[p] the value for this hit (KIT_P_N of them); us
+ * a locked Sync's microseconds */
+void kit_note_pl(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk, uint64_t pm,
+                 const int16_t *pv, uint32_t us);
 void kit_set(kit_t *k, int pad, int param, int value);
 /* (stage 3b) Stretch's microseconds (KIT_SET's `from`): the pad's start..end lasts so long (0: its Pitch); a voice
  * sounding follows at once */
@@ -190,24 +198,23 @@ void kit_folder(kit_t *k, int place, uint32_t id);
 void kit_load(kit_t *k, int pad, const char *path);   /* a file onto a pad (NULL / "": the pad emptied) */
 void kit_load_row(kit_t *k, int pad, int place, uint32_t id);   /* a row of Files (a take, a sample) onto a pad */
 void kit_rows(kit_t *k, int place, uint32_t folder, int from, int n);
-void kit_preview(kit_t *k, int place, uint32_t id, int on);
+void kit_preview(kit_t *k, int place, uint32_t id, int on);   /* (2026-11-26: retired, nothing plays) */
 /* the next answer for the core (a load: its sound already on the pad), 1; the file work posted to the file thread */
 int kit_poll(kit_t *k, kit_ans_t *a);
 void kit_render(kit_t *k, float *acc, uint32_t frames);   /* adds the Kit bus (stereo, int16 scale) */
 /* (stage 3b) .. and the sends: send[i] an audio FX's bus (NULL: that FX not running), own the kit's output alone (the
  * sampler's Kit source; NULL: none) */
 void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, uint32_t frames);
-void kit_preview_mix(kit_t *k, int16_t *out, uint32_t frames);   /* adds the preview (after the recorder's tap) */
 /* (stage 3c) answers: KIT_A_LOADED for the pad that gets the new file (a failure: its status, the pad keeps its own) */
 void kit_merge(kit_t *k, int dst, int src, int op);   /* Mix / Join: src's region then (or plus) dst's, onto dst */
 void kit_edit(kit_t *k, int pad, int op);             /* KIT_ED_*: the pad's own new file */
 /* a take's cuts by method (KIT_SM_*; Steps: step_us a step): answer KIT_A_SLICES; the take is kept for kit_slice_play
- * (the preview path, never recorded) until kit_slice_done or another preview */
+ * (2026-11-26: a kit voice of a hidden pad on the kit's bus, its defaults) until kit_slice_done or another take */
 void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us);
 /* (round A) .. the Hits' sensitivity 1..100 (0: 50) */
 void kit_slice_sens(kit_t *k, uint32_t take, int method, uint32_t step_us, int sens);
 void kit_slice_play(kit_t *k, uint32_t from, uint32_t count);   /* (round B: count 0 stops it) */
-uint32_t kit_slice_pos(const kit_t *k);   /* (round B, status) the slice preview's frame now (0: none) */
+uint32_t kit_slice_pos(const kit_t *k);   /* (round B, status) the slice voice's frame now (0: none) */
 void kit_slice_done(kit_t *k);
 /* (the file thread, tests) a take's cuts as KIT_SLICE gives them: n slices (cuts[0..n]) of pcm (stereo) */
 int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, uint32_t *cuts);
@@ -223,7 +230,7 @@ void kit_find(kit_t *k, int pad, const char *path);
 /* the close-up's peaks: the pad's frames [from, from + count) as n peaks (scaled as its whole wave's), on the file
  * thread: answer KIT_A_PEAKS (a newer ask replaces one not started) */
 void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n);
-/* the pad's frames [from, from + count) heard once at its own rate on the preview path (never recorded) */
+/* (2026-11-26: retired; a sound plays only by its pad or the sequencer) */
 void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count);
 int kit_auditioning(const kit_t *k);
 const char *kit_pad_path(const kit_t *k, int pad);
@@ -234,7 +241,8 @@ int kit_voices(const kit_t *k);           /* voices sounding */
 uint32_t kit_bytes(const kit_t *k);       /* the kit's sounds in memory */
 uint32_t kit_frames(const kit_t *k, int pad);   /* a pad's sound's frames (0 none) */
 double kit_rate_of(const kit_t *k, int pad, int semis);   /* (3b) a voice's source frames an output frame */
-int kit_previewing(const kit_t *k);       /* the preview sounds */
+int kit_previewing(const kit_t *k);       /* a slice voice sounds */
+int kit_has_core(const kit_t *k);         /* (2026-11-26) the Move Library is there (the browser's second place) */
 uint32_t kit_sounding(const kit_t *k);    /* (3c) the pads a voice sounds for (bits) */
 
 /* ---- (round C) the project's own sounds (README "The kit (round C)") */

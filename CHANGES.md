@@ -2,6 +2,15 @@
 
 ## Unreleased: the kit (stages 3a, 3b and 3c, rounds A, B and C)
 
+- **Browser and sound (2026-11-26):** the browser's root is My Samples and the Move Library (Move's own factory
+  sounds; `--core-library DIR`, default `/data/CoreLibrary`, only folders with sounds the host reads); Takes and Kits
+  left it. The chosen row's long name scrolls slowly back and forth. A sample plays only from its pad or the
+  sequencer, through the kit's own path (no preview, no audition: slices and Tap's pass are kit voices); the sampler's
+  take playback follows the volume knob. A step's click is gated (a hold toggles nothing); a pitch held + a step
+  enters that pitch, a held step lights its pitches; Layout in the Kit view sets the right half; every pad setting
+  can be step-locked. Core ee916e0.
+- **Fix:** a sound kept from the browser is now copied into the project's own folder (round C's KIT_KEEP never reached
+  the kit).
 - **Pages v2:** Sample Kit, Pad Sample, Trig, Pad Sample 2, Warp, Filter, Pad Mix, Kit Mix. A page is a picture;
   touch a knob to see its value. Turning the jog shows the pages' icons. Pad Sample: start, end, transpose, engine,
   the envelope. **Engines:** One Shot, Momentary, Loop (loop points and a crossfade), Pitch Env, LoFi, Granular

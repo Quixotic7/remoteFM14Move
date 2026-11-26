@@ -55,6 +55,8 @@
  *                   folder a day, when that library is there, else ROOT/audio/rec; ROOT/audio/rec links to it)
  *     --samples-dir the Move's sample library (the kit's Samples, the takes' default home; default:
  *                   /data/UserData/UserLibrary/Samples)
+ *     --core-library  (2026-11-26) Move's factory sounds, read-only, the kit browser's Move Library (its Samples/ when
+ *                   there; default: /data/CoreLibrary; missing: no such place)
  *     --sim-dir     the simulator's test files (mr-cmd, mr-state, mr-screen.pbm)
  *     --capture     the audio thread's output (out.raw), the mix (mix.raw), the first firmware's own blocks (raw.raw)
  *                   and its input log (inputs.log), written at exit */
@@ -100,7 +102,7 @@ int main(int argc, char **argv)
     int threads = 1, cpu2 = 1, rt_threads = 1, midi_out = 0, midi_clock = 0;
     char heal[PATH_MAX];
     const char *fm1_addr = NULL;
-    const char *sim_ain = NULL, *takes_dir = NULL, *samples_dir = NULL;
+    const char *sim_ain = NULL, *takes_dir = NULL, *samples_dir = NULL, *core_library = NULL;
     long fm1_bps = 0;
     long log_cap = 0;
     char *pargv[4];
@@ -212,6 +214,8 @@ int main(int argc, char **argv)
             sim_dir = argv[++i];
         else if (!strcmp(argv[i], "--samples-dir") && i + 1 < argc)
             samples_dir = argv[++i];
+        else if (!strcmp(argv[i], "--core-library") && i + 1 < argc)
+            core_library = argv[++i];
         else if (!strcmp(argv[i], "--takes-dir") && i + 1 < argc)
             takes_dir = argv[++i];
         else if (!strcmp(argv[i], "--capture") && i + 1 < argc)
@@ -228,7 +232,7 @@ int main(int argc, char **argv)
                             "[--dev-firmwares DIR] [--module-dir DIR] [--frame-ms A[,B]] [--fx-dir DIR] [--fx-budget PERMILLE] [--test-api] [--threads 0|1] [--no-cpu2] [--no-rt-threads] [--no-fm1] [--fm1-bps N] [--fm1-cap N] [--no-fm1-wifi] [--fm1-addr HOST[:PORT]] [--fm1-usba-screen] [--fake-fm1] "
                             "[--rtp-port N] [--no-rtp] [--midi-out] [--midi-out-clock] "
                             "[--screen-reader on|off|auto] [--tts-sidecar PATH] [--tts-shm NAME] [--tts-config DIR] "
-                            "[--no-audio-in] [--sim-audio-in F.wav] [--takes-dir DIR] [--samples-dir DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
+                            "[--no-audio-in] [--sim-audio-in F.wav] [--takes-dir DIR] [--samples-dir DIR] [--core-library DIR] [--sim-dir DIR] [--capture DIR --capture-seconds S]\n");
             return 2;
         }
     }
@@ -294,6 +298,7 @@ int main(int argc, char **argv)
         c.serial = !threads;
         c.midi_out = midi_out;
         c.takes_dir = takes_dir;
+        c.core_library = core_library ? core_library : "/data/CoreLibrary";
         c.samples_dir = samples_dir ? samples_dir : "/data/UserData/UserLibrary/Samples";   /* (the Move's own software
                                                          * lists it; the kit's Samples) */
         fw_cpu2_enable(cpu2);

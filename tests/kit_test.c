@@ -323,17 +323,10 @@ static void t_samples(void)
         kit_work(k);
         CHECK(kit_poll(k, &a) && a.kind == KIT_A_LOADED && a.pad == 5 && a.status == KIT_OK && a.frames == 1200 &&
               strstr(a.path, "/Drums/Kick 808.wav") && !strcmp(a.name, "Kick 808"));
-        /* the preview: heard after the tap, once; a newer one replaces it; off stops it */
+        /* (2026-11-26, the owner's rule) the preview retired: nothing plays, nothing read */
         kit_preview(k, KIT_PL_SAMPLES, clap, 1);
         kit_work(k);
-        CHECK(!kit_poll(k, &a) && kit_previewing(k));
-        {
-            int16_t out[2 * 3000];
-            memset(out, 0, sizeof out);
-            kit_preview_mix(k, out, 3000);
-            CHECK(out[2 * 100] == ramp(100) && out[2 * 100 + 1] == -ramp(100) && !kit_previewing(k) && out[2 * 2500] == 0);
-        }
-        kit_preview(k, KIT_PL_SAMPLES, clap, 1);
+        CHECK(!kit_poll(k, &a) && !kit_previewing(k));
         kit_preview(k, KIT_PL_SAMPLES, clap, 0);
         kit_work(k);
         kit_poll(k, &a);
@@ -773,12 +766,10 @@ static void t_slice(void)
         CHECK(n && a.kind == KIT_A_SLICES && a.take == r[0].id && a.n == 4 && a.frames == 48000 && a.npk == KIT_PEAKS &&
               !strcmp(a.path, p));
         memcpy(cuts, a.cuts, sizeof cuts);
-        kit_slice_play(k, cuts[1], 1000);               /* (slice 2's first 1000 frames heard, then nothing) */
-        memset(out, 0, sizeof out);
-        kit_preview_mix(k, out, 1024);
-        CHECK(kit_previewing(k) == 0 && out[0] == hits(cuts[1], 0) && out[2 * 999] == hits(cuts[1] + 999, 0) &&
-              out[2 * 1000] == 0);
+        kit_slice_play(k, cuts[1], 1000);               /* (2026-11-26: slice 2 a kit voice, from its frame) */
+        CHECK(kit_previewing(k) && kit_voices(k) == 1 && kit_slice_pos(k) == cuts[1] && !kit_sounding(k));
         kit_slice_done(k);
+        CHECK(!kit_previewing(k) && !kit_voices(k));
         kit_slice_play(k, 0, 100);
         CHECK(!kit_previewing(k));
         kit_slice(k, 0x12345, KIT_SM_HITS, 0);          /* (no such take: no slices) */
@@ -897,12 +888,9 @@ static void t_rounda(void)
     kit_zoom(k, 5, 0, 100, 64);                         /* (no sound on pad 6: nothing asked) */
     kit_work(k);
     CHECK(!kit_poll(k, &a));
-    /* an audition: the pad's frames [100, 600) once, at its rate */
-    kit_audition(k, 0, 100, 500);
-    memset(out, 0, sizeof out);
-    kit_preview_mix(k, out, 1024);
-    CHECK(out[0] == ramp(100) && out[2 * 499] == ramp(599) && out[2 * 500] == 0 && !kit_auditioning(k));
-    printf("  ok    the close-up's peaks (a window, scaled as the whole), an audition of [100, 600)\n");
+    kit_audition(k, 0, 100, 500);                       /* (2026-11-26: retired) */
+    CHECK(!kit_auditioning(k) && !kit_voices(k));
+    printf("  ok    the close-up's peaks (a window, scaled as the whole), no audition\n");
     /* (pages v2: Toggle is gone; its test with it) */
     /* where a sound sits: Samples' folders and rows */
     snprintf(d, sizeof d, "%s/fd", DIRP), mkdir(d, 0755);
@@ -940,11 +928,12 @@ static void t_rounda(void)
         c.fs = 48000, c.tl = l;
         k = kit_new(&c);
         kit_find(k, 4, p);
-        CHECK(wait_kind(k, &a, KIT_A_FOUND) && a.pad == 4 && a.place == KIT_PL_TAKES && a.depth == 0 && a.sels[0] == 1 && a.take);
+        CHECK(wait_kind(k, &a, KIT_A_FOUND) && a.pad == 4 && a.place == 0);   /* (2026-11-26: no Takes place; a take is
+                                                         * found in My Samples, here none) */
         kit_free(k);
         tl_free(l);
     }
-    printf("  ok    KIT_FIND: Samples/fd/sub/b.wav (its folders, their rows), a take (Takes' second row), nowhere\n");
+    printf("  ok    KIT_FIND: Samples/fd/sub/b.wav (its folders, their rows), a take outside My Samples (nowhere), nowhere\n");
 }
 
 int main(void)

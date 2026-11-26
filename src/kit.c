@@ -98,12 +98,30 @@ typedef struct {
     float ggain;
     uint32_t rnd;
     grain_t gr[NGR];
+    /* (2026-11-26) the hit's step locks on any setting: bit p of pm, pl[p] its value (the pad's edits leave them);
+     * a locked Sync: us_lk its microseconds */
+    uint64_t pm;
+    int16_t pl[KIT_P_N];
+    uint32_t us_lk;
 } voice_t;
 enum { ST_ATTACK, ST_HOLD, ST_DECAY, ST_SUSTAIN, ST_RELEASE, ST_FADE };
 enum { B_ONE, B_MOM, B_LOOP, B_HELD };   /* (pages v2) a voice's play: once, held once, round its loop, held (Granular) */
 #define FLT_N 32                  /* (round B) the filter's coefficients made every 32 frames */
 #define FLT_GLIDE_MS 10           /* .. its cutoff's glide */
-typedef struct { int pad, semis, vel; uint32_t frame; int mask; int16_t lk[KIT_LK_N]; } ev_t;
+typedef struct {
+    int pad, semis, vel;
+    uint32_t frame;
+    int mask;
+    int16_t lk[KIT_LK_N];
+    uint64_t pm;                  /* (2026-11-26) every other lock: bit p, pv[p]; us a locked Sync's microseconds */
+    int16_t pv[KIT_P_N];
+    uint32_t us;
+} ev_t;
+/* (2026-11-26, the owner's rule: "a sample should only ever play by pressing the pad or if I sequenced it, always
+ * through the same routing path") the slicing screen's slices and Tap's pass play as a kit voice of a hidden pad SLP
+ * (the defaults: one shot, 0 dB, centred, no sends) through the kit's bus, its level, pan, sends, filter, the FX and
+ * the master; no preview or audition path any more */
+#define SLP KIT_PADS
 enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER, RQ_MERGE, RQ_EDIT, RQ_SLICE,
        RQ_FIND, RQ_PEAKS, RQ_KEEP };   /* (round A: FIND, PEAKS; round C: KEEP) */
 typedef struct {
@@ -147,9 +165,9 @@ struct kit {
     kit_cfg_t cfg;
     char samples[KIT_PATH];
     /* the engine's */
-    snd_t snd[KIT_PADS];
-    int16_t v[KIT_PADS][KIT_P_N];
-    uint32_t st_us[KIT_PADS];     /* (3b) Stretch: the microseconds start..end lasts (0: its pitch) */
+    snd_t snd[KIT_PADS + 1];      /* (2026-11-26) [SLP]: the slicing screen's take, played as a kit voice */
+    int16_t v[KIT_PADS + 1][KIT_P_N];
+    uint32_t st_us[KIT_PADS + 1];     /* (3b) Stretch: the microseconds start..end lasts (0: its pitch) */
     int mix[5];                   /* (3b) the kit's strip: level, pan, sends 1..3 (0..127) */
     volatile float master;        /* (2026-11-26) the volume knob's MASTER as a gain (1: untouched), as the firmwares' */
     float dry[2 * RBUF], sb[3][2 * RBUF];   /* .. the voices before it */
@@ -161,19 +179,13 @@ struct kit {
     uint32_t age;
     ev_t ev[NEV];
     int nev;
-    snd_t prev;                   /* the preview */
-    double prev_pos, prev_inc;
-    int prev_on;
-    double prev_end;              /* (3c) a slice heard: where it stops (0: the sound's end) */
+    snd_t prev;                   /* (3c) the take sliced (SLP's sound while it plays) */
     uint32_t sl_take;             /* (3c) the take sliced (its sound the preview's; 0 none), the latest asked */
     uint32_t sl_gen;
     char ppath[KIT_PADS][KIT_PATH];   /* (3c) the file on each pad (the engine's) */
     int16_t *held[KIT_PADS];      /* (3c, mu) the sound each pad holds (the memory count) */
     sh_t sh[NSH];                 /* (3c, mu) */
     char edits[KIT_PATH];         /* (3c) new files' folder (kits/Edits; "" none) */
-    uint32_t prev_gen;            /* the latest preview asked (an older answer: dropped) */
-    int aud_on, aud_pad;          /* (round A) a pad's frames heard once (KIT_AUDITION): its sound, on the preview path */
-    double aud_pos, aud_end, aud_inc;
     uint32_t used[KIT_PADS];      /* (mu) each pad's bytes, as the file thread counts them */
     float glide;                  /* (round B) the filter's glide a FLT_N frames (0..1) */
     /* (pages v2) the kit bus's low-pass (a stereo TPT state variable filter on the voices' mix; open: bypassed) */
@@ -193,7 +205,13 @@ struct kit {
     struct timespec posted_at;
     struct { uint32_t id; char rel[256]; } ids[NIDS];
     int idn;
+    /* (2026-11-26) the Move Library: its folder ("" none); its index (the file thread's, built once at its first use):
+     * the folders with sounds somewhere below them, the sounds this host reads (sorted relative paths) */
+    char core[KIT_PATH];
+    int cx_ok, cx_nd, cx_nf;
+    char **cx_d, **cx_f;
     /* Samples' last listing (the file thread's) */
+    int ls_pl;
     uint32_t ls_folder;
     int ls_ok, ls_n;
     struct { char name[256]; int dir; } *ls;
@@ -572,19 +590,135 @@ static int cmp_ls(const void *a, const void *b)
         return y->dir - x->dir;                         /* (folders first) */
     return strcasecmp(x->name, y->name);
 }
-/* Samples: a folder's rows (dot files skipped; folders, then WAV / AIFF files, by name) */
-static int list_folder(kit_t *k, uint32_t folder)
+/* ---- (2026-11-26) the places with folders: My Samples (k->samples) and the Move Library (k->core). A row's id: FNV-1a
+ * of its path in the place ("core:" before it in the Move Library's) */
+static const char *pl_base(const kit_t *k, int pl) { return pl == KIT_PL_CORE ? k->core : pl == KIT_PL_SAMPLES ? k->samples : ""; }
+static uint32_t pl_id(int pl, const char *sub)
+{
+    char t[300];
+    if (pl != KIT_PL_CORE)
+        return fnv(sub);
+    snprintf(t, sizeof t, "core:%s", sub);
+    return fnv(t);
+}
+static uint32_t pl_keep(kit_t *k, int pl, const char *sub)   /* its id, kept for its path */
+{
+    char t[300];
+    const uint32_t id = pl_id(pl, sub);
+    snprintf(t, sizeof t, "%s%s", pl == KIT_PL_CORE ? "core:" : "", sub);
+    pthread_mutex_lock(&k->mu);
+    id_keep(k, id, t);
+    pthread_mutex_unlock(&k->mu);
+    return id;
+}
+static int pl_rel(kit_t *k, int pl, uint32_t id, char *rel, size_t cap)
+{
+    char t[300];
+    int c;
+    if (!id_rel(k, id, t, sizeof t))
+        return 0;
+    c = !strncmp(t, "core:", 5);
+    if (c != (pl == KIT_PL_CORE))
+        return 0;
+    snprintf(rel, cap, "%s", t + (c ? 5 : 0));
+    return 1;
+}
+static int cmp_str(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
+static int in_set(char **v, int n, const char *s) { return n && bsearch(&s, v, (size_t)n, sizeof *v, cmp_str) != NULL; }
+static int push_str(char ***v, int *n, int *cap, const char *s)
+{
+    if (*n == *cap) {
+        char **g = realloc(*v, sizeof **v * (size_t)(*cap = *cap ? *cap * 2 : 256));
+        if (!g)
+            return -1;
+        *v = g;
+    }
+    if (!((*v)[*n] = strdup(s)))
+        return -1;
+    (*n)++;
+    return 0;
+}
+static int sound_ok(const char *path)                   /* a sound this host reads (PCM WAV, AIFF, AIFF-C sowt / NONE) */
+{
+    FILE *f = fopen(path, "rb");
+    info_t in;
+    int ok;
+    if (!f)
+        return 0;
+    ok = probe(f, &in) == NULL && in.frames > 0;
+    fclose(f);
+    return ok;
+}
+#define CX_MAX 50000                                    /* the Move Library's sounds indexed at most */
+static void cx_walk(kit_t *k, const char *rel, int depth, int *capd, int *capf)
+{
+    char path[KIT_PATH];
+    DIR *d;
+    struct dirent *e;
+    snprintf(path, sizeof path, "%s%s%s", k->core, rel[0] ? "/" : "", rel);
+    if (depth > KIT_DEPTH || !(d = opendir(path)))
+        return;
+    while ((e = readdir(d)) && k->cx_nf < CX_MAX) {
+        char sub[256], p[KIT_PATH];
+        struct stat st;
+        if (e->d_name[0] == '.')
+            continue;
+        if (snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name) >= (int)sizeof sub)
+            continue;
+        snprintf(p, sizeof p, "%s/%s", k->core, sub);
+        if (stat(p, &st))
+            continue;
+        if (S_ISDIR(st.st_mode))
+            cx_walk(k, sub, depth + 1, capd, capf);
+        else if (S_ISREG(st.st_mode) && sound_file(e->d_name) && sound_ok(p) && !push_str(&k->cx_f, &k->cx_nf, capf, sub)) {
+            char up[256], *sl;                          /* (its folders: each one up to the top) */
+            snprintf(up, sizeof up, "%s", sub);
+            while ((sl = strrchr(up, '/'))) {
+                *sl = 0;
+                if (push_str(&k->cx_d, &k->cx_nd, capd, up))
+                    break;
+            }
+        }
+    }
+    closedir(d);
+}
+static void cx_build(kit_t *k)                          /* (the file thread, once a launch) */
+{
+    int capd = 0, capf = 0, i, j;
+    if (k->cx_ok || !k->core[0])
+        return;
+    k->cx_ok = 1;
+    cx_walk(k, "", 0, &capd, &capf);
+    if (k->cx_nf)
+        qsort(k->cx_f, (size_t)k->cx_nf, sizeof *k->cx_f, cmp_str);
+    if (k->cx_nd) {
+        qsort(k->cx_d, (size_t)k->cx_nd, sizeof *k->cx_d, cmp_str);
+        for (i = 1, j = 1; i < k->cx_nd; i++)         /* (each once) */
+            if (strcmp(k->cx_d[i], k->cx_d[j - 1]))
+                k->cx_d[j++] = k->cx_d[i];
+            else
+                free(k->cx_d[i]);
+        k->cx_nd = j;
+    }
+    fprintf(stderr, "kit: the Move Library %s: %d sounds in %d folders\n", k->core, k->cx_nf, k->cx_nd);
+}
+/* a place's folder's rows (dot files skipped; folders, then WAV / AIFF files, by name; the Move Library: only the
+ * folders with sounds below them and the sounds this host reads) */
+static int list_folder(kit_t *k, int pl, uint32_t folder)
 {
     char rel[256] = "", path[KIT_PATH];
+    const char *base = pl_base(k, pl);
     DIR *d;
     struct dirent *e;
     int cap = 0;
-    if (k->ls_ok && k->ls_folder == folder)
+    if (k->ls_ok && k->ls_folder == folder && k->ls_pl == pl)
         return 0;
     k->ls_ok = 0, k->ls_n = 0;
-    if (!k->samples[0] || (folder && !id_rel(k, folder, rel, sizeof rel)))
+    if (!base[0] || (folder && !pl_rel(k, pl, folder, rel, sizeof rel)))
         return -1;
-    snprintf(path, sizeof path, "%s%s%s", k->samples, rel[0] ? "/" : "", rel);
+    if (pl == KIT_PL_CORE)
+        cx_build(k);
+    snprintf(path, sizeof path, "%s%s%s", base, rel[0] ? "/" : "", rel);
     if (!(d = opendir(path)))
         return -1;
     while ((e = readdir(d))) {
@@ -597,6 +731,12 @@ static int list_folder(kit_t *k, uint32_t folder)
             continue;
         if (!S_ISDIR(st.st_mode) && !(S_ISREG(st.st_mode) && sound_file(e->d_name)))
             continue;
+        if (pl == KIT_PL_CORE) {                        /* (the index's) */
+            char sub[256];
+            snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
+            if (!in_set(S_ISDIR(st.st_mode) ? k->cx_d : k->cx_f, S_ISDIR(st.st_mode) ? k->cx_nd : k->cx_nf, sub))
+                continue;
+        }
         if (k->ls_n == cap) {
             void *n = realloc(k->ls, sizeof *k->ls * (size_t)(cap = cap ? cap * 2 : 64));
             if (!n)
@@ -608,7 +748,7 @@ static int list_folder(kit_t *k, uint32_t folder)
     }
     closedir(d);
     qsort(k->ls, (size_t)k->ls_n, sizeof *k->ls, cmp_ls);
-    k->ls_ok = 1, k->ls_folder = folder;
+    k->ls_ok = 1, k->ls_folder = folder, k->ls_pl = pl;
     return 0;
 }
 static void take_name(const tl_row_t *t, char *o, int cap)   /* a take's row: "M 4 Bars", "1 7.2 s" */
@@ -697,24 +837,21 @@ static void do_rows(kit_t *k, const req_t *r)
             memcpy(o->thumb, t[i].thumb, KIT_THUMB);
         }
         a.a.n = n;
-    } else if (r->place == KIT_PL_SAMPLES && !list_folder(k, r->id)) {
+    } else if ((r->place == KIT_PL_SAMPLES || r->place == KIT_PL_CORE) && !list_folder(k, r->place, r->id)) {
         char rel[256] = "";
         if (r->id)
-            id_rel(k, r->id, rel, sizeof rel);
+            pl_rel(k, r->place, r->id, rel, sizeof rel);
         a.a.total = k->ls_n;
         for (i = 0; i < r->n && i < KIT_ROWS && r->from + i < k->ls_n; i++) {
             kit_row_t *o = &a.a.rows[i];
             char sub[256], path[KIT_PATH];
             snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", k->ls[r->from + i].name);
-            o->id = fnv(sub), o->kind = k->ls[r->from + i].dir ? KIT_ROW_DIR : KIT_ROW_FILE;
-            pthread_mutex_lock(&k->mu);
-            id_keep(k, o->id, sub);
-            pthread_mutex_unlock(&k->mu);
+            o->id = pl_keep(k, r->place, sub), o->kind = k->ls[r->from + i].dir ? KIT_ROW_DIR : KIT_ROW_FILE;
             if (o->kind == KIT_ROW_DIR)
                 snprintf(o->name, sizeof o->name, "%s", k->ls[r->from + i].name);
             else {
                 base_name(k->ls[r->from + i].name, o->name, sizeof o->name);
-                snprintf(path, sizeof path, "%s/%s", k->samples, sub);
+                snprintf(path, sizeof path, "%s/%s", pl_base(k, r->place), sub);
                 thumb_of(path, o);
             }
         }
@@ -757,11 +894,11 @@ static int row_path(kit_t *k, int place, uint32_t id, char *path, size_t cap, ch
             *tr = t;
         return 1;
     }
-    if (place == KIT_PL_SAMPLES) {
+    if (place == KIT_PL_SAMPLES || place == KIT_PL_CORE) {
         char rel[256];
-        if (!id_rel(k, id, rel, sizeof rel))
+        if (!pl_rel(k, place, id, rel, sizeof rel))
             return 0;
-        snprintf(path, cap, "%s/%s", k->samples, rel);
+        snprintf(path, cap, "%s/%s", pl_base(k, place), rel);
         base_name(rel, name, ncap);
         return 1;
     }
@@ -937,8 +1074,11 @@ static void do_keep(kit_t *k, const req_t *r)
     char to[KIT_PATH];
     memset(&a, 0, sizeof a);
     a.a.kind = KIT_A_OWNED, a.a.pad = r->pad;
-    if (!k->wlast[r->pad][0] || !own_copy(k, r->proj, k->wlast[r->pad], to, sizeof to))
+    if (!k->wlast[r->pad][0] || !own_copy(k, r->proj, k->wlast[r->pad], to, sizeof to)) {
+        fprintf(stderr, "kit: pad %d kept where it is (%s; project folder '%s')\n", r->pad + 1,
+                k->wlast[r->pad][0] ? k->wlast[r->pad] : "no sound", r->proj);
         return;                                         /* (no sound; already the project's; not copied: as it was) */
+    }
     snprintf(a.abs2, sizeof a.abs2, "%s", k->wlast[r->pad]);
     snprintf(a.abs, sizeof a.abs, "%s", to);
     core_path(r->proj, k->wlast[r->pad], a.a.was, sizeof a.a.was);
@@ -1069,33 +1209,22 @@ static void do_find(kit_t *k, const req_t *r0)
             break;
         }
     ans_t a;
-    const size_t sl = strlen(k->samples);
     tl_row_t t;
+    int pi;
     memset(&a, 0, sizeof a);
     a.a.kind = KIT_A_FOUND, a.a.pad = r->pad;
-    if (k->cfg.tl && r->path[0] && tl_row_of(k->cfg.tl, r->path, &t) && t.id) {
-        tl_row_t rows[16];
-        int from = 0, total = 0, n, i, found = -1;
-        uint32_t f;
-        do {
-            n = tl_rows(k->cfg.tl, TL_ALL, from, 16, rows, &total, &f);
-            for (i = 0; i < n && found < 0; i++)
-                if (rows[i].id == t.id)
-                    found = from + i;
-            from += n;
-        } while (n > 0 && found < 0 && from < total);
-        if (found >= 0) {
-            a.a.place = KIT_PL_TAKES, a.a.depth = 0, a.a.sels[0] = (int16_t)(found > 32767 ? 32767 : found);
-            a.a.take = t.id;
-            answer(k, &a);
-            return;
-        }
-    }
-    if (sl && !strncmp(r->path, k->samples, sl) && r->path[sl] == '/') {   /* (Samples: each folder listed, its row) */
+    /* (2026-11-26) no Takes place: a take is a file in My Samples (RemoteFM1/<day>/), found there as any other */
+    (void)t;
+    for (pi = 0; pi < 2 && !a.a.place; pi++) {
+        const int pl = pi ? KIT_PL_CORE : KIT_PL_SAMPLES;
+        const char *base = pl_base(k, pl);
+        const size_t sl = strlen(base);
         char rel[256], sub[256];
         const char *q = r->path + sl + 1;
         int d = 0, ok = 1;
         uint32_t folder = 0;
+        if (!sl || strncmp(r->path, base, sl) || r->path[sl] != '/')
+            continue;                                   /* (each folder listed, its row) */
         snprintf(rel, sizeof rel, "%s", q);
         sub[0] = 0;
         while (ok) {
@@ -1108,7 +1237,7 @@ static void do_find(kit_t *k, const req_t *r0)
                 break;
             }
             memcpy(name, q, len), name[len] = 0;
-            if (list_folder(k, folder)) {
+            if (list_folder(k, pl, folder)) {
                 ok = 0;
                 break;
             }
@@ -1121,20 +1250,17 @@ static void do_find(kit_t *k, const req_t *r0)
             }
             a.a.sels[d] = (int16_t)(at > 32767 ? 32767 : at);
             snprintf(sub + strlen(sub), sizeof sub - strlen(sub), "%s%s", sub[0] ? "/" : "", name);
-            pthread_mutex_lock(&k->mu);
-            id_keep(k, fnv(sub), sub);
-            pthread_mutex_unlock(&k->mu);
             if (!sep) {
-                a.a.take = fnv(sub);
+                a.a.take = pl_keep(k, pl, sub);
                 break;
             }
-            folder = fnv(sub);
+            folder = pl_keep(k, pl, sub);
             a.a.folders[++d] = folder;
             q = sep + 1;
         }
         (void)rel;
         if (ok)
-            a.a.place = KIT_PL_SAMPLES, a.a.depth = d;
+            a.a.place = pl, a.a.depth = d;
     }
     answer(k, &a);
 }
@@ -1194,17 +1320,6 @@ static void do_peaks(kit_t *k, const req_t *r)
         if (drop)
             free(pcm);
     }
-    answer(k, &a);
-}
-static void do_preview(kit_t *k, const req_t *r)
-{
-    ans_t a;
-    char path[KIT_PATH], nm[KIT_NAME];
-    int st;
-    memset(&a, 0, sizeof a);
-    a.preview = 1, a.gen = r->gen;
-    if (r->id && row_path(k, r->place, r->id, path, sizeof path, nm, sizeof nm, NULL))   /* (heard: its first seconds) */
-        a.pcm = load_sound(path, (uint64_t)KIT_PREVIEW_S * 4u * 192000u, KIT_PREVIEW_S * 96000u, &a.a.frames, &a.a.rate, &st);
     answer(k, &a);
 }
 /* ---- (stage 3b) a kit saved, opened; a folder onto the pads */
@@ -1487,8 +1602,9 @@ static void do_folder(kit_t *k, const req_t *r)
     DIR *d = NULL;
     struct dirent *e;
     int n = 0, cap = 0, i;
-    if (r->place == KIT_PL_SAMPLES && k->samples[0] && (!r->id || id_rel(k, r->id, rel, sizeof rel))) {
-        snprintf(dir, sizeof dir, "%s%s%s", k->samples, rel[0] ? "/" : "", rel);
+    if ((r->place == KIT_PL_SAMPLES || r->place == KIT_PL_CORE) && pl_base(k, r->place)[0] &&
+        (!r->id || pl_rel(k, r->place, r->id, rel, sizeof rel))) {
+        snprintf(dir, sizeof dir, "%s%s%s", pl_base(k, r->place), rel[0] ? "/" : "", rel);
         d = opendir(dir);
     }
     while (d && (e = readdir(d))) {                     /* its sounds (no folders), by name */
@@ -1499,6 +1615,13 @@ static void do_folder(kit_t *k, const req_t *r)
         snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
         if (stat(p, &st) || !S_ISREG(st.st_mode))
             continue;
+        if (r->place == KIT_PL_CORE) {                  /* (the Move Library: the sounds this host reads) */
+            char sub[256];
+            snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
+            cx_build(k);
+            if (!in_set(k->cx_f, k->cx_nf, sub))
+                continue;
+        }
         if (n == cap) {
             char **g = realloc(names, sizeof *names * (size_t)(cap = cap ? cap * 2 : 64));
             if (!g)
@@ -1858,7 +1981,6 @@ void kit_work(void *arg)
         case RQ_LOAD:
         case RQ_LOAD_ROW: do_load(k, &r); break;
         case RQ_ROWS: do_rows(k, &r); break;
-        case RQ_PREVIEW: do_preview(k, &r); break;
         case RQ_SAVE: do_save(k); break;
         case RQ_OPEN: do_open(k, &r); break;
         case RQ_FOLDER: do_folder(k, &r); break;
@@ -1918,14 +2040,23 @@ kit_t *kit_new(const kit_cfg_t *cfg)
         k->cfg.max_bytes = KIT_MAX_BYTES;
     snprintf(k->samples, sizeof k->samples, "%s", cfg->samples_dir ? cfg->samples_dir : "");
     snprintf(k->kits, sizeof k->kits, "%s", cfg->kits_dir ? cfg->kits_dir : "");
+    if (cfg->core_dir && cfg->core_dir[0]) {            /* (2026-11-26) the Move Library: its Samples/ when there */
+        struct stat st;
+        char sm[KIT_PATH];
+        snprintf(sm, sizeof sm, "%s/Samples", cfg->core_dir);
+        if (!stat(sm, &st) && S_ISDIR(st.st_mode))
+            snprintf(k->core, sizeof k->core, "%s", sm);
+        else if (!stat(cfg->core_dir, &st) && S_ISDIR(st.st_mode))
+            snprintf(k->core, sizeof k->core, "%s", cfg->core_dir);
+    }
     if (k->kits[0])                                     /* (3c) the new files: Kits/Edits */
         snprintf(k->edits, sizeof k->edits, "%s/Edits", k->kits);
     k->mix[0] = 127, k->mix[1] = 64;
     k->master = 1.0f;                    /* (unity until the core's MIX says) */
-    for (p = 0; p < KIT_PADS; p++)
+    for (p = 0; p <= SLP; p++)
         k->v[p][KIT_P_END] = KIT_FRAC, k->v[p][KIT_P_SUSTAIN] = 100, k->v[p][KIT_P_CUTOFF] = 100;
     k->glide = (float)(1.0 - exp(-(double)FLT_N / ((double)k->cfg.fs * FLT_GLIDE_MS / 1000.0)));
-    for (p = 0; p < KIT_PADS; p++)                      /* (pages v2: as the core's defaults) */
+    for (p = 0; p <= SLP; p++)                          /* (pages v2: as the core's defaults) */
         k->v[p][KIT_P_LOOPE] = KIT_FRAC, k->v[p][KIT_P_BITS] = 16, k->v[p][KIT_P_DOWNS] = 1, k->v[p][KIT_P_GSIZE] = 80,
         k->v[p][KIT_P_GDENS] = 4, k->v[p][KIT_P_SPEED] = 100, k->v[p][KIT_P_WGRAIN] = 50, k->v[p][KIT_P_WSEARCH] = 10;
     for (p = 0; p <= 1024; p++)                         /* (pages v2) the grains' window */
@@ -1961,6 +2092,11 @@ void kit_free(kit_t *k)
         if (unref(k, k->snd[p].pcm))
             free(k->snd[p].pcm);
     free(k->prev.pcm);
+    for (p = 0; p < k->cx_nd; p++)
+        free(k->cx_d[p]);
+    for (p = 0; p < k->cx_nf; p++)
+        free(k->cx_f[p]);
+    free(k->cx_d), free(k->cx_f);
     while (k->ann) {
         if (unref(k, k->an[k->anh].pcm))
             free(k->an[k->anh].pcm);
@@ -2051,19 +2187,11 @@ void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n)
     snprintf(r.path, sizeof r.path, "%s", k->ppath[pad]);
     request(k, &r);
 }
-void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count)
+void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count)   /* (2026-11-26: retired; nothing plays) */
 {
-    const snd_t *s;
-    if (!k || pad < 0 || pad >= KIT_PADS)
-        return;
-    s = &k->snd[pad];
-    k->aud_on = 0;
-    if (!s->pcm || from >= s->frames || !count)
-        return;
-    k->aud_pad = pad, k->aud_pos = from, k->aud_end = (double)from + count;
-    k->aud_inc = (double)(s->rate ? s->rate : k->cfg.fs) / k->cfg.fs, k->aud_on = 1;
+    (void)k, (void)pad, (void)from, (void)count;
 }
-int kit_auditioning(const kit_t *k) { return k && k->aud_on; }
+int kit_auditioning(const kit_t *k) { (void)k; return 0; }
 static void load_row_as(kit_t *k, int pad, int place, uint32_t id, int own)
 {
     static req_t r;
@@ -2084,18 +2212,9 @@ void kit_rows(kit_t *k, int place, uint32_t folder, int from, int n)
     r.kind = RQ_ROWS, r.place = place, r.id = folder, r.from = from < 0 ? 0 : from, r.n = n;
     request(k, &r);
 }
-void kit_preview(kit_t *k, int place, uint32_t id, int on)
+void kit_preview(kit_t *k, int place, uint32_t id, int on)   /* (2026-11-26: retired; nothing plays by itself) */
 {
-    req_t r;
-    if (!k)
-        return;
-    k->prev_gen++;
-    k->prev_on = 0, k->prev_end = 0;                    /* (what plays stops at once; a new one when it is read) */
-    if (!on)
-        return;
-    memset(&r, 0, sizeof r);
-    r.kind = RQ_PREVIEW, r.place = place, r.id = id, r.gen = k->prev_gen;
-    request(k, &r);
+    (void)k, (void)place, (void)id, (void)on;
 }
 static void voice_kill_pad(kit_t *k, int pad)          /* (a sound replaced: its voices gone at once) */
 {
@@ -2125,7 +2244,8 @@ int kit_poll(kit_t *k, kit_ans_t *out)
                 garbage(k, a.pcm);
                 continue;
             }
-            k->prev_on = 0;
+            voice_kill_pad(k, SLP);                     /* (its voices with the take before) */
+            memset(&k->snd[SLP], 0, sizeof k->snd[SLP]);
             garbage(k, k->prev.pcm);
             k->prev.pcm = a.pcm, k->prev.frames = a.pcm ? a.a.frames : 0, k->prev.rate = a.a.rate;
             k->sl_take = a.pcm ? a.a.take : 0;
@@ -2134,14 +2254,8 @@ int kit_poll(kit_t *k, kit_ans_t *out)
             *out = a.a;
             return 1;
         }
-        if (a.preview) {                                /* the preview's sound: plays now (an older ask's: dropped) */
-            if (a.gen != k->prev_gen || !a.pcm) {
-                garbage(k, a.pcm);
-                continue;
-            }
-            garbage(k, k->prev.pcm);
-            k->prev.pcm = a.pcm, k->prev.frames = a.a.frames, k->prev.rate = a.a.rate;
-            k->prev_pos = 0, k->prev_inc = (double)a.a.rate / k->cfg.fs, k->prev_on = 1, k->prev_end = 0, k->sl_take = 0;
+        if (a.preview) {                                /* (none asked any more) */
+            garbage(k, a.pcm);
             continue;
         }
         if (a.a.kind == KIT_A_LOADED && (a.pcm || (a.a.status == KIT_OK && !a.a.path[0]) || a.a.status != KIT_OK)) {
@@ -2149,8 +2263,6 @@ int kit_poll(kit_t *k, kit_ans_t *out)
             if (a.pcm || a.a.status == KIT_OK || a.a.status == KIT_EMPTY) {   /* (a sound, or emptied: the old one
                                                          * goes) */
                 voice_kill_pad(k, a.a.pad);
-                if (k->aud_pad == a.a.pad)
-                    k->aud_on = 0;                      /* (round A: its audition with it) */
                 garbage(k, s->pcm);
                 s->pcm = a.pcm, s->frames = a.pcm ? a.a.frames : 0, s->rate = a.pcm ? a.a.rate : 0;
                 snprintf(k->ppath[a.a.pad], sizeof k->ppath[0], "%s", a.pcm ? (a.abs[0] ? a.abs : a.a.path) : "");
@@ -2261,8 +2373,8 @@ void kit_set(kit_t *k, int pad, int param, int value)
     k->v[pad][param] = (int16_t)value;
     for (i = 0; i < NV; i++) {
         voice_t *o = &k->vo[i];
-        if (!o->on || o->pad != pad)
-            continue;
+        if (!o->on || o->pad != pad || (o->pm >> param & 1))
+            continue;                                   /* (2026-11-26: a hit's lock stays) */
         if ((param == KIT_P_CUTOFF || param == KIT_P_RESO) && !o->cut_lk && !(param == KIT_P_RESO && o->res_lk))
             flt_aim(k, o, k->v[pad][KIT_P_CUTOFF], o->res_lk ? 0 : k->v[pad][KIT_P_RESO], 0);   /* (round B) its
                                                          * voices follow (a step's lock stays) */
@@ -2284,6 +2396,11 @@ void kit_set(kit_t *k, int pad, int param, int value)
 }
 void kit_note_lk(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk)
 {
+    kit_note_pl(k, pad, semis, vel, frame, mask, lk, 0, NULL, 0);
+}
+void kit_note_pl(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk, uint64_t pm,
+                 const int16_t *pv, uint32_t us)
+{
     ev_t *e;
     if (!k || pad < 0 || pad >= KIT_PADS)
         return;
@@ -2293,6 +2410,9 @@ void kit_note_lk(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask
     e->pad = pad, e->semis = semis, e->vel = vel, e->frame = frame, e->mask = lk && vel > 0 ? mask : 0;
     if (e->mask)
         memcpy(e->lk, lk, sizeof e->lk);
+    e->pm = pv && vel > 0 ? pm & ((1ull << KIT_P_N) - 1) : 0, e->us = us;
+    if (e->pm)
+        memcpy(e->pv, pv, sizeof e->pv);
 }
 void kit_note(kit_t *k, int pad, int semis, int vel, uint32_t frame) { kit_note_lk(k, pad, semis, vel, frame, 0, NULL); }
 static void fade(kit_t *k, voice_t *v, int ms)
@@ -2305,40 +2425,57 @@ static void fade(kit_t *k, voice_t *v, int ms)
 }
 static uint32_t ms_n(const kit_t *k, int ms) { return (uint32_t)((uint64_t)k->cfg.fs * (uint32_t)(ms < 0 ? 0 : ms) / 1000u); }
 /* a pad's region [s0, e0) in source frames (at least one frame) */
-static void region(const kit_t *k, int pad, double *s0, double *e0)
+static void region_p(const kit_t *k, int pad, const int16_t *p, double *s0, double *e0)
 {
     const snd_t *s = &k->snd[pad];
-    const int16_t *p = k->v[pad];
     *s0 = (double)s->frames * p[KIT_P_START] / KIT_FRAC;
     *e0 = (double)s->frames * p[KIT_P_END] / KIT_FRAC;
     if (*e0 <= *s0 + 1)
         *e0 = *s0 + 1 < s->frames ? *s0 + 1 : s->frames, *s0 = *e0 - 1;
 }
-static int warp_of(const kit_t *k, int pad)
+static int warp_p(const int16_t *p)
 {
-    return k->v[pad][KIT_P_MODE] == KIT_M_GRANULAR ? KIT_W_OFF : clampi(k->v[pad][KIT_P_WARP], 0, KIT_W_N - 1);
+    return p[KIT_P_MODE] == KIT_M_GRANULAR ? KIT_W_OFF : clampi(p[KIT_P_WARP], 0, KIT_W_N - 1);
+}
+static int warp_of(const kit_t *k, int pad) { return warp_p(k->v[pad]); }
+/* (2026-11-26) a voice's settings: its pad's, its locks over them */
+static const int16_t *vparams(const kit_t *k, const voice_t *v, int16_t *o)
+{
+    int i;
+    if (!v->pm)
+        return k->v[v->pad];
+    memcpy(o, k->v[v->pad], sizeof k->v[0]);
+    for (i = 0; i < KIT_P_N; i++)
+        if (v->pm >> i & 1)
+            o[i] = v->pl[i];
+    return o;
 }
 /* (pages v2) a voice's rates: inc the source frames a frame of Off and Repitch (Repitch with Sync: the region in its
  * microseconds, Transpose and the notes' pitches ignored, the owner's rule); spd the playhead's (the time) and ginc the
  * grains' (the pitch) of Grains and Beats; the speed's multiplier on all but Off */
-static void rates(const kit_t *k, int pad, int semis, int cents, double *inc, double *spd, double *ginc)
+static void rates_p(const kit_t *k, int pad, const int16_t *p, uint32_t us, int semis, int cents, double *inc,
+                    double *spd, double *ginc)
 {
     const snd_t *s = &k->snd[pad];
-    const int w = warp_of(k, pad);
-    const double sp = w ? clampi(k->v[pad][KIT_P_SPEED], 25, 400) / 100.0 : 1.0, own = (double)s->rate / k->cfg.fs;
+    const int w = warp_p(p);
+    const double sp = w ? clampi(p[KIT_P_SPEED], 25, 400) / 100.0 : 1.0, own = (double)s->rate / k->cfg.fs;
     const double pitch = pow(2.0, (cents + semis * 100) / 1200.0);
     double fit = 0;
-    if (k->st_us[pad] && s->frames && w) {
+    if (us && s->frames && w) {
         double s0, e0;
-        region(k, pad, &s0, &e0);
-        fit = (e0 - s0) / ((double)k->st_us[pad] * 1e-6 * k->cfg.fs);
+        region_p(k, pad, p, &s0, &e0);
+        fit = (e0 - s0) / ((double)us * 1e-6 * k->cfg.fs);
     }
     if (inc)
         *inc = (w == KIT_W_REPITCH && fit > 0 ? fit : pitch * own) * sp;
     if (spd)
         *spd = (fit > 0 ? fit : own) * sp;
     if (ginc)
-        *ginc = pitch * own * pow(2.0, clampi(k->v[pad][KIT_P_WPITCH], -2400, 2400) / 1200.0);
+        *ginc = pitch * own * pow(2.0, clampi(p[KIT_P_WPITCH], -2400, 2400) / 1200.0);
+}
+static void rates(const kit_t *k, int pad, int semis, int cents, double *inc, double *spd, double *ginc)
+{
+    rates_p(k, pad, k->v[pad], k->st_us[pad], semis, cents, inc, spd, ginc);
 }
 double kit_rate_of(const kit_t *k, int pad, int semis)
 {
@@ -2352,7 +2489,9 @@ double kit_rate_of(const kit_t *k, int pad, int semis)
 static void retune(kit_t *k, voice_t *v)
 {
     double inc, spd, ginc;
-    rates(k, v->pad, v->semis, v->cents, &inc, &spd, &ginc);
+    int16_t pp[KIT_P_N];
+    const int16_t *p = vparams(k, v, pp);
+    rates_p(k, v->pad, p, v->pm >> KIT_P_STRETCH & 1 ? v->us_lk : k->st_us[v->pad], v->semis, v->cents, &inc, &spd, &ginc);
     v->binc = inc > 0 ? inc : 1.0, v->inc = v->binc * v->pe_mul, v->spd = spd, v->ginc = ginc * v->pe_mul;
 }
 static uint32_t rnd32(voice_t *v)                       /* (xorshift: the grains' jitter, spray and spread) */
@@ -2363,13 +2502,22 @@ static uint32_t rnd32(voice_t *v)                       /* (xorshift: the grains
 }
 static float rnd_bi(voice_t *v) { return (float)(rnd32(v) >> 8) * (2.0f / 16777216.0f) - 1.0f; }   /* -1..1 */
 static void release(voice_t *v, uint32_t n);
-static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16_t *lk)
+static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16_t *lk, uint64_t pm, const int16_t *pv,
+                    uint32_t us)
 {
+    int16_t pp[KIT_P_N];
     const int16_t *p = k->v[pad];
     const snd_t *s = &k->snd[pad];
     voice_t *v = NULL;
     int i, live = 0, oldest = -1;
     double s0, e0;
+    if (pm) {                                           /* (2026-11-26) the hit's locks over the pad's settings */
+        memcpy(pp, k->v[pad], sizeof pp);
+        for (i = 0; i < KIT_P_N; i++)
+            if (pm >> i & 1)
+                pp[i] = pv[i];
+        p = pp;
+    }
     if (!s->pcm || !s->frames || p[KIT_P_MUTE])
         return;
     for (i = 0; i < NV; i++) {                          /* its own voice taken back; the choke group's stopped */
@@ -2400,10 +2548,13 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
         v = &k->vo[q];
     }
     memset(v, 0, sizeof *v);
-    region(k, pad, &s0, &e0);
+    v->pad = pad, v->pm = pm, v->us_lk = us;
+    if (pm)
+        memcpy(v->pl, pv, sizeof v->pl);
+    region_p(k, pad, p, &s0, &e0);
     v->cents = mask & 1 << KIT_LK_PITCH ? lk[KIT_LK_PITCH] : p[KIT_P_PITCH];
     v->on = 1, v->pad = pad, v->semis = semis, v->age = ++k->age, v->snd = s;
-    v->eng = clampi(p[KIT_P_MODE], 0, KIT_M_N - 1), v->warp = warp_of(k, pad);
+    v->eng = clampi(p[KIT_P_MODE], 0, KIT_M_N - 1), v->warp = warp_p(p);
     v->pe_mul = 1.0f;
     v->rnd = 0x9E3779B9u * (uint32_t)v->age + (uint32_t)pad;
     retune(k, v);                                       /* (the rates from the whole region: a chop keeps them) */
@@ -2554,7 +2705,8 @@ static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
     if (v->eng == KIT_M_GRANULAR) {                     /* spawn: every grain / density frames, at the position
                                                          * (and its spray), its pitch spread at random */
         if (!v->gnext) {
-            const int16_t *p = k->v[v->pad];
+            int16_t pp[KIT_P_N];
+            const int16_t *p = vparams(k, v, pp);
             const int dens = clampi(p[KIT_P_GDENS], 1, NGR);
             const double len = v->e - v->s;
             const uint32_t gl = ms_n(k, clampi(p[KIT_P_GSIZE], 10, 500));
@@ -2619,7 +2771,8 @@ static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
 /* (pages v2, every FLT_N frames) the pitch envelope, LoFi's settings, the filter's envelope */
 static void control(const kit_t *k, voice_t *v)
 {
-    const int16_t *p = k->v[v->pad];
+    int16_t pp[KIT_P_N];
+    const int16_t *p = vparams(k, v, pp);
     v->cn = FLT_N;
     if (v->eng == KIT_M_PITCHENV) {                     /* 0 to the depth over the attack, back to 0 over the release */
         float off;
@@ -2875,7 +3028,7 @@ static void render_part(kit_t *k, uint32_t at0, uint32_t n, int *e)
         while (*e < k->nev && k->ev[*e].frame <= at0 + at) {
             const ev_t *x = &k->ev[(*e)++];
             if (x->vel > 0)
-                note_on(k, x->pad, x->semis, x->vel, x->mask, x->lk);
+                note_on(k, x->pad, x->semis, x->vel, x->mask, x->lk, x->pm, x->pv, x->us);
             else
                 note_off(k, x->pad, x->semis);
         }
@@ -2929,7 +3082,8 @@ void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, ui
     }
     for (; e < k->nev; e++)                             /* (a frame past the block: now) */
         if (k->ev[e].vel > 0)
-            note_on(k, k->ev[e].pad, k->ev[e].semis, k->ev[e].vel, k->ev[e].mask, k->ev[e].lk);
+            note_on(k, k->ev[e].pad, k->ev[e].semis, k->ev[e].vel, k->ev[e].mask, k->ev[e].lk, k->ev[e].pm, k->ev[e].pv,
+                    k->ev[e].us);
         else
             note_off(k, k->ev[e].pad, k->ev[e].semis);
     k->nev = 0;
@@ -3058,18 +3212,39 @@ void kit_slice_sens(kit_t *k, uint32_t take, int method, uint32_t step_us, int s
     r.kind = RQ_SLICE, r.id = take, r.op = method, r.us = step_us, r.gen = ++k->sl_gen, r.n = sens > 0 ? sens : 50;
     request(k, &r);
 }
-uint32_t kit_slice_pos(const kit_t *k) { return k && k->sl_take && k->prev_on ? (uint32_t)k->prev_pos : 0; }
+static const voice_t *slice_voice(const kit_t *k)       /* the slice's voice sounding (NULL none) */
+{
+    int i;
+    for (i = 0; k && i < NV; i++)
+        if (k->vo[i].on && k->vo[i].pad == SLP && k->vo[i].stage != ST_FADE)
+            return &k->vo[i];
+    return NULL;
+}
+uint32_t kit_slice_pos(const kit_t *k)
+{
+    const voice_t *v = slice_voice(k);
+    return v ? (uint32_t)v->pos : 0;
+}
+/* (2026-11-26) a slice (Tap: the take's pass) as a kit voice: through the bus, as a pad's */
 void kit_slice_play(kit_t *k, uint32_t from, uint32_t count)
 {
-    if (k && !count) {                                  /* (round B: Tap's pass stopped) */
-        if (k->sl_take)
-            k->prev_on = 0;
+    int i;
+    if (!k)
         return;
+    for (i = 0; i < NV; i++)                            /* (the one before stops: the latest replaces it) */
+        if (k->vo[i].on && k->vo[i].pad == SLP)
+            fade(k, &k->vo[i], FADE_MS);
+    if (!count || !k->sl_take || !k->prev.pcm || from >= k->prev.frames)
+        return;                                         /* (round B: count 0, Tap's pass stopped) */
+    k->snd[SLP] = k->prev;
+    note_on(k, SLP, 0, 127, 0, NULL, 0, NULL, 0);
+    for (i = 0; i < NV; i++) {
+        voice_t *v = &k->vo[i];
+        if (v->on && v->pad == SLP && v->stage != ST_FADE) {   /* (its region the slice's, to the frame) */
+            const double e = (double)from + count < k->prev.frames ? (double)from + count : (double)k->prev.frames;
+            v->s = v->ls = v->pos = from, v->e = v->le = e > from + 1.0 ? e : from + 1.0;
+        }
     }
-    if (!k || !k->sl_take || !k->prev.pcm || from >= k->prev.frames)
-        return;
-    k->prev_pos = from, k->prev_end = (double)from + count;
-    k->prev_inc = (double)k->prev.rate / k->cfg.fs, k->prev_on = 1;
 }
 void kit_slice_done(kit_t *k)
 {
@@ -3078,52 +3253,10 @@ void kit_slice_done(kit_t *k)
     k->sl_gen++;                                        /* (an answer under way: dropped) */
     if (!k->sl_take)
         return;
-    k->prev_on = 0, k->sl_take = 0;
+    voice_kill_pad(k, SLP), memset(&k->snd[SLP], 0, sizeof k->snd[SLP]);
+    k->sl_take = 0;
     garbage(k, k->prev.pcm);
     k->prev.pcm = NULL, k->prev.frames = 0;
-}
-void kit_preview_mix(kit_t *k, int16_t *out, uint32_t frames)
-{
-    uint32_t i;
-    if (k && k->aud_on) {                               /* (round A) a pad's frames heard once */
-        const snd_t *s = &k->snd[k->aud_pad];
-        for (i = 0; i < frames; i++) {
-            const uint32_t a = (uint32_t)k->aud_pos;
-            if (!s->pcm || a + 1 >= s->frames || k->aud_pos >= k->aud_end) {
-                k->aud_on = 0;
-                break;
-            }
-            {
-                const float fr = (float)(k->aud_pos - a);
-                int c;
-                for (c = 0; c < 2; c++) {
-                    const float x = s->pcm[2 * a + c] + (s->pcm[2 * (a + 1) + c] - s->pcm[2 * a + c]) * fr;
-                    const long y = out[2 * i + c] + lrintf(x);
-                    out[2 * i + c] = (int16_t)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
-                }
-            }
-            k->aud_pos += k->aud_inc;
-        }
-    }
-    if (!k || !k->prev_on || !k->prev.pcm)
-        return;
-    for (i = 0; i < frames; i++) {
-        const uint32_t a = (uint32_t)k->prev_pos;
-        if (a + 1 >= k->prev.frames || (k->prev_end > 0 && k->prev_pos >= k->prev_end)) {   /* (3c: a slice's end) */
-            k->prev_on = 0;
-            break;
-        }
-        {
-            const float fr = (float)(k->prev_pos - a);
-            int c;
-            for (c = 0; c < 2; c++) {
-                const float x = k->prev.pcm[2 * a + c] + (k->prev.pcm[2 * (a + 1) + c] - k->prev.pcm[2 * a + c]) * fr;
-                const long y = out[2 * i + c] + lrintf(x);
-                out[2 * i + c] = (int16_t)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
-            }
-        }
-        k->prev_pos += k->prev_inc;
-    }
 }
 
 /* ================================================================ status === */
@@ -3148,13 +3281,14 @@ uint32_t kit_bytes(const kit_t *k)
 }
 const char *kit_pad_path(const kit_t *k, int pad) { return k && pad >= 0 && pad < KIT_PADS ? k->ppath[pad] : ""; }
 uint32_t kit_frames(const kit_t *k, int pad) { return k && pad >= 0 && pad < KIT_PADS ? k->snd[pad].frames : 0; }
-int kit_previewing(const kit_t *k) { return k && k->prev_on; }
+int kit_has_core(const kit_t *k) { return k && k->core[0]; }
+int kit_previewing(const kit_t *k) { return slice_voice(k) != NULL; }   /* (a slice sounding) */
 uint32_t kit_sounding(const kit_t *k)
 {
     uint32_t b = 0;
     int i;
     for (i = 0; k && i < NV; i++)
-        if (k->vo[i].on && k->vo[i].stage != ST_FADE)
+        if (k->vo[i].on && k->vo[i].stage != ST_FADE && k->vo[i].pad < KIT_PADS)
             b |= 1u << k->vo[i].pad;
     return b;
 }
@@ -3188,7 +3322,7 @@ static void do_freeze(kit_t *k, const req_t *r)
     t->v[0][KIT_P_MUTE] = 0, t->v[0][KIT_P_CHOKE] = 0;
     t->st_us[0] = r->us;
     t->snd[0].pcm = src, t->snd[0].frames = fr, t->snd[0].rate = rate;
-    note_on(t, 0, 0, 127, 0, NULL);
+    note_on(t, 0, 0, 127, 0, NULL, 0, NULL, 0);
     for (i = 0; i < NV && !v; i++)
         if (t->vo[i].on)
             v = &t->vo[i];

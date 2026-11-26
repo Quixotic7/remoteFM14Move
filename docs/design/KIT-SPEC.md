@@ -401,3 +401,36 @@ the kit bus.
   sends no KIT_EDIT (`rfm_move_kit_edit` returns 0); the host's KIT_EDIT / Freeze code stays, unused. The sampler's own
   take tools (Sample: Takes, a take's Tools) are unchanged; Copy / Mix / Join, slicing, Delete held + a pad and the
   project's own copies stay.
+
+## Browser, 2026-11-26
+
+- **The rule (standing):** a sample plays only when its pad is pressed or the sequencer plays it, always through the
+  same path: a kit voice with the pad's settings, the kit's strip (level, pan, sends), the kit bus's filter, the FX and
+  the volume knob's master. Nothing plays by itself: no landing in the browser, no Start / End / loop point at rest
+  (KIT_AUDITION is no longer sent; the host's audition and Files preview are retired), nothing after a recording, a
+  kit load, All To Pads or slicing. The slicing screen's slice pads and Tap's pass are kit voices of a hidden pad
+  (the defaults: one shot, 0 dB, centred, no sends) on the kit's bus. The sampler app's own take playback (Sample's
+  window) is outside the kit; it now follows the master volume too.
+- **The root:** My Samples (the Move's `UserLibrary/Samples`; RemoteFM1's takes are in `RemoteFM1/<day>/`) and the
+  Move Library (Move's factory sounds, read-only: `/data/CoreLibrary`, its `Samples/` when there; the host's
+  `--core-library DIR`; missing: the place is absent). Takes and Kits are no longer in it: a take is a file in My
+  Samples, kits stay Sample Kit's (and Kit Mix's) Load / Save (Back from Kits returns to Load / Save). Files still
+  opens on the pad's sound: a take's in My Samples, a Move Library sound's there (its project copy traced back).
+- **The Move Library's index:** built once a launch on the kit's file thread at its first use (never the audio
+  thread): every folder below it walked (8 deep), each WAV / AIFF / AIFF-C probed; listed: the folders with a sound this
+  host reads somewhere below them and those sounds (PCM 16 / 24 / 32-bit and float WAV, PCM AIFF, AIFF-C NONE / sowt).
+  FLAC, compressed AIFF-C and presets are hidden. Kept, its sound is copied into the project's own folder (round C).
+- **The marquee:** the chosen row's name wider than its 112 px scrolls: 1 s still, 25 px a second (whole pixels) to its
+  end, 1 s, back, again; from its start when the choice changes. Other rows are cut at 9 characters.
+- **Steps (the same day):** a step's click toggles at its release only when it was a click (UX-RULES R2: held 300 ms or
+  more, or a knob, the volume knob or a pad used while down: nothing). A pitch pad (Chop: a slot) held + a step's
+  click puts the chosen pad's hit there at that pitch (chop); again: out. A held step lights the pitches (chops) the
+  chosen pad plays on it, bright in the row's colour; a step held + a pitch pad toggles that pitch.
+- **Layout (Shift + step 8)** in the Kit view sets the right half's mode (Pitches, In Key, Chromatic, In Key 4ths,
+  Chop: five icons, the chosen one marked and named; the jog or knob 1), as Sample Kit's knob 1.
+- **Step locks on every pad setting:** a step held lights every knob of Pad Sample, Pad Sample 2, Warp, Filter and Pad
+  Mix yellow (Sample Kit, Kit Mix dark; Trig its own). The nine round B locks stay as they were; any other setting
+  takes one of nine slots a hit (two sequencer locks: the setting, its value), so a hit locks the nine and up to nine
+  more ("Locks full" past them). No project format change. The host applies each lock to that hit only: at note-on
+  (engine, Warp, Sync, region, envelope, choke ...) and while it sounds (the filter, its envelope, LoFi, Granular, Warp
+  speed and pitch), the pad's later edits leaving a locked value alone.
