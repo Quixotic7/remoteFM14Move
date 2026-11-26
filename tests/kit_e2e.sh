@@ -19,8 +19,8 @@
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
 #   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in the project's
 #     folder, Kits/Projects/NN, on pad 2), Undo; Copy let go before the
-#     click: nothing; Join (its length the two's); the tools' Normalize (Shift + the click) (the pad's own copy, the join untouched),
-#     Undo; a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
+#     click: nothing; Join (its length the two's) (the owner's follow-up: the pad's tools gone, their Normalize with
+#     them); a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
 #     1..8 (one file in memory once), Undo;
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
 #   - the output has the kit (the host's mix, --capture);
@@ -242,16 +242,6 @@ wait_for 8 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && [ "$(frames "$ED/Join 1
     && ok "Join: pad 1 then pad 2 on pad 2 (88200 + $f2 = $(frames "$ED/Join 1+2.wav") frames)" \
     || bad "Join: file '$(field kit_file)' frames $(frames "$ED/Join 1+2.wav" 2>/dev/null) (want $((88200 + f2)))"
 sleep 1.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_joined.pbm
-j0=$(cksum < "$ED/Join 1+2.wav")
-cmd "cc 49 127"; click; cmd "cc 49 0"; jog 2 1; sleep 0.2  # (pages) Shift + the click: the tools, Normalize
-shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_padact.pbm
-click
-wait_for 8 '[ "$(field kit_file)" = "Join 1+2 norm.wav" ]' && [ "$(peak "$ED/Join 1+2 norm.wav")" = 31656 ] \
-    && [ "$(cksum < "$ED/Join 1+2.wav")" = "$j0" ] \
-    && ok "the tools' Normalize: the pad's own copy (Join 1+2 norm.wav, peak 31656), Join 1+2.wav untouched" \
-    || bad "Normalize: file '$(field kit_file)' peak $(peak "$ED/Join 1+2 norm.wav" 2>/dev/null)"
-sleep 1.2; press 56
-wait_for 5 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && ok "Undo: the join back on pad 2" || bad "Undo of the edit: '$(field kit_file)'"
 # a take's To Kit, then Slice: the sampler's Takes, the take's actions, To Kit (the seventh), Slice
 tk=$(ls -t "$LIB"/2*/*.wav 2>/dev/null | head -1); tf=$(frames "$tk")
 press 118; sleep 0.4

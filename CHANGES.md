@@ -10,6 +10,7 @@
   to band to high-pass and its own envelope, drawn as bars with the envelope beside them. **Kit Mix:** a low-pass on
   the whole kit. **The right pads:** Pitches, In Key, Chromatic, In Key 4ths, or Chop (the sound in 16 chops; hold two
   to loop between them). The browser slides under a fixed cursor. Older projects and kits sound the same.
+  The pad's sound tools (Shift + the jog's click, Freeze) are gone from the kit: edit takes in the sampler.
 - **Pages:** the Kit view works like the sequencer's pages. Turn the jog to change page (its name and the page
   marks show a moment): Sample Kit (every pad's steps at a glance; the right pads, Trim silence), Pad Sample (the
   wave; pitch, fine, start, end, play mode, reverse, choke), Pad Sample 2 (attack, hold, decay, sustain, release),

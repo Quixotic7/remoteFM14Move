@@ -19,7 +19,7 @@
 //           setting (pitch, start, end, play mode, attack, hold, release, choke, reverse, level, pan, mute, stretch, the
 //           sends), each as the Move's knobs set it (POST /api/kit, the core's rfm_move_kit_set); the kit's name, Save
 //           (a new kit) and Load (the kits saved, GET /api/kit/kits). The Move's screen and pads follow. (round C)
-//           Freeze on the chosen pad (op "freeze"); its file's path (the project's own copy once kept or edited).
+//           the chosen pad's file's path (the project's own copy once kept or edited); Freeze gone (the owner's follow-up).
 // The takes are named by the library's ids only (src/web.c /api/takes).
 import { OP, h, svg, IC, bar, segs, choice, closePop, openPop, popItem } from "./moveui.js";
 import { download } from "./movefs.js";
@@ -592,9 +592,7 @@ export class SmpView {
       h("b", { class: "mv-ell", id: "mv-kit-pname" }, d.has ? d.n || "…" : "Empty"),
       h("span", { class: "mv-val mv-mut" }, d.has && d.f && d.r ? `${(d.f / d.r).toFixed(2)} s` : ""),
       h("span", { class: "mv-spacer" }),
-      // (round C) Freeze: the pad rendered as it sounds now into a new file of the project's (the Sound row's tool)
-      h("button", { class: "mv-pill mv-kit-freeze", id: "mv-kit-freeze", disabled: !d.has, title: "Freeze: the pad as it sounds now into a new file, its settings back to neutral",
-        onclick: async () => { if (await this.kpost({ op: "freeze", pad: cur })) this.store.toast(`Freezing pad ${cur + 1}`); } }, "Freeze"));
+      h("span"));   // (the owner's follow-up: Freeze gone with the pad's tools)
     // (round C) the pad's file: the project's own copy (Samples/RemoteFM1/Kits/Projects/NN/..) once kept or edited
     const file = h("div", { class: "mv-mut mv-ell mv-kit-file", id: "mv-kit-file" });
     this.up(() => { const p = (this.kit || {}).path || ""; file.textContent = p; file.title = p; file.hidden = !p; });

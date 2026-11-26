@@ -382,3 +382,22 @@ core), 3 for Grains, 5 for Beats, 3..7 for Granular.
 **Not done:** the Mixer's Kit strip for the bus filter; Pad Sample's amp envelope in Fever Dream's drawing (its popup
 is round B's AHDSR); live envelope dots on Pad Sample; the page's Kit tab has rows for the new pad settings but none for
 the kit bus.
+
+**Follow-up (the owner, the same day):**
+- **The page switcher:** the icons at 2x (22 px) in 28 px cells, the shown page's in the screen's centre as a white
+  cell with its icon black, the others white on black with no box; a window of about five cells, running off the
+  edges (no wrap: black past the first and last). A turn slides the row a cell (110 ms, eased; the next turn starts
+  its own). The name under it at 2x, one size for all; "Pad Sample 2" is shown as "Sample 2" (the only name past 10
+  characters). Row and name centred together (y 7..34, the name at 41).
+- **The Engine popup:** the engines' icons, the chosen one marked, its name; no envelope.
+- **Pad Mix:** the wave on the left; a level meter (muted: dithered), the pan a mark on a short line under it, the
+  three sends as small bars right of it; no text.
+- **Kit Mix:** the 16 pads' meters in two rows of eight (pad 1 bottom left): each its Level setting (the host reports
+  no per-pad levels), a cap while it sounds, the chosen one marked; no text.
+- **The browser:** Back and folders marked by plain filled triangles (left, right); a sound's small wave stays.
+- **The pad's sound tools are gone from the kit** (the owner: "Nix the sample editing tools in the drum kit, then
+  just keep those as something you can use inside the sampler"): Shift + the jog's click does nothing in the Kit view;
+  Play, Trim, Normalize, Reverse, Freeze and Delete are no longer offered (the page's Freeze button too). The core
+  sends no KIT_EDIT (`rfm_move_kit_edit` returns 0); the host's KIT_EDIT / Freeze code stays, unused. The sampler's own
+  take tools (Sample: Takes, a take's Tools) are unchanged; Copy / Mix / Join, slicing, Delete held + a pad and the
+  project's own copies stay.
