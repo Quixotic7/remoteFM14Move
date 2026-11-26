@@ -32,7 +32,7 @@ const KP = { PITCH: 0, START: 1, END: 2, MODE: 3, ATTACK: 4, HOLD: 5, RELEASE: 6
   STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15, DECAY: 16, SUSTAIN: 17, CUTOFF: 18, RESO: 19,   // (round B: these four)
   LOOPS: 20, LOOPE: 21, LOOPXF: 22, PDEPTH: 23, PATTACK: 24, PRELEASE: 25, BITS: 26, DOWNS: 27, GPOS: 28, GSIZE: 29,
   GDENS: 30, GSPRAY: 31, GSPREAD: 32, WARP: 33, SPEED: 34, WPITCH: 35, WGRAIN: 36, WJITTER: 37, WSEARCH: 38, MORPH: 39,
-  FENV: 40, FATTACK: 41, FDECAY: 42, FSUSTAIN: 43, FRELEASE: 44, TRIM: 63 };   // (pages v2: the engines', Warp, the
+  FENV: 40, FATTACK: 41, FDECAY: 42, FSUSTAIN: 43, FRELEASE: 44, GSCAN: 45, TRIM: 63 };   // (pages v2: the engines', Warp, the
 // filter's; TRIM: the kit's Trim silence, set through setting 63)
 const cutText = (v) => { if (v >= 100) return "Open"; const hz = 20 * Math.pow(1000, v / 100); return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`; };
 const KFRAC = 32767;
@@ -555,6 +555,7 @@ export class SmpView {
       row("Bits", B(KP.BITS, "Bits", { min: 10, max: 240, fmt: (v) => `${(v / 10).toFixed(1)} bit` }), KP.BITS),   // (2026-11-26: tenths, 1.0..24.0)
       row("Downsample", B(KP.DOWNS, "Downsample", { min: 1, max: 32, fmt: (v) => (v > 1 ? `1/${v}` : "Off") }), KP.DOWNS),
       row("Grain pos", B(KP.GPOS, "Grain position", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.GPOS),
+      row("Scan", B(KP.GSCAN, "Scan", { min: -100, max: 100, fmt: (v) => (v ? `${v > 0 ? "+" : ""}${v} %` : "Off") }), KP.GSCAN),   // (2026-11-26)
       row("Grain size", B(KP.GSIZE, "Grain size", { min: 10, max: 500, fmt: (v) => `${v} ms` }), KP.GSIZE),
       row("Density", B(KP.GDENS, "Density", { min: 1, max: 16, fmt: (v) => `${v}` }), KP.GDENS),
       row("Spray", B(KP.GSPRAY, "Spray", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.GSPRAY),

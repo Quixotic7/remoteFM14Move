@@ -1094,8 +1094,8 @@ static void projmem(void)
     {   /* (2026-11-26) version 11 and up: the kit's part after the firmwares' (its size by version), a pad's
          * settings there never read as a firmware's id */
         static const struct { int ver; uint32_t kb; } KV[] = { { 11, RFM_MOVE_KIT_BYTES_V11 }, { 12, RFM_MOVE_KIT_BYTES_V12 },
-            { 13, RFM_MOVE_KIT_BYTES_V12 }, { 14, RFM_MOVE_KIT_BYTES_V14 }, { 15, RFM_MOVE_KIT_BYTES },
-            { 16, RFM_MOVE_KIT_BYTES } };
+            { 13, RFM_MOVE_KIT_BYTES_V12 }, { 14, RFM_MOVE_KIT_BYTES_V14 }, { 15, RFM_MOVE_KIT_BYTES_V15 },
+            { 16, RFM_MOVE_KIT_BYTES_V15 }, { 17, RFM_MOVE_KIT_BYTES } };   /* (17, 2026-11-26: Scan) */
         static uint8_t kb[200 + RFM_MOVE_PFW_BYTES + RFM_MOVE_KIT_BYTES + 4];
         unsigned v;
         for (v = 0; v < sizeof KV / sizeof KV[0]; v++) {

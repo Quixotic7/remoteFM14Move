@@ -326,7 +326,7 @@ fifth on Pad Sample 2's knob 5; numbered below in that order):
 | Loop | (2026-11-26, the owner's sustain loop) from Start to Loop End, then round Loop End -> Loop Start while held (a step's note: its length); let go, on through Loop End to the region's End, the release its tail; reversed: the mirror; Warp's grains the same | 1 Loop Start, 2 Loop End (inside the region; a percentage of it, "START" / "END" at its ends; their popup the region's wave with the loop's markers, no close-up; a Loop pad's wave always carries them), 3 Loop Fade (0..100 % of half the loop: the loop's end crossfaded into its start, while held) |
 | Pitch Env | as One Shot, the pitch moved by an attack / release envelope | 1 Depth (-48..+48 st), 2 Attack, 3 Release |
 | LoFi | as One Shot, bits and rate reduced | 1 Bits (1.0..24.0 in 0.1 steps, "12.5 bit"; a real depth, the quantum 2^(1 - bits) of full scale, smooth as it turns; 24.0 transparent; stored in tenths 10..240, locks too; 2026-11-26), 2 Downsample (a sample held 1..32 frames) |
-| Granular | grains of the region while held | 1 Position, 2 Size (10..500 ms), 3 Density (1..16 grains), 4 Spray, 5 Spread (0..24 st) |
+| Granular | grains of the region while held | 1 Position (where it starts), 2 Scan (2026-11-26: -100..+100 %, Off at 0: the position moves on from Position while the voice plays, forwards or back, wrapping round the region; (Scan / 100)^2 passes of the region a second, finer near 0; bipolar popup "+35 %"; locks as the rest), 3 Size (10..500 ms), 4 Density (1..16 grains), 5 Spray, 6 Spread (0..24 st) |
 
 Toggle is gone: a pad saved with it loads as Loop.
 

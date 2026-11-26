@@ -74,6 +74,9 @@ enum { KIT_P_PITCH, KIT_P_START, KIT_P_END, KIT_P_MODE, KIT_P_ATTACK, KIT_P_HOLD
        KIT_P_WGRAIN, KIT_P_WJITTER, KIT_P_WSEARCH,      /* .. a grain's ms, Grains' jitter %, Beats' search ms */
        KIT_P_MORPH, KIT_P_FENV,                         /* the filter: 0 LP .. 50 BP .. 100 HP; its envelope -100..100 */
        KIT_P_FATTACK, KIT_P_FDECAY, KIT_P_FSUSTAIN, KIT_P_FRELEASE,   /* .. its ADSR (ms, ms, %, ms) */
+       KIT_P_GSCAN,                                     /* (2026-11-26) Granular's Scan -100..100 % (0 off): the
+                                                         * position moving on from Position, wrapping round the region,
+                                                         * (v / 100)^2 passes a second */
        KIT_P_N };
 enum { KIT_W_OFF, KIT_W_REPITCH, KIT_W_GRAINS, KIT_W_BEATS, KIT_W_N };   /* (pages v2) Warp's algorithms */
 #define KIT_BUS 16                /* (pages v2) KIT_SET's index for the kit bus's low-pass: param 0 cutoff, 1 reso */

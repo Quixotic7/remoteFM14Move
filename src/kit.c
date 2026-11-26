@@ -107,6 +107,7 @@ typedef struct {
     int ds, ds_n;
     float hold_l, hold_r;
     double ph, spd;               /* Warp Grains / Beats: the playhead and its speed (source frames a frame) */
+    double scan, scan_inc;        /* (2026-11-26) Granular's Scan: the position's offset (of the region) and its step */
     double ginc;                  /* .. the grains' pitch (source frames a frame) */
     uint32_t glen;                /* a grain's frames (Warp, Granular) */
     float wstep;                  /* .. the window table's steps a frame */
@@ -1664,7 +1665,7 @@ static const char *const PKEY[KIT_P_N] = { "pitch", "start", "end", "mode", "att
                                            "penv_release", "bits", "downsample", "grain_pos", "grain_size",
                                            "grain_density", "grain_spray", "grain_spread", "warp", "speed", "warp_pitch",
                                            "warp_grain", "warp_jitter", "warp_search", "morph", "fenv", "fattack",
-                                           "fdecay", "fsustain", "frelease" };   /* (pages v2: kit.json version 2) */
+                                           "fdecay", "fsustain", "frelease", "grain_scan" };   /* (pages v2: kit.json version 2) */
 static int mkdirs(const char *path)                     /* the folder and its parents: 0 there */
 {
     char p[KIT_PATH];
@@ -2981,7 +2982,7 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
         v->wstep = 1024.0f / (float)v->glen;
         v->ph = v->pos;
         if (v->eng == KIT_M_GRANULAR)
-            v->gnext = 0;                               /* (the first grain at once) */
+            v->gnext = 0, v->scan = 0.0, v->scan_inc = 0.0;   /* (the first grain at once, from Position) */
         else {                                          /* Warp: two Hann grains half a grain apart (their windows sum
                                                          * to one): the first from its middle, so the attack is kept */
             v->jit = v->warp == KIT_W_BEATS ? (double)ms_n(k, clampi(p[KIT_P_WSEARCH], 1, 30))
@@ -3120,13 +3121,19 @@ static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
             if (gl > 16 && gl != v->glen)
                 v->glen = gl, v->wstep = 1024.0f / (float)gl;
             v->gspawn = v->glen / (uint32_t)dens > 0 ? v->glen / (uint32_t)dens : 1;
+            {                                           /* (2026-11-26) Scan: (v / 100)^2 passes a second, its sign
+                                                         * the way */
+                const double sc = clampi(p[KIT_P_GSCAN], -100, 100) / 100.0;
+                v->scan_inc = sc * (sc < 0 ? -sc : sc) / (double)k->cfg.fs;
+            }
             v->ggain = dens >= 2 ? 2.0f / (float)dens : 1.0f;
             for (i = 0; i < NGR && v->gr[i].on; i++) {}
             if (i < NGR) {
                 const double spr = clampi(p[KIT_P_GSPREAD], 0, 24) * rnd_bi(v);
                 const double inc = v->ginc * pow(2.0, spr / 12.0);
-                double at = v->s + len * clampi(p[KIT_P_GPOS], 0, 100) / 100.0 +
-                            len * 0.5 * clampi(p[KIT_P_GSPRAY], 0, 100) / 100.0 * rnd_bi(v);
+                double fp = clampi(p[KIT_P_GPOS], 0, 100) / 100.0 + v->scan, at;
+                fp -= floor(fp);                        /* (Scan: round the region) */
+                at = v->s + len * fp + len * 0.5 * clampi(p[KIT_P_GSPRAY], 0, 100) / 100.0 * rnd_bi(v);
                 const double need = v->glen * inc;
                 if (v->dir > 0)
                     at = at > v->e - need ? v->e - need : at;
@@ -3137,6 +3144,10 @@ static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
             v->gnext = v->gspawn;
         }
         v->gnext--;
+        if (v->scan_inc != 0.0) {
+            v->scan += v->scan_inc;
+            v->scan -= floor(v->scan);
+        }
     }
     for (i = 0; i < NGR; i++) {
         grain_t *g = &v->gr[i];

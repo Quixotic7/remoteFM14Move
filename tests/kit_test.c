@@ -1131,6 +1131,49 @@ static void t_sustain_loop(void)
     kit_free(k);
     printf("  ok    Loop: Start to Loop End, round while held, let go: on through Loop End to End (and reversed)\n");
 }
+/* (2026-11-26, the owner's) Granular's Scan (Position 20 %: its first 100 ms read 20..30 %): +100 moves the grains' position forward through the region (one pass a
+ * second) and wraps to its start; -100 backwards, wrapping to its end. The sound's frame i is i / 2: the loudest of
+ * each 100 ms is where the grains read */
+static int16_t half(uint32_t i, int c) { (void)c; return (int16_t)(i / 2); }
+static void scan_peaks(kit_t *k, int scan, int *pk)
+{
+    int b, i;
+    kit_set(k, 0, KIT_P_GSCAN, scan);
+    kit_note(k, 0, 0, 127, 0);
+    for (b = 0; b < 15; b++) {                          /* (1.5 s in 100 ms blocks) */
+        run(k, 4800);
+        pk[b] = 0;
+        for (i = 0; i < 4800; i++)
+            pk[b] = B[2 * i] > pk[b] ? (int)B[2 * i] : pk[b];
+    }
+    kit_note(k, 0, 0, 0, 0), run(k, 48000);
+}
+static void t_scan(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int f[15], r[15], b, up = 0, down = 0, wrapf = -1, wrapr = -1;
+    snprintf(p, sizeof p, "%s/scan.wav", DIRP), wavf(p, 48000, 48000, half);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_set(k, 0, KIT_P_MODE, KIT_M_GRANULAR), kit_set(k, 0, KIT_P_GSIZE, 10), kit_set(k, 0, KIT_P_GDENS, 1);
+    kit_set(k, 0, KIT_P_GSPRAY, 0), kit_set(k, 0, KIT_P_GSPREAD, 0), kit_set(k, 0, KIT_P_GPOS, 20);
+    kit_set(k, 0, KIT_P_RELEASE, 0);
+    scan_peaks(k, 100, f);
+    scan_peaks(k, -100, r);
+    for (b = 1; b < 15; b++) {
+        up += f[b] > f[b - 1], down += r[b] < r[b - 1];
+        if (f[b] < f[b - 1] - 10000 && wrapf < 0)
+            wrapf = b;
+        if (r[b] > r[b - 1] + 10000 && wrapr < 0)
+            wrapr = b;
+    }
+    CHECKF(up >= 12 && wrapf >= 7 && wrapf <= 9 && f[0] > 4800 && f[0] < 7400, "forward: %d rising, wrap at block %d, first %d",
+           up, wrapf, f[0]);
+    CHECKF(down >= 12 && wrapr >= 1 && wrapr <= 3, "backward: %d falling, wrap at block %d", down, wrapr);
+    kit_free(k);
+    printf("  ok    Granular Scan: +100 forward a pass a second, wrapping at the end; -100 backward, wrapping at the start\n");
+}
 static void t_flac(void)
 {
     char p[700], d[600];
@@ -1269,6 +1312,7 @@ int main(void)
     t_flac();
     t_lofi();
     t_sustain_loop();
+    t_scan();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

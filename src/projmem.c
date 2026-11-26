@@ -158,10 +158,10 @@ int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t 
 /* (rfm1cs project.c kit_bytes) the kit part after the firmwares' from version 11: its size by version. A version
  * this file does not know stops the build: its layout must be added here first. (2026-11-26) Version 16: notes of 8
  * bytes (before the parts here, which are read from the end), the kit part as 15's */
-typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 16 ? 1 : -1];
+typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 17 ? 1 : -1];   /* (17, 2026-11-26: Scan, 46 settings a pad) */
 static uint32_t kit_bytes(int ver)
 {
-    return ver >= 15 ? RFM_MOVE_KIT_BYTES : ver == 14 ? RFM_MOVE_KIT_BYTES_V14 : ver >= 12 ? RFM_MOVE_KIT_BYTES_V12
+    return ver >= 17 ? RFM_MOVE_KIT_BYTES : ver >= 15 ? RFM_MOVE_KIT_BYTES_V15 : ver == 14 ? RFM_MOVE_KIT_BYTES_V14 : ver >= 12 ? RFM_MOVE_KIT_BYTES_V12
          : ver == 11 ? RFM_MOVE_KIT_BYTES_V11 : 0;
 }
 int pm_blob_ids(const uint8_t *b, uint32_t n, char ids[PM_SLOTS][RFM_MOVE_FW_ID_MAX])
