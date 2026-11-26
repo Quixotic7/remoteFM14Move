@@ -180,6 +180,7 @@ void kit_bus(kit_t *k, int which, int value);
 int kit_live(const kit_t *k, int pad, int *cut, int *fe, int *fe_st, int *amp, int *amp_st);
 /* the kit's own strip (the Mixer's fourth): level, pan (64 centre), sends 1..3, 0..127 */
 void kit_mix(kit_t *k, int level, int pan, const int sends[3]);
+void kit_master(kit_t *k, int m);   /* the volume knob's MASTER 0..1023 (-1: untouched, full) on the kit's output */
 /* saved as a new kit (Kit 1, Kit 2 ..: a folder of copies of its sounds and kit.json): answer KIT_A_SAVED. One at a
  * time (a save not done yet: this one refused, KIT_FAILED) */
 void kit_save(kit_t *k, const kit_kit_t *kit);

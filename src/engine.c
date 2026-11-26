@@ -1051,6 +1051,7 @@ static void on_action(const rfm1cs_event_t *ev)
         for (s = 0; s < NSLOT; s++)
             if (SL[s].on)
                 fw_in(&SL[s].fw, FWI_MASTER, 0, g_master, 0, 0);
+        kit_master(g_kit, g_master);   /* (2026-11-26: the kit too, as the firmwares) */
         break;
     }
     case RFM_MOVE_ACT_MIDI:

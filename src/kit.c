@@ -151,6 +151,7 @@ struct kit {
     int16_t v[KIT_PADS][KIT_P_N];
     uint32_t st_us[KIT_PADS];     /* (3b) Stretch: the microseconds start..end lasts (0: its pitch) */
     int mix[5];                   /* (3b) the kit's strip: level, pan, sends 1..3 (0..127) */
+    volatile float master;        /* (2026-11-26) the volume knob's MASTER as a gain (1: untouched), as the firmwares' */
     float dry[2 * RBUF], sb[3][2 * RBUF];   /* .. the voices before it */
     char kits[KIT_PATH];          /* saved kits' folder ("" none) */
     kit_kit_t save;               /* (mu) the kit a save works on, save_busy while it does */
@@ -1919,7 +1920,8 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     snprintf(k->kits, sizeof k->kits, "%s", cfg->kits_dir ? cfg->kits_dir : "");
     if (k->kits[0])                                     /* (3c) the new files: Kits/Edits */
         snprintf(k->edits, sizeof k->edits, "%s/Edits", k->kits);
-    k->mix[0] = 127, k->mix[1] = 64;                    /* (unity until the core's MIX says) */
+    k->mix[0] = 127, k->mix[1] = 64;
+    k->master = 1.0f;                    /* (unity until the core's MIX says) */
     for (p = 0; p < KIT_PADS; p++)
         k->v[p][KIT_P_END] = KIT_FRAC, k->v[p][KIT_P_SUSTAIN] = 100, k->v[p][KIT_P_CUTOFF] = 100;
     k->glide = (float)(1.0 - exp(-(double)FLT_N / ((double)k->cfg.fs * FLT_GLIDE_MS / 1000.0)));
@@ -2895,7 +2897,7 @@ void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, ui
     if (!k)
         return;
     {                                                   /* (3b) the kit's strip: level, pan (a balance), sends */
-        const float g = (float)clampi(k->mix[0], 0, 127) / 127.0f;
+        const float g = (float)clampi(k->mix[0], 0, 127) / 127.0f * k->master;
         const int pan = clampi(k->mix[1], 0, 127);
         gl = gr = g;
         if (pan < 64)
@@ -2942,6 +2944,16 @@ void kit_stretch(kit_t *k, int pad, uint32_t us)
     for (i = 0; i < NV; i++)                            /* (a voice sounding: re-fitted at once) */
         if (k->vo[i].on && k->vo[i].pad == pad)
             retune(k, &k->vo[i]);
+}
+/* (2026-11-26) the volume knob's MASTER (0..1023) on the kit's whole output, its sends too, as each firmware's own
+ * master: an audio taper (the square), 0 silent */
+void kit_master(kit_t *k, int m)
+{
+    float f;
+    if (!k)
+        return;
+    f = (float)(m < 0 ? 1023 : m > 1023 ? 1023 : m) / 1023.0f;
+    k->master = f * f;
 }
 void kit_mix(kit_t *k, int level, int pan, const int sends[3])
 {
