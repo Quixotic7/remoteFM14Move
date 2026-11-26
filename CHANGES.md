@@ -2,6 +2,14 @@
 
 ## Unreleased: the kit (stages 3a, 3b and 3c, rounds A, B and C)
 
+- **Pages:** the Kit view works like the sequencer's pages. Turn the jog to change page (its name and the page
+  marks show a moment): Sample Kit (every pad's steps at a glance; the right pads, Trim silence), Pad Sample (the
+  wave; pitch, fine, start, end, play mode, reverse, choke), Pad Sample 2 (attack, hold, decay, sustain, release),
+  Stretch, Filter (filter, resonance), Pad Mix (level, pan, sends, mute) and Kit Mix (the kit's level, pan, sends).
+  The knobs always follow the page; Shift turns them finely. The jog's click opens the browser for the chosen pad,
+  laid out as Move's (Back on top, arrows for folders, a wave for sounds); on Sample Kit and Kit Mix it opens Load and
+  Save. Shift + the click opens the pad's tools. The Pad / Kit / Files tabs, the rows and the Shift knob page are
+  gone.
 - **Round C: sounds of the project's own.** A sound you keep on a pad (Files, All To Pads, To Kit, a kit loaded, a
   take recorded into a pad, slices) is copied into the project's folder (Samples/RemoteFM1/Kits/Projects/NN), and
   every edit writes there: the samples you loaded are never changed. Saving a kit copies its sounds into the kit's

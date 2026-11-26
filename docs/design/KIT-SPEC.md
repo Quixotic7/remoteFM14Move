@@ -249,3 +249,41 @@ samples." Built for rapid iteration (no new tests; the existing ones kept passin
   before. Loading a kit copies its sounds into the project's folder, so editing never changes the saved kit.
 - **Follow-up:** **Freeze with FX** (the sends rendered through the audio FX); a sound's original place for Files
   after a restart (within a run Files opens on the source of a copy it made; after one, on the project's folder).
+
+## Pages, 2026-11-26
+
+The owner's ask: "I want the Jogwheel behaviour to function like it does on the sequencer pages. You turn jogwheel and
+it changes a page, while turning you see the page markers on the bottom and see the name of the page briefly, This
+goes away and you are on the page." Then their own page design (the pages, their order and names, the browser).
+Built for rapid iteration (no new tests; the existing ones adapted). Nothing new saved: project version 14 still.
+
+- **The jog turns the pages** as the sequencer's knob pages turn: a detent a page, stopping at the first and the last;
+  while it turns the page's name big and the seven page marks at the bottom (v2_modeName, as the ENGINE page's
+  arrival), RFM_MOVE_POPUP_MS (a second) after the last detent, then the page. The page is the Kit view's (in RAM),
+  not a pad's. No tabs, no rows, no Shift knob page.
+- **A page:** its picture at the top (x 0..101; the chosen pad's number 2x top right), then 8 cells in two rows of
+  four as the FX pages draw them (a short name and the value at 1x; a knob with none: a dash, its light dark).
+  Sample Kit is all picture.
+
+| Page | Picture | Knobs 1..8 |
+|---|---|---|
+| Sample Kit | 16 lanes of 4 px (pad 1 at the bottom): each pad's hits over the 16 steps shown, a pad with no sound empty, the chosen lane underlined, each lane's playhead while playing | Right half (Pitches / In Key / Off), Trim silence, the rest dark |
+| Pad Sample | the wave over the region, no name (the click's browser opens on the sound) | Pitch, Fine, Start, End, Play mode, Reverse, Choke, - |
+| Pad Sample 2 | the AHDSR | Attack, Hold, Decay, Sustain, Release, - |
+| Stretch | the wave, the steps it lasts | Stretch, - |
+| Filter | the filter's curve | Filter, Resonance, - |
+| Pad Mix | the level as a bar, the pan a mark (muted: hollow) | Level, Pan, Send 1, 2, 3, Mute, - |
+| Kit Mix | the kit's name, its 16 pads | the kit's Level, Pan, Send 1, 2, 3 (the Mixer's Kit strip), - |
+
+- **Knobs:** the popups as before (Start / End the close-up, Shift 32x and fine; the envelope's stage thick; the
+  filter's curve; the right half's layout and key; the kit's strip a bar). Shift is fine adjust.
+- **The click (a pad's page): the browser**, as Move's: three rows, an icon on each row's left. The root: Takes,
+  Samples, Kits (folders: a right arrow). In a folder **Back** is the first row (a left arrow): its click goes a
+  folder up (at a place's top: the root); a folder's click enters it; a sound (a small wave) put on the pad as the
+  jog rests on it (round A's 120 ms); its click keeps it and leaves; the Back button goes a folder up, then the root,
+  then leaves (the sound kept: round C's copy-in). A pad pressed: the target, the list on its sound (round A).
+- **The click on Sample Kit or Kit Mix:** Kits, Load (the browser's Kits) and Save.
+- **Shift + the click:** the pad's tools (Play, Trim, Normalize, Reverse, Freeze, Delete).
+- **Unchanged:** a step held + a knob (the lockable settings on the page shown, lit yellow, the rest dark), a step
+  held + the volume knob, the pads, the steps, Copy / Delete / Mute with pads, the right half, Slice, recording into
+  a pad, the routing fix.

@@ -1394,7 +1394,7 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
-## The kit (rfm1cs stages 3a, 3b and 3c, rounds A, B and C; src/kit.c)
+## The kit (rfm1cs stages 3a, 3b and 3c, rounds A, B and C, pages; src/kit.c)
 
 rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
 4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
@@ -1540,6 +1540,11 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   `KIT_FREEZE_S` (60 s) and the kit's memory; `<name> frz.wav` at 48 kHz. The page's Kit tab: Freeze (`POST
   /api/kit` op `freeze`, `ENG_OP_KIT_EDIT`), the chosen pad's file (`kit_json`'s `path`). `/api/status`: `kit_own`
   (the chosen pad's sound the project's), the counts `kit_owned`, `kit_cleans`.
+- **(pages, 2026-11-26) The jog turns the knob pages** (KIT-SPEC "Pages"; rfm1cs README "The kit (pages)"): Sample
+  Kit, Pad Sample, Pad Sample 2, Stretch, Filter, Pad Mix, Kit Mix, as the sequencer's pages (the name and the marks
+  a second); the knobs follow the page; the click opens the browser (Move's way: Back, folders, sounds; on Sample Kit
+  and Kit Mix: Kits), Shift + the click the pad's tools. Nothing in the host changes but `/api/status`'s `kit_page`
+  (it was `kit_row`) and the help page.
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,

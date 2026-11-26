@@ -5,19 +5,19 @@
 #   - Track 4 held + its pad 3: the Kit view; a new project's tracks 13..16 routed to the kit;
 #   - Files: the places, Samples (--samples-dir: a folder of the test's, its folders first), a folder entered; (round A)
 #     the jog at rest on a sound puts it on the chosen pad, heard (the pad's voice, the output's peak), the jog back:
-#     the other, its click keeps it (loaded, in memory) and goes to the Pad tab; Files again: on the pad's sound
+#     the other, its click keeps it (loaded, in memory) and closes Files; Files again: on the pad's sound
 #     (KIT_FIND: a take's, in Takes);
 #   - the pad played: a voice; a step entered and Play: the sequencer plays the pad by itself; knob 1: its pitch;
 #   - a pad held + Sample (the sampler's Manual mode): a take recorded into pad 2, the pad let go ends it, the take on
 #     the pad;
-#   - (stage 3b) Stretch: knob 3, the pad's rate fitted to its steps at the tempo, again when the tempo halves;
-#   - a pad's Send 1 (knob 8) into audio FX 1 (freeverb: its return sounds);
+#   - (stage 3b) Stretch: the Stretch page's knob 1, the pad's rate fitted to its steps at the tempo, again when the tempo halves;
+#   - a pad's Send 1 (Pad Mix's knob 3) into audio FX 1 (freeverb: its return sounds);
 #   - the Mixer's fourth strip, the kit's (knob 4: its level);
 #   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
 #   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in the project's
 #     folder, Kits/Projects/NN, on pad 2), Undo; Copy let go before the
-#     click: nothing; Join (its length the two's); the Sound row's Normalize (the pad's own copy, the join untouched),
+#     click: nothing; Join (its length the two's); the tools' Normalize (Shift + the click) (the pad's own copy, the join untouched),
 #     Undo; a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
 #     1..8 (one file in memory once), Undo;
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
@@ -73,7 +73,7 @@ wait_for 3 '[ "$(field kit_shown)" = 1 ]' && [ "$(field kit_route)" = 61440 ] &&
     && ok "Track 4 held + pad 3: the Kit view (pad 1 chosen), tracks 13..16 routed to the kit" \
     || bad "the Kit view: shown '$(field kit_shown)' route '$(field kit_route)' pad '$(field kit_cur)'"
 sleep 1.1; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_rest.pbm
-jog 1 127; click; jog 2 1; click; jog 1 1   # the tabs, Files, its places (Takes chosen)
+jog 1 1; click                               # (pages) Pad Sample; the click: the browser's root (Takes chosen)
 jog 1 1; click                               # Samples
 wait_for 3 '[ "$(field kit_place)" = 2 ] && [ "$(field kit_total)" = 3 ]' \
     && ok "Files, Samples: its folders (Drums, Kit808, RemoteFM1) listed" \
@@ -95,10 +95,10 @@ cmd "cc 14 127"; cmd "cc 14 1"; cmd "cc 14 127"             # (a quick turn and 
 wait_for 5 '[ "$(field kit_file)" = Tone.wav ]' && sleep 0.5 && [ "$(field kit_loads)" = $((l0 + 1)) ] \
     && ok "a quick turn back to Tone: one load ($(field kit_loads), from $l0)" \
     || bad "the turn back: file '$(field kit_file)' loads '$(field kit_loads)' (from $l0)"
-click                                        # kept: the Pad tab
+click                                        # kept: Files closed (the page)
 wait_for 5 '[ "$(field kit_tab)" = 0 ] && [ "$(field kit_pads)" = 1 ]' && [ "$(field kit_bytes)" = $((88200 * 4)) ] \
     && [ "$(field kit_loads)" = $((l0 + 1)) ] \
-    && ok "the click keeps Tone on pad 1 (in memory: $(field kit_bytes) bytes), the Pad tab" \
+    && ok "the click keeps Tone on pad 1 (in memory: $(field kit_bytes) bytes), Files closed" \
     || bad "the click: tab '$(field kit_tab)' pads '$(field kit_pads)' bytes '$(field kit_bytes)' loads '$(field kit_loads)'"
 
 # ---------------------------------------------------------------- the pad, a step, Play, a knob
@@ -117,32 +117,33 @@ cmd "cc 71 6"; sleep 0.2
 wait_for 2 '[ "$(field kit_pitch)" = 300 ]' && ok "knob 1: pad 1's pitch +3" || bad "knob 1: pitch '$(field kit_pitch)'"
 cmd "cc 71 122"; sleep 0.2                                  # (back to 0)
 
-# ---------------------------------------------------------------- (stage 3b) Stretch: knob 3, the tempo
+# ---------------------------------------------------------------- (stage 3b) Stretch: the Stretch page's knob 1, the tempo
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 0.2      # (pad 1 chosen)
-cmd "cc 73 12"; sleep 0.3                                   # 4 steps (3 ticks a step): 4 x 125 ms at 120 BPM
+jog 2 1; cmd "cc 71 12"; sleep 0.3                          # (the Stretch page) 4 steps (3 ticks a step): 4 x 125 ms at 120 BPM
+wait_for 3 '[ "$(field kit_stretch)" = 4 ]'
 r1=$(field kit_rate)
-[ "$(field kit_stretch)" = 4 ] && near "$r1" 4 && ok "knob 3: Stretch 4 steps, Tone (88200 frames) at $r1 a frame (half a second)" \
-    || bad "Stretch: '$(field kit_stretch)' rate '$r1'"
+[ "$(field kit_stretch)" = 4 ] && near "$r1" 4 && ok "the Stretch page's knob 1: Stretch 4 steps, Tone (88200 frames) at $r1 a frame (half a second)" \
+    || bad "Stretch: '$(field kit_stretch)' rate '$r1' page '$(field kit_page)'"
 cmd "cc 49 127"; hit 20; cmd "cc 49 0"; sleep 0.2            # Shift + step 5: Tempo
 cmd "cc 71 68"; sleep 0.3; press 51; sleep 0.3               # knob 1: -60 BPM
 wait_for 3 'near "$(twice "$(field kit_rate)")" "$r1"' \
     && ok "the tempo halved (60 BPM): the stretch re-fitted ($r1 -> $(field kit_rate))" \
     || bad "the tempo: rate '$r1' -> '$(field kit_rate)'"
 cmd "cc 49 127"; hit 20; cmd "cc 49 0"; sleep 0.2; cmd "cc 71 60"; sleep 0.3; press 51; sleep 0.3   # (120 again)
-cmd "cc 73 116"; sleep 0.3                                  # (Stretch Off)
-[ "$(field kit_stretch)" = 0 ] || bad "Stretch Off: '$(field kit_stretch)'"
+cmd "cc 71 116"; sleep 0.3                                  # (Stretch Off)
+wait_for 3 '[ "$(field kit_stretch)" = 0 ]' || bad "Stretch Off: '$(field kit_stretch)'"
 
 # ---------------------------------------------------------------- a pad's send into audio FX 1
 edit 20 4 2                                                 # (freeverb on audio FX 1)
 wait_for 5 '[ "$(field afx0)" = freeverb ]' || bad "freeverb: '$(field afx0)'"
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
 s0=$(field rpeak0)
-cmd "cc 78 60"; sleep 0.3                                   # knob 8: Send 1 60 %
+jog 2 1; cmd "cc 73 60"; sleep 0.3                          # (pages) Pad Mix, knob 3: Send 1 60 %
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
 s1=$(field rpeak0)
-[ "${s0:-1}" = 0 ] && [ "${s1:-0}" -gt 500 ] && ok "knob 8: pad 1's Send 1 into freeverb (its return $s0 -> $s1)" \
+[ "${s0:-1}" = 0 ] && [ "${s1:-0}" -gt 500 ] && ok "Pad Mix's knob 3: pad 1's Send 1 into freeverb (its return $s0 -> $s1)" \
     || bad "the send: return $s0 -> $s1"
-cmd "cc 78 68"; sleep 0.2
+cmd "cc 73 68"; sleep 0.2; jog 4 127; sleep 1.1            # (Send 1 0; Pad Sample again)
 
 # ---------------------------------------------------------------- the Mixer's fourth strip
 m0=$(field kit_mix)
@@ -171,11 +172,11 @@ wait_for 5 '[ "$(field rec_takes)" = 1 ]' && wait_for 5 '[ "$(field kit_pads)" =
 
 # ---------------------------------------------------------------- All To Pads; Undo
 f0=$(field kit_finds)
-jog 20 127; click; jog 2 1; click                           # (the tabs, Files: on pad 2's take, round A)
+click                                                       # (Files: on pad 2's take, round A)
 wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 1 ]' \
     && ok "Files again: on pad 2's sound (KIT_FIND: the take, in Takes)" \
     || bad "Files on the pad's sound: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
-jog 1 1; press 51; sleep 0.3                                # (into the list; Back: the places)
+press 51; sleep 0.3                                         # (Back: the places)
 jog 1 1; click                                              # Samples
 wait_for 3 '[ "$(field kit_total)" = 3 ]' || bad "Samples again: '$(field kit_total)'"
 jog 1 1                                                     # Kit808
@@ -188,7 +189,7 @@ press 56
 wait_for 5 '[ "$(field kit_pads)" = 3 ]' && ok "Undo: the kit back (Tone, the take)" || bad "Undo: pads '$(field kit_pads)'"
 
 # ---------------------------------------------------------------- Save; a new project; Load
-jog 6 127; click; jog 1 127; click; jog 2 1                 # the tabs, the Kit tab, Save
+press 51; press 51; sleep 0.2; jog 1 127; click; jog 1 1  # (pages) the browser left; Sample Kit's click: Kits, Save
 shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_kittab.pbm
 click
 wait_for 8 '[ "$(field kit_saved)" = 1 ]' && [ "$(field kit_saved_name)" = "Kit 1" ] && [ -s "$LIB/Kits/Kit 1/kit.json" ] \
@@ -238,12 +239,12 @@ wait_for 8 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && [ "$(frames "$ED/Join 1
     || bad "Join: file '$(field kit_file)' frames $(frames "$ED/Join 1+2.wav" 2>/dev/null) (want $((88200 + f2)))"
 sleep 1.3; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_joined.pbm
 j0=$(cksum < "$ED/Join 1+2.wav")
-click; jog 2 1; sleep 0.2                                    # the Sound row's tools: Normalize
+cmd "cc 49 127"; click; cmd "cc 49 0"; jog 2 1; sleep 0.2  # (pages) Shift + the click: the tools, Normalize
 shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_padact.pbm
 click
 wait_for 8 '[ "$(field kit_file)" = "Join 1+2 norm.wav" ]' && [ "$(peak "$ED/Join 1+2 norm.wav")" = 31656 ] \
     && [ "$(cksum < "$ED/Join 1+2.wav")" = "$j0" ] \
-    && ok "the Sound row's Normalize: the pad's own copy (Join 1+2 norm.wav, peak 31656), Join 1+2.wav untouched" \
+    && ok "the tools' Normalize: the pad's own copy (Join 1+2 norm.wav, peak 31656), Join 1+2.wav untouched" \
     || bad "Normalize: file '$(field kit_file)' peak $(peak "$ED/Join 1+2 norm.wav" 2>/dev/null)"
 sleep 1.2; press 56
 wait_for 5 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && ok "Undo: the join back on pad 2" || bad "Undo of the edit: '$(field kit_file)'"

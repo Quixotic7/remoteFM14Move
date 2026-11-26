@@ -5543,13 +5543,13 @@ static void housekeeping(uint32_t now)
             for (p = 0; kn[p]; p++)
                 if (kn[p] == '"' || kn[p] == '\\')
                     kn[p] = '_';
-            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_shown\":%d,\"kit_cur\":%d,\"kit_tab\":%d,\"kit_row\":%d,"
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_shown\":%d,\"kit_cur\":%d,\"kit_tab\":%d,\"kit_page\":%d,"
                           "\"kit_place\":%d,\"kit_total\":%d,\"kit_route\":%u,\"kit_pads\":%u,\"kit_voices\":%d,"
                           "\"kit_bytes\":%u,\"kit_prev\":%d,\"kit_notes\":%u,\"kit_loads\":%u,\"kit_rows\":%u,"
                           "\"kit_recs\":%u,\"kit_rec\":%d,\"kit_pitch\":%d,\"kit_st\":%d,\"kit_mix\":%u,"
                           "\"kit_saved\":%u,\"kit_saved_name\":\"%s\",\"kit_kits\":%u,\"kit_to\":%u,\"kit_name\":\"%s\","
                           "\"kit_stretch\":%d,\"kit_rate\":%.6f,\"kit_level\":%d",
-                          rfm_move_kit_shown(&S->core), t->cur, t->tab, t->row, t->place, t->known ? t->total : -1,
+                          rfm_move_kit_shown(&S->core), t->cur, t->tab, t->page, t->place, t->known ? t->total : -1,
                           t->route, pads, kit_voices(g_kit), kit_bytes(g_kit), kit_previewing(g_kit), g_kit_t_notes,
                           g_kit_t_loads, g_kit_t_rows, g_kit_t_recs, t->rec_pad, t->pad[t->cur].v[RFM_MOVE_KIT_P_PITCH],
                           t->pad[t->cur].st, g_kit_t_mix, g_kit_t_saved, g_kit_t_saved_name, g_kit_t_kits, g_kit_t_to, kn,
