@@ -86,10 +86,10 @@ wait_for 3 '[ "$(field kit_total)" = 2 ]' || bad "Drums: total '$(field kit_tota
 sleep 1.2; v0=$(field kit_notes)
 jog 1 1                                      # Zap: at rest, on pad 1, heard (round A)
 wait_for 5 '[ "$(field kit_file)" = Zap.wav ] && [ "$(field kit_pads)" = 1 ]' \
-    && wait_for 3 '[ "$(field kit_notes)" -ge $((v0 + 1)) ]' \
-    && ok "the jog at rest on Zap: on pad 1 at once, the pad plays it ($(field kit_notes) notes, from $v0)" \
+    && sleep 0.5 && [ "$(field kit_notes)" = "$v0" ] \
+    && ok "the jog at rest on Zap: on pad 1 at once, not played (the pad plays it; notes $(field kit_notes), from $v0)" \
     || bad "the landing: file '$(field kit_file)' pads '$(field kit_pads)' notes '$(field kit_notes)' (from $v0) prev '$(field kit_prev)'"
-wait_for 3 '[ "$(field peak)" -gt 1000 ]' && ok "the pad's output heard (the mix's peak $(field peak))" \
+hit 68; wait_for 3 '[ "$(field peak)" -gt 1000 ]' && ok "pad 1 pressed: Zap heard (the mix's peak $(field peak))" \
     || bad "the landing heard: peak '$(field peak)'"
 shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_files.pbm
 l0=$(field kit_loads)
