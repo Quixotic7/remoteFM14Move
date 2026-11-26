@@ -985,6 +985,9 @@ static uint32_t g_kit_rec_blk;           /* .. the recorder's blocks at its pres
 static uint32_t g_kit_t_notes, g_kit_t_loads, g_kit_t_rows, g_kit_t_recs;   /* (tests) */
 static uint32_t g_kit_t_mix, g_kit_t_saved, g_kit_t_kits, g_kit_t_to;   /* (tests, stage 3b) */
 static uint32_t g_kit_t_made, g_kit_t_slices, g_kit_t_slplay;   /* (tests, stage 3c) */
+static int g_kit_rec_trim;               /* (round A) KIT_REC's Trim silence: the take's lead found */
+static uint32_t g_kit_t_finds, g_kit_t_zooms, g_kit_t_auds, g_kit_t_trims;   /* (tests, round A) */
+static int32_t g_kit_t_lead = -1;
 static char g_kit_t_saved_name[KIT_NAME];
 static int16_t g_kit_blk[FW_BLOCK * 2];   /* (stage 3b) the kit's output alone: the sampler's Kit source */
 static int g_kit_blk_on;
@@ -1068,6 +1071,9 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_MERGE:   /* (stage 3c) mix and join, a pad's own edits, a take sliced */
     case RFM_MOVE_ACT_KIT_EDIT:
     case RFM_MOVE_ACT_KIT_SLICE:
+    case RFM_MOVE_ACT_KIT_FIND:    /* (round A) pad-first loading, the close-up of Start / End */
+    case RFM_MOVE_ACT_KIT_PEAKS:
+    case RFM_MOVE_ACT_KIT_AUDITION:
         kit_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
@@ -4663,6 +4669,7 @@ static void kit_action(const rfm_move_act_t *a)
         x.layout = rfm_move_kit_layout(&S->core);
         for (p = 0; p < 5; p++)
             x.mix[p] = (uint8_t)rfm_move_kit_mix(&S->core, p);
+        x.trim = rfm_move_kit_trim(&S->core);   /* (round A) */
         for (pad = 0; pad < KIT_PADS; pad++) {
             const char *path = rfm_move_kit_path(&S->core, pad);
             snprintf(x.path[pad], sizeof x.path[pad], "%s", path ? path : "");
@@ -4677,13 +4684,22 @@ static void kit_action(const rfm_move_act_t *a)
     case RFM_MOVE_ACT_KIT_EDIT: kit_edit(g_kit, a->index, a->value), g_kit_t_made++; break;
     case RFM_MOVE_ACT_KIT_SLICE:
         if (a->param == RFM_MOVE_KIT_SL_ASK)
-            kit_slice(g_kit, a->take, a->value, a->from);
+            kit_slice_sens(g_kit, a->take, a->value, a->from, (int)a->count);   /* (round A: the Hits' sensitivity) */
         else if (a->param == RFM_MOVE_KIT_SL_PLAY)
             kit_slice_play(g_kit, a->from, a->count), g_kit_t_slplay++;
         else
             kit_slice_done(g_kit);
         break;
     case RFM_MOVE_ACT_KIT_FOLDER: kit_folder(g_kit, a->value, a->take); break;
+    case RFM_MOVE_ACT_KIT_FIND:   /* (round A) where the pad's sound sits in Files */
+        if (a->data && a->len) {
+            char p[KIT_PATH];
+            snprintf(p, sizeof p, "%.*s", (int)(a->len < sizeof p ? a->len : sizeof p - 1), (const char *)a->data);
+            kit_find(g_kit, a->index, p);
+        }
+        break;
+    case RFM_MOVE_ACT_KIT_PEAKS: kit_zoom(g_kit, a->index, a->from, a->count, a->value), g_kit_t_zooms++; break;
+    case RFM_MOVE_ACT_KIT_AUDITION: kit_audition(g_kit, a->index, a->from, a->count), g_kit_t_auds++; break;
     case RFM_MOVE_ACT_KIT_LOAD:
         if (a->data && a->len) {
             char p[KIT_PATH];
@@ -4705,7 +4721,7 @@ static void kit_action(const rfm_move_act_t *a)
             rec_get(g_rec, &r);
             if (r.state != REC_IDLE && r.state != REC_SAVING)
                 break;   /* (a take of the sampler's under way: not this one) */
-            g_kit_rec = a->index, g_kit_rec_blk = g_rec_blocks;
+            g_kit_rec = a->index, g_kit_rec_blk = g_rec_blocks, g_kit_rec_trim = a->param != 0;
             rec_press(g_rec);
             g_kit_t_recs++;
         } else if (g_kit_rec == a->index && a->value != RFM_MOVE_SMP_M_CAPTURE) {
@@ -4788,6 +4804,11 @@ static int kit_answers(void)
                 snprintf(g_kit_t_saved_name, sizeof g_kit_t_saved_name, "%s", a.name), g_kit_t_saved++;
             else
                 fprintf(stderr, "engine: the kit not saved\n");
+        } else if (a.kind == KIT_A_FOUND) {   /* (round A) Files on the pad's sound */
+            redraw |= rfm_move_kit_found(&S->core, a.pad, a.place, a.depth, a.folders, a.sels, a.take);
+            g_kit_t_finds++;
+        } else if (a.kind == KIT_A_PEAKS) {   /* (round A) the close-up's */
+            redraw |= rfm_move_kit_peaks(&S->core, a.pad, a.zfrom, a.zcount, a.npk, a.pk);
         } else if (a.kind == KIT_A_SLICES) {   /* (3c) a take's cuts */
             redraw |= rfm_move_kit_slices(&S->core, a.take, a.path, a.frames, a.rate, a.n, a.cuts, a.npk, a.pk);
             g_kit_t_slices++;
@@ -4799,6 +4820,7 @@ static int kit_answers(void)
                     paths[pad] = a.kit.path[pad];
                 redraw |= rfm_move_kit_apply(&S->core, a.kit.name, a.kit.layout, a.kit.mix, paths,
                                              (const int16_t (*)[RFM_MOVE_KIT_P_N])a.kit.v);
+                rfm_move_kit_set_trim(&S->core, a.kit.trim);   /* (round A) */
                 g_kit_t_kits++;
             } else
                 redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);
@@ -4813,6 +4835,14 @@ static int kit_answers(void)
                 fprintf(stderr, "engine: kit pad %d: %s not loaded (%d)\n", a.pad + 1, a.path, a.status);
             redraw |= rfm_move_kit_loaded(&S->core, a.pad, a.status, a.name, a.path, a.frames, a.rate, a.npk, a.pk);
             g_kit_t_loads++;
+            if (a.status == KIT_OK && a.lead >= 0) {   /* (round A) a take recorded into the pad: its silence skipped */
+                g_kit_t_lead = a.lead;
+                if (a.lead > 0 && a.frames) {
+                    rfm_move_kit_set(&S->core, a.pad, RFM_MOVE_KIT_P_START,
+                                     (int)((uint64_t)(uint32_t)a.lead * RFM_MOVE_KIT_FRAC / a.frames));
+                    g_kit_t_trims++, redraw = 1;
+                }
+            }
         }
     }
     return redraw;
@@ -4835,7 +4865,7 @@ static void rec_tick(uint32_t now)
         g_rec_last_take = t.take;
         if (g_kit_rec >= 0) {   /* (the kit: the take onto the pad it was recorded into) */
             if (t.reason < REC_END_NOTHING && t.path[0])
-                kit_load(g_kit, g_kit_rec, t.path);
+                kit_load_rec(g_kit, g_kit_rec, t.path, g_kit_rec_trim);   /* (round A: Trim silence, its lead) */
             g_kit_rec = -1;
         } else if (g_kit && g_smp_to == RFM_MOVE_SMP_TO_KIT && t.reason < REC_END_NOTHING && t.path[0]) {
             const int pad = rfm_move_kit_next_empty(&S->core, 1);   /* (3b) To Kit: the next empty pad */
@@ -5484,10 +5514,15 @@ static void housekeeping(uint32_t now)
                         kp[p] = '_';
                 n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_file\":\"%s\",\"kit_frames\":%u,\"kit_start\":%d,"
                               "\"kit_end\":%d,\"kit_made\":%u,\"kit_slices\":%u,\"kit_slplay\":%u,\"kit_sl_on\":%d,"
-                              "\"kit_sl_n\":%d,\"kit_sl_first\":%d,\"kit_mg\":%d", kp,
+                              "\"kit_sl_n\":%d,\"kit_sl_first\":%d,\"kit_mg\":%d,\"kit_finds\":%u,\"kit_zooms\":%u,"
+                              "\"kit_auds\":%u,\"kit_aud\":%d,\"kit_trims\":%u,\"kit_lead\":%d,\"kit_mode\":%d,"
+                              "\"kit_trim\":%d,\"kit_tsel\":%d,\"kit_depth\":%d", kp,
                               kit_frames(g_kit, t->cur), t->pad[t->cur].v[RFM_MOVE_KIT_P_START],
                               t->pad[t->cur].v[RFM_MOVE_KIT_P_END], g_kit_t_made, g_kit_t_slices, g_kit_t_slplay, t->sl_on,
-                              t->sl_ok == 1 ? t->sl_n : -1, t->sl_first, t->mg_b ? 2 : t->mg_a ? 1 : 0);
+                              t->sl_ok == 1 ? t->sl_n : -1, t->sl_first, t->mg_b ? 2 : t->mg_a ? 1 : 0, g_kit_t_finds,
+                              g_kit_t_zooms, g_kit_t_auds, kit_auditioning(g_kit), g_kit_t_trims, (int)g_kit_t_lead,
+                              t->pad[t->cur].v[RFM_MOVE_KIT_P_MODE], rfm_move_kit_trim(&S->core), t->fsel[t->depth],
+                              t->depth);
             }
         }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */

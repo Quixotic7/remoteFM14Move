@@ -812,6 +812,159 @@ static void t_slice(void)
     tl_free(l);
 }
 
+/* (round A, 2026-11-25) the Hits' sensitivity and spacing, Trim silence's lead, the close-up's peaks, a pad's audition,
+ * Toggle voices, where a sound sits (KIT_FIND: Samples' folders, a take's row) */
+static int16_t hits2(uint32_t i, int c)                 /* hits at 4800, 16800 (loud), 28800 (soft), 40800 + 42720 */
+{
+    static const uint32_t AT[5] = { 4800, 16800, 28800, 40800, 42720 };
+    static const double AMP[5] = { 20000, 20000, 1500, 20000, 20000 };
+    double v = 30.0 * sin(i * 0.01);
+    int h;
+    (void)c;
+    for (h = 0; h < 5; h++)
+        if (i >= AT[h] && i < AT[h] + 6000)
+            v += AMP[h] * exp(-(double)(i - AT[h]) / 900.0) * sin((double)(i - AT[h]) * 0.3);
+    return (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+}
+static int16_t late(uint32_t i, int c) { return (int16_t)(i < 2400 ? (c ? 20 : -20) : (i % 2 ? 5000 : -5000)); }
+static int wait_kind(kit_t *k, kit_ans_t *a, int kind)
+{
+    int i;
+    for (i = 0; i < 400; i++) {
+        if (kit_poll(k, a) && a->kind == kind)
+            return 1;
+        usleep(5000);
+    }
+    return 0;
+}
+static void t_rounda(void)
+{
+    char p[800], d[600];
+    int16_t *pcm = malloc(48000u * 4u), out[2 * 1024];
+    uint32_t cuts[KIT_SLICES + 1], i;
+    int n, n50, n100, ok;
+    kit_ans_t a;
+    kit_t *k;
+    for (i = 0; i < 48000; i++)
+        pcm[2 * i] = hits2(i, 0), pcm[2 * i + 1] = hits2(i, 1);
+    n50 = kit_cuts_ex(pcm, 48000, 48000, KIT_SM_HITS, 0, 50, KIT_HIT_GAP_MS, cuts);
+    CHECK(n50 == 3 && kit_cuts(pcm, 48000, 48000, KIT_SM_HITS, 0, cuts) == n50);   /* (the soft one and the close one out) */
+    n100 = kit_cuts_ex(pcm, 48000, 48000, KIT_SM_HITS, 0, 100, KIT_HIT_GAP_MS, cuts);
+    for (ok = 0, i = 0; i < (uint32_t)n100; i++)
+        ok |= cuts[i] >= 28800 - 240 && cuts[i] <= 28800 + 240;
+    CHECK(n100 == 4 && ok);                             /* (sensitivity 100: the soft hit too) */
+    n = kit_cuts_ex(pcm, 48000, 48000, KIT_SM_HITS, 0, 80, 20, cuts);
+    for (ok = 0, i = 0; i < (uint32_t)n; i++)
+        ok |= cuts[i] >= 42720 - 240 && cuts[i] <= 42720 + 240;
+    CHECK(n == 5 && ok);                                /* (20 ms apart at least: the hit 40 ms after another) */
+    n = kit_cuts_ex(pcm, 48000, 48000, KIT_SM_HITS, 0, 80, KIT_HIT_GAP_MS, cuts);
+    for (ok = 0, i = 0; i < (uint32_t)n; i++)
+        ok |= cuts[i] >= 42720 - 240 && cuts[i] <= 42720 + 240;
+    CHECK(n == 4 && !ok);                               /* (60 ms: not) */
+    n = kit_cuts_ex(pcm, 48000, 48000, KIT_SM_HITS, 0, 1, KIT_HIT_GAP_MS, cuts);
+    CHECK(n >= 1 && n <= n50);
+    printf("  ok    Hits: sensitivity 50 %d hits, 100 %d (the soft one), sensitivity 80 with spacing 20 ms the close one (60 ms: not)\n", n50, n100);
+    /* Trim silence: the lead */
+    for (i = 0; i < 48000; i++)
+        pcm[2 * i] = late(i, 0), pcm[2 * i + 1] = late(i, 1);
+    CHECK(kit_lead(pcm, 48000, 48000) == 2400 - 240 && kit_lead(pcm + 2 * 2300, 1000, 48000) == 0);
+    memset(pcm, 0, 48000u * 4u);
+    CHECK(kit_lead(pcm, 48000, 48000) == 0);
+    free(pcm);
+    k = mk(0);
+    snprintf(p, sizeof p, "%s/late.wav", DIRP), wavf(p, 9600, 48000, late);
+    kit_load_rec(k, 2, p, 1);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_LOADED && a.status == KIT_OK && a.lead == 2160 && kit_frames(k, 2) == 9600);
+    kit_load(k, 2, p);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.lead == -1);             /* (not a take recorded into it: not asked) */
+    printf("  ok    Trim silence: a take recorded into a pad, its first sound at 2400: the lead 2160 (5 ms before)\n");
+    /* the close-up's peaks: a window of the pad's sound, scaled as its whole */
+    snprintf(p, sizeof p, "%s/zoom.wav", DIRP), wav(p, 4800, 2, 16, 0, 48000);
+    load(k, 0, p, &a);
+    kit_zoom(k, 0, 1000, 640, 64);
+    kit_zoom(k, 0, 1000, 640, 64);                      /* (the newer replaces one not started) */
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_PEAKS && a.pad == 0 && a.zfrom == 1000 && a.zcount == 640 && a.npk == 64);
+    for (ok = 1, n = 0; n < 64; n++) {
+        int pk = 0, f;
+        for (f = 1000 + n * 10; f < 1010 + n * 10; f++)
+            pk = abs(ramp((uint32_t)f)) > pk ? abs(ramp((uint32_t)f)) : pk;
+        ok &= a.pk[n] == pk * 255 / 3000;
+    }
+    CHECK(ok && !kit_poll(k, &a));
+    kit_zoom(k, 5, 0, 100, 64);                         /* (no sound on pad 6: nothing asked) */
+    kit_work(k);
+    CHECK(!kit_poll(k, &a));
+    /* an audition: the pad's frames [100, 600) once, at its rate */
+    kit_audition(k, 0, 100, 500);
+    memset(out, 0, sizeof out);
+    kit_preview_mix(k, out, 1024);
+    CHECK(out[0] == ramp(100) && out[2 * 499] == ramp(599) && out[2 * 500] == 0 && !kit_auditioning(k));
+    printf("  ok    the close-up's peaks (a window, scaled as the whole), an audition of [100, 600)\n");
+    /* Toggle: a tap on (it loops), the release ignored, the next tap off (a short release), a third on again */
+    kit_set(k, 0, KIT_P_MODE, KIT_M_TOGGLE);
+    kit_note(k, 0, 0, 127, 0);
+    run(k, 6000);
+    CHECK(kit_voices(k) == 1 && nonzero_until(6000) > 5990);
+    kit_note(k, 0, 0, 0, 0);
+    run(k, 2000);
+    CHECK(kit_voices(k) == 1);
+    kit_note(k, 0, 0, 127, 0);
+    run(k, 1000);
+    n = nonzero_until(1000);
+    CHECK(!kit_voices(k) && n >= 230 && n <= 250);       /* (5 ms) */
+    kit_note(k, 0, 0, 127, 0), kit_note(k, 0, 0, 0, 0);
+    run(k, 1000);
+    CHECK(kit_voices(k) == 1);
+    kit_note(k, 0, 0, 127, 0);
+    run(k, 1000);
+    CHECK(!kit_voices(k));
+    printf("  ok    Toggle: a tap on (looping), its release ignored, the next tap off (5 ms), on again\n");
+    /* where a sound sits: Samples' folders and rows */
+    snprintf(d, sizeof d, "%s/fd", DIRP), mkdir(d, 0755);
+    snprintf(d, sizeof d, "%s/fd/sub", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/fd/sub/a.wav", DIRP), wav(p, 100, 1, 16, 0, 48000);
+    snprintf(p, sizeof p, "%s/fd/sub/b.wav", DIRP), wav(p, 100, 1, 16, 0, 48000);
+    kit_find(k, 1, p);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.pad == 1 && a.place == KIT_PL_SAMPLES && a.depth == 2 &&
+          a.sels[2] == 1 && a.take);
+    {
+        kit_ans_t r;
+        const uint32_t f1 = a.folders[1], f2 = a.folders[2], id = a.take;
+        const int s0 = a.sels[0], s1 = a.sels[1];
+        kit_rows(k, KIT_PL_SAMPLES, 0, s0, 1), kit_work(k);
+        CHECK(kit_poll(k, &r) && r.n == 1 && r.rows[0].kind == KIT_ROW_DIR && !strcmp(r.rows[0].name, "fd") && r.rows[0].id == f1);
+        kit_rows(k, KIT_PL_SAMPLES, f1, s1, 1), kit_work(k);
+        CHECK(kit_poll(k, &r) && r.n == 1 && !strcmp(r.rows[0].name, "sub") && r.rows[0].id == f2);
+        kit_rows(k, KIT_PL_SAMPLES, f2, 1, 1), kit_work(k);
+        CHECK(kit_poll(k, &r) && r.n == 1 && !strcmp(r.rows[0].name, "b") && r.rows[0].id == id);
+    }
+    kit_find(k, 1, "/nowhere/x.wav"), kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.place == 0);
+    kit_free(k);
+    /* .. a take: its row in Takes (the newest first) */
+    {
+        tl_t *l;
+        kit_cfg_t c;
+        snprintf(d, sizeof d, "%s/ftakes", DIRP), mkdir(d, 0755);
+        snprintf(p, sizeof p, "%s/2026-11-25", d), mkdir(p, 0755);
+        snprintf(p, sizeof p, "%s/2026-11-25/1125-101700 Master 120bpm 1b.wav", d), wav(p, 4800, 2, 16, 0, 48000);
+        snprintf(p, sizeof p, "%s/2026-11-25/1125-101500 Master 120bpm 2b.wav", d), wav(p, 4800, 2, 16, 0, 48000);
+        l = tl_new(d, NULL);
+        memset(&c, 0, sizeof c);
+        c.fs = 48000, c.tl = l;
+        k = kit_new(&c);
+        kit_find(k, 4, p);
+        CHECK(wait_kind(k, &a, KIT_A_FOUND) && a.pad == 4 && a.place == KIT_PL_TAKES && a.depth == 0 && a.sels[0] == 1 && a.take);
+        kit_free(k);
+        tl_free(l);
+    }
+    printf("  ok    KIT_FIND: Samples/fd/sub/b.wav (its folders, their rows), a take (Takes' second row), nowhere\n");
+}
+
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -828,6 +981,7 @@ int main(void)
     t_kits();
     t_make();
     t_slice();
+    t_rounda();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

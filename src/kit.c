@@ -52,7 +52,8 @@ typedef struct {
 } voice_t;
 enum { ST_ATTACK, ST_HOLD, ST_SUSTAIN, ST_RELEASE, ST_FADE };
 typedef struct { int pad, semis, vel; uint32_t frame; } ev_t;
-enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER, RQ_MERGE, RQ_EDIT, RQ_SLICE };
+enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER, RQ_MERGE, RQ_EDIT, RQ_SLICE,
+       RQ_FIND, RQ_PEAKS };   /* (round A: FIND, PEAKS) */
 typedef struct {
     int kind, pad, place, n, from;
     uint32_t id, gen;
@@ -63,6 +64,10 @@ typedef struct {
     int r0[2], r1[2];
     uint32_t us;
     char path2[KIT_PATH];
+    /* (round A) LOAD: trim (a take recorded into the pad: its lead); SLICE: n the Hits' sensitivity; PEAKS: zf, zc the
+     * frames, n the peaks */
+    int trim;
+    uint32_t zf, zc;
 } req_t;
 typedef struct {                  /* the file thread's answer, and the sound it made (the engine's thread puts it on) */
     kit_ans_t a;
@@ -75,6 +80,7 @@ typedef struct {                  /* (3c, mu) a sound in memory and the pads (an
     int refs;
     uint32_t frames, rate;
     long long mtime, size;
+    int top;                      /* (round A) its peak (0: not known yet; the close-up's scale) */
     char path[KIT_PATH];
 } sh_t;
 
@@ -105,6 +111,8 @@ struct kit {
     sh_t sh[NSH];                 /* (3c, mu) */
     char edits[KIT_PATH];         /* (3c) new files' folder (kits/Edits; "" none) */
     uint32_t prev_gen;            /* the latest preview asked (an older answer: dropped) */
+    int aud_on, aud_pad;          /* (round A) a pad's frames heard once (KIT_AUDITION): its sound, on the preview path */
+    double aud_pos, aud_end, aud_inc;
     uint32_t used[KIT_PADS];      /* (mu) each pad's bytes, as the file thread counts them */
     /* the requests (mu) */
     pthread_mutex_t mu;
@@ -403,7 +411,7 @@ static void wake(kit_t *k)   /* (mu held) the file thread called for, once */
 static void request(kit_t *k, const req_t *r)
 {
     pthread_mutex_lock(&k->mu);
-    if (r->kind == RQ_PREVIEW || r->kind == RQ_ROWS || r->kind == RQ_SLICE) {   /* (a newer one replaces one not
+    if (r->kind == RQ_PREVIEW || r->kind == RQ_ROWS || r->kind == RQ_SLICE || r->kind == RQ_PEAKS || r->kind == RQ_FIND) {   /* (a newer one replaces one not
                                                          * started) */
         int i;
         for (i = 0; i < k->rqn; i++)
@@ -748,7 +756,7 @@ static void do_load(kit_t *k, const req_t *r)
     memset(&a, 0, sizeof a);
     memset(&tr, 0, sizeof tr);
     tr.id = 0;
-    a.a.kind = KIT_A_LOADED, a.a.pad = r->pad;
+    a.a.kind = KIT_A_LOADED, a.a.pad = r->pad, a.a.lead = -1;
     if (r->kind == RQ_LOAD) {
         snprintf(path, sizeof path, "%s", r->path);
         if (path[0])
@@ -777,6 +785,149 @@ static void do_load(kit_t *k, const req_t *r)
         a.a.npk = peaks_of(a.pcm, a.a.frames, KIT_PEAKS, a.a.pk);
         if (tr.id)                                      /* (a take: named as its row, its length now known) */
             tr.frames = a.a.frames, tr.rate = a.a.rate, take_name(&tr, a.a.name, sizeof a.a.name);
+        if (r->trim)                                    /* (round A) Trim silence: where its first sound starts */
+            a.a.lead = (int32_t)kit_lead(a.pcm, a.a.frames, a.a.rate);
+    }
+    answer(k, &a);
+}
+/* ---- (round A) pad-first loading, the close-up */
+uint32_t kit_lead(const int16_t *pcm, uint32_t frames, uint32_t rate)
+{
+    uint32_t i;
+    const uint32_t back = (rate ? rate : 48000) * KIT_LEAD_MS / 1000u;
+    for (i = 0; pcm && i < frames; i++)
+        if (abs(pcm[2 * i]) >= KIT_LEAD_LEVEL || abs(pcm[2 * i + 1]) >= KIT_LEAD_LEVEL)
+            return i > back ? i - back : 0;
+    return 0;                                           /* (silent all through: kept whole) */
+}
+/* FIND: a take (Takes, its row in the list) or a sound in Samples (its folders, their rows) */
+static void do_find(kit_t *k, const req_t *r)
+{
+    ans_t a;
+    const size_t sl = strlen(k->samples);
+    tl_row_t t;
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_FOUND, a.a.pad = r->pad;
+    if (k->cfg.tl && r->path[0] && tl_row_of(k->cfg.tl, r->path, &t) && t.id) {
+        tl_row_t rows[16];
+        int from = 0, total = 0, n, i, found = -1;
+        uint32_t f;
+        do {
+            n = tl_rows(k->cfg.tl, TL_ALL, from, 16, rows, &total, &f);
+            for (i = 0; i < n && found < 0; i++)
+                if (rows[i].id == t.id)
+                    found = from + i;
+            from += n;
+        } while (n > 0 && found < 0 && from < total);
+        if (found >= 0) {
+            a.a.place = KIT_PL_TAKES, a.a.depth = 0, a.a.sels[0] = (int16_t)(found > 32767 ? 32767 : found);
+            a.a.take = t.id;
+            answer(k, &a);
+            return;
+        }
+    }
+    if (sl && !strncmp(r->path, k->samples, sl) && r->path[sl] == '/') {   /* (Samples: each folder listed, its row) */
+        char rel[256], sub[256];
+        const char *q = r->path + sl + 1;
+        int d = 0, ok = 1;
+        uint32_t folder = 0;
+        snprintf(rel, sizeof rel, "%s", q);
+        sub[0] = 0;
+        while (ok) {
+            const char *sep = strchr(q, '/');
+            char name[256];
+            int i, at = -1;
+            const size_t len = sep ? (size_t)(sep - q) : strlen(q);
+            if (!len || len >= sizeof name || (sep && d >= KIT_DEPTH)) {
+                ok = 0;
+                break;
+            }
+            memcpy(name, q, len), name[len] = 0;
+            if (list_folder(k, folder)) {
+                ok = 0;
+                break;
+            }
+            for (i = 0; i < k->ls_n && at < 0; i++)
+                if (!strcmp(k->ls[i].name, name) && k->ls[i].dir == (sep != NULL))
+                    at = i;
+            if (at < 0) {
+                ok = 0;
+                break;
+            }
+            a.a.sels[d] = (int16_t)(at > 32767 ? 32767 : at);
+            snprintf(sub + strlen(sub), sizeof sub - strlen(sub), "%s%s", sub[0] ? "/" : "", name);
+            pthread_mutex_lock(&k->mu);
+            id_keep(k, fnv(sub), sub);
+            pthread_mutex_unlock(&k->mu);
+            if (!sep) {
+                a.a.take = fnv(sub);
+                break;
+            }
+            folder = fnv(sub);
+            a.a.folders[++d] = folder;
+            q = sep + 1;
+        }
+        (void)rel;
+        if (ok)
+            a.a.place = KIT_PL_SAMPLES, a.a.depth = d;
+    }
+    answer(k, &a);
+}
+/* PEAKS: the pad's frames [zf, zf + zc) as n peaks, scaled as its whole wave (its peak: once per sound) */
+static void do_peaks(kit_t *k, const req_t *r)
+{
+    ans_t a;
+    uint32_t frames = 0, rate = 0, c, i;
+    int16_t *pcm, top = 0;
+    int shared = 1, st, n = r->n < 1 ? 1 : r->n > KIT_PEAKS ? KIT_PEAKS : r->n, t = 0;
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_PEAKS, a.a.pad = r->pad, a.a.zfrom = r->zf, a.a.zcount = r->zc;
+    (void)top;
+    if (!(pcm = shared_get(k, r->path, &frames, &rate)))
+        shared = 0, pcm = load_sound(r->path, k->cfg.max_bytes, 0, &frames, &rate, &st);
+    if (pcm && frames) {
+        int j;
+        pthread_mutex_lock(&k->mu);
+        for (j = 0; j < NSH && shared; j++)
+            if (k->sh[j].pcm == pcm)
+                t = k->sh[j].top;
+        pthread_mutex_unlock(&k->mu);
+        if (!t) {                                       /* (its peak, as peaks_of scales the pad's wave) */
+            for (i = 0; i < frames; i++) {
+                const int l = abs(pcm[2 * i]), rr = abs(pcm[2 * i + 1]);
+                t = l > t ? l : t, t = rr > t ? rr : t;
+            }
+            if (!t)
+                t = 1;
+            pthread_mutex_lock(&k->mu);
+            for (j = 0; j < NSH && shared; j++)
+                if (k->sh[j].pcm == pcm)
+                    k->sh[j].top = t;
+            pthread_mutex_unlock(&k->mu);
+        }
+        for (c = 0; c < (uint32_t)n; c++) {
+            const uint64_t f0 = r->zf + (uint64_t)r->zc * c / (uint32_t)n;
+            uint64_t f1 = r->zf + (uint64_t)r->zc * (c + 1) / (uint32_t)n, f;
+            int p = 0;
+            if (f1 <= f0)
+                f1 = f0 + 1;
+            for (f = f0; f < f1 && f < frames; f++) {
+                const int l = abs(pcm[2 * f]), rr = abs(pcm[2 * f + 1]);
+                p = l > p ? l : p, p = rr > p ? rr : p;
+            }
+            a.a.pk[c] = (uint8_t)(p * 255 / t > 255 ? 255 : p * 255 / t);
+        }
+        a.a.npk = n;
+    }
+    if (pcm) {
+        int drop = 1;
+        if (shared) {
+            pthread_mutex_lock(&k->mu);
+            drop = unref(k, pcm);
+            pthread_mutex_unlock(&k->mu);
+        }
+        if (drop)
+            free(pcm);
     }
     answer(k, &a);
 }
@@ -901,7 +1052,8 @@ static void do_save(kit_t *k)
             int bad;
             mj_escape(name, esc, sizeof esc);
             fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 1, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
-            fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d],\n  \"pads\": [\n", x->mix[0], x->mix[1], x->mix[2], x->mix[3], x->mix[4]);
+            fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d], \"trim\": %d,\n  \"pads\": [\n", x->mix[0], x->mix[1], x->mix[2],
+                    x->mix[3], x->mix[4], x->trim ? 1 : 0);   /* (round A: the Trim silence) */
             for (i = 0; i < KIT_PADS; i++) {
                 mj_escape(files[i], esc, sizeof esc);
                 fprintf(f, "    { \"file\": \"%s\"", esc);
@@ -974,6 +1126,7 @@ static void do_open(kit_t *k, const req_t *r)
         int i = 0, j;
         snprintf(x->name, sizeof x->name, "%s", rel + 5);   /* (its folder's name: renamed there, renamed here) */
         x->layout = !mj_int(js, "layout", &v) ? (int)v : 0;
+        x->trim = !mj_int(js, "trim", &v) ? v != 0 : 1;   /* (round A; an older kit.json: on) */
         x->mix[0] = 100, x->mix[1] = 64;
         if ((e = mj_find(js, "mix")) && *e == '[') {
             const char *m = e, *y;
@@ -1261,6 +1414,11 @@ static int cmp_u32(const void *a, const void *b)
 }
 int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, uint32_t *cuts)
 {
+    return kit_cuts_ex(pcm, frames, rate, method, step_us, 50, KIT_HIT_GAP_MS, cuts);
+}
+int kit_cuts_ex(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, int sens, int gap_ms,
+                uint32_t *cuts)
+{
     int n = 0, i;
     if (!frames)
         return 0;
@@ -1287,8 +1445,13 @@ int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uin
     }
     {   /* the hits: 5 ms windows' level; a window louder than 2x the 40 ms before it (and a tenth of the loudest) starts
          * one, 60 ms after the last at least; the 16 strongest kept (the first always), in their order: a slice from each
-         * hit to the next (the last to the take's end; before the first: not a slice) */
-        const uint32_t hop = rate / 200 ? rate / 200 : 1, nh = (frames + hop - 1) / hop, gap = 12;
+         * hit to the next (the last to the take's end; before the first: not a slice). (round A) The sensitivity
+         * (1..100, 50 as before) scales the rise (2x at 50: 1.2x at 100, 2.8x at 1) and the floor (a tenth at 50: none
+         * at 100, a fifth at 1); gap_ms the spacing (60 as before) */
+        const uint32_t hop = rate / 200 ? rate / 200 : 1, nh = (frames + hop - 1) / hop;
+        const int sv = sens < 1 ? 1 : sens > 100 ? 100 : sens;
+        const uint32_t gap = (uint32_t)((gap_ms < 5 ? 5 : gap_ms) / 5);
+        const float rise = 1.2f + 1.6f * (float)(100 - sv) / 100.0f, floor_ = 0.2f * (float)(100 - sv) / 100.0f;
         float *e = malloc(sizeof(float) * nh);
         struct { uint32_t at; float s; } on[256];
         int no = 0;
@@ -1312,7 +1475,7 @@ int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uin
             for (q = j >= 8 ? j - 8 : 0; q < j; q++)
                 before += e[q], c++;
             before = c ? before / c : 0.0f;
-            if (e[j] >= top * 0.1f && e[j] > 2.0f * before + top * 0.02f && (!have || j - last >= gap)) {
+            if (e[j] >= top * floor_ && e[j] > rise * before + top * 0.02f && (!have || j - last >= gap)) {
                 if (no < (int)(sizeof on / sizeof on[0]))
                     on[no].at = j * hop, on[no].s = e[j] - before, no++;
                 last = j, have = 1;
@@ -1348,7 +1511,7 @@ static void do_slice(kit_t *k, const req_t *r)
     a.a.kind = KIT_A_SLICES, a.a.take = r->id;
     if (row_path(k, KIT_PL_TAKES, r->id, path, sizeof path, nm, sizeof nm, NULL) &&
         (a.pcm = load_sound(path, k->cfg.max_bytes, 0, &a.a.frames, &a.a.rate, &a.a.status))) {
-        a.a.n = kit_cuts(a.pcm, a.a.frames, a.a.rate, r->op, r->us, a.a.cuts);
+        a.a.n = kit_cuts_ex(a.pcm, a.a.frames, a.a.rate, r->op, r->us, r->n ? r->n : 50, KIT_HIT_GAP_MS, a.a.cuts);
         a.a.npk = peaks_of(a.pcm, a.a.frames, KIT_PEAKS, a.a.pk);
         snprintf(a.a.path, sizeof a.a.path, "%s", path);
     }
@@ -1388,6 +1551,8 @@ void kit_work(void *arg)
         case RQ_MERGE:
         case RQ_EDIT: do_make(k, &r); break;
         case RQ_SLICE: do_slice(k, &r); break;
+        case RQ_FIND: do_find(k, &r); break;             /* (round A) */
+        case RQ_PEAKS: do_peaks(k, &r); break;
         default: return;                                /* (nothing more) */
         }
     }
@@ -1486,6 +1651,49 @@ void kit_load(kit_t *k, int pad, const char *path)
     snprintf(r.path, sizeof r.path, "%s", path ? path : "");
     request(k, &r);
 }
+void kit_load_rec(kit_t *k, int pad, const char *path, int trim)
+{
+    req_t r;
+    if (!k || pad < 0 || pad >= KIT_PADS)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_LOAD, r.pad = pad, r.trim = trim != 0;
+    snprintf(r.path, sizeof r.path, "%s", path ? path : "");
+    request(k, &r);
+}
+void kit_find(kit_t *k, int pad, const char *path)
+{
+    req_t r;
+    if (!k || pad < 0 || pad >= KIT_PADS || !path || !path[0])
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_FIND, r.pad = pad;
+    snprintf(r.path, sizeof r.path, "%s", path);
+    request(k, &r);
+}
+void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n)
+{
+    req_t r;
+    if (!k || pad < 0 || pad >= KIT_PADS || !k->ppath[pad][0] || !count)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_PEAKS, r.pad = pad, r.zf = from, r.zc = count, r.n = n;
+    snprintf(r.path, sizeof r.path, "%s", k->ppath[pad]);
+    request(k, &r);
+}
+void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count)
+{
+    const snd_t *s;
+    if (!k || pad < 0 || pad >= KIT_PADS)
+        return;
+    s = &k->snd[pad];
+    k->aud_on = 0;
+    if (!s->pcm || from >= s->frames || !count)
+        return;
+    k->aud_pad = pad, k->aud_pos = from, k->aud_end = (double)from + count;
+    k->aud_inc = (double)(s->rate ? s->rate : k->cfg.fs) / k->cfg.fs, k->aud_on = 1;
+}
+int kit_auditioning(const kit_t *k) { return k && k->aud_on; }
 void kit_load_row(kit_t *k, int pad, int place, uint32_t id)
 {
     req_t r;
@@ -1569,6 +1777,8 @@ int kit_poll(kit_t *k, kit_ans_t *out)
             if (a.pcm || a.a.status == KIT_OK || a.a.status == KIT_EMPTY) {   /* (a sound, or emptied: the old one
                                                          * goes) */
                 voice_kill_pad(k, a.a.pad);
+                if (k->aud_pad == a.a.pad)
+                    k->aud_on = 0;                      /* (round A: its audition with it) */
                 garbage(k, s->pcm);
                 s->pcm = a.pcm, s->frames = a.pcm ? a.a.frames : 0, s->rate = a.pcm ? a.a.rate : 0;
                 snprintf(k->ppath[a.a.pad], sizeof k->ppath[0], "%s", a.pcm ? a.a.path : "");
@@ -1636,6 +1846,7 @@ double kit_rate_of(const kit_t *k, int pad, int semis)
     }
     return pow(2.0, (k->v[pad][KIT_P_PITCH] + semis * 100) / 1200.0) * (double)s->rate / k->cfg.fs;
 }
+static void release(voice_t *v, uint32_t n);
 static void note_on(kit_t *k, int pad, int semis, int vel)
 {
     const int16_t *p = k->v[pad];
@@ -1645,6 +1856,19 @@ static void note_on(kit_t *k, int pad, int semis, int vel)
     double s0, e0, ratio;
     if (!s->pcm || !s->frames || p[KIT_P_MUTE])
         return;
+    if (p[KIT_P_MODE] == KIT_M_TOGGLE) {                /* (round A) Toggle: sounding, the tap stops it (a short release) */
+        int was = 0;
+        for (i = 0; i < NV; i++) {
+            voice_t *o = &k->vo[i];
+            if (o->on && o->pad == pad && o->semis == semis && o->mode == KIT_M_TOGGLE && o->stage < ST_RELEASE) {
+                const uint32_t n = ms_n(k, p[KIT_P_RELEASE]), f = ms_n(k, FADE_MS);
+                release(o, n > f ? n : f);
+                was = 1;
+            }
+        }
+        if (was)
+            return;
+    }
     for (i = 0; i < NV; i++) {                          /* its own voice taken back; the choke group's stopped */
         voice_t *o = &k->vo[i];
         if (!o->on || o->stage == ST_FADE)
@@ -1679,7 +1903,7 @@ static void note_on(kit_t *k, int pad, int semis, int vel)
     v->s = s0, v->e = e0, v->dir = p[KIT_P_REVERSE] ? -1 : 1;
     v->pos = v->dir > 0 ? s0 : e0 - 1;
     v->inc = ratio > 0 ? ratio : 1.0;
-    v->mode = clampi(p[KIT_P_MODE], KIT_M_ONESHOT, KIT_M_LOOP), v->gate = 1;
+    v->mode = clampi(p[KIT_P_MODE], KIT_M_ONESHOT, KIT_M_TOGGLE), v->gate = 1;
     v->stage = ST_ATTACK, v->env = 0.0f;
     v->a_step = p[KIT_P_ATTACK] > 0 ? 1.0f / (float)ms_n(k, p[KIT_P_ATTACK]) : 1.0f;
     v->hold_n = ms_n(k, p[KIT_P_HOLD]);
@@ -1699,8 +1923,9 @@ static void note_off(kit_t *k, int pad, int semis)
     int i;
     for (i = 0; i < NV; i++) {
         voice_t *v = &k->vo[i];
-        if (v->on && v->gate && v->pad == pad && v->semis == semis)
-            v->gate = 0;                                /* (a one shot plays on; the held modes: their release) */
+        if (v->on && v->gate && v->pad == pad && v->semis == semis && v->mode != KIT_M_TOGGLE)
+            v->gate = 0;                                /* (a one shot plays on; the held modes: their release; round
+                                                         * A: Toggle's the next tap's) */
     }
 }
 static void release(voice_t *v, uint32_t n)
@@ -1749,7 +1974,7 @@ static void voice_run(voice_t *v, float *acc, float *const sb[3], uint32_t n)
         left = v->dir > 0 ? (v->e - v->pos) / v->inc : (v->pos - v->s) / v->inc;
         if (v->mode == KIT_M_ONESHOT && !v->hold_n && v->stage <= ST_SUSTAIN && v->rel_n && left <= v->rel_n)
             release(v, (uint32_t)left ? (uint32_t)left : 1);
-        if (v->mode != KIT_M_LOOP && left <= 0) {
+        if (v->mode != KIT_M_LOOP && v->mode != KIT_M_TOGGLE && left <= 0) {
             v->on = 0;
             break;
         }
@@ -1768,7 +1993,8 @@ static void voice_run(voice_t *v, float *acc, float *const sb[3], uint32_t n)
                     sb[j][2 * i] += ol * v->sg[j], sb[j][2 * i + 1] += orr * v->sg[j];
         }
         v->pos += v->dir * v->inc;
-        if (v->mode == KIT_M_LOOP) {                    /* round start..end while held (and through its release) */
+        if (v->mode == KIT_M_LOOP || v->mode == KIT_M_TOGGLE) {   /* round start..end while held, (round A) while
+                                                         * on (and through its release) */
             const double len = v->e - v->s;
             if (v->dir > 0 && v->pos >= v->e)
                 v->pos -= len;
@@ -1949,13 +2175,14 @@ void kit_edit(kit_t *k, int pad, int op)
     r.r0[0] = k->v[pad][KIT_P_START], r.r0[1] = k->v[pad][KIT_P_END];
     request(k, &r);
 }
-void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us)
+void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us) { kit_slice_sens(k, take, method, step_us, 50); }
+void kit_slice_sens(kit_t *k, uint32_t take, int method, uint32_t step_us, int sens)
 {
     req_t r;
     if (!k)
         return;
     memset(&r, 0, sizeof r);
-    r.kind = RQ_SLICE, r.id = take, r.op = method, r.us = step_us, r.gen = ++k->sl_gen;
+    r.kind = RQ_SLICE, r.id = take, r.op = method, r.us = step_us, r.gen = ++k->sl_gen, r.n = sens > 0 ? sens : 50;
     request(k, &r);
 }
 void kit_slice_play(kit_t *k, uint32_t from, uint32_t count)
@@ -1979,6 +2206,26 @@ void kit_slice_done(kit_t *k)
 void kit_preview_mix(kit_t *k, int16_t *out, uint32_t frames)
 {
     uint32_t i;
+    if (k && k->aud_on) {                               /* (round A) a pad's frames heard once */
+        const snd_t *s = &k->snd[k->aud_pad];
+        for (i = 0; i < frames; i++) {
+            const uint32_t a = (uint32_t)k->aud_pos;
+            if (!s->pcm || a + 1 >= s->frames || k->aud_pos >= k->aud_end) {
+                k->aud_on = 0;
+                break;
+            }
+            {
+                const float fr = (float)(k->aud_pos - a);
+                int c;
+                for (c = 0; c < 2; c++) {
+                    const float x = s->pcm[2 * a + c] + (s->pcm[2 * (a + 1) + c] - s->pcm[2 * a + c]) * fr;
+                    const long y = out[2 * i + c] + lrintf(x);
+                    out[2 * i + c] = (int16_t)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
+                }
+            }
+            k->aud_pos += k->aud_inc;
+        }
+    }
     if (!k || !k->prev_on || !k->prev.pcm)
         return;
     for (i = 0; i < frames; i++) {

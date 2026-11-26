@@ -539,7 +539,7 @@ export class SmpView {
         set: (v) => this.kset(KP.PITCH, v * 100), fmt: (v) => (this.kv(KP.STRETCH) ? "Stretch" : `${v > 0 ? "+" : ""}${v} st`) }), KP.PITCH),
       row("Start", B(KP.START, "Start", { min: 0, max: KFRAC, fmt: secs }), KP.START),
       row("End", B(KP.END, "End", { min: 0, max: KFRAC, fmt: secs }), KP.END),
-      row("Play", S(KP.MODE, "Play", ["One shot", "Momentary", "Loop"]), KP.MODE),
+      row("Play", S(KP.MODE, "Play", ["One shot", "Momentary", "Loop", "Toggle"]), KP.MODE),
       row("Attack", env(KP.ATTACK, "Attack"), KP.ATTACK),
       row("Hold", env(KP.HOLD, "Hold"), KP.HOLD),
       row("Release", env(KP.RELEASE, "Release"), KP.RELEASE),

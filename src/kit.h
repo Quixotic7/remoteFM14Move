@@ -35,7 +35,7 @@ enum { KIT_P_PITCH, KIT_P_START, KIT_P_END, KIT_P_MODE, KIT_P_ATTACK, KIT_P_HOLD
        KIT_P_REVERSE, KIT_P_LEVEL, KIT_P_PAN, KIT_P_MUTE, KIT_P_STRETCH, KIT_P_SEND1, KIT_P_SEND2, KIT_P_SEND3, KIT_P_N };
 #define KIT_KPATH 160             /* a saved kit's sound's path, as the core keeps it (RFM_MOVE_KIT_PATH) */
 #define KIT_FRAC 32767            /* START / END: the whole sound */
-enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP };
+enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_TOGGLE };   /* (round A: Toggle, a tap on, the next off) */
 /* Files' places (as rfm1cs's RFM_MOVE_KIT_PL_*), a row's kind, a load's status (as RFM_MOVE_KIT_ROW_*, RFM_MOVE_KIT_*) */
 enum { KIT_PL_TAKES = 1, KIT_PL_SAMPLES = 2, KIT_PL_KITS = 3 };
 enum { KIT_ROW_DIR = 1, KIT_ROW_FILE = 2, KIT_ROW_KIT = 3 };
@@ -57,7 +57,11 @@ typedef struct {
     uint32_t frames, rate;
     uint8_t thumb[KIT_THUMB];
 } kit_row_t;
-enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES };
+enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES, KIT_A_FOUND, KIT_A_PEAKS };
+#define KIT_DEPTH 8               /* (round A) folders deep in Samples, as rfm1cs's RFM_MOVE_KIT_DEPTH */
+#define KIT_LEAD_LEVEL 104        /* (round A) Trim silence: -50 dBFS (of 32767) */
+#define KIT_LEAD_MS 5             /* .. the start this much before the first sound */
+#define KIT_HIT_GAP_MS 60         /* (round A) the Hits' minimum spacing (the default) */
 /* (stage 3c) as rfm1cs's RFM_MOVE_KIT_MG_*, _ED_*, _SM_* */
 enum { KIT_MG_COPY, KIT_MG_MIX, KIT_MG_JOIN };
 enum { KIT_ED_TRIM = 1, KIT_ED_NORMALIZE, KIT_ED_REVERSE };
@@ -70,6 +74,7 @@ typedef struct {                  /* (stage 3b) a kit as saved: its pads' paths 
     uint8_t mix[5];               /* level, pan, sends 1..3 (0..127) */
     char path[KIT_PADS][KIT_KPATH];   /* ("" empty) */
     int16_t v[KIT_PADS][KIT_P_N];
+    int trim;                     /* (round A) the Trim silence (kit.json "trim"; none: 1) */
 } kit_kit_t;
 typedef struct {
     int kind;                     /* KIT_A_* (SAVED: status KIT_OK and the name in name, else KIT_FAILED; KIT: kit, status
@@ -88,6 +93,14 @@ typedef struct {
     /* (3c) SLICES: take, path, frames, rate, npk / pk its whole wave; n slices (0 failed), cuts[0..n] in frames */
     uint32_t take;
     uint32_t cuts[KIT_SLICES + 1];
+    /* (round A) LOADED by kit_load_rec: lead the frame its first sound starts at less KIT_LEAD_MS (-1: not asked, 0:
+     * from its start); FOUND: pad, place (0 not found), depth, folders[0..depth], sels[0..depth], take the row's id;
+     * PEAKS: pad, zfrom / zcount the frames, npk / pk */
+    int32_t lead;
+    int depth;
+    uint32_t folders[KIT_DEPTH + 1];
+    int16_t sels[KIT_DEPTH + 1];
+    uint32_t zfrom, zcount;
 } kit_ans_t;
 typedef struct kit kit_t;
 
@@ -127,10 +140,27 @@ void kit_edit(kit_t *k, int pad, int op);             /* KIT_ED_*: the pad's own
 /* a take's cuts by method (KIT_SM_*; Steps: step_us a step): answer KIT_A_SLICES; the take is kept for kit_slice_play
  * (the preview path, never recorded) until kit_slice_done or another preview */
 void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us);
+/* (round A) .. the Hits' sensitivity 1..100 (0: 50) */
+void kit_slice_sens(kit_t *k, uint32_t take, int method, uint32_t step_us, int sens);
 void kit_slice_play(kit_t *k, uint32_t from, uint32_t count);
 void kit_slice_done(kit_t *k);
 /* (the file thread, tests) a take's cuts as KIT_SLICE gives them: n slices (cuts[0..n]) of pcm (stereo) */
 int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, uint32_t *cuts);
+/* (round A) .. the Hits by a sensitivity 1..100 (50: kit_cuts'; higher: softer hits count) and a minimum spacing (ms) */
+int kit_cuts_ex(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, int sens, int gap_ms,
+                uint32_t *cuts);
+/* (round A) Trim silence: the frame the sound's first part over KIT_LEAD_LEVEL starts, less KIT_LEAD_MS (0: none) */
+uint32_t kit_lead(const int16_t *pcm, uint32_t frames, uint32_t rate);
+/* (round A, the engine's thread) a take recorded into a pad: as kit_load, its answer's lead found (trim 1) */
+void kit_load_rec(kit_t *k, int pad, const char *path, int trim);
+/* where a pad's sound sits in Files (Takes, or Samples' folders): answer KIT_A_FOUND */
+void kit_find(kit_t *k, int pad, const char *path);
+/* the close-up's peaks: the pad's frames [from, from + count) as n peaks (scaled as its whole wave's), on the file
+ * thread: answer KIT_A_PEAKS (a newer ask replaces one not started) */
+void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n);
+/* the pad's frames [from, from + count) heard once at its own rate on the preview path (never recorded) */
+void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count);
+int kit_auditioning(const kit_t *k);
 const char *kit_pad_path(const kit_t *k, int pad);
 /* (the page's Kit tab, any thread: the folder read there) the kits saved, {"kits": [{"id", "name"}]}: malloc'd */
 char *kit_kits_json(const kit_t *k);   /* (engine's thread, tests) the file on the pad ("" none) */

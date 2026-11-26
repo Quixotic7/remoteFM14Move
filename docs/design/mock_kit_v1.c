@@ -91,6 +91,9 @@ static icon_t I_NORM = { "###########", "...........", "..#.....#..", ".###...##
                          "..#..#..#..", "..#..#..#..", "..#..#..#..", "..#..#..#..", "..........." };
 static icon_t I_LOOP = { "...#####...", "..#.....#..", ".#.......#.", ".#.......#.", ".#.......#.", ".#.....####",
                          ".#......###", "..#......#.", "...###.....", "...........", "..........." };
+/* (round A, 2026-11-25) Toggle: play, then stop */
+static icon_t I_TOGGLE = { "...........", "#.....####.", "##....####.", "###...####.", "####..####.", "#####.####.",
+                           "####..####.", "###...####.", "##....####.", "#.....####.", "..........." };
 /* the kit's own */
 static icon_t I_KIT = { "...........", "####..####.", "####..####.", "####..####.", "####..####.", "...........",
                         "####..####.", "####..####.", "####..####.", "####..####.", "..........." };
@@ -310,14 +313,14 @@ int main(void)
         b.step[i] = sc(ROWC[2], i == 0 ? 255 : 110);
     dump(&b, "stretch");
 
-    /* E. how it plays: Loop, with its envelope (attack, hold, release) */
+    /* E. how it plays: Loop, with its envelope (attack, hold, release); (round A) four modes, Toggle the fourth */
     memset(&b, 0, sizeof b);
     kit_view(&b, 9, 1, 8);
     b.knob[3] = WHITE;
     v2_TC(cv, 64, 0, "Play", 2, 1);
     {
-        static icon_t *const P[3] = { &I_PLAY, &I_PAD, &I_LOOP };
-        icon_row(cv, P, 3, 2, NULL, 18);
+        static icon_t *const P[4] = { &I_PLAY, &I_PAD, &I_LOOP, &I_TOGGLE };
+        icon_row(cv, P, 4, 2, NULL, 18);
     }
     v2_TC(cv, 64, 32, "Loop", 2, 1);
     ahr(cv, 14, 63, 100, 12, 15, 45, 35, 0);
