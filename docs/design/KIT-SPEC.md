@@ -299,9 +299,9 @@ is touched or turned, full screen, the knobs' lights saying which have a job):
 | Page | Picture | Knobs 1..8 |
 |---|---|---|
 | Sample Kit | the 16 lanes (4 px each, pad 1 at the bottom; a step a 4 x 4 cell 2 px apart: a hit its lower three rows, an empty step a 2 px dash; the chosen lane an arrow on the left; the playhead's cell inverted); an empty pattern: the page switcher | Right half, Trim silence |
-| Pad Sample | the wave over the region above the pad's 16 steps (drawn as a track page's step strip, Move's strip under it) | Start, End, Transpose (Shift: cents; -24..+24), Engine, Attack, Decay, Sustain, Release |
+| Pad Sample | the wave over the region above the pad's 16 steps (drawn as a track page's step strip, Move's strip under it); Loop's loop and fade, Granular's position and spray marked under the wave | Start, End, Transpose (Shift: cents; -24..+24), Engine, 5..8 the engine's first four own settings (2026-11-26, the owner's; One Shot, Momentary: dark) |
 | Trig | the pad's track over 16 steps, the trigged steps marked | the sequencer's TRIG page for the pad's track (13..16): Micro, Ratchet, Chance, Cond, Func, its amount, Length; 8 dark |
-| Pad Sample 2 | the engine's own above the steps (Loop: the loop and its fade; Granular: position and spray; Pitch Env: its curve; LoFi: a wave in its steps) | the engine's own on 1..6, 7 Choke, 8 Reverse |
+| Pad Sample 2 | (2026-11-26) the amp envelope above the steps | Attack, Decay, Sustain, Release, 5 and 6 the engine's further settings (Granular: Spread), 7 Choke, 8 Reverse |
 | Warp | the wave, the steps it lasts (Off: the switcher) | Algorithm, Sync, Speed, Pitch, the algorithm's two |
 | Filter | Fever Dream's: the filter as bars (cutoff, resonance, morph; a tick at the knob's cutoff, a dot where the envelope takes it) on the left, its envelope on the right, both live (the pad's newest voice, `rfm_move_kit_live`) | Cutoff, Res, Morph, Env Amount, F Attack, F Decay, F Sustain, F Release |
 | Pad Mix | the level as a bar, the pan a mark | Level, Pan, Cutoff, -, Send 1, 2, 3, - |
@@ -316,9 +316,10 @@ is touched or turned, full screen, the knobs' lights saying which have a job):
   arrow, a sound a small wave), the others text only, no inverted row; a turn slides the list a row under the icon
   (100 ms, eased; the next turn starts its own). Five rows asked at a time.
 
-**The engines** (Pad Sample's knob 4; Pad Sample 2's knobs):
+**The engines** (Pad Sample's knob 4; their own settings, 2026-11-26: the first four on Pad Sample's knobs 5..8, the
+fifth on Pad Sample 2's knob 5; numbered below in that order):
 
-| Engine | Plays | Pad Sample 2 |
+| Engine | Plays | Own settings |
 |---|---|---|
 | One Shot | the region once | - |
 | Momentary | the region once while held | - |
