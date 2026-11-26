@@ -207,3 +207,45 @@ tests yet (the owner's "move fast"), the full suites when the design is locked.
 - **The page's Kit tab:** Decay, Sustain, Filter, Resonance, Trim silence (setting 31), Toggle.
 - **Saving:** project version 14 (20 settings a pad; 13, 12, 11 read with Decay 0, Sustain 100, the filter open);
   kit.json gains "decay", "sustain", "cutoff", "reso" (missing: the same defaults).
+
+## Round C, 2026-11-26
+
+The owner's ask: "you load in samples or record samples to each pad, then these samples become their own thing, so
+you can then crop, transform, resample, freeze effects, stretch, whatever and it does not modify the original samples
+you loaded in. Similar to Koala. Then when you save a Kit, a Kit is stored as a folder with a collection of its
+samples." Built for rapid iteration (no new tests; the existing ones kept passing).
+
+- **The project's own folder:** `Samples/RemoteFM1/Kits/Projects/NN/` (NN the project's slot, 01..32). Move's own
+  browser sees it (as it sees Kits/); Files' Kits never lists it (no kit.json). The core keeps a path there as
+  `@/<name>` (`RFM_MOVE_KIT_OWN`: the open project's folder, whatever its slot), so a rename never touches it and a
+  project cut and pasted or duplicated keeps its sounds: the host's storage moves the folder with the project as it
+  moves the firmwares' copies (delete: the folder deleted; cut: moved into `Projects/.clip`; copy: copied there;
+  paste: copied from there; the page's duplicate: copied; an import: an empty folder). Saved bytes unchanged:
+  project version 14 still.
+- **Kept sounds are copied in** on the file thread: Files' click, Files left any other way (another tab, the view
+  closed, another pad's browse) after the jog put a sound on the pad (`KIT_KEEP`), All To Pads, To Kit and a take's
+  slices (`KIT_LOAD` param 1), a kit loaded, a take recorded into a pad, the sampler's next empty pad. While browsing
+  the jog still loads the original (nothing written). A copy is named as its source (" 2", " 3" .. when another file
+  has the name); a file already in the folder, the same source copied before, or a file there with the same bytes is
+  not copied again. A take recorded into a pad is copied: the take library keeps its own entry.
+- **Edits write into the folder:** Mix, Join, Trim, Normalize, Reverse, Freeze; `Kits/Edits/` only when there is no
+  project folder (older projects pointing there still load). An older project's pads keep their paths until a keep or
+  an edit; nothing is migrated on load.
+- **Clean-up:** when the open project is saved (the autosave, the pad's save, leaving it), the folder's files that
+  neither a pad, nor the Undo (a pad's, the whole kit's), nor an answer on its way refers to are deleted on the file
+  thread: regular files right in that folder only, a minute old at least (a file just made is never at risk), never
+  anything outside `Kits/Projects/`.
+- **Freeze** (the Sound row's tools: Play, Trim, Normalize, Reverse, **Freeze** (a snowflake), Delete; the page's
+  Kit tab: a Freeze button): the pad rendered offline on the file thread by a voice of the kit's own code into
+  `<name> frz.wav` (16-bit stereo, 48 kHz): its region, pitch and fine, stretch (the repitch rendered), reverse, the
+  AHDSR, the filter, level and pan, at full velocity. Length: **One shot** the whole note to its end, the release its
+  tail; **Momentary, Loop, Toggle** held for the region once (at the pad's rate), then released (the release's
+  tail). At most 60 s and the kit's memory (else "Too Long"); past full scale it clips. Then the pad has the new file
+  with pitch 0, stretch Off, reverse Off, the region whole, the envelope default (A, H, D, R 0, Sustain 100 %), the
+  filter open, resonance 0, level 0 dB, pan centre; play mode, choke, mute and the sends stay. "Freezing" at the
+  click, the pad blinks white while it renders, "Frozen / Pad N" when done; one Undo brings the unfrozen pad back.
+  The send FX are not baked: they run in the engine's chain.
+- **Kits:** Save copies the sounds the kit uses (from the project's folder) into `Kits/<name>/` with `kit.json`, as
+  before. Loading a kit copies its sounds into the project's folder, so editing never changes the saved kit.
+- **Follow-up:** **Freeze with FX** (the sends rendered through the audio FX); a sound's original place for Files
+  after a restart (within a run Files opens on the source of a copy it made; after one, on the project's folder).

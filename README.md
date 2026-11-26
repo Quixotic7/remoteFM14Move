@@ -1394,7 +1394,7 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
-## The kit (rfm1cs stages 3a, 3b and 3c, round A; src/kit.c)
+## The kit (rfm1cs stages 3a, 3b and 3c, rounds A, B and C; src/kit.c)
 
 rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
 4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
@@ -1451,8 +1451,8 @@ pad's path and twelve settings), and says which notes play which pad. The help p
 - **(stage 3b) The sampler:** the host offers Source Kit and To (Files, Kit). To Kit: a take saved (not one recorded
   into a pad) goes onto `rfm_move_kit_next_empty(core, 1)` (the core marks it loading), "the kit has no empty pad"
   in the log when there is none.
-- **(stage 3c) New sounds:** every new file is written on the file thread (never the engine's) into
-  `<takes dir>/Kits/Edits` (`Samples/RemoteFM1/Kits/Edits`: Move's browser sees it; Files' Kits never lists it, it
+- **(stage 3c) New sounds:** (round C: into the project's own folder, below; `Kits/Edits` only without one) every new
+  file is written on the file thread (never the engine's) into `<takes dir>/Kits/Edits` (`Samples/RemoteFM1/Kits/Edits`: Move's browser sees it; Files' Kits never lists it, it
   has no kit.json), a 16-bit stereo WAV at the first sound's rate written beside (`.tmp`) and renamed into place, named
   for what it is ("Mix 2+5", "Join 2+5", "Kick trim", "Kick norm", "Kick rev"; " 2", " 3" .. when the name is taken),
   then put on its pad as a load (`rfm_move_kit_loaded` with its path, saved with the project). A sound several pads
@@ -1521,6 +1521,25 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   resonance, level, pan, decay) go to `kit_note_lk` and apply to that voice only, at its frame. Slice's Tap
   (`KIT_SM_TAP`): the host answers one slice (the whole take); the core taps the cuts; `KIT_SLICE` `_PLAY` with count 0
   stops the pass. The page's Kit tab: the four settings, Trim silence (`ENG_OP_KIT_SET` setting 31), Toggle.
+- **(round C, 2026-11-26) The project's own sounds, Freeze** (KIT-SPEC "Round C"): each project has a folder,
+  `<takes dir>/Kits/Projects/NN` (NN its slot: `kit_proj_dir`; Move's browser sees it, Files' Kits does not list it).
+  The core keeps a file there as `@/<name>` (`KIT_OWN`; `kit_resolve` reads it against the open project's folder,
+  `kit_project`, set from `rfm_move_project_slot` before each kit action), so the storage thread moves the folder
+  with its project (`proj_files` / `kit_files`: delete, cut into `Projects/.clip`, copy, paste, the page's duplicate;
+  an import empties it). A kept sound is copied in on the file thread (`own_copy`: the source's name, " 2" .. when
+  taken; not again for a file already there, the same source copied before, or the same bytes there): `KIT_KEEP`
+  (`kit_keep`: the pad's latest load; answer `KIT_A_OWNED` -> `rfm_move_kit_owned`), `KIT_LOAD` param 1
+  (`kit_load_own`, `kit_load_row_own`: To Kit, slices), All To Pads, a kit opened (its sounds copied, so the saved
+  kit never changes), a take recorded into a pad (the take library keeps its own), the sampler's next empty pad.
+  Mix, Join, Trim, Normalize, Reverse and Freeze write there. `kit_clean` at the open project's `PROJECT_SAVE`: the
+  folder's regular files that no core path (`rfm_move_kit_refs`: the pads, the Undo), pad, answer on its way or latest
+  load refers to, a minute old at least, deleted on the file thread (never outside `Kits/Projects/`). **Freeze**
+  (`KIT_EDIT` `KIT_ED_FREEZE`, `do_freeze`): the pad's settings at the ask rendered offline by a voice of a kit of its
+  own (the same `note_on` / `voice_run`): region, pitch, stretch, reverse, AHDSR, filter, level, pan, velocity 127, no
+  sends; one shot to its end (the release its tail), the held modes held for the region once then released; at most
+  `KIT_FREEZE_S` (60 s) and the kit's memory; `<name> frz.wav` at 48 kHz. The page's Kit tab: Freeze (`POST
+  /api/kit` op `freeze`, `ENG_OP_KIT_EDIT`), the chosen pad's file (`kit_json`'s `path`). `/api/status`: `kit_own`
+  (the chosen pad's sound the project's), the counts `kit_owned`, `kit_cleans`.
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,

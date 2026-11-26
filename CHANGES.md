@@ -1,6 +1,14 @@
 # Changes
 
-## Unreleased: the kit (stages 3a, 3b and 3c, rounds A and B)
+## Unreleased: the kit (stages 3a, 3b and 3c, rounds A, B and C)
+
+- **Round C: sounds of the project's own.** A sound you keep on a pad (Files, All To Pads, To Kit, a kit loaded, a
+  take recorded into a pad, slices) is copied into the project's folder (Samples/RemoteFM1/Kits/Projects/NN), and
+  every edit writes there: the samples you loaded are never changed. Saving a kit copies its sounds into the kit's
+  folder; loading one copies them into the project. Deleting a project deletes its folder; a duplicated project gets
+  a copy. Sounds the project no longer uses are cleaned up as it saves. New **Freeze** in the Sound row's tools (and
+  on the page's Kit tab): the pad as it sounds now (pitch, stretch, reverse, envelope, filter, level, pan) becomes a
+  new sound with those settings back to neutral; Undo brings the pad back.
 
 - **Round B:** each pad's envelope has Decay and Sustain, and a resonant low-pass filter (knobs 5 and 6). Hold Shift
   as you touch a knob for the envelope page (attack, hold, decay, sustain, release, choke, pan, fine). Hold a step and
