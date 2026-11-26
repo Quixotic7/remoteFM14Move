@@ -117,7 +117,8 @@ typedef struct {
     uint8_t thumb[KIT_THUMB];
 } kit_row_t;
 enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES, KIT_A_FOUND, KIT_A_PEAKS,
-       KIT_A_OWNED };             /* (round C) OWNED: pad, was (the core's path) now path (the project's copy) */
+       KIT_A_OWNED,               /* (round C) OWNED: pad, was (the core's path) now path (the project's copy) */
+       KIT_A_EXPORTED };          /* (2026-11-26) EXPORTED: n the files written (-1 failed), path the folder */
 #define KIT_DEPTH 8               /* (round A) folders deep in Samples, as rfm1cs's RFM_MOVE_KIT_DEPTH */
 #define KIT_LEAD_LEVEL 104        /* (round A) Trim silence: -50 dBFS (of 32767) */
 #define KIT_LEAD_MS 5             /* .. the start this much before the first sound */
@@ -164,7 +165,8 @@ typedef struct {
     uint32_t folders[KIT_DEPTH + 1];
     int16_t sels[KIT_DEPTH + 1];
     uint32_t zfrom, zcount;
-    char was[KIT_PATH];           /* (round C) OWNED: the pad's path before */
+    char was[KIT_PATH];           /* (round C) OWNED: the pad's path before; (2026-11-26) LOADED kept: the file it is a
+                                   * copy of (its original place: rfm_move_kit_set_orig), "" none */
 } kit_ans_t;
 typedef struct kit kit_t;
 
@@ -233,8 +235,13 @@ int kit_cuts_ex(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, 
 uint32_t kit_lead(const int16_t *pcm, uint32_t frames, uint32_t rate);
 /* (round A, the engine's thread) a take recorded into a pad: as kit_load, its answer's lead found (trim 1) */
 void kit_load_rec(kit_t *k, int pad, const char *path, int trim);
-/* where a pad's sound sits in Files (Takes, or Samples' folders): answer KIT_A_FOUND */
-void kit_find(kit_t *k, int pad, const char *path);
+/* where a pad's sound sits in Files (Takes, or Samples' folders): answer KIT_A_FOUND. (2026-11-26) orig (NULL, ""
+ * none): the pad's original place (rfm1cs's KIT_FIND), found instead while that file is there */
+void kit_find(kit_t *k, int pad, const char *path, const char *orig);
+/* (2026-11-26, rfm1cs KIT_EXPORT) the pads' sounds as they are (the files the pads hold) copied into a new folder of My
+ * Samples named name (" 2", " 3" .. when there is one: nothing overwritten), each "NN <names[pad]>.<its extension>"
+ * (names[pad] "": the file's name); on the file thread, never touching a source. Answer KIT_A_EXPORTED */
+void kit_export(kit_t *k, const char *name, const char *const names[KIT_PADS]);
 /* the close-up's peaks: the pad's frames [from, from + count) as n peaks (scaled as its whole wave's), on the file
  * thread: answer KIT_A_PEAKS (a newer ask replaces one not started) */
 void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n);

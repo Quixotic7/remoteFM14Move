@@ -378,6 +378,37 @@ wait_for 5 '[ "$(field kit_cur)" = 4 ] && [ "$(field kit_own)" = 1 ] && [ "$(fie
     && [ "$(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)" = 2/30/70/-40 ] \
     && ok "a third start: pad 5's sound from the project's own copy (\"@/\" Bell.flac, read as FLAC), its Warp, Loop fade, Morph, filter envelope kept" \
     || bad "pad 5 after a start: cur '$(field kit_cur)' own '$(field kit_own)' file '$(field kit_file)' settings $(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)"
+# (2026-11-26, the owner's: "After closing app and relaunching ... I would like it to always point at the original
+# sample location") pad 5 plays its copy and still knows its original: Files opens on Bell in the Move Library
+f0=$(field kit_finds)
+[ "$(field kit_orig)" = 1 ] || bad "pad 5's original place after a start: orig '$(field kit_orig)'"
+jog 1 1; click                                              # (Pad Sample at rest; the click: Files on the pad's sound)
+wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 4 ] && [ "$(field kit_depth)" = 2 ]' \
+    && ok "after a relaunch: Files on pad 5's original (Bell in the Move Library), not the project's copy" \
+    || bad "Files on the original after a start: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)' depth '$(field kit_depth)'"
+press 51; press 51; press 51; sleep 0.3                     # (Back: out of Files)
+# (2026-11-26, the owner's: "none of this was playing until I stopped playback and started again") playing: pad 5's
+# steps (track 14), then pad 1's (track 13), each heard on the next pass, Play pressed once
+press 85; sleep 0.5
+cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.2           # (Shift + pad 5: chosen)
+cmd "note 16 127"; sleep 0.1; cmd "note 16 0"; cmd "note 24 127"; sleep 0.1; cmd "note 24 0"; sleep 0.2
+cmd "cc 49 127"; hit 68; cmd "cc 49 0"; sleep 0.2           # (Shift + pad 1: chosen)
+cmd "note 20 127"; sleep 0.1; cmd "note 20 0"; cmd "note 28 127"; sleep 0.1; cmd "note 28 0"; sleep 2.2
+n0=$(field kit_notes); sleep 2.0; n1=$(field kit_notes)
+[ "$(field seq_playing)" = 1 ] && [ $((n1 - n0)) -ge 6 ] \
+    && ok "playing: pad 5's and then pad 1's new steps sound on the next pass ($((n1 - n0)) notes in a bar)" \
+    || bad "the new steps while playing: playing '$(field seq_playing)' notes $n0 -> $n1"
+press 85; sleep 0.3
+# (2026-11-26) Export Samples: a kit track's settings (Shift + step 3), the jog's fifth row, the click
+cmd "cc 49 127"; hit 18; cmd "cc 49 0"; sleep 0.3           # (Shift + step 3: track 13's settings)
+jog 4 1; x0=$(field kit_exports); click
+wait_for 5 '[ "$(field kit_exports)" = $((x0 + 1)) ] && [ "$(field kit_exported)" -ge 5 ]' \
+    && ls "$SMP/Kit 1" | grep -q "^01 " && [ -f "$SMP/Kit 1/05 Bell.flac" ] && cmp -s "$SMP/Kit 1/05 Bell.flac" tests/flac/tone.flac \
+    && ok "Export Samples: $(field kit_exported) files into My Samples/Kit 1 ($(ls "$SMP/Kit 1" | tr '\n' ',' | sed 's/,$//'))" \
+    || bad "Export Samples: exports '$(field kit_exports)' (from $x0) files '$(field kit_exported)' $(ls "$SMP" | tr '\n' ' ') $(grep 'export' "$L" | tail -2)"
+click; wait_for 5 '[ "$(field kit_exports)" = $((x0 + 2)) ]' && sleep 0.5 && [ -d "$SMP/Kit 1 2" ] \
+    && ok "Export Samples again: a new folder (Kit 1 2), nothing overwritten" || bad "the second export: $(ls "$SMP" | tr '\n' ' ')"
+press 51; sleep 0.2
 stop
 cp "$L" build/test-out/kit_host.log
 echo "kit_e2e: $checks checks, $fail failed (the host's log: build/test-out/kit_host.log; screens build/test-out/kit_*.pbm)"

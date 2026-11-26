@@ -142,7 +142,7 @@ typedef struct {
  * the master; no preview or audition path any more */
 #define SLP KIT_PADS
 enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER, RQ_MERGE, RQ_EDIT, RQ_SLICE,
-       RQ_FIND, RQ_PEAKS, RQ_KEEP };   /* (round A: FIND, PEAKS; round C: KEEP) */
+       RQ_FIND, RQ_PEAKS, RQ_KEEP, RQ_EXPORT };   /* (round A: FIND, PEAKS; round C: KEEP; 2026-11-26 EXPORT) */
 typedef struct {
     int kind, pad, place, n, from;
     uint32_t id, gen;
@@ -253,6 +253,10 @@ struct kit {
     char wlast[KIT_PADS][KIT_PATH];   /* (the file thread's) the file each pad's latest load or edit gave */
     struct { char src[KIT_PATH], dst[KIT_PATH]; long long mtime, size; } own[32];   /* (the file thread's) copies made */
     int own_n;
+    /* (2026-11-26, mu) EXPORT's: the folder's name, each pad's file and name as asked */
+    char ex_name[KIT_PATH];
+    char ex_src[KIT_PADS][KIT_PATH];
+    char ex_nm[KIT_PADS][KIT_NAME];
     int clean_due;                /* (mu) kit_clean asked: clean_dir's files but clean_keep's */
     char clean_dir[KIT_PATH];
     char clean_keep[64][256];
@@ -1419,6 +1423,73 @@ static void do_keep(kit_t *k, const req_t *r)
     snprintf(k->wlast[r->pad], sizeof k->wlast[0], "%s", to);
     answer(k, &a);
 }
+/* (2026-11-26, the owner's: "export the samples in the kit as a group. We shouldn't be modifying any of the original
+ * samples") EXPORT: My Samples/<name>[ N]/NN <pad's name>.<ext>, copies of the files the pads hold */
+static void ex_clean(char *s)                           /* a file or folder name: printable, no '/', not hidden */
+{
+    int i;
+    for (i = 0; s[i]; i++)
+        if ((unsigned char)s[i] < 32 || (unsigned char)s[i] > 126 || s[i] == '/' || s[i] == '\\' || s[i] == ':')
+            s[i] = '_';
+    while (s[0] == '.' || s[0] == ' ')
+        memmove(s, s + 1, strlen(s));
+}
+static void do_export(kit_t *k)
+{
+    static char src[KIT_PADS][KIT_PATH], nm[KIT_PADS][KIT_NAME];
+    char name[KIT_PATH], dir[KIT_PATH + 16], f[KIT_PATH + 300];
+    struct stat st;
+    ans_t a;
+    int i, n = 0;
+    pthread_mutex_lock(&k->mu);
+    snprintf(name, sizeof name, "%s", k->ex_name);
+    memcpy(src, k->ex_src, sizeof src);
+    memcpy(nm, k->ex_nm, sizeof nm);
+    pthread_mutex_unlock(&k->mu);
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_EXPORTED, a.a.n = -1;
+    ex_clean(name);
+    name[100] = 0;
+    if (!name[0])
+        snprintf(name, sizeof name, "Kit");
+    for (i = 1; i < 1000; i++) {                        /* (a new folder: never into one that is there) */
+        if (i == 1)
+            snprintf(dir, sizeof dir, "%s/%s", k->samples, name);
+        else
+            snprintf(dir, sizeof dir, "%s/%s %d", k->samples, name, i);
+        if (stat(dir, &st))
+            break;
+    }
+    if (!k->samples[0] || i >= 1000 || mkdirs(dir)) {
+        fprintf(stderr, "kit: export: no folder for '%s' in '%s'\n", name, k->samples);
+        answer(k, &a);
+        return;
+    }
+    for (i = 0; i < KIT_PADS; i++) {
+        char base[KIT_NAME + 8], ext[32], tmp[KIT_PATH + 310];
+        const char *dot = strrchr(src[i], '.'), *sl = strrchr(src[i], '/');
+        if (!src[i][0] || stat(src[i], &st) || !S_ISREG(st.st_mode))
+            continue;
+        snprintf(ext, sizeof ext, "%s", dot && (!sl || dot > sl) && strlen(dot) < sizeof ext ? dot : ".wav");
+        if (nm[i][0])
+            snprintf(base, sizeof base, "%s", nm[i]);
+        else
+            base_name(src[i], base, sizeof base);
+        ex_clean(base);
+        snprintf(f, sizeof f, "%s/%02d %s%s", dir, i + 1, base, ext);
+        snprintf(tmp, sizeof tmp, "%s.tmp", f);
+        if (!stat(f, &st) || copy_file(src[i], tmp) || rename(tmp, f)) {
+            remove(tmp);
+            fprintf(stderr, "kit: export: pad %d (%s) not written\n", i + 1, src[i]);
+            continue;
+        }
+        n++;
+    }
+    a.a.n = n;
+    snprintf(a.a.path, sizeof a.a.path, "%s", dir);
+    fprintf(stderr, "kit: exported %d sound(s) into %s\n", n, dir);
+    answer(k, &a);
+}
 static int cleaning_keeps(const char (*keep)[256], int n, const char *name)
 {
     int i;
@@ -1496,6 +1567,8 @@ static void do_load(kit_t *k, const req_t *r)
     if (r->own) {                                       /* (round C: kept: the project's own copy, read from there) */
         char cp[KIT_PATH];
         own_copy(k, r->proj, path, cp, sizeof cp);
+        if (strcmp(cp, path))                           /* (2026-11-26) the copy's original place, for the core */
+            snprintf(a.a.was, sizeof a.a.was, "%s", path);
         snprintf(path, sizeof path, "%s", cp);
     }
     a.pcm = shared_get(k, path, &a.a.frames, &a.a.rate);   /* (3c: in memory already, another pad's: shared) */
@@ -1536,11 +1609,14 @@ static void do_find(kit_t *k, const req_t *r0)
     const req_t *r = &rr;
     int oi;
     rr = *r0;
-    for (oi = 0; oi < k->own_n; oi++)
-        if (!strcmp(k->own[oi].dst, r0->path) && !access(k->own[oi].src, F_OK)) {
-            snprintf(rr.path, sizeof rr.path, "%s", k->own[oi].src);
-            break;
-        }
+    if (r0->path2[0] && !access(r0->path2, F_OK))       /* (2026-11-26) the pad's original place, while it is there */
+        snprintf(rr.path, sizeof rr.path, "%s", r0->path2);
+    else
+        for (oi = 0; oi < k->own_n; oi++)
+            if (!strcmp(k->own[oi].dst, r0->path) && !access(k->own[oi].src, F_OK)) {
+                snprintf(rr.path, sizeof rr.path, "%s", k->own[oi].src);
+                break;
+            }
     ans_t a;
     tl_row_t t;
     int pi;
@@ -2331,6 +2407,7 @@ void kit_work(void *arg)
                 do_make(k, &r);
             break;
         case RQ_KEEP: do_keep(k, &r); break;
+        case RQ_EXPORT: do_export(k); break;            /* (2026-11-26) */
         case RQ_SLICE: do_slice(k, &r); break;
         case RQ_FIND: do_find(k, &r); break;             /* (round A) */
         case RQ_PEAKS: do_peaks(k, &r); break;
@@ -2480,7 +2557,7 @@ void kit_load(kit_t *k, int pad, const char *path) { load_as(k, pad, path, 0, 0)
 void kit_load_own(kit_t *k, int pad, const char *path) { load_as(k, pad, path, 1, 0); }
 /* (round C: a take recorded into a pad: copied into the project's folder, the take library keeps its own) */
 void kit_load_rec(kit_t *k, int pad, const char *path, int trim) { load_as(k, pad, path, 1, trim); }
-void kit_find(kit_t *k, int pad, const char *path)
+void kit_find(kit_t *k, int pad, const char *path, const char *orig)
 {
     static req_t r;
     if (!k || pad < 0 || pad >= KIT_PADS || !path || !path[0])
@@ -2488,6 +2565,25 @@ void kit_find(kit_t *k, int pad, const char *path)
     memset(&r, 0, sizeof r);
     r.kind = RQ_FIND, r.pad = pad;
     kit_resolve(k, path, r.path, sizeof r.path);
+    if (orig && orig[0] && strncmp(orig, KIT_OWN, 2))   /* (2026-11-26) the original place (a file, not the project's) */
+        snprintf(r.path2, sizeof r.path2, "%s", orig);
+    request(k, &r);
+}
+void kit_export(kit_t *k, const char *name, const char *const names[KIT_PADS])
+{
+    req_t r;
+    int i;
+    if (!k)
+        return;
+    pthread_mutex_lock(&k->mu);
+    snprintf(k->ex_name, sizeof k->ex_name, "%s", name && name[0] ? name : "Kit");
+    for (i = 0; i < KIT_PADS; i++) {
+        snprintf(k->ex_src[i], sizeof k->ex_src[i], "%s", k->ppath[i]);   /* (the engine's: the file each pad holds) */
+        snprintf(k->ex_nm[i], sizeof k->ex_nm[i], "%s", names && names[i] ? names[i] : "");
+    }
+    pthread_mutex_unlock(&k->mu);
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_EXPORT;
     request(k, &r);
 }
 void kit_project(kit_t *k, const char *dir)

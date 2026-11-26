@@ -998,6 +998,8 @@ static int g_kit_force;                  /* (the page's Kit tab) its JSON made a
 static char g_kits_dir[1024];            /* (round C) Samples/RemoteFM1/Kits ("" none) */
 static int g_kit_proj = -2;              /* .. the project whose folder the kit has (kit_project) */
 static uint32_t g_kit_t_owned, g_kit_t_cleans;   /* (tests, round C) */
+static uint32_t g_kit_t_exports;               /* (tests, 2026-11-26) KIT_EXPORT asked; the last one's files */
+static int g_kit_t_exported = -2;
 static void kit_proj_sync(void);
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
@@ -1081,6 +1083,7 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_AUDITION:
     case RFM_MOVE_ACT_KIT_KEEP:    /* (round C; 2026-11-26: it never reached the kit, so no browse was copied in) */
     case RFM_MOVE_ACT_KIT_GHOST:   /* (2026-11-26) a ghost trigger's locks onto the pad's sounding voices */
+    case RFM_MOVE_ACT_KIT_EXPORT:  /* (2026-11-26) a kit track's settings' Export Samples */
         kit_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
@@ -4743,13 +4746,39 @@ static void kit_action(const rfm_move_act_t *a)
             kit_slice_done(g_kit);
         break;
     case RFM_MOVE_ACT_KIT_FOLDER: kit_folder(g_kit, a->value, a->take); break;
-    case RFM_MOVE_ACT_KIT_FIND:   /* (round A) where the pad's sound sits in Files */
+    case RFM_MOVE_ACT_KIT_FIND:   /* (round A) where the pad's sound sits in Files; (2026-11-26) the path, then (after a
+                                   * NUL) its original place when the core knows it */
         if (a->data && a->len) {
-            char p[KIT_PATH];
-            snprintf(p, sizeof p, "%.*s", (int)(a->len < sizeof p ? a->len : sizeof p - 1), (const char *)a->data);
-            kit_find(g_kit, a->index, p);
+            char p[KIT_PATH], o[KIT_PATH];
+            const uint32_t n = (uint32_t)strnlen((const char *)a->data, a->len);
+            snprintf(p, sizeof p, "%.*s", (int)(n < sizeof p ? n : sizeof p - 1), (const char *)a->data);
+            o[0] = 0;
+            if (n + 1 < a->len)
+                snprintf(o, sizeof o, "%.*s", (int)(a->len - n - 1 < sizeof o ? a->len - n - 1 : sizeof o - 1),
+                         (const char *)a->data + n + 1);
+            kit_find(g_kit, a->index, p, o);
         }
         break;
+    case RFM_MOVE_ACT_KIT_EXPORT: {   /* (2026-11-26) a kit track's settings' Export Samples: the folder's name, then the
+                                   * pads' names, each NUL-ended */
+        static char nm[KIT_PADS][KIT_NAME], fold[KIT_PATH];
+        const char *names[KIT_PADS];
+        uint32_t at = 0;
+        int i;
+        fold[0] = 0;
+        for (i = -1; i < KIT_PADS; i++) {
+            const uint32_t l = a->data && at < a->len ? (uint32_t)strnlen((const char *)a->data + at, a->len - at) : 0;
+            char *o = i < 0 ? fold : nm[i];
+            const size_t cap = i < 0 ? sizeof fold : sizeof nm[0];
+            snprintf(o, cap, "%.*s", (int)(l < cap ? l : cap - 1), a->data ? (const char *)a->data + at : "");
+            at += l + 1;
+            if (i >= 0)
+                names[i] = nm[i];
+        }
+        kit_export(g_kit, fold, names);
+        g_kit_t_exports++;
+        break;
+    }
     case RFM_MOVE_ACT_KIT_PEAKS: kit_zoom(g_kit, a->index, a->from, a->count, a->value), g_kit_t_zooms++; break;
     case RFM_MOVE_ACT_KIT_AUDITION: kit_audition(g_kit, a->index, a->from, a->count), g_kit_t_auds++; break;
     case RFM_MOVE_ACT_KIT_LOAD:
@@ -4902,6 +4931,15 @@ static int kit_answers(void)
                 g_kit_t_kits++;
             } else
                 redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);
+        } else if (a.kind == KIT_A_EXPORTED) {   /* (2026-11-26) Export Samples done */
+            char t[32];
+            if (a.n > 0)
+                snprintf(t, sizeof t, "Exported %d", a.n);
+            else
+                snprintf(t, sizeof t, "%s", a.n < 0 ? "Not Exported" : "Nothing Exported");
+            rfm_move_popup(&S->core, t);
+            g_kit_t_exported = a.n;
+            redraw = 1;
         } else if (a.kind == KIT_A_OWNED) {   /* (round C) the pad's sound now the project's own copy */
             redraw |= rfm_move_kit_owned(&S->core, a.pad, a.was, a.path);
             g_kit_t_owned++;
@@ -4915,6 +4953,8 @@ static int kit_answers(void)
             if (a.status != KIT_OK)
                 fprintf(stderr, "engine: kit pad %d: %s not loaded (%d)\n", a.pad + 1, a.path, a.status);
             redraw |= rfm_move_kit_loaded(&S->core, a.pad, a.status, a.name, a.path, a.frames, a.rate, a.npk, a.pk);
+            if (a.status == KIT_OK && a.was[0])   /* (2026-11-26) a kept load's copy: the sound's original place */
+                rfm_move_kit_set_orig(&S->core, a.pad, a.was);
             g_kit_t_loads++;
             if (a.status == KIT_OK && a.lead >= 0) {   /* (round A) a take recorded into the pad: its silence skipped */
                 g_kit_t_lead = a.lead;
@@ -5611,14 +5651,15 @@ static void housekeeping(uint32_t now)
                               "\"kit_sl_n\":%d,\"kit_sl_first\":%d,\"kit_mg\":%d,\"kit_finds\":%u,\"kit_zooms\":%u,"
                               "\"kit_auds\":%u,\"kit_aud\":%d,\"kit_trims\":%u,\"kit_lead\":%d,\"kit_mode\":%d,"
                               "\"kit_trim\":%d,\"kit_tsel\":%d,\"kit_depth\":%d,\"kit_owned\":%u,\"kit_cleans\":%u,"
-                              "\"kit_own\":%d", kp,
+                              "\"kit_own\":%d,\"kit_exports\":%u,\"kit_exported\":%d,\"kit_orig\":%d", kp,
                               kit_frames(g_kit, t->cur), t->pad[t->cur].v[RFM_MOVE_KIT_P_START],
                               t->pad[t->cur].v[RFM_MOVE_KIT_P_END], g_kit_t_made, g_kit_t_slices, g_kit_t_slplay, t->sl_on,
                               t->sl_ok == 1 ? t->sl_n : -1, t->sl_first, t->mg_b ? 2 : t->mg_a ? 1 : 0, g_kit_t_finds,
                               g_kit_t_zooms, g_kit_t_auds, kit_auditioning(g_kit), g_kit_t_trims, (int)g_kit_t_lead,
                               t->pad[t->cur].v[RFM_MOVE_KIT_P_MODE], rfm_move_kit_trim(&S->core), t->fsel[t->depth],
                               t->depth, g_kit_t_owned, g_kit_t_cleans,   /* (round C: the pad's sound the project's own) */
-                              !strncmp(t->pad[t->cur].path, KIT_OWN, 2));
+                              !strncmp(t->pad[t->cur].path, KIT_OWN, 2), g_kit_t_exports, g_kit_t_exported,
+                              t->pad[t->cur].orig[0] != 0);   /* (2026-11-26: Export Samples; the original place) */
             }
         }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */

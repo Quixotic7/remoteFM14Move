@@ -906,7 +906,7 @@ static void t_rounda(void)
     snprintf(d, sizeof d, "%s/fd/sub", DIRP), mkdir(d, 0755);
     snprintf(p, sizeof p, "%s/fd/sub/a.wav", DIRP), wav(p, 100, 1, 16, 0, 48000);
     snprintf(p, sizeof p, "%s/fd/sub/b.wav", DIRP), wav(p, 100, 1, 16, 0, 48000);
-    kit_find(k, 1, p);
+    kit_find(k, 1, p, NULL);
     kit_work(k);
     CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.pad == 1 && a.place == KIT_PL_SAMPLES && a.depth == 2 &&
           a.sels[2] == 1 && a.take);
@@ -921,8 +921,14 @@ static void t_rounda(void)
         kit_rows(k, KIT_PL_SAMPLES, f2, 1, 1), kit_work(k);
         CHECK(kit_poll(k, &r) && r.n == 1 && !strcmp(r.rows[0].name, "b") && r.rows[0].id == id);
     }
-    kit_find(k, 1, "/nowhere/x.wav"), kit_work(k);
+    kit_find(k, 1, "/nowhere/x.wav", NULL), kit_work(k);
     CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.place == 0);
+    /* (2026-11-26) the pad's original place first while that file is there (the path: the project's copy), gone: the
+     * path */
+    kit_find(k, 1, "/nowhere/x.wav", p), kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.place == KIT_PL_SAMPLES && a.depth == 2 && a.sels[2] == 1);
+    kit_find(k, 1, p, "/nowhere/gone.wav"), kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_FOUND && a.place == KIT_PL_SAMPLES && a.sels[2] == 1);
     kit_free(k);
     /* .. a take: its row in Takes (the newest first) */
     {
@@ -936,7 +942,7 @@ static void t_rounda(void)
         memset(&c, 0, sizeof c);
         c.fs = 48000, c.tl = l;
         k = kit_new(&c);
-        kit_find(k, 4, p);
+        kit_find(k, 4, p, NULL);
         CHECK(wait_kind(k, &a, KIT_A_FOUND) && a.pad == 4 && a.place == 0);   /* (2026-11-26: no Takes place; a take is
                                                          * found in My Samples, here none) */
         kit_free(k);
@@ -1347,6 +1353,63 @@ static void t_poly(void)
     CHECK(!live(k, 0) && live(k, 1) && live(k, 4));
     kit_free(k);
 }
+/* (2026-11-26, the owner's: "export the samples in the kit as a group. We shouldn't be modifying any of the original
+ * samples") KIT_EXPORT: the files the pads hold copied into a new folder of My Samples, "NN <name>.<ext>", a second
+ * export a new folder (" 2"), the sources untouched; a kept load's answer names the copy's original (was) */
+static int same_file(const char *a, const char *b)
+{
+    FILE *x = fopen(a, "rb"), *y = fopen(b, "rb");
+    int same = x && y;
+    while (same) {
+        const int ca = fgetc(x), cb = fgetc(y);
+        if (ca != cb)
+            same = 0;
+        else if (ca == EOF)
+            break;
+    }
+    if (x)
+        fclose(x);
+    if (y)
+        fclose(y);
+    return same;
+}
+static void t_export(void)
+{
+    kit_t *k = mk(64u << 20);
+    kit_ans_t a;
+    char d[600], p1[600], p2[600], f[700], proj[600];
+    const char *names[KIT_PADS] = { "Kick", "", "", "", "Hat" };
+    struct stat st0, st1;
+    snprintf(d, sizeof d, "%s/ex", DIRP), mkdir(d, 0755);
+    snprintf(p1, sizeof p1, "%s/ex/kick.wav", DIRP), wav(p1, 4800, 1, 16, 0, 48000);
+    snprintf(p2, sizeof p2, "%s/ex/hat.aif", DIRP), aiff(p2, 2400, 2, 0, 44100);
+    CHECK(!stat(p1, &st0));
+    CHECK(load(k, 0, p1, &a) == KIT_OK && load(k, 4, p2, &a) == KIT_OK);
+    kit_export(k, "My/Kit", names), kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_EXPORTED && a.n == 2);
+    snprintf(f, sizeof f, "%s/My_Kit/01 Kick.wav", DIRP);
+    CHECKF(same_file(f, p1), "%s", f);
+    snprintf(f, sizeof f, "%s/My_Kit/05 Hat.aif", DIRP);
+    CHECKF(same_file(f, p2), "%s", f);
+    kit_export(k, "My/Kit", names), kit_work(k);   /* (again: a new folder, nothing overwritten) */
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_EXPORTED && a.n == 2 && strstr(a.path, "My_Kit 2"));
+    snprintf(f, sizeof f, "%s/My_Kit 2/01 Kick.wav", DIRP);
+    CHECK(same_file(f, p1));
+    CHECK(!stat(p1, &st1) && st1.st_size == st0.st_size && st1.st_mtime == st0.st_mtime);   /* (the source as it was) */
+    /* a kept load: the copy in the project's folder, the original named */
+    snprintf(proj, sizeof proj, "%s/exproj", DIRP);
+    kit_project(k, proj);
+    kit_load_own(k, 1, p1), kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_LOADED && a.status == KIT_OK && !strcmp(a.was, p1) &&
+          !strncmp(a.path, KIT_OWN, 2));
+    kit_load_own(k, 2, a.path), kit_work(k);            /* (the copy itself kept: no original named) */
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_LOADED && a.status == KIT_OK && !a.was[0]);
+    CHECK(!stat(p1, &st1) && st1.st_size == st0.st_size && st1.st_mtime == st0.st_mtime);
+    kit_free(k);
+    printf("  ok    Export Samples: My Samples/My_Kit (01 Kick.wav, 05 Hat.aif), again My_Kit 2, the sources "
+           "untouched; a kept load names its original\n");
+}
+
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -1371,6 +1434,7 @@ int main(void)
     t_sustain_loop();
     t_scan();
     t_poly();
+    t_export();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

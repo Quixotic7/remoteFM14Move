@@ -485,3 +485,48 @@ be a shortcut to always adjust the microtiming."
   non-zero choke group cut each other; a pad again takes its own voice back; past 24 voices the oldest is stolen.
   Kept as checks: move_kit 63, kit_test t_poly.
 
+
+## Plain hits, playing pads, original places, Export, a held step's velocity, 2026-11-26
+
+The owner's, after trying the build: "When I click to add a new step, it should start with default trig values, like
+length 1, chance 100, etc. It seems like when I add a new step currently it contains lock on it for every parameter."
+"I had playback going ... sequenced a pattern ... but none of this was playing until I stopped playback and started
+again." "After closing app and relaunching, when I click a pad's sample it is no longer pointing to the original
+sample ... I would like it to always point at the original sample location. Then maybe in the track settings, shift +
+S3, add a feature in which you can export the samples in the kit as a group. We shouldn't be modifying any of the
+original samples." "Holding a step and turning the volume knob should always change that steps velocity."
+
+- **A new hit is plain.** The cause: a kit track took the sequencer's TRIG defaults for new steps (the Trig page's
+  knobs with no step held set them for the chosen pad's track; an older project may carry them), so every tapped or
+  recorded hit got that track's Ratchet, Chance, Cond and Func as locks (the padlock on each), its micro and its
+  length. Now a track routed to the kit takes none: a tapped step (or a Record hit, a step held + a pad, a Chop slot)
+  is one step long, micro 0, chance 100, no locks; only a held step + a knob locks. The kit's Trig page with no step
+  held is dark and dead (a firmware track's TRIG defaults are unchanged; turned on a kit track in the sequencer, they
+  do nothing). Locks already saved stay: they look the same as real ones, so loading never drops any (Delete + a knob,
+  Delete + Play clear them).
+- **Playing pads.** Not reproduced as such: on the core and on the simulator a pad of another track, sequenced while
+  playing (a sound loaded meanwhile, its track stopped or never started), sounds on the next pass. The likely cause is
+  the one above: a hit carrying a TRIG default Cond such as 1st (or Pre, Fill, a chance) plays only on the first pass
+  after Play, or not at all, which a stop and start "fixes". Gone with plain hits; move_kit 64 checks it with such
+  defaults on the track.
+- **Original places.** A pad remembers where its sound came from (`orig`, project version 18: 16 paths at the kit
+  part's end; 17 and older load with none): a kept load's copy (Files' click, All To Pads, To Kit, slices, a take into
+  a pad) names the file it copied (the host's KIT_A_LOADED `was` -> `rfm_move_kit_set_orig`, KIT_KEEP's OWNED ->
+  `rfm_move_kit_owned`). KIT_FIND carries it after the path (a NUL between): Files opens on the original, highlighted,
+  while that file is there, else on the project's copy. The pad still plays the copy (the project keeps working when
+  the original moves; copies and pastes of projects carry absolute originals unchanged). Derived audio (Trim,
+  Normalize, Reverse, Mix, Join, Freeze) is a new file in the project's folder (never written over anything: each
+  edit `new_path`s a free name) and is its own original. A loaded saved kit's pads open on the project's copy.
+- **Originals are never written.** Checked: every write of the kit is a new file in the project's folder (`own_copy`,
+  edits, Freeze), `Kits/<name>/` (Save) or the export folder; the clean-up deletes only regular files of
+  `Kits/Projects/NN/`; the takes are the recorder's new files.
+- **Export Samples:** a kit track's settings (Shift + step 3) get a fifth row, Export Samples, the jog's only (knob 5
+  stays dark); its click sends KIT_EXPORT (the kit's name, else "Project NN", then each pad's sound's name). The host
+  copies each pad's file as it is (the project's copy or an edit's) into `My Samples/<name>/` (" 2", " 3" .. when that
+  folder exists: nothing overwritten), as `NN <name>.<ext>` ("01 Kick.wav"), on the file thread, and says "Exported
+  12" (or "Not Exported"); nothing to export: "No Sounds".
+- **A held step + the volume knob:** the velocity from the touch on: the touch shows "Velocity" (no Master popup over
+  it), the turn sets the chosen pad's hits there (1..127), the master untouched; one undo a hold; an empty step or a
+  ghost (no hit): nothing (as a firmware track's held step). The cause: the volume knob's touch went to the main
+  handler, which put the Master level popup over the kit's velocity popup, so the turn looked like a master change.
+  Firmware tracks: the same touch now shows their VELO popup too.
