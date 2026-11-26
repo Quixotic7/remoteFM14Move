@@ -25,7 +25,12 @@
   over the pads by its hits, equal parts, steps, or by tapping the steps as it plays. Copy held + two pads: copy, mix
   or join.
 - **Sequencing:** the steps show the chosen pad's hits; hold a step and turn any knob to lock that hit's value, or the
-  volume knob for its velocity; hold a pitch and click a step to enter that pitch.
+  volume knob for its velocity; hold a pitch and click a step to enter that pitch. A lock's popup looks like the
+  knob's own, with the step's number in the corner.
+- **Levels:** hold a pad and turn the volume knob for that pad's level; hold Track 4 for the kit's (anywhere Track 4
+  reaches the kit). A level popup shows while the knob is touched.
+- **Pitch range:** Up and Down move the right half's pitches an octave (24 semitones down to 12 up; pads past +-24
+  are dark). Notes below the pad's own pitch are kept in the project (project version 16).
 - **A sample plays only from its pad or the sequence**, always through the kit's mix, FX sends and the volume knob.
 
 **Also new**

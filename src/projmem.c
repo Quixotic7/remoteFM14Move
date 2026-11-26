@@ -156,8 +156,9 @@ int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t 
 }
 
 /* (rfm1cs project.c kit_bytes) the kit part after the firmwares' from version 11: its size by version. A version
- * this file does not know stops the build: its layout must be added here first */
-typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 15 ? 1 : -1];
+ * this file does not know stops the build: its layout must be added here first. (2026-11-26) Version 16: notes of 8
+ * bytes (before the parts here, which are read from the end), the kit part as 15's */
+typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 16 ? 1 : -1];
 static uint32_t kit_bytes(int ver)
 {
     return ver >= 15 ? RFM_MOVE_KIT_BYTES : ver == 14 ? RFM_MOVE_KIT_BYTES_V14 : ver >= 12 ? RFM_MOVE_KIT_BYTES_V12
