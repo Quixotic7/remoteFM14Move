@@ -29,8 +29,11 @@ const TABS = ["Record", "Takes", "Kit"];
 // the envelope's steps (ms, as the knobs)
 const KROW = ["#FF3CA0", "#FF8C28", "#78DCFF", "#AA78FF"];
 const KP = { PITCH: 0, START: 1, END: 2, MODE: 3, ATTACK: 4, HOLD: 5, RELEASE: 6, CHOKE: 7, REVERSE: 8, LEVEL: 9, PAN: 10, MUTE: 11,
-  STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15, DECAY: 16, SUSTAIN: 17, CUTOFF: 18, RESO: 19, TRIM: 31 };   // (round B: the last four;
-// TRIM: the kit's Trim silence, set through setting 31)
+  STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15, DECAY: 16, SUSTAIN: 17, CUTOFF: 18, RESO: 19,   // (round B: these four)
+  LOOPS: 20, LOOPE: 21, LOOPXF: 22, PDEPTH: 23, PATTACK: 24, PRELEASE: 25, BITS: 26, DOWNS: 27, GPOS: 28, GSIZE: 29,
+  GDENS: 30, GSPRAY: 31, GSPREAD: 32, WARP: 33, SPEED: 34, WPITCH: 35, WGRAIN: 36, WJITTER: 37, WSEARCH: 38, MORPH: 39,
+  FENV: 40, FATTACK: 41, FDECAY: 42, FSUSTAIN: 43, FRELEASE: 44, TRIM: 63 };   // (pages v2: the engines', Warp, the
+// filter's; TRIM: the kit's Trim silence, set through setting 63)
 const cutText = (v) => { if (v >= 100) return "Open"; const hz = 20 * Math.pow(1000, v / 100); return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`; };
 const KFRAC = 32767;
 const ENV = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000];
@@ -539,10 +542,29 @@ export class SmpView {
     const S = (p, label, options) => segs(this, { key: `k${p}`, label, options, get: () => this.kv(p), set: (v) => this.kset(p, v) });
     const sets = h("div", { class: "mv-kit-sets" },
       row("Pitch", bar(this, { key: "k0", label: "Pitch", cls: "thin", min: -24, max: 24, color: () => col, get: () => Math.round(this.kv(KP.PITCH) / 100),
-        set: (v) => this.kset(KP.PITCH, v * 100), fmt: (v) => (this.kv(KP.STRETCH) ? "Stretch" : `${v > 0 ? "+" : ""}${v} st`) }), KP.PITCH),
+        set: (v) => this.kset(KP.PITCH, v * 100), fmt: (v) => (this.kv(KP.STRETCH) && this.kv(KP.WARP) === 1 ? "Fit" : `${v > 0 ? "+" : ""}${v} st`) }), KP.PITCH),
       row("Start", B(KP.START, "Start", { min: 0, max: KFRAC, fmt: secs }), KP.START),
       row("End", B(KP.END, "End", { min: 0, max: KFRAC, fmt: secs }), KP.END),
-      row("Play", S(KP.MODE, "Play", ["One shot", "Momentary", "Loop", "Toggle"]), KP.MODE),
+      row("Engine", S(KP.MODE, "Engine", ["One shot", "Momentary", "Loop", "Pitch Env", "LoFi", "Granular"]), KP.MODE),
+      // (pages v2) the engines' own
+      row("Loop fade", B(KP.LOOPXF, "Loop fade", { min: 0, max: 100, fmt: (v) => (v ? `${v} %` : "Off") }), KP.LOOPXF),
+      row("Pitch env", bar(this, { key: `k${KP.PDEPTH}`, label: "Pitch env depth", cls: "thin", min: -48, max: 48, color: () => col,
+        get: () => this.kv(KP.PDEPTH), set: (v) => this.kset(KP.PDEPTH, v), fmt: (v) => `${v > 0 ? "+" : ""}${v} st` }), KP.PDEPTH),
+      row("P attack", env(KP.PATTACK, "Pitch env attack"), KP.PATTACK),
+      row("P release", env(KP.PRELEASE, "Pitch env release"), KP.PRELEASE),
+      row("Bits", B(KP.BITS, "Bits", { min: 1, max: 16, fmt: (v) => `${v}` }), KP.BITS),
+      row("Downsample", B(KP.DOWNS, "Downsample", { min: 1, max: 32, fmt: (v) => (v > 1 ? `1/${v}` : "Off") }), KP.DOWNS),
+      row("Grain pos", B(KP.GPOS, "Grain position", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.GPOS),
+      row("Grain size", B(KP.GSIZE, "Grain size", { min: 10, max: 500, fmt: (v) => `${v} ms` }), KP.GSIZE),
+      row("Density", B(KP.GDENS, "Density", { min: 1, max: 16, fmt: (v) => `${v}` }), KP.GDENS),
+      row("Spray", B(KP.GSPRAY, "Spray", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.GSPRAY),
+      row("Spread", B(KP.GSPREAD, "Spread", { min: 0, max: 24, fmt: (v) => `${v} st` }), KP.GSPREAD),
+      // (pages v2) Warp
+      row("Warp", S(KP.WARP, "Warp", ["Off", "Repitch", "Grains", "Beats"]), KP.WARP),
+      row("Speed", B(KP.SPEED, "Speed", { min: 25, max: 400, fmt: (v) => `${(v / 100).toFixed(2)}x` }), KP.SPEED),
+      row("Warp pitch", bar(this, { key: `k${KP.WPITCH}`, label: "Warp pitch", cls: "thin", min: -24, max: 24, color: () => col,
+        get: () => Math.round(this.kv(KP.WPITCH) / 100), set: (v) => this.kset(KP.WPITCH, v * 100), fmt: (v) => `${v > 0 ? "+" : ""}${v} st` }), KP.WPITCH),
+      row("Warp grain", B(KP.WGRAIN, "Warp grain", { min: 20, max: 120, fmt: (v) => `${v} ms` }), KP.WGRAIN),
       row("Attack", env(KP.ATTACK, "Attack"), KP.ATTACK),
       row("Hold", env(KP.HOLD, "Hold"), KP.HOLD),
       row("Decay", env(KP.DECAY, "Decay"), KP.DECAY),
@@ -550,12 +572,19 @@ export class SmpView {
       row("Release", env(KP.RELEASE, "Release"), KP.RELEASE),
       row("Filter", B(KP.CUTOFF, "Filter", { min: 0, max: 100, fmt: cutText }), KP.CUTOFF),
       row("Resonance", B(KP.RESO, "Resonance", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.RESO),
+      row("Morph", B(KP.MORPH, "Morph", { min: 0, max: 100, fmt: (v) => (v === 0 ? "LP" : v === 50 ? "BP" : v === 100 ? "HP" : `${v}`) }), KP.MORPH),
+      row("Env amount", bar(this, { key: `k${KP.FENV}`, label: "Filter env amount", cls: "thin", min: -100, max: 100, color: () => col,
+        get: () => this.kv(KP.FENV), set: (v) => this.kset(KP.FENV, v), fmt: (v) => `${v > 0 ? "+" : ""}${v}` }), KP.FENV),
+      row("F attack", env(KP.FATTACK, "Filter attack"), KP.FATTACK),
+      row("F decay", env(KP.FDECAY, "Filter decay"), KP.FDECAY),
+      row("F sustain", B(KP.FSUSTAIN, "Filter sustain", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.FSUSTAIN),
+      row("F release", env(KP.FRELEASE, "Filter release"), KP.FRELEASE),
       row("Choke", S(KP.CHOKE, "Choke", ["Off", "1", "2", "3", "4"]), KP.CHOKE),
       row("Reverse", S(KP.REVERSE, "Reverse", ["Off", "On"]), KP.REVERSE),
       row("Level", B(KP.LEVEL, "Level", { min: -60, max: 6, fmt: (v) => (v <= -60 ? "-inf" : `${v > 0 ? "+" : ""}${v} dB`) }), KP.LEVEL),
       row("Pan", B(KP.PAN, "Pan", { min: -50, max: 50, fmt: (v) => (v ? `${v < 0 ? "L" : "R"}${Math.abs(v)}` : "C") }), KP.PAN),
       row("Mute", S(KP.MUTE, "Mute", ["Off", "On"]), KP.MUTE),
-      row("Stretch", B(KP.STRETCH, "Stretch", { min: 0, max: 64, fmt: (v) => (v ? `${v} step${v === 1 ? "" : "s"}` : "Off") }), KP.STRETCH),
+      row("Sync", B(KP.STRETCH, "Sync", { min: 0, max: 64, fmt: (v) => (v ? `${v} step${v === 1 ? "" : "s"}` : "Off") }), KP.STRETCH),
       [1, 2, 3].map((n) => row(`Send ${n}`, B(KP.SEND1 + n - 1, `Send ${n}`, { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.SEND1 + n - 1)),
       row("Trim silence", segs(this, { key: "ktrim", label: "Trim silence", options: ["Off", "On"], get: () => ((this.kit || {}).trim === 0 ? 0 : 1),
         set: (v) => this.kset(KP.TRIM, v) }), KP.TRIM));

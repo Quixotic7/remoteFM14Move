@@ -7,11 +7,13 @@
 #     the jog at rest on a sound puts it on the chosen pad, heard (the pad's voice, the output's peak), the jog back:
 #     the other, its click keeps it (loaded, in memory) and closes Files; Files again: on the pad's sound
 #     (KIT_FIND: a take's, in Takes);
-#   - the pad played: a voice; a step entered and Play: the sequencer plays the pad by itself; knob 1: its pitch;
+#   - the pad played: a voice; a step entered and Play: the sequencer plays the pad by itself; (pages v2) Pad Sample's
+#     knob 3: its Transpose;
 #   - a pad held + Sample (the sampler's Manual mode): a take recorded into pad 2, the pad let go ends it, the take on
 #     the pad;
-#   - (stage 3b) Stretch: the Stretch page's knob 1, the pad's rate fitted to its steps at the tempo, again when the tempo halves;
-#   - a pad's Send 1 (Pad Mix's knob 3) into audio FX 1 (freeverb: its return sounds);
+#   - (stage 3b; pages v2) Warp Repitch, Sync on the Warp page's knob 2: the pad's rate fitted to its steps at the tempo,
+#     again when the tempo halves;
+#   - a pad's Send 1 (pages v2: Pad Mix's knob 5) into audio FX 1 (freeverb: its return sounds);
 #   - the Mixer's fourth strip, the kit's (knob 4: its level);
 #   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
@@ -23,7 +25,7 @@
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
 #   - the output has the kit (the host's mix, --capture);
 #   - (round A) a take recorded into pad 4 with silence first: Trim silence moves its start to just before the sound;
-#     Play mode Toggle (the page's set): a tap on (looping past the sound's end), the next off;
+#     (pages v2: Toggle gone) the Loop engine (the page's set): held, looping past the sound's end, let go, off;
 #   - a second start: the project's kit back (its pads loaded from their paths, the routing, its name).
 #   tests/kit_e2e.sh      (after make)
 set -u
@@ -113,13 +115,14 @@ press 85; sleep 2.2; press 85; sleep 0.3                    # Play, two seconds,
 n2=$(field kit_notes)
 [ "${n2:-0}" -ge $((n1 + 2)) ] && ok "a step and Play: the sequencer plays pad 1 ($((n2 - n1)) notes)" \
     || bad "the sequencer's notes: $n1 -> $n2"
-cmd "cc 71 6"; sleep 0.2
-wait_for 2 '[ "$(field kit_pitch)" = 300 ]' && ok "knob 1: pad 1's pitch +3" || bad "knob 1: pitch '$(field kit_pitch)'"
-cmd "cc 71 122"; sleep 0.2                                  # (back to 0)
+cmd "cc 73 6"; sleep 0.2                                    # (pages v2: Pad Sample's knob 3, Transpose)
+wait_for 2 '[ "$(field kit_pitch)" = 300 ]' && ok "Pad Sample's knob 3: pad 1's Transpose +3" || bad "knob 3: pitch '$(field kit_pitch)'"
+cmd "cc 73 122"; sleep 0.2                                  # (back to 0)
 
 # ---------------------------------------------------------------- (stage 3b) Stretch: the Stretch page's knob 1, the tempo
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 0.2      # (pad 1 chosen)
-jog 2 1; cmd "cc 71 12"; sleep 0.3                          # (the Stretch page) 4 steps (3 ticks a step): 4 x 125 ms at 120 BPM
+edit 30 33 1; sleep 0.2                                     # (pages v2: pad 1's Warp Repitch, the page's set)
+jog 3 1; cmd "cc 72 12"; sleep 0.3                          # (the Warp page's Sync) 4 steps (3 ticks a step): 4 x 125 ms at 120 BPM
 wait_for 3 '[ "$(field kit_stretch)" = 4 ]'
 r1=$(field kit_rate)
 [ "$(field kit_stretch)" = 4 ] && near "$r1" 4 && ok "the Stretch page's knob 1: Stretch 4 steps, Tone (88200 frames) at $r1 a frame (half a second)" \
@@ -130,20 +133,21 @@ wait_for 3 'near "$(twice "$(field kit_rate)")" "$r1"' \
     && ok "the tempo halved (60 BPM): the stretch re-fitted ($r1 -> $(field kit_rate))" \
     || bad "the tempo: rate '$r1' -> '$(field kit_rate)'"
 cmd "cc 49 127"; hit 20; cmd "cc 49 0"; sleep 0.2; cmd "cc 71 60"; sleep 0.3; press 51; sleep 0.3   # (120 again)
-cmd "cc 71 116"; sleep 0.3                                  # (Stretch Off)
-wait_for 3 '[ "$(field kit_stretch)" = 0 ]' || bad "Stretch Off: '$(field kit_stretch)'"
+cmd "cc 72 116"; sleep 0.3                                  # (Sync Off)
+wait_for 3 '[ "$(field kit_stretch)" = 0 ]' || bad "Sync Off: '$(field kit_stretch)'"
+jog 3 127; edit 30 33 0; sleep 0.2                          # (Pad Sample again, Warp Off)
 
 # ---------------------------------------------------------------- a pad's send into audio FX 1
 edit 20 4 2                                                 # (freeverb on audio FX 1)
 wait_for 5 '[ "$(field afx0)" = freeverb ]' || bad "freeverb: '$(field afx0)'"
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
 s0=$(field rpeak0)
-jog 2 1; cmd "cc 73 60"; sleep 0.3                          # (pages) Pad Mix, knob 3: Send 1 60 %
+jog 5 1; cmd "cc 75 60"; sleep 0.3                          # (pages v2) Pad Mix, knob 5: Send 1 60 %
 cmd "note 68 100"; sleep 0.1; cmd "note 68 0"; sleep 2.2
 s1=$(field rpeak0)
-[ "${s0:-1}" = 0 ] && [ "${s1:-0}" -gt 500 ] && ok "Pad Mix's knob 3: pad 1's Send 1 into freeverb (its return $s0 -> $s1)" \
+[ "${s0:-1}" = 0 ] && [ "${s1:-0}" -gt 500 ] && ok "Pad Mix's knob 5: pad 1's Send 1 into freeverb (its return $s0 -> $s1)" \
     || bad "the send: return $s0 -> $s1"
-cmd "cc 73 68"; sleep 0.2; jog 4 127; sleep 1.1            # (Send 1 0; Pad Sample again)
+cmd "cc 75 68"; sleep 0.2; jog 5 127; sleep 1.1            # (Send 1 0; Pad Sample again)
 
 # ---------------------------------------------------------------- the Mixer's fourth strip
 m0=$(field kit_mix)
@@ -300,15 +304,15 @@ wait_for 8 '[ "$(field kit_trims)" = $((t1 + 1)) ] && [ "$(field kit_pads)" = 15
     && [ "$(field kit_lead)" -gt 30000 ] && [ "$(field kit_start)" -gt 0 ] && [ "$(field kit_trim)" = 1 ] \
     && ok "a take into pad 4, silence first: Trim silence's start at frame $(field kit_lead) (Start $(field kit_start))" \
     || bad "Trim silence: trims '$(field kit_trims)' (from $t1) pads '$(field kit_pads)' cur '$(field kit_cur)' lead '$(field kit_lead)' start '$(field kit_start)'"
-edit 30 3 3; sleep 0.3                                      # (pad 1's Play mode: Toggle, the page's set)
+edit 30 3 2; sleep 0.3                                      # (pages v2: pad 1's engine Loop, the page's set)
 cmd "cc 49 127"; hit 68; cmd "cc 49 0"; sleep 0.3           # (Shift + pad 1: chosen)
-[ "$(field kit_mode)" = 3 ] || bad "Toggle: mode '$(field kit_mode)'"
-hit 68; sleep 2.6                                           # a tap: on, past Tone's 1.84 s (it loops)
+[ "$(field kit_mode)" = 2 ] || bad "Loop: mode '$(field kit_mode)'"
+cmd "note 68 110"; sleep 2.6                                # held: past Tone's 1.84 s (it loops)
 v1=$(field kit_voices)
-hit 68                                                      # the next tap: off
+cmd "note 68 0"                                             # let go: off
 wait_for 2 '[ "$(field kit_voices)" = 0 ]' && [ "${v1:-0}" -ge 1 ] \
-    && ok "Toggle: a tap on (still sounding after 2.6 s: $v1), the next off" \
-    || bad "Toggle: voices after 2.6 s '$v1', now '$(field kit_voices)'"
+    && ok "the Loop engine: held, still sounding after 2.6 s ($v1), let go: off" \
+    || bad "Loop: voices after 2.6 s '$v1', now '$(field kit_voices)'"
 edit 30 3 0; sleep 0.3
 sleep 2.5   # (the project's autosave)
 stop

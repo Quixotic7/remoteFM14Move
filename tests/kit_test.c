@@ -903,25 +903,7 @@ static void t_rounda(void)
     kit_preview_mix(k, out, 1024);
     CHECK(out[0] == ramp(100) && out[2 * 499] == ramp(599) && out[2 * 500] == 0 && !kit_auditioning(k));
     printf("  ok    the close-up's peaks (a window, scaled as the whole), an audition of [100, 600)\n");
-    /* Toggle: a tap on (it loops), the release ignored, the next tap off (a short release), a third on again */
-    kit_set(k, 0, KIT_P_MODE, KIT_M_TOGGLE);
-    kit_note(k, 0, 0, 127, 0);
-    run(k, 6000);
-    CHECK(kit_voices(k) == 1 && nonzero_until(6000) > 5990);
-    kit_note(k, 0, 0, 0, 0);
-    run(k, 2000);
-    CHECK(kit_voices(k) == 1);
-    kit_note(k, 0, 0, 127, 0);
-    run(k, 1000);
-    n = nonzero_until(1000);
-    CHECK(!kit_voices(k) && n >= 230 && n <= 250);       /* (5 ms) */
-    kit_note(k, 0, 0, 127, 0), kit_note(k, 0, 0, 0, 0);
-    run(k, 1000);
-    CHECK(kit_voices(k) == 1);
-    kit_note(k, 0, 0, 127, 0);
-    run(k, 1000);
-    CHECK(!kit_voices(k));
-    printf("  ok    Toggle: a tap on (looping), its release ignored, the next tap off (5 ms), on again\n");
+    /* (pages v2: Toggle is gone; its test with it) */
     /* where a sound sits: Samples' folders and rows */
     snprintf(d, sizeof d, "%s/fd", DIRP), mkdir(d, 0755);
     snprintf(d, sizeof d, "%s/fd/sub", DIRP), mkdir(d, 0755);

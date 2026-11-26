@@ -2,6 +2,14 @@
 
 ## Unreleased: the kit (stages 3a, 3b and 3c, rounds A, B and C)
 
+- **Pages v2:** Sample Kit, Pad Sample, Trig, Pad Sample 2, Warp, Filter, Pad Mix, Kit Mix. A page is a picture;
+  touch a knob to see its value. Turning the jog shows the pages' icons. Pad Sample: start, end, transpose, engine,
+  the envelope. **Engines:** One Shot, Momentary, Loop (loop points and a crossfade), Pitch Env, LoFi, Granular
+  (Toggle is gone: it loads as Loop). **Trig:** the sequencer's trig page for the pad's track. **Warp:** Repitch, or
+  Grains and Beats that keep the pitch, with Sync (the old Stretch), Speed and Pitch. **Filter:** morph from low-pass
+  to band to high-pass and its own envelope, drawn as bars with the envelope beside them. **Kit Mix:** a low-pass on
+  the whole kit. **The right pads:** Pitches, In Key, Chromatic, In Key 4ths, or Chop (the sound in 16 chops; hold two
+  to loop between them). The browser slides under a fixed cursor. Older projects and kits sound the same.
 - **Pages:** the Kit view works like the sequencer's pages. Turn the jog to change page (its name and the page
   marks show a moment): Sample Kit (every pad's steps at a glance; the right pads, Trim silence), Pad Sample (the
   wave; pitch, fine, start, end, play mode, reverse, choke), Pad Sample 2 (attack, hold, decay, sustain, release),

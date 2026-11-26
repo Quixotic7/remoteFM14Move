@@ -1546,6 +1546,14 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   and Kit Mix: Kits), Shift + the click the pad's tools. Nothing in the host changes but `/api/status`'s `kit_page`
   (it was `kit_row`) and the help page.
 
+- **(pages v2, 2026-11-26)** (KIT-SPEC "Pages v2"; rfm1cs README "The kit (pages v2)"): the voices gain the
+  engines (Loop's points and crossfade, Pitch Env, LoFi, Granular: up to 16 Hann grains from a table), Warp (Repitch;
+  Grains: two Hann grains overlap-added, the pitch kept; Beats: WSOLA, each grain aligned by a cross-correlation), the
+  filter's morph (LP -> BP -> HP) and envelope (8 octaves at full), the kit bus's low-pass (`kit_bus`, before the
+  strip), the Chop locks (a chop or a looped range of the region), `kit_live` (the Filter page's live bars).
+  `kit.json` version 2 (the new keys, `"bus"`; version 1 mapped). `POST /api/kit` op `set`: param 0..44, 63 the Trim
+  silence (it was 31); the page's Kit tab has rows for the new pad settings. kit_test's Toggle test removed.
+
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
 the region, loop, momentary, the attack, the one shot's tail, the hold, choke, a pad again, mute, level and pan,

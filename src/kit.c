@@ -32,6 +32,13 @@ typedef struct {                  /* a sound in memory */
     int16_t *pcm;                 /* stereo, interleaved */
     uint32_t frames, rate;
 } snd_t;
+#define NGR 16                    /* (pages v2) grains a voice at most (Warp: 2; Granular: its density) */
+typedef struct {
+    double pos;                   /* the grain's read position (source frames) */
+    double inc;                   /* .. source frames a frame (its pitch) */
+    uint32_t age;                 /* frames since it started (its window) */
+    int on;
+} grain_t;
 typedef struct {
     int on;
     int pad, semis;
@@ -39,7 +46,7 @@ typedef struct {
     double pos, inc;              /* source frames: where, a frame of output */
     int dir;                      /* +1, -1 (reverse) */
     double s, e;                  /* the region [s, e) in source frames */
-    int mode, gate;
+    int mode, gate;               /* (pages v2) how it plays: B_ONE, B_MOM, B_LOOP, B_HELD */
     int stage;                    /* ST_* */
     float env;                    /* 0..1 */
     float a_step;                 /* attack: per frame */
@@ -47,7 +54,7 @@ typedef struct {
     uint32_t rel_n;               /* release: frames */
     float r_from;
     uint32_t fade_n;              /* a fade out: its frames (ST_FADE) */
-    float gl, gr;
+    float gl, gr2;                /* its level and pan: left, right */
     float sg[3];                  /* (3b) the pad's sends 1..3 (0..1) */
     const snd_t *snd;
     /* (round B) the decay (frames) to the sustain's level; one shot: legacy (Hold > 0, Decay 0, Sustain 100 %: the
@@ -57,14 +64,43 @@ typedef struct {
     int legacy;
     int cents;                    /* its pitch (a step's lock, else the pad's) */
     /* (round B) the low-pass (a TPT state variable filter, stereo): off while open (bypassed: today's frames); the
-     * cutoff's g glides to its target (no zipper), the coefficients made every FLT_N frames and ramped between */
+     * cutoff's g glides to its target (no zipper), the coefficients made every FLT_N frames and ramped between.
+     * (pages v2) its output morphs LP -> BP -> HP; its envelope moves the cutoff up to 8 octaves either way */
     int flt, cut_lk, res_lk;      /* on; the cutoff / resonance locked by a step (the pad's later changes not followed) */
     float g, g_tgt, kq;           /* tan(pi fc / fs) now and its target; 1 / Q */
     float a1, a2, a3, da1, da2, da3;
     uint32_t fn;                  /* frames to the next coefficients */
     float ic1[2], ic2[2];
+    /* ---- (pages v2) */
+    int eng, warp;                /* the pad's engine (KIT_M_*), Warp (KIT_W_*) as it plays */
+    double ls, le, xf;            /* Loop: its loop [ls, le), the fade's source frames (0 none) */
+    double binc;                  /* the rate before the pitch envelope (Off, Repitch) */
+    float morph;                  /* the filter's 0 LP .. 1 HP */
+    int morph_lk, fenv_lk;
+    int cut_v;                    /* the cutoff aimed at (0..100: the screen's) */
+    float fe_amt;                 /* the filter envelope: octaves at its top */
+    int fe_st;                    /* 0 attack, 1 decay, 2 sustain, 3 release, 4 done */
+    float fe_lvl, fe_s, fe_from;
+    uint32_t fe_a, fe_d, fe_r, fe_t;   /* (in FLT_N blocks) */
+    float pe_depth;               /* Pitch Env: semitones; its attack, release (frames), frames since the start */
+    uint32_t pe_a, pe_r, pe_t;
+    float pe_mul;                 /* .. the rate's multiplier now (every FLT_N frames) */
+    uint32_t cn;                  /* frames to the next control block (the pitch envelope, LoFi, the filter's envelope) */
+    float q_step;                 /* LoFi: the quantum (1: none), a sample held so many frames */
+    int ds, ds_n;
+    float hold_l, hold_r;
+    double ph, spd;               /* Warp Grains / Beats: the playhead and its speed (source frames a frame) */
+    double ginc;                  /* .. the grains' pitch (source frames a frame) */
+    uint32_t glen;                /* a grain's frames (Warp, Granular) */
+    float wstep;                  /* .. the window table's steps a frame */
+    double jit;                   /* Warp Grains: the jitter's source frames; Beats: the search's */
+    uint32_t gspawn, gnext;       /* Granular: frames between grains, to the next */
+    float ggain;
+    uint32_t rnd;
+    grain_t gr[NGR];
 } voice_t;
 enum { ST_ATTACK, ST_HOLD, ST_DECAY, ST_SUSTAIN, ST_RELEASE, ST_FADE };
+enum { B_ONE, B_MOM, B_LOOP, B_HELD };   /* (pages v2) a voice's play: once, held once, round its loop, held (Granular) */
 #define FLT_N 32                  /* (round B) the filter's coefficients made every 32 frames */
 #define FLT_GLIDE_MS 10           /* .. its cutoff's glide */
 typedef struct { int pad, semis, vel; uint32_t frame; int mask; int16_t lk[KIT_LK_N]; } ev_t;
@@ -139,6 +175,11 @@ struct kit {
     double aud_pos, aud_end, aud_inc;
     uint32_t used[KIT_PADS];      /* (mu) each pad's bytes, as the file thread counts them */
     float glide;                  /* (round B) the filter's glide a FLT_N frames (0..1) */
+    /* (pages v2) the kit bus's low-pass (a stereo TPT state variable filter on the voices' mix; open: bypassed) */
+    int bus_c, bus_r;
+    float bus_g, bus_gt, bus_k, bus_ic1[2], bus_ic2[2];
+    int bus_on;
+    float hann[1025];             /* (pages v2) a Hann window, the grains' (made at kit_new) */
     /* the requests (mu) */
     pthread_mutex_t mu;
     req_t rq[NREQ];
@@ -1168,7 +1209,12 @@ static void do_preview(kit_t *k, const req_t *r)
 /* ---- (stage 3b) a kit saved, opened; a folder onto the pads */
 static const char *const PKEY[KIT_P_N] = { "pitch", "start", "end", "mode", "attack", "hold", "release", "choke",
                                            "reverse", "level", "pan", "mute", "stretch", "send1", "send2", "send3",
-                                           "decay", "sustain", "cutoff", "reso" };   /* (round B: the last four) */
+                                           "decay", "sustain", "cutoff", "reso",   /* (round B: these four) */
+                                           "loop_start", "loop_end", "loop_fade", "penv_depth", "penv_attack",
+                                           "penv_release", "bits", "downsample", "grain_pos", "grain_size",
+                                           "grain_density", "grain_spray", "grain_spread", "warp", "speed", "warp_pitch",
+                                           "warp_grain", "warp_jitter", "warp_search", "morph", "fenv", "fattack",
+                                           "fdecay", "fsustain", "frelease" };   /* (pages v2: kit.json version 2) */
 static int mkdirs(const char *path)                     /* the folder and its parents: 0 there */
 {
     char p[KIT_PATH];
@@ -1279,9 +1325,10 @@ static void do_save(kit_t *k)
         if ((f = fopen(tmp, "w"))) {
             int bad;
             mj_escape(name, esc, sizeof esc);
-            fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 1, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
-            fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d], \"trim\": %d,\n  \"pads\": [\n", x->mix[0], x->mix[1], x->mix[2],
-                    x->mix[3], x->mix[4], x->trim ? 1 : 0);   /* (round A: the Trim silence) */
+            fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 2, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
+            fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d], \"trim\": %d, \"bus\": [%d, %d],\n  \"pads\": [\n", x->mix[0],
+                    x->mix[1], x->mix[2], x->mix[3], x->mix[4], x->trim ? 1 : 0, x->bus[0], x->bus[1]);   /* (round A:
+                                                         * the Trim silence; pages v2: the kit bus's low-pass) */
             for (i = 0; i < KIT_PADS; i++) {
                 mj_escape(files[i], esc, sizeof esc);
                 fprintf(f, "    { \"file\": \"%s\"", esc);
@@ -1351,9 +1398,13 @@ static void do_open(kit_t *k, const req_t *r)
         kit_kit_t *x = &a->a.kit;
         const char *it = mj_find(js, "pads"), *e;
         long v;
-        int i = 0, j;
+        int i = 0, j, ver;
         snprintf(x->name, sizeof x->name, "%s", rel + 5);   /* (its folder's name: renamed there, renamed here) */
+        ver = !mj_int(js, "version", &v) ? (int)v : 1;
         x->layout = !mj_int(js, "layout", &v) ? (int)v : 0;
+        if (ver < 2)                                    /* (pages v2) the right half: In Key as In Key 4ths, Off as
+                                                         * Pitches */
+            x->layout = x->layout == 1 ? 3 : 0;
         x->trim = !mj_int(js, "trim", &v) ? v != 0 : 1;   /* (round A; an older kit.json: on) */
         x->mix[0] = 100, x->mix[1] = 64;
         if ((e = mj_find(js, "mix")) && *e == '[') {
@@ -1361,8 +1412,20 @@ static void do_open(kit_t *k, const req_t *r)
             for (j = 0; j < 5 && (y = mj_elem(&m)); j++)
                 x->mix[j] = (uint8_t)clampi((int)strtol(y, NULL, 10), 0, 127);
         }
-        for (i = 0; i < KIT_PADS; i++)                  /* (round B: a kit.json without them: Sustain 100, open) */
+        for (i = 0; i < KIT_PADS; i++) {                /* (round B: a kit.json without them: Sustain 100, open; pages
+                                                         * v2: as the core's defaults) */
             x->v[i][KIT_P_END] = KIT_FRAC, x->v[i][KIT_P_SUSTAIN] = 100, x->v[i][KIT_P_CUTOFF] = 100;
+            x->v[i][KIT_P_LOOPE] = KIT_FRAC, x->v[i][KIT_P_PRELEASE] = 100, x->v[i][KIT_P_BITS] = 16;
+            x->v[i][KIT_P_DOWNS] = 1, x->v[i][KIT_P_GSIZE] = 80, x->v[i][KIT_P_GDENS] = 4, x->v[i][KIT_P_SPEED] = 100;
+            x->v[i][KIT_P_WGRAIN] = 50, x->v[i][KIT_P_WSEARCH] = 10, x->v[i][KIT_P_FDECAY] = 300;
+            x->v[i][KIT_P_FRELEASE] = 300;
+        }
+        x->bus[0] = 100, x->bus[1] = 0;
+        if ((e = mj_find(js, "bus")) && *e == '[') {   /* (pages v2) */
+            const char *m = e, *y;
+            for (j = 0; j < 2 && (y = mj_elem(&m)); j++)
+                x->bus[j] = (uint8_t)clampi((int)strtol(y, NULL, 10), 0, 100);
+        }
         if (it && *it != '[')
             it = NULL;
         for (i = 0; it && i < KIT_PADS && (e = mj_elem(&it)); i++) {
@@ -1370,6 +1433,13 @@ static void do_open(kit_t *k, const req_t *r)
             for (j = 0; j < KIT_P_N; j++)
                 if (!mj_int(e, PKEY[j], &v))
                     x->v[i][j] = (int16_t)clampi((int)v, -32768, 32767);
+            if (ver < 2) {                              /* (pages v2) an older kit.json: Toggle as Loop, Stretch as Warp
+                                                         * Repitch */
+                if (x->v[i][KIT_P_MODE] == 3)
+                    x->v[i][KIT_P_MODE] = KIT_M_LOOP;
+                if (x->v[i][KIT_P_STRETCH])
+                    x->v[i][KIT_P_WARP] = KIT_W_REPITCH;
+            }
             if (!mj_string(e, "file", file, sizeof file) && file[0] && !strchr(file, '/') && strcmp(file, "..")) {
                 char src[KIT_PATH], cp[KIT_PATH], cpath[KIT_PATH];
                 snprintf(src, sizeof src, "%s/%s/%s", k->kits, rel + 5, file);
@@ -1853,6 +1923,12 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     for (p = 0; p < KIT_PADS; p++)
         k->v[p][KIT_P_END] = KIT_FRAC, k->v[p][KIT_P_SUSTAIN] = 100, k->v[p][KIT_P_CUTOFF] = 100;
     k->glide = (float)(1.0 - exp(-(double)FLT_N / ((double)k->cfg.fs * FLT_GLIDE_MS / 1000.0)));
+    for (p = 0; p < KIT_PADS; p++)                      /* (pages v2: as the core's defaults) */
+        k->v[p][KIT_P_LOOPE] = KIT_FRAC, k->v[p][KIT_P_BITS] = 16, k->v[p][KIT_P_DOWNS] = 1, k->v[p][KIT_P_GSIZE] = 80,
+        k->v[p][KIT_P_GDENS] = 4, k->v[p][KIT_P_SPEED] = 100, k->v[p][KIT_P_WGRAIN] = 50, k->v[p][KIT_P_WSEARCH] = 10;
+    for (p = 0; p <= 1024; p++)                         /* (pages v2) the grains' window */
+        k->hann[p] = (float)(0.5 - 0.5 * cos(2.0 * 3.14159265358979323846 * p / 1024.0));
+    k->bus_c = 100;
     pthread_mutex_init(&k->mu, NULL);
     pthread_cond_init(&k->cv, NULL);
     if (!cfg->tl && cfg->own_thread) {
@@ -2088,7 +2164,8 @@ int kit_poll(kit_t *k, kit_ans_t *out)
         return 1;
     }
 }
-/* ---- (round B) the pad's low-pass: a TPT state variable filter (Zavalishin / Simper) */
+/* ---- (round B) the pad's low-pass: a TPT state variable filter (Zavalishin / Simper). (pages v2) Its output morphs
+ * LP -> BP -> HP (BP scaled to unity at its peak), its envelope moves the cutoff, the kit bus has one too */
 static float flt_g(const kit_t *k, int v)              /* tan(pi fc / fs), fc 20 Hz .. 20 kHz (0.45 fs at most) */
 {
     double fc = 20.0 * pow(1000.0, clampi(v, 0, 100) / 100.0);
@@ -2101,34 +2178,69 @@ static void flt_coefs(float g, float kq, float *a1, float *a2, float *a3)
 {
     *a1 = 1.0f / (1.0f + g * (g + kq)), *a2 = g * *a1, *a3 = g * *a2;
 }
+/* (pages v2) the filter needed: not open, or an envelope or a morph on it */
+static int flt_needed(const voice_t *v, int c) { return c < 100 || v->fe_amt != 0.0f || v->morph > 0.0f; }
 /* a voice's filter aimed at cutoff c, resonance r (c 100: open, the filter off once it has glided there) */
 static void flt_aim(kit_t *k, voice_t *v, int c, int r, int start)
 {
     const float go = flt_g(k, 100);
+    v->cut_v = clampi(c, 0, 100);                       /* (pages v2: the screen's live bars) */
     v->kq = flt_k(r);
     v->g_tgt = c >= 100 ? go : flt_g(k, c);
     if (start) {                                        /* (a note-on: at once, from silence) */
-        v->flt = c < 100;
+        v->flt = flt_needed(v, c);
         v->g = v->g_tgt, v->fn = FLT_N, v->da1 = v->da2 = v->da3 = 0;
         flt_coefs(v->g, v->kq, &v->a1, &v->a2, &v->a3);
         v->ic1[0] = v->ic1[1] = v->ic2[0] = v->ic2[1] = 0;
-    } else if (!v->flt && c < 100) {                    /* (turned down while it sounds: from open) */
+        if (v->flt && (v->fe_amt != 0.0f))
+            v->fn = 0;                                  /* (the envelope's first value at once) */
+    } else if (!v->flt && flt_needed(v, c)) {           /* (turned down while it sounds: from open) */
         v->flt = 1, v->g = go, v->fn = 0, v->da1 = v->da2 = v->da3 = 0;
         flt_coefs(v->g, v->kq, &v->a1, &v->a2, &v->a3);
         v->ic1[0] = v->ic1[1] = v->ic2[0] = v->ic2[1] = 0;
     }
 }
+/* (pages v2) the filter envelope a block of FLT_N frames on: its level 0..1 */
+static void fenv_next(voice_t *v)
+{
+    switch (v->fe_st) {
+    case 0:
+        v->fe_lvl = v->fe_a ? v->fe_lvl + 1.0f / (float)v->fe_a : 1.0f;
+        if (v->fe_lvl >= 1.0f)
+            v->fe_lvl = 1.0f, v->fe_st = 1, v->fe_t = 0;
+        break;
+    case 1:
+        if (++v->fe_t >= v->fe_d)
+            v->fe_lvl = v->fe_s, v->fe_st = 2;
+        else
+            v->fe_lvl = 1.0f + (v->fe_s - 1.0f) * (float)v->fe_t / (float)v->fe_d;
+        break;
+    case 3:
+        if (++v->fe_t >= v->fe_r)
+            v->fe_lvl = 0.0f, v->fe_st = 4;
+        else
+            v->fe_lvl = v->fe_from * (1.0f - (float)v->fe_t / (float)v->fe_r);
+        break;
+    default: break;
+    }
+}
 /* (every FLT_N frames) the cutoff glides; the coefficients' next targets, ramped to over the next FLT_N frames */
 static void flt_next(const kit_t *k, voice_t *v)
 {
-    float t1, t2, t3;
+    float t1, t2, t3, g;
     int c;
     v->g += (v->g_tgt - v->g) * k->glide;
-    if (v->g_tgt >= flt_g(k, 100) * 0.9999f && v->g >= v->g_tgt * 0.999f) {
+    if (v->fe_amt == 0.0f && v->morph <= 0.0f && v->g_tgt >= flt_g(k, 100) * 0.9999f && v->g >= v->g_tgt * 0.999f) {
         v->flt = 0;                                     /* (open again: bypassed) */
         return;
     }
-    flt_coefs(v->g, v->kq, &t1, &t2, &t3);
+    g = v->g;
+    if (v->fe_amt != 0.0f) {                            /* (pages v2) the envelope: the cutoff times 2^(octaves) */
+        double fc = atan((double)g) / 3.14159265358979323846 * exp2((double)(v->fe_amt * v->fe_lvl));
+        fc = fc < 10.0 / k->cfg.fs ? 10.0 / k->cfg.fs : fc > 0.45 ? 0.45 : fc;
+        g = (float)tan(3.14159265358979323846 * fc);
+    }
+    flt_coefs(g, v->kq, &t1, &t2, &t3);
     v->da1 = (t1 - v->a1) / FLT_N, v->da2 = (t2 - v->a2) / FLT_N, v->da3 = (t3 - v->a3) / FLT_N;
     v->fn = FLT_N;
     for (c = 0; c < 2; c++) {                           /* (no denormals in a quiet tail) */
@@ -2138,18 +2250,31 @@ static void flt_next(const kit_t *k, voice_t *v)
             v->ic2[c] = 0;
     }
 }
+static void retune(kit_t *k, voice_t *v);
 void kit_set(kit_t *k, int pad, int param, int value)
 {
     int i;
     if (!k || pad < 0 || pad >= KIT_PADS || param < 0 || param >= KIT_P_N)
         return;
     k->v[pad][param] = (int16_t)value;
-    if (param == KIT_P_CUTOFF || param == KIT_P_RESO)   /* (round B) its voices follow (a step's lock stays) */
-        for (i = 0; i < NV; i++) {
-            voice_t *o = &k->vo[i];
-            if (o->on && o->pad == pad && !o->cut_lk && !(param == KIT_P_RESO && o->res_lk))
-                flt_aim(k, o, k->v[pad][KIT_P_CUTOFF], o->res_lk ? 0 : k->v[pad][KIT_P_RESO], 0);
+    for (i = 0; i < NV; i++) {
+        voice_t *o = &k->vo[i];
+        if (!o->on || o->pad != pad)
+            continue;
+        if ((param == KIT_P_CUTOFF || param == KIT_P_RESO) && !o->cut_lk && !(param == KIT_P_RESO && o->res_lk))
+            flt_aim(k, o, k->v[pad][KIT_P_CUTOFF], o->res_lk ? 0 : k->v[pad][KIT_P_RESO], 0);   /* (round B) its
+                                                         * voices follow (a step's lock stays) */
+        if (param == KIT_P_MORPH && !o->morph_lk) {     /* (pages v2) the morph and the envelope's amount follow */
+            o->morph = (float)clampi(value, 0, 100) / 100.0f;
+            flt_aim(k, o, o->cut_lk ? 100 : k->v[pad][KIT_P_CUTOFF], k->v[pad][KIT_P_RESO], 0);
         }
+        if (param == KIT_P_FENV && !o->fenv_lk) {
+            o->fe_amt = (float)clampi(value, -100, 100) * 0.08f;
+            flt_aim(k, o, o->cut_lk ? 100 : k->v[pad][KIT_P_CUTOFF], k->v[pad][KIT_P_RESO], 0);
+        }
+        if (param == KIT_P_SPEED || param == KIT_P_WPITCH)
+            retune(k, o);                               /* (pages v2) Warp's speed and pitch at once */
+    }
     if (param == KIT_P_MUTE && value)                   /* (muted: its voices fade) */
         for (i = 0; i < NV; i++)
             if (k->vo[i].on && k->vo[i].pad == pad && k->vo[i].stage != ST_FADE)
@@ -2187,24 +2312,54 @@ static void region(const kit_t *k, int pad, double *s0, double *e0)
     if (*e0 <= *s0 + 1)
         *e0 = *s0 + 1 < s->frames ? *s0 + 1 : s->frames, *s0 = *e0 - 1;
 }
-/* a voice's source frames an output frame: its pitch (and the right half's semitones), or (3b) stretched: the region
- * in its microseconds, the semitones over that */
-static double rate_cents(const kit_t *k, int pad, int semis, int cents)
+static int warp_of(const kit_t *k, int pad)
+{
+    return k->v[pad][KIT_P_MODE] == KIT_M_GRANULAR ? KIT_W_OFF : clampi(k->v[pad][KIT_P_WARP], 0, KIT_W_N - 1);
+}
+/* (pages v2) a voice's rates: inc the source frames a frame of Off and Repitch (Repitch with Sync: the region in its
+ * microseconds, Transpose and the notes' pitches ignored, the owner's rule); spd the playhead's (the time) and ginc the
+ * grains' (the pitch) of Grains and Beats; the speed's multiplier on all but Off */
+static void rates(const kit_t *k, int pad, int semis, int cents, double *inc, double *spd, double *ginc)
 {
     const snd_t *s = &k->snd[pad];
-    if (k->st_us[pad] && s->frames) {
+    const int w = warp_of(k, pad);
+    const double sp = w ? clampi(k->v[pad][KIT_P_SPEED], 25, 400) / 100.0 : 1.0, own = (double)s->rate / k->cfg.fs;
+    const double pitch = pow(2.0, (cents + semis * 100) / 1200.0);
+    double fit = 0;
+    if (k->st_us[pad] && s->frames && w) {
         double s0, e0;
         region(k, pad, &s0, &e0);
-        return (e0 - s0) / ((double)k->st_us[pad] * 1e-6 * k->cfg.fs) * pow(2.0, semis / 12.0);
+        fit = (e0 - s0) / ((double)k->st_us[pad] * 1e-6 * k->cfg.fs);
     }
-    return pow(2.0, (cents + semis * 100) / 1200.0) * (double)s->rate / k->cfg.fs;
+    if (inc)
+        *inc = (w == KIT_W_REPITCH && fit > 0 ? fit : pitch * own) * sp;
+    if (spd)
+        *spd = (fit > 0 ? fit : own) * sp;
+    if (ginc)
+        *ginc = pitch * own * pow(2.0, clampi(k->v[pad][KIT_P_WPITCH], -2400, 2400) / 1200.0);
 }
 double kit_rate_of(const kit_t *k, int pad, int semis)
 {
+    double inc, spd;
     if (!k || pad < 0 || pad >= KIT_PADS)
         return 1.0;
-    return rate_cents(k, pad, semis, k->v[pad][KIT_P_PITCH]);
+    rates(k, pad, semis, k->v[pad][KIT_P_PITCH], &inc, &spd, NULL);
+    return warp_of(k, pad) >= KIT_W_GRAINS ? spd : inc;
 }
+/* a voice's rates again (the tempo, the speed, the pitch changed while it sounds) */
+static void retune(kit_t *k, voice_t *v)
+{
+    double inc, spd, ginc;
+    rates(k, v->pad, v->semis, v->cents, &inc, &spd, &ginc);
+    v->binc = inc > 0 ? inc : 1.0, v->inc = v->binc * v->pe_mul, v->spd = spd, v->ginc = ginc * v->pe_mul;
+}
+static uint32_t rnd32(voice_t *v)                       /* (xorshift: the grains' jitter, spray and spread) */
+{
+    uint32_t x = v->rnd ? v->rnd : 2463534242u;
+    x ^= x << 13, x ^= x >> 17, x ^= x << 5;
+    return v->rnd = x;
+}
+static float rnd_bi(voice_t *v) { return (float)(rnd32(v) >> 8) * (2.0f / 16777216.0f) - 1.0f; }   /* -1..1 */
 static void release(voice_t *v, uint32_t n);
 static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16_t *lk)
 {
@@ -2212,22 +2367,9 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
     const snd_t *s = &k->snd[pad];
     voice_t *v = NULL;
     int i, live = 0, oldest = -1;
-    double s0, e0, ratio;
+    double s0, e0;
     if (!s->pcm || !s->frames || p[KIT_P_MUTE])
         return;
-    if (p[KIT_P_MODE] == KIT_M_TOGGLE) {                /* (round A) Toggle: sounding, the tap stops it (a short release) */
-        int was = 0;
-        for (i = 0; i < NV; i++) {
-            voice_t *o = &k->vo[i];
-            if (o->on && o->pad == pad && o->semis == semis && o->mode == KIT_M_TOGGLE && o->stage < ST_RELEASE) {
-                const uint32_t n = ms_n(k, p[KIT_P_RELEASE]), f = ms_n(k, FADE_MS);
-                release(o, n > f ? n : f);
-                was = 1;
-            }
-        }
-        if (was)
-            return;
-    }
     for (i = 0; i < NV; i++) {                          /* its own voice taken back; the choke group's stopped */
         voice_t *o = &k->vo[i];
         if (!o->on || o->stage == ST_FADE)
@@ -2257,17 +2399,37 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
     }
     memset(v, 0, sizeof *v);
     region(k, pad, &s0, &e0);
+    v->cents = mask & 1 << KIT_LK_PITCH ? lk[KIT_LK_PITCH] : p[KIT_P_PITCH];
+    v->on = 1, v->pad = pad, v->semis = semis, v->age = ++k->age, v->snd = s;
+    v->eng = clampi(p[KIT_P_MODE], 0, KIT_M_N - 1), v->warp = warp_of(k, pad);
+    v->pe_mul = 1.0f;
+    v->rnd = 0x9E3779B9u * (uint32_t)v->age + (uint32_t)pad;
+    retune(k, v);                                       /* (the rates from the whole region: a chop keeps them) */
     if (mask & 1 << KIT_LK_START) {                     /* (round B: a step's own start) */
         const double ls = (double)s->frames * clampi(lk[KIT_LK_START], 0, KIT_FRAC) / KIT_FRAC;
         s0 = ls < e0 - 1 ? ls : e0 - 1;
     }
-    v->cents = mask & 1 << KIT_LK_PITCH ? lk[KIT_LK_PITCH] : p[KIT_P_PITCH];
-    ratio = rate_cents(k, pad, semis, v->cents);
-    v->on = 1, v->pad = pad, v->semis = semis, v->age = ++k->age, v->snd = s;
+    v->mode = v->eng == KIT_M_MOMENTARY ? B_MOM : v->eng == KIT_M_LOOP ? B_LOOP : v->eng == KIT_M_GRANULAR ? B_HELD : B_ONE;
+    {                                                   /* Loop: its loop inside the region */
+        double ls = (double)s->frames * clampi(p[KIT_P_LOOPS], 0, KIT_FRAC) / KIT_FRAC;
+        double le = (double)s->frames * clampi(p[KIT_P_LOOPE], 0, KIT_FRAC) / KIT_FRAC;
+        ls = ls < s0 ? s0 : ls > e0 - 1 ? e0 - 1 : ls;
+        le = le > e0 ? e0 : le < ls + 1 ? ls + 1 : le;
+        v->ls = ls, v->le = le;
+    }
+    if (mask & 1 << KIT_LK_CHOP) {                      /* (pages v2) the right half's Chop: chops a..b of the region,
+                                                         * one once, a range round while held */
+        const int a = clampi(lk[KIT_LK_CHOP], 0, 15), b = mask & 1 << KIT_LK_CHOPE ? clampi(lk[KIT_LK_CHOPE], a, 15) : a;
+        const double len = e0 - s0, c0 = s0 + len * a / 16.0, c1 = s0 + len * (b + 1) / 16.0;
+        s0 = c0, e0 = c1 > c0 + 1 ? c1 : c0 + 1;
+        v->ls = s0, v->le = e0;
+        if (v->eng != KIT_M_GRANULAR)
+            v->mode = a == b ? B_ONE : B_LOOP;
+    }
+    v->xf = v->mode == B_LOOP ? (v->le - v->ls) * 0.5 * clampi(p[KIT_P_LOOPXF], 0, 100) / 100.0 : 0.0;
     v->s = s0, v->e = e0, v->dir = p[KIT_P_REVERSE] ? -1 : 1;
     v->pos = v->dir > 0 ? s0 : e0 - 1;
-    v->inc = ratio > 0 ? ratio : 1.0;
-    v->mode = clampi(p[KIT_P_MODE], KIT_M_ONESHOT, KIT_M_TOGGLE), v->gate = 1;
+    v->gate = 1;
     v->stage = ST_ATTACK, v->env = 0.0f;
     v->a_step = p[KIT_P_ATTACK] > 0 ? 1.0f / (float)ms_n(k, p[KIT_P_ATTACK]) : 1.0f;
     v->hold_n = ms_n(k, p[KIT_P_HOLD]);
@@ -2275,15 +2437,45 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
     v->dec_n = ms_n(k, mask & 1 << KIT_LK_DECAY ? lk[KIT_LK_DECAY] : p[KIT_P_DECAY]);   /* (round B) */
     v->sus = (float)clampi(p[KIT_P_SUSTAIN], 0, 100) / 100.0f;
     v->legacy = v->hold_n && !v->dec_n && p[KIT_P_SUSTAIN] >= 100;
+    /* (pages v2) the engines' own */
+    if (v->eng == KIT_M_PITCHENV) {
+        v->pe_depth = (float)clampi(p[KIT_P_PDEPTH], -48, 48);
+        v->pe_a = ms_n(k, p[KIT_P_PATTACK]), v->pe_r = ms_n(k, p[KIT_P_PRELEASE]);
+        v->pe_mul = v->pe_a ? 1.0f : exp2f((v->pe_r ? v->pe_depth : 0.0f) / 12.0f);
+        v->inc = v->binc * v->pe_mul, v->ginc *= v->pe_mul;
+    }
+    v->q_step = 1.0f, v->ds = 1;
+    v->morph_lk = (mask >> KIT_LK_MORPH) & 1, v->fenv_lk = (mask >> KIT_LK_FENV) & 1;
+    v->morph = (float)clampi(v->morph_lk ? lk[KIT_LK_MORPH] : p[KIT_P_MORPH], 0, 100) / 100.0f;
+    v->fe_amt = (float)clampi(v->fenv_lk ? lk[KIT_LK_FENV] : p[KIT_P_FENV], -100, 100) * 0.08f;   /* (100: 8 octaves) */
+    v->fe_a = ms_n(k, p[KIT_P_FATTACK]) / FLT_N, v->fe_d = ms_n(k, p[KIT_P_FDECAY]) / FLT_N;
+    v->fe_r = ms_n(k, p[KIT_P_FRELEASE]) / FLT_N, v->fe_s = (float)clampi(p[KIT_P_FSUSTAIN], 0, 100) / 100.0f;
+    if (!v->fe_d)
+        v->fe_d = 1;
     v->cut_lk = (mask >> KIT_LK_CUTOFF) & 1, v->res_lk = (mask >> KIT_LK_RESO) & 1;
     flt_aim(k, v, v->cut_lk ? lk[KIT_LK_CUTOFF] : p[KIT_P_CUTOFF], v->res_lk ? lk[KIT_LK_RESO] : p[KIT_P_RESO], 1);
+    if (v->warp >= KIT_W_GRAINS || v->eng == KIT_M_GRANULAR) {   /* (pages v2) the grains */
+        const int ms = v->eng == KIT_M_GRANULAR ? clampi(p[KIT_P_GSIZE], 10, 500) : clampi(p[KIT_P_WGRAIN], 20, 120);
+        v->glen = ms_n(k, ms) > 16 ? ms_n(k, ms) : 16;
+        v->wstep = 1024.0f / (float)v->glen;
+        v->ph = v->pos;
+        if (v->eng == KIT_M_GRANULAR)
+            v->gnext = 0;                               /* (the first grain at once) */
+        else {                                          /* Warp: two Hann grains half a grain apart (their windows sum
+                                                         * to one): the first from its middle, so the attack is kept */
+            v->jit = v->warp == KIT_W_BEATS ? (double)ms_n(k, clampi(p[KIT_P_WSEARCH], 1, 30))
+                                            : v->glen * 0.5 * clampi(p[KIT_P_WJITTER], 0, 100) / 100.0 * v->ginc;
+            v->gr[0].on = 1, v->gr[0].pos = v->pos, v->gr[0].inc = v->ginc, v->gr[0].age = v->glen / 2;
+            v->gr[1].on = 1, v->gr[1].pos = v->pos, v->gr[1].inc = v->ginc, v->gr[1].age = 0;
+        }
+    }
     {
         const int lvl = mask & 1 << KIT_LK_LEVEL ? lk[KIT_LK_LEVEL] : p[KIT_P_LEVEL];
         const double lin = lvl <= -60 ? 0.0 : pow(10.0, lvl / 20.0);
         const double g = lin * (vel < 1 ? 1 : vel > 127 ? 127 : vel) / 127.0;
         const int pan = clampi(mask & 1 << KIT_LK_PAN ? lk[KIT_LK_PAN] : p[KIT_P_PAN], -50, 50);
         v->gl = (float)(g * (pan > 0 ? 1.0 - pan / 50.0 : 1.0));
-        v->gr = (float)(g * (pan < 0 ? 1.0 + pan / 50.0 : 1.0));
+        v->gr2 = (float)(g * (pan < 0 ? 1.0 + pan / 50.0 : 1.0));
         for (i = 0; i < 3; i++)                         /* (3b) its sends, after its level and pan */
             v->sg[i] = (float)clampi(p[KIT_P_SEND1 + i], 0, 100) / 100.0f;
     }
@@ -2291,25 +2483,179 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
 static void note_off(kit_t *k, int pad, int semis)
 {
     int i;
+    (void)k;
     for (i = 0; i < NV; i++) {
         voice_t *v = &k->vo[i];
-        if (v->on && v->gate && v->pad == pad && v->semis == semis && v->mode != KIT_M_TOGGLE)
-            v->gate = 0;                                /* (a one shot plays on; the held modes: their release; round
-                                                         * A: Toggle's the next tap's) */
+        if (v->on && v->gate && v->pad == pad && v->semis == semis)
+            v->gate = 0;                                /* (a one shot plays on; the held modes: their release) */
     }
 }
 static void release(voice_t *v, uint32_t n)
 {
     v->stage = ST_RELEASE, v->t = 0, v->r_from = v->env, v->rel_n = n;
 }
-/* one voice, frames [0, n) of acc (and its sends' buses sb[0..2], the same frames) */
-static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3], uint32_t n)
+/* (pages v2) a source frame of the voice at p (linear between frames; past the sound's ends its edge) */
+static void frame_at(const voice_t *v, double p, float *l, float *r)
 {
     const int16_t *pcm = v->snd->pcm;
     const uint32_t last = v->snd->frames - 1;
+    const double ps = p < 0 ? 0 : p;
+    const uint32_t a = (uint32_t)ps > last ? last : (uint32_t)ps, b = a + 1 > last ? last : a + 1;
+    const float fr = (float)(ps - a);
+    *l = pcm[2 * a] + (pcm[2 * b] - pcm[2 * a]) * fr;
+    *r = pcm[2 * a + 1] + (pcm[2 * b + 1] - pcm[2 * a + 1]) * fr;
+}
+/* .. a grain's position folded into the loop (looping) or the region */
+static double fold(const voice_t *v, double p)
+{
+    if (v->mode == B_LOOP) {
+        const double n = v->le - v->ls;
+        if (p >= v->le)
+            p = v->ls + fmod(p - v->ls, n);
+        else if (p < v->ls && v->pos >= v->ls)
+            p = v->le - fmod(v->ls - p, n);
+    }
+    return p < v->s ? v->s : p > v->e - 1 ? v->e - 1 : p;
+}
+/* (pages v2, Warp Beats) WSOLA: the start within +-jit of the playhead whose next frames best match the frames the
+ * fading grain plays next (a normalised cross-correlation, mono, every 4th frame over 256; offsets every 4th) */
+static double beats_align(const voice_t *v, double nat, double ph)
+{
+    const int16_t *pcm = v->snd->pcm;
+    const int64_t last = (int64_t)v->snd->frames - 1, S = (int64_t)v->jit, L = 256;
+    int64_t o, j, best = 0;
+    double bestc = -1e30;
+    const int64_t n0 = (int64_t)nat, p0 = (int64_t)ph;
+    if (S < 4 || n0 < 0 || n0 + L * v->dir > last || n0 + L * v->dir < 0)
+        return ph;
+    for (o = -S; o <= S; o += 4) {
+        const int64_t c = p0 + o;
+        double xy = 0, yy = 1e-9;
+        if (c < (int64_t)v->s || c > (int64_t)v->e - 1 || c + L * v->dir < 0 || c + L * v->dir > last)
+            continue;
+        for (j = 0; j < L; j += 4) {
+            const int64_t ia = n0 + j * v->dir, ib = c + j * v->dir;
+            const float x = (float)pcm[2 * ia] + pcm[2 * ia + 1], y = (float)pcm[2 * ib] + pcm[2 * ib + 1];
+            xy += x * y, yy += y * y;
+        }
+        xy /= sqrt(yy);
+        if (xy > bestc)
+            bestc = xy, best = o;
+    }
+    return ph + (double)best;
+}
+/* (pages v2) a frame of the grains: Warp's two (one restarts at the playhead each half grain), Granular's cloud */
+static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
+{
+    float sl = 0, sr = 0;
+    int i;
+    if (v->eng == KIT_M_GRANULAR) {                     /* spawn: every grain / density frames, at the position
+                                                         * (and its spray), its pitch spread at random */
+        if (!v->gnext) {
+            const int16_t *p = k->v[v->pad];
+            const int dens = clampi(p[KIT_P_GDENS], 1, NGR);
+            const double len = v->e - v->s;
+            const uint32_t gl = ms_n(k, clampi(p[KIT_P_GSIZE], 10, 500));
+            if (gl > 16 && gl != v->glen)
+                v->glen = gl, v->wstep = 1024.0f / (float)gl;
+            v->gspawn = v->glen / (uint32_t)dens > 0 ? v->glen / (uint32_t)dens : 1;
+            v->ggain = dens >= 2 ? 2.0f / (float)dens : 1.0f;
+            for (i = 0; i < NGR && v->gr[i].on; i++) {}
+            if (i < NGR) {
+                const double spr = clampi(p[KIT_P_GSPREAD], 0, 24) * rnd_bi(v);
+                const double inc = v->ginc * pow(2.0, spr / 12.0);
+                double at = v->s + len * clampi(p[KIT_P_GPOS], 0, 100) / 100.0 +
+                            len * 0.5 * clampi(p[KIT_P_GSPRAY], 0, 100) / 100.0 * rnd_bi(v);
+                const double need = v->glen * inc;
+                if (v->dir > 0)
+                    at = at > v->e - need ? v->e - need : at;
+                else
+                    at = at < v->s + need ? v->s + need : at;
+                v->gr[i].on = 1, v->gr[i].age = 0, v->gr[i].inc = inc, v->gr[i].pos = at < v->s ? v->s : at > v->e - 1 ? v->e - 1 : at;
+            }
+            v->gnext = v->gspawn;
+        }
+        v->gnext--;
+    }
+    for (i = 0; i < NGR; i++) {
+        grain_t *g = &v->gr[i];
+        float a, b, w;
+        if (!g->on)
+            continue;
+        if (g->age >= v->glen) {
+            if (v->eng == KIT_M_GRANULAR) {
+                g->on = 0;
+                continue;
+            }
+            {                                           /* (Warp) restarted at the playhead (Grains: its jitter; Beats:
+                                                         * aligned with the other grain's next frames) */
+                const grain_t *o = &v->gr[i ^ 1];
+                double at = v->ph;
+                if (v->warp == KIT_W_BEATS)
+                    at = beats_align(v, fold(v, o->pos + v->dir * o->inc * o->age), v->ph);
+                else if (v->jit > 0)
+                    at += v->jit * rnd_bi(v);
+                if (v->mode != B_LOOP) {                /* (the grain inside the region: no edge mid-grain) */
+                    const double need = v->glen * v->ginc;
+                    if (v->dir > 0 && at > v->e - need)
+                        at = v->e - need;
+                    if (v->dir < 0 && at < v->s + need)
+                        at = v->s + need;
+                }
+                g->pos = fold(v, at), g->age = 0, g->inc = v->ginc;
+            }
+        }
+        w = k->hann[(uint32_t)((float)g->age * v->wstep) & 1023];
+        frame_at(v, fold(v, g->pos), &a, &b);
+        sl += a * w, sr += b * w;
+        g->pos += v->dir * g->inc, g->age++;
+    }
+    if (v->eng == KIT_M_GRANULAR)
+        sl *= v->ggain, sr *= v->ggain;
+    *l = sl, *r = sr;
+}
+/* (pages v2, every FLT_N frames) the pitch envelope, LoFi's settings, the filter's envelope */
+static void control(const kit_t *k, voice_t *v)
+{
+    const int16_t *p = k->v[v->pad];
+    v->cn = FLT_N;
+    if (v->eng == KIT_M_PITCHENV) {                     /* 0 to the depth over the attack, back to 0 over the release */
+        float off;
+        v->pe_t += FLT_N;
+        if (v->pe_t < v->pe_a)
+            off = v->pe_depth * (float)v->pe_t / (float)v->pe_a;
+        else if (v->pe_t - v->pe_a < v->pe_r)
+            off = v->pe_depth * (1.0f - (float)(v->pe_t - v->pe_a) / (float)v->pe_r);
+        else
+            off = 0.0f;
+        {
+            const float mul = exp2f(off / 12.0f);
+            v->inc = v->binc * mul;
+            v->ginc = v->ginc / v->pe_mul * mul;
+            v->pe_mul = mul;
+        }
+    }
+    if (v->eng == KIT_M_LOFI) {
+        const int bits = clampi(p[KIT_P_BITS], 1, 16);
+        v->q_step = (float)(1 << (16 - bits));
+        v->ds = clampi(p[KIT_P_DOWNS], 1, 32);
+    }
+    if (v->fe_amt != 0.0f) {
+        if (v->fe_st < 3 && (v->stage >= ST_RELEASE || (v->mode != B_ONE && !v->gate)))
+            v->fe_st = 3, v->fe_t = 0, v->fe_from = v->fe_lvl;   /* (its release with the note's) */
+        fenv_next(v);
+    }
+}
+/* one voice, frames [0, n) of acc (and its sends' buses sb[0..2], the same frames) */
+static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3], uint32_t n)
+{
+    const int grains = v->warp >= KIT_W_GRAINS || v->eng == KIT_M_GRANULAR;
     uint32_t i;
     for (i = 0; i < n && v->on; i++) {
         double left;
+        if (!v->cn)
+            control(k, v);
+        v->cn--;
         /* the envelope */
         switch (v->stage) {
         case ST_ATTACK:
@@ -2326,7 +2672,7 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
             break;
         case ST_HOLD:
             if (++v->t >= v->hold_n) {
-                if ((v->mode == KIT_M_ONESHOT && v->legacy) || (v->mode != KIT_M_ONESHOT && !v->gate))
+                if ((v->mode == B_ONE && v->legacy) || (v->mode != B_ONE && !v->gate))
                     release(v, v->rel_n);               /* (one shot as before round B: the hold's gate; a held mode
                                                          * let go meanwhile) */
                 else if (v->dec_n)
@@ -2336,7 +2682,7 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
             }
             break;
         case ST_DECAY:                                  /* (round B) linear to the sustain's level */
-            if (v->mode != KIT_M_ONESHOT && !v->gate) {
+            if (v->mode != B_ONE && !v->gate) {
                 release(v, v->rel_n);
                 break;
             }
@@ -2346,7 +2692,7 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
                 v->env = v->d_from + (v->sus - v->d_from) * (float)v->t / (float)v->dec_n;
             break;
         case ST_SUSTAIN:
-            if (v->mode != KIT_M_ONESHOT && !v->gate)
+            if (v->mode != B_ONE && !v->gate)
                 release(v, v->rel_n);
             break;
         default: break;
@@ -2360,21 +2706,46 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
             v->env = v->r_from * (1.0f - (float)v->t / (float)len);
             v->t++;
         }
-        /* one shot with no hold: the release is the tail, ending at the end */
-        left = v->dir > 0 ? (v->e - v->pos) / v->inc : (v->pos - v->s) / v->inc;
-        if (v->mode == KIT_M_ONESHOT && !v->legacy && v->stage <= ST_SUSTAIN && v->rel_n && left <= v->rel_n)
+        /* one shot with no hold: the release is the tail, ending at the end (Warp's grains: the playhead's) */
+        if (v->mode == B_HELD)
+            left = 1e18;
+        else if (grains)
+            left = v->dir > 0 ? (v->e - v->ph) / v->spd : (v->ph - v->s) / v->spd;
+        else
+            left = v->dir > 0 ? (v->e - v->pos) / v->inc : (v->pos - v->s) / v->inc;
+        if (v->mode == B_ONE && !v->legacy && v->stage <= ST_SUSTAIN && v->rel_n && left <= v->rel_n)
             release(v, (uint32_t)left ? (uint32_t)left : 1);
-        if (v->mode != KIT_M_LOOP && v->mode != KIT_M_TOGGLE && left <= 0) {
+        if ((v->mode == B_ONE || v->mode == B_MOM) && left <= 0) {
             v->on = 0;
             break;
         }
-        {   /* the frame: linear between the two source frames about pos (either way it plays) */
-            const double ps = v->pos < 0 ? 0 : v->pos;
-            const uint32_t a = (uint32_t)ps > last ? last : (uint32_t)ps, b = a + 1 > last ? last : a + 1;
-            const float fr = (float)(ps - a);
-            float l = pcm[2 * a] + (pcm[2 * b] - pcm[2 * a]) * fr;
-            float r = pcm[2 * a + 1] + (pcm[2 * b + 1] - pcm[2 * a + 1]) * fr;
-            float ol, orr;
+        {
+            float l, r, ol, orr;
+            if (grains)
+                grains_frame(k, v, &l, &r);
+            else {
+                frame_at(v, v->pos, &l, &r);            /* the frame: linear between the two source frames about pos */
+                if (v->xf > 0) {                        /* (pages v2) Loop's fade: the loop's end into its start */
+                    const double x0 = v->dir > 0 ? v->le - v->xf : v->ls + v->xf;
+                    const double d = v->dir > 0 ? v->pos - x0 : x0 - v->pos;
+                    if (d > 0 && v->pos >= v->ls && v->pos < v->le) {
+                        const float w = (float)(d / v->xf);
+                        float l2, r2;
+                        frame_at(v, v->dir > 0 ? v->ls + d : v->le - d, &l2, &r2);
+                        l += (l2 - l) * w, r += (r2 - r) * w;
+                    }
+                }
+            }
+            if (v->eng == KIT_M_LOFI) {                 /* (pages v2) the rate held, then the bits */
+                if (v->ds > 1) {
+                    if (v->ds_n <= 0)
+                        v->hold_l = l, v->hold_r = r, v->ds_n = v->ds;
+                    v->ds_n--;
+                    l = v->hold_l, r = v->hold_r;
+                }
+                if (v->q_step > 1.0f)
+                    l = floorf(l / v->q_step + 0.5f) * v->q_step, r = floorf(r / v->q_step + 0.5f) * v->q_step;
+            }
             if (v->flt && !v->fn)                       /* (round B) the low-pass (open: bypassed, the frames as ever) */
                 flt_next(k, v);
             if (v->flt) {
@@ -2387,11 +2758,16 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
                     const float v1 = v->a1 * v->ic1[c] + v->a2 * v3;
                     const float v2 = v->ic2[c] + v->a2 * v->ic1[c] + v->a3 * v3;
                     v->ic1[c] = 2.0f * v1 - v->ic1[c], v->ic2[c] = 2.0f * v2 - v->ic2[c];
-                    x[c] = v2;
+                    if (v->morph <= 0.0f)
+                        x[c] = v2;
+                    else {                              /* (pages v2) LP -> BP (unity at its peak) -> HP */
+                        const float bp = v->kq * v1, hp = x[c] - v->kq * v1 - v2, m2 = v->morph * 2.0f;
+                        x[c] = m2 <= 1.0f ? v2 + (bp - v2) * m2 : bp + (hp - bp) * (m2 - 1.0f);
+                    }
                 }
                 l = x[0], r = x[1];
             }
-            ol = l * v->env * v->gl, orr = r * v->env * v->gr;
+            ol = l * v->env * v->gl, orr = r * v->env * v->gr2;
             int j;
             acc[2 * i] += ol;
             acc[2 * i + 1] += orr;
@@ -2399,16 +2775,89 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
                 if (v->sg[j] > 0.0f)
                     sb[j][2 * i] += ol * v->sg[j], sb[j][2 * i + 1] += orr * v->sg[j];
         }
+        if (grains) {                                   /* (pages v2) Warp's playhead at its speed */
+            if (v->eng != KIT_M_GRANULAR) {
+                v->ph += v->dir * v->spd;
+                if (v->mode == B_LOOP) {
+                    const double len = v->le - v->ls;
+                    if (v->dir > 0 && v->ph >= v->le)
+                        v->ph -= len;
+                    else if (v->dir < 0 && v->ph < v->ls)
+                        v->ph += len;
+                }
+            }
+            continue;
+        }
         v->pos += v->dir * v->inc;
-        if (v->mode == KIT_M_LOOP || v->mode == KIT_M_TOGGLE) {   /* round start..end while held, (round A) while
-                                                         * on (and through its release) */
-            const double len = v->e - v->s;
-            if (v->dir > 0 && v->pos >= v->e)
+        if (v->mode == B_LOOP) {                        /* round its loop while held (and through its release); (pages
+                                                         * v2) past a fade: on from the fade's end */
+            const double len = v->le - v->ls - v->xf;
+            if (v->dir > 0 && v->pos >= v->le)
                 v->pos -= len;
-            else if (v->dir < 0 && v->pos < v->s)
+            else if (v->dir < 0 && v->pos < v->ls)
                 v->pos += len;
         }
     }
+}
+/* (pages v2) the kit bus's low-pass over n frames of k->dry (open: bypassed; the cutoff glides a frame at a time) */
+static void bus_run(kit_t *k, uint32_t n)
+{
+    const float go = flt_g(k, 100), gt = k->bus_c >= 100 ? go : flt_g(k, k->bus_c), kq = flt_k(k->bus_r);
+    const float a = 1.0f - expf(-1.0f / (0.01f * (float)k->cfg.fs));   /* (10 ms) */
+    uint32_t i;
+    int c;
+    if (!k->bus_on) {
+        if (k->bus_c >= 100)
+            return;
+        k->bus_on = 1, k->bus_g = go;                   /* (from open) */
+        k->bus_ic1[0] = k->bus_ic1[1] = k->bus_ic2[0] = k->bus_ic2[1] = 0;
+    }
+    for (i = 0; i < n; i++) {
+        float a1, a2, a3;
+        k->bus_g += (gt - k->bus_g) * a;
+        flt_coefs(k->bus_g, kq, &a1, &a2, &a3);
+        for (c = 0; c < 2; c++) {
+            const float x = k->dry[2 * i + c], v3 = x - k->bus_ic2[c];
+            const float v1 = a1 * k->bus_ic1[c] + a2 * v3, v2 = k->bus_ic2[c] + a2 * k->bus_ic1[c] + a3 * v3;
+            k->bus_ic1[c] = 2.0f * v1 - k->bus_ic1[c], k->bus_ic2[c] = 2.0f * v2 - k->bus_ic2[c];
+            k->dry[2 * i + c] = v2;
+        }
+    }
+    if (k->bus_c >= 100 && k->bus_g >= go * 0.999f)
+        k->bus_on = 0;                                  /* (open again: bypassed) */
+    for (c = 0; c < 2; c++) {
+        if (fabsf(k->bus_ic1[c]) < 1e-15f)
+            k->bus_ic1[c] = 0;
+        if (fabsf(k->bus_ic2[c]) < 1e-15f)
+            k->bus_ic2[c] = 0;
+    }
+}
+int kit_live(const kit_t *k, int pad, int *cut, int *fe, int *fe_st, int *amp, int *amp_st)
+{
+    const voice_t *v = NULL;
+    int i;
+    for (i = 0; k && i < NV; i++)
+        if (k->vo[i].on && k->vo[i].pad == pad && k->vo[i].stage != ST_FADE && (!v || k->vo[i].age > v->age))
+            v = &k->vo[i];
+    if (!v)
+        return 0;
+    {
+        const float c = (float)v->cut_v + v->fe_amt * v->fe_lvl * 10.03f;   /* (100 steps are ten octaves) */
+        *cut = c < 0 ? 0 : c > 100 ? 100 : (int)(c + 0.5f);
+    }
+    *fe = (int)(v->fe_lvl * 255.0f + 0.5f), *fe_st = v->fe_st > 3 ? 3 : v->fe_st;
+    *amp = (int)(v->env * 255.0f + 0.5f);
+    *amp_st = v->stage == ST_ATTACK ? 0 : v->stage <= ST_DECAY ? 1 : v->stage == ST_SUSTAIN ? 2 : 3;
+    return 1;
+}
+void kit_bus(kit_t *k, int which, int value)
+{
+    if (!k)
+        return;
+    if (which == 0)
+        k->bus_c = clampi(value, 0, 100);
+    else if (which == 1)
+        k->bus_r = clampi(value, 0, 100);
 }
 /* frames [at0, at0 + n) of the call (n <= RBUF) into k->dry and k->sb, the notes due in them first (*e: the next) */
 static void render_part(kit_t *k, uint32_t at0, uint32_t n, int *e)
@@ -2459,6 +2908,7 @@ void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, ui
     while (at0 < frames) {
         const uint32_t n = frames - at0 < RBUF ? frames - at0 : RBUF;
         render_part(k, at0, n, &e);
+        bus_run(k, n);                                  /* (pages v2) the kit bus's low-pass */
         for (i = 0; i < n; i++) {
             const float l = k->dry[2 * i] * gl, r = k->dry[2 * i + 1] * gr;
             acc[2 * (at0 + i)] += l, acc[2 * (at0 + i) + 1] += r;
@@ -2491,7 +2941,7 @@ void kit_stretch(kit_t *k, int pad, uint32_t us)
     k->st_us[pad] = us;
     for (i = 0; i < NV; i++)                            /* (a voice sounding: re-fitted at once) */
         if (k->vo[i].on && k->vo[i].pad == pad)
-            k->vo[i].inc = rate_cents(k, pad, k->vo[i].semis, k->vo[i].cents);
+            retune(k, &k->vo[i]);
 }
 void kit_mix(kit_t *k, int level, int pan, const int sends[3])
 {
@@ -2720,6 +3170,8 @@ static void do_freeze(kit_t *k, const req_t *r)
         return;
     }
     t->cfg = k->cfg, t->glide = k->glide;
+    memcpy(t->hann, k->hann, sizeof t->hann);           /* (pages v2: the grains' window) */
+    t->bus_c = 100;
     memcpy(t->v[0], r->v, sizeof t->v[0]);
     t->v[0][KIT_P_MUTE] = 0, t->v[0][KIT_P_CHOKE] = 0;
     t->st_us[0] = r->us;
@@ -2733,8 +3185,10 @@ static void do_freeze(kit_t *k, const req_t *r)
         max = (uint32_t)KIT_FREEZE_S * t->cfg.fs;
     if (v) {
         v->sg[0] = v->sg[1] = v->sg[2] = 0.0f;         /* (no sends) */
-        if (v->mode != KIT_M_ONESHOT) {                 /* (held: the region once) */
-            const double n = (v->e - v->s) / v->inc;
+        if (v->mode != B_ONE) {                         /* (held: the region once; pages v2: Warp's grains at their
+                                                         * speed) */
+            const double n = (v->e - v->s) / (v->warp >= KIT_W_GRAINS || v->eng == KIT_M_GRANULAR
+                                                  ? (v->eng == KIT_M_GRANULAR ? v->ginc : v->spd) : v->inc);
             gate_n = n < 1 ? 1 : n > max ? max : (uint32_t)n;
             gated = 0;
         }
@@ -2745,11 +3199,7 @@ static void do_freeze(kit_t *k, const req_t *r)
         uint32_t n = max - no < 1024 ? max - no : 1024, j;
         if (!gated && no >= gate_n) {                   /* (let go: its release) */
             gated = 1;
-            if (v->mode == KIT_M_TOGGLE) {
-                const uint32_t rn = ms_n(t, t->v[0][KIT_P_RELEASE]), f = ms_n(t, FADE_MS);
-                release(v, rn > f ? rn : f);
-            } else
-                v->gate = 0;
+            v->gate = 0;
         }
         if (!gated && gate_n - no < n)
             n = gate_n - no;

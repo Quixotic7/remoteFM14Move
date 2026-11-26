@@ -335,7 +335,7 @@ static void api_kit_post(client_t *c, const char *body)
     }
     mj_int(body, "pad", &pad), mj_int(body, "param", &param), mj_int(body, "value", &value), mj_int(body, "vel", &vel);
     mj_int(body, "id", &id);
-    if (pad < 0 || pad > 15 || param < 0 || param > 31 || value < -32768 || value > 32767 || vel < 0 || vel > 127) {
+    if (pad < 0 || pad > 15 || param < 0 || param > 63 || value < -32768 || value > 32767 || vel < 0 || vel > 127) {
         json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"out of range\"}");
         return;
     }
@@ -344,7 +344,7 @@ static void api_kit_post(client_t *c, const char *body)
     else if (!strcmp(op, "choose"))
         engine_panel(ENG_OP_KIT_CHOOSE, (int)pad, 0);
     else if (!strcmp(op, "set"))
-        engine_panel(ENG_OP_KIT_SET, (int)(pad * 32 + param), (int)value);
+        engine_panel(ENG_OP_KIT_SET, (int)(pad * 64 + param), (int)value);   /* (pages v2: 46 settings, 63 the Trim) */
     else if (!strcmp(op, "save"))
         engine_panel(ENG_OP_KIT_SAVE, 0, 0);
     else if (!strcmp(op, "open"))

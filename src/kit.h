@@ -62,12 +62,30 @@ struct tl;
 enum { KIT_P_PITCH, KIT_P_START, KIT_P_END, KIT_P_MODE, KIT_P_ATTACK, KIT_P_HOLD, KIT_P_RELEASE, KIT_P_CHOKE,
        KIT_P_REVERSE, KIT_P_LEVEL, KIT_P_PAN, KIT_P_MUTE, KIT_P_STRETCH, KIT_P_SEND1, KIT_P_SEND2, KIT_P_SEND3,
        KIT_P_DECAY, KIT_P_SUSTAIN, KIT_P_CUTOFF, KIT_P_RESO,   /* (round B: AHDSR, the pad's low-pass: 100 open) */
+       /* (pages v2, 2026-11-26) the engines' own, Warp (Sync is KIT_P_STRETCH), the filter's morph and envelope */
+       KIT_P_LOOPS, KIT_P_LOOPE, KIT_P_LOOPXF,          /* Loop: its points (of KIT_FRAC, inside the region), fade % */
+       KIT_P_PDEPTH, KIT_P_PATTACK, KIT_P_PRELEASE,     /* Pitch Env: semitones -48..48, ms, ms */
+       KIT_P_BITS, KIT_P_DOWNS,                         /* LoFi: 1..16 bits, a sample held 1..32 frames */
+       KIT_P_GPOS, KIT_P_GSIZE, KIT_P_GDENS, KIT_P_GSPRAY, KIT_P_GSPREAD,   /* Granular: %, ms, grains at once, %, st */
+       KIT_P_WARP, KIT_P_SPEED, KIT_P_WPITCH,           /* Warp: KIT_W_*, speed x 100 (25..400), cents */
+       KIT_P_WGRAIN, KIT_P_WJITTER, KIT_P_WSEARCH,      /* .. a grain's ms, Grains' jitter %, Beats' search ms */
+       KIT_P_MORPH, KIT_P_FENV,                         /* the filter: 0 LP .. 50 BP .. 100 HP; its envelope -100..100 */
+       KIT_P_FATTACK, KIT_P_FDECAY, KIT_P_FSUSTAIN, KIT_P_FRELEASE,   /* .. its ADSR (ms, ms, %, ms) */
        KIT_P_N };
+enum { KIT_W_OFF, KIT_W_REPITCH, KIT_W_GRAINS, KIT_W_BEATS, KIT_W_N };   /* (pages v2) Warp's algorithms */
+#define KIT_BUS 16                /* (pages v2) KIT_SET's index for the kit bus's low-pass: param 0 cutoff, 1 reso */
 /* (round B) a step's locks on one hit (as rfm1cs's RFM_MOVE_KIT_LK_*), in the settings' units */
-enum { KIT_LK_PITCH, KIT_LK_START, KIT_LK_CUTOFF, KIT_LK_RESO, KIT_LK_LEVEL, KIT_LK_PAN, KIT_LK_DECAY, KIT_LK_N };
+enum { KIT_LK_PITCH, KIT_LK_START, KIT_LK_CUTOFF, KIT_LK_RESO, KIT_LK_LEVEL, KIT_LK_PAN, KIT_LK_DECAY,
+       KIT_LK_MORPH, KIT_LK_FENV,                       /* (pages v2) */
+       KIT_LK_CHOP, KIT_LK_CHOPE,                       /* (pages v2, the right half's Chop) chops CHOP..CHOPE (0..15) of
+                                                         * the region: one once, a range looped while held */
+       KIT_LK_N };
 #define KIT_KPATH 160             /* a saved kit's sound's path, as the core keeps it (RFM_MOVE_KIT_PATH) */
 #define KIT_FRAC 32767            /* START / END: the whole sound */
-enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_TOGGLE };   /* (round A: Toggle, a tap on, the next off) */
+/* (pages v2) the engines: One Shot, Momentary, Loop (its loop points while held), Pitch Env (One Shot, an AR envelope
+ * on the pitch), LoFi (One Shot, bits and rate reduced), Granular (grains of the region while held). Round A's Toggle
+ * (3) is gone: the core loads it as Loop; an older kit.json too */
+enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_PITCHENV, KIT_M_LOFI, KIT_M_GRANULAR, KIT_M_N };
 /* Files' places (as rfm1cs's RFM_MOVE_KIT_PL_*), a row's kind, a load's status (as RFM_MOVE_KIT_ROW_*, RFM_MOVE_KIT_*) */
 enum { KIT_PL_TAKES = 1, KIT_PL_SAMPLES = 2, KIT_PL_KITS = 3 };
 enum { KIT_ROW_DIR = 1, KIT_ROW_FILE = 2, KIT_ROW_KIT = 3 };
@@ -110,6 +128,7 @@ typedef struct {                  /* (stage 3b) a kit as saved: its pads' paths 
     char path[KIT_PADS][KIT_KPATH];   /* ("" empty) */
     int16_t v[KIT_PADS][KIT_P_N];
     int trim;                     /* (round A) the Trim silence (kit.json "trim"; none: 1) */
+    uint8_t bus[2];               /* (pages v2) the kit bus's low-pass: cutoff (100 open), resonance (kit.json "bus") */
 } kit_kit_t;
 typedef struct {
     int kind;                     /* KIT_A_* (SAVED: status KIT_OK and the name in name, else KIT_FAILED; KIT: kit, status
@@ -153,6 +172,12 @@ void kit_set(kit_t *k, int pad, int param, int value);
 /* (stage 3b) Stretch's microseconds (KIT_SET's `from`): the pad's start..end lasts so long (0: its Pitch); a voice
  * sounding follows at once */
 void kit_stretch(kit_t *k, int pad, uint32_t us);
+/* (pages v2) the kit bus's low-pass (which 0: cutoff 0..100, 100 open: bypassed; 1: resonance 0..100), on the voices'
+ * mix before the strip's level, pan and sends */
+void kit_bus(kit_t *k, int which, int value);
+/* (pages v2, the screen) the pad's newest voice as it sounds: its cutoff now (0..100, the envelope in it), its filter
+ * and amp envelopes' levels (0..255) and stages (0 attack, 1 decay, 2 sustain, 3 release); 0 none sounds */
+int kit_live(const kit_t *k, int pad, int *cut, int *fe, int *fe_st, int *amp, int *amp_st);
 /* the kit's own strip (the Mixer's fourth): level, pan (64 centre), sends 1..3, 0..127 */
 void kit_mix(kit_t *k, int level, int pan, const int sends[3]);
 /* saved as a new kit (Kit 1, Kit 2 ..: a folder of copies of its sounds and kit.json): answer KIT_A_SAVED. One at a

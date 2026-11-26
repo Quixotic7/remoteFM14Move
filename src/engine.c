@@ -3097,11 +3097,11 @@ static void page_edit(int op, int a, int b)
         break;
     case ENG_OP_KIT_SET:
         g_kit_force = 1;
-        if ((a & 31) == 31) {   /* (round B) setting 31: the Kit tab's Trim silence */
+        if ((a & 63) == 63) {   /* (round B) setting 63 (pages v2; 31 before): the Kit tab's Trim silence */
             rfm_move_kit_set_trim(m, b != 0);
             break;
         }
-        if (!rfm_move_kit_set(m, a >> 5, a & 31, b))
+        if (!rfm_move_kit_set(m, a >> 6, a & 63, b))
             return;
         break;
     case ENG_OP_KIT_SAVE: {
@@ -4679,6 +4679,7 @@ static void kit_proj_sync(void)
     kit_proj_dir(g_kits_dir, slot, d, sizeof d);
     kit_project(g_kit, d);
 }
+typedef char kit_p_n_check[(int)KIT_P_N == (int)RFM_MOVE_KIT_P_N && (int)KIT_LK_N == (int)RFM_MOVE_KIT_LK_N && (int)KIT_M_N == (int)RFM_MOVE_KIT_M_N ? 1 : -1];
 static void kit_action(const rfm_move_act_t *a)
 {
     if (!g_kit)
@@ -4691,6 +4692,10 @@ static void kit_action(const rfm_move_act_t *a)
         g_kit_t_notes++;
         break;
     case RFM_MOVE_ACT_KIT_SET:
+        if (a->index == RFM_MOVE_KIT_BUS) {             /* (pages v2) the kit bus's low-pass */
+            kit_bus(g_kit, a->param, a->value);
+            break;
+        }
         kit_set(g_kit, a->index, a->param, a->value);
         if (a->param == RFM_MOVE_KIT_P_STRETCH)      /* (3b) its microseconds at the tempo */
             kit_stretch(g_kit, a->index, a->from);
@@ -4703,6 +4708,7 @@ static void kit_action(const rfm_move_act_t *a)
         for (p = 0; p < 5; p++)
             x.mix[p] = (uint8_t)rfm_move_kit_mix(&S->core, p);
         x.trim = rfm_move_kit_trim(&S->core);   /* (round A) */
+        x.bus[0] = (uint8_t)rfm_move_kit_bus(&S->core, 0), x.bus[1] = (uint8_t)rfm_move_kit_bus(&S->core, 1);   /* (pages v2) */
         for (pad = 0; pad < KIT_PADS; pad++) {
             const char *path = rfm_move_kit_path(&S->core, pad);
             snprintf(x.path[pad], sizeof x.path[pad], "%s", path ? path : "");
@@ -4831,6 +4837,18 @@ static int kit_answers(void)
 {
     static kit_ans_t a;   /* (5 KB: not on the stack of the engine's loop) */
     int redraw = 0;
+    {                                                   /* (pages v2) the chosen pad's voice as it sounds: the Filter
+                                                         * page's live bars and envelope */
+        static int was, tick;
+        int cut = 0, fe = 0, fst = 0, amp = 0, ast = 0, on;
+        const int pad = S->core.kit.cur;
+        if (!(++tick & 7)) {                            /* (every 8th tick: about 40 a second) */
+            on = g_kit && kit_live(g_kit, pad, &cut, &fe, &fst, &amp, &ast);
+            if (on || was)
+                redraw |= rfm_move_kit_live(&S->core, pad, on, cut, fe, fst, amp, ast);
+            was = on;
+        }
+    }
     while (g_kit && kit_poll(g_kit, &a)) {
         if (a.kind == KIT_A_ROWS) {
             rfm_move_kit_row_t rows[KIT_ROWS];
@@ -4867,6 +4885,7 @@ static int kit_answers(void)
                 redraw |= rfm_move_kit_apply(&S->core, a.kit.name, a.kit.layout, a.kit.mix, paths,
                                              (const int16_t (*)[RFM_MOVE_KIT_P_N])a.kit.v);
                 rfm_move_kit_set_trim(&S->core, a.kit.trim);   /* (round A) */
+                rfm_move_kit_set_bus(&S->core, a.kit.bus[0], a.kit.bus[1]);   /* (pages v2) */
                 g_kit_t_kits++;
             } else
                 redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);

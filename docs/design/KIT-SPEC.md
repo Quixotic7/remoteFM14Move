@@ -287,3 +287,98 @@ Built for rapid iteration (no new tests; the existing ones adapted). Nothing new
 - **Unchanged:** a step held + a knob (the lockable settings on the page shown, lit yellow, the rest dark), a step
   held + the volume knob, the pads, the steps, Copy / Delete / Mute with pads, the right half, Slice, recording into
   a pad, the routing fix.
+
+## Pages v2, 2026-11-26
+
+The owner's page design, then their revisions the same day (engines and Warp, the right half, the screens). Built for
+rapid iteration (no new tests; the existing ones adapted). Project version 15; kit.json version 2.
+
+**The pages** (the jog as the sequencer's; no list of settings on a page: its picture, a knob's value only while it
+is touched or turned, full screen, the knobs' lights saying which have a job):
+
+| Page | Picture | Knobs 1..8 |
+|---|---|---|
+| Sample Kit | the 16 lanes (4 px each, pad 1 at the bottom; a step a 4 x 4 cell 2 px apart: a hit its lower three rows, an empty step a 2 px dash; the chosen lane an arrow on the left; the playhead's cell inverted); an empty pattern: the page switcher | Right half, Trim silence |
+| Pad Sample | the wave over the region above the pad's 16 steps (drawn as a track page's step strip, Move's strip under it) | Start, End, Transpose (Shift: cents; -24..+24), Engine, Attack, Decay, Sustain, Release |
+| Trig | the pad's track over 16 steps, the trigged steps marked | the sequencer's TRIG page for the pad's track (13..16): Micro, Ratchet, Chance, Cond, Func, its amount, Length; 8 dark |
+| Pad Sample 2 | the engine's own above the steps (Loop: the loop and its fade; Granular: position and spray; Pitch Env: its curve; LoFi: a wave in its steps) | the engine's own on 1..6, 7 Choke, 8 Reverse |
+| Warp | the wave, the steps it lasts (Off: the switcher) | Algorithm, Sync, Speed, Pitch, the algorithm's two |
+| Filter | Fever Dream's: the filter as bars (cutoff, resonance, morph; a tick at the knob's cutoff, a dot where the envelope takes it) on the left, its envelope on the right, both live (the pad's newest voice, `rfm_move_kit_live`) | Cutoff, Res, Morph, Env Amount, F Attack, F Decay, F Sustain, F Release |
+| Pad Mix | the level as a bar, the pan a mark | Level, Pan, Cutoff, -, Send 1, 2, 3, - |
+| Kit Mix | the kit's name, its pads, its level | Level, Pan, Cutoff, Res (the kit bus's low-pass), Send 1, 2, 3, - |
+
+- **The page switcher** (while the jog turns, and a page with nothing to draw): the eight pages' icons in filled
+  cells, the shown one inverted, its name under them at one size (1x); no marks.
+- **The Filter page's knobs** keep the page (the owner's exception): their name and value in a line at the top, the
+  part being changed thick (the envelope's stage, the cutoff's tick).
+- **Pitch-like popups** (Transpose, Warp's Pitch, Pitch Env's depth) are bars from the middle.
+- **The browser:** three rows, the chosen one fixed in the middle with its icon (Back a left arrow, a folder a right
+  arrow, a sound a small wave), the others text only, no inverted row; a turn slides the list a row under the icon
+  (100 ms, eased; the next turn starts its own). Five rows asked at a time.
+
+**The engines** (Pad Sample's knob 4; Pad Sample 2's knobs):
+
+| Engine | Plays | Pad Sample 2 |
+|---|---|---|
+| One Shot | the region once | - |
+| Momentary | the region once while held | - |
+| Loop | then round its loop while held | 1 Loop Start, 2 Loop End (inside the region; the close-up), 3 Loop Fade (0..100 % of half the loop: the loop's end crossfaded into its start) |
+| Pitch Env | as One Shot, the pitch moved by an attack / release envelope | 1 Depth (-48..+48 st), 2 Attack, 3 Release |
+| LoFi | as One Shot, bits and rate reduced | 1 Bits (16..1), 2 Downsample (a sample held 1..32 frames) |
+| Granular | grains of the region while held | 1 Position, 2 Size (10..500 ms), 3 Density (1..16 grains), 4 Spray, 5 Spread (0..24 st) |
+
+Toggle is gone: a pad saved with it loads as Loop.
+
+**Warp** (all engines but Granular; Off by default): 1 Algorithm **Off, Repitch, Grains, Beats**; 2 Sync (Off, 1..64
+steps: the old Stretch, re-fitted when the tempo or the track's rate changes); 3 Speed (0.25..4.00, 0.05 a detent,
+Shift 0.01; Sync on: 1/4x, 1/2x, 3/4x, 1x, 1.5x, 2x, 3x, 4x of the synced length); 4 Pitch (semitones, Shift cents;
+dark for Repitch); 5 Grain (20..120 ms), 6 Grains' Jitter or Beats' Search (1..30 ms).
+- **Repitch:** the rate. With Sync on the fit sets it and Transpose, the right half's pitches and the steps' pitch are
+  ignored (the owner's rule); without Sync, Speed times the pitch.
+- **Grains:** overlap-add of two Hann grains half a grain apart (their windows sum to one), each read at the pitch,
+  the playhead moving at the speed; the first grain starts in its middle so the attack is kept; jitter moves each new
+  grain's start.
+- **Beats:** the same with WSOLA alignment: each new grain starts within +-Search of the playhead where its frames best
+  match (normalised cross-correlation, mono, every 4th frame over 256, offsets every 4th) what the fading grain plays
+  next. For drums and loops.
+- Both keep the pitch (Transpose, the right half and the notes still apply, with Warp's own Pitch on top); they honour
+  the region, Reverse, the loop, Pitch Env, LoFi, the envelopes and the filter. Elasticat's modes were looked at for
+  which ideas to have; no code taken.
+- The old Stretch value N loads as Warp Repitch, Sync N.
+
+**The filter:** Morph blends the state-variable filter's LP -> BP (unity at its peak) -> HP; Env Amount (-100..+100)
+moves the cutoff up to 8 octaves either way by the filter's own ADSR (a voice's, at the coefficients' 32-frame rate).
+Open, Env 0, Morph LP: bypassed as before. Morph and Env Amount are lockable (cc 136 + l x 4 + pad % 4, l 7, 8).
+
+**The kit bus:** a stereo low-pass on the voices' mix before the kit's level, pan and sends (the pads' own sends are
+not through it); open: bypassed. KIT_SET with index 16 (`RFM_MOVE_KIT_BUS`), param 0 cutoff, 1 resonance; saved with
+the kit (header bytes 10, 11) and kit.json `"bus"`. Not in the Mixer's Kit strip (follow-up).
+
+**Trig on a kit track:** the TRIG page for the chosen pad's track, as a firmware track's: no step held, its knobs set
+the track's defaults for new steps; steps held, their trigs (the step's release then toggles nothing). A trig belongs
+to the step: every pad hit on that step of that track gets it (four pads share a track). The kit's notes come from the
+sequencer's clip_note after the ratchets, chance and conditions, so they play as a firmware track's do.
+
+**The right half** (Sample Kit's knob 1): **Pitches** (16 semitones up), **In Key** (16 notes of the key's scale in a
+row, upward), **Chromatic** (rows a fourth apart, chromatic in a row), **In Key 4ths** (round A's In Key), **Chop**
+(the chosen pad's region in 16 equal chops, the top left the first, reading order; one slot held plays its chop once;
+two held loop from the lower's start to the higher's end while both are held; the pads in the pad's row colour, the
+chops sounding bright). Off is gone: Off loads as Pitches, the old In Key as In Key 4ths. **A chop's encoding:** the
+pad's own note with two new step locks, Chop and Chop End (`RFM_MOVE_KIT_LK_CHOP`, `_CHOPE`: chops 0..15 of the region
+at play time, so a region edited later re-chops); one chop plays once, a range loops while the note lasts. A step held
++ a slot enters (or removes) that chop's hit; recording records the hit and its locks (a two-slot range on the first
+slot's hit).
+
+**Saving:** 45 settings a pad (`RFM_MOVE_KIT_P_*`, the new ones after Resonance: loop points and fade, Pitch Env,
+LoFi, Granular, Warp, Speed, Warp Pitch, its grain, jitter, search, Morph, Env Amount, the filter's ADSR), the kit
+bus. Older projects: Classic sound (Warp Off unless Stretch was set, speed 1.00, no filter envelope, Morph LP, the bus
+open). kit.json version 2 has the new keys and `"bus"`; a version 1 one maps Toggle, Stretch and the layouts as above.
+
+**CPU** (the scratch renderer on the Mac, 24 voices; the Move's A72 is about 3..5 x slower): One Shot / Loop / Pitch
+Env / LoFi 0.2 ms a voice-second, the filter with morph and envelope +0.04, Grains 0.66, Beats 1.2, Granular 0.8
+(density 4) .. 1.6 (16). On the A72: about 1 ms a voice-second for the plain engines (24 voices about 2.5 % of a
+core), 3 for Grains, 5 for Beats, 3..7 for Granular.
+
+**Not done:** the Mixer's Kit strip for the bus filter; Pad Sample's amp envelope in Fever Dream's drawing (its popup
+is round B's AHDSR); live envelope dots on Pad Sample; the page's Kit tab has rows for the new pad settings but none for
+the kit bus.

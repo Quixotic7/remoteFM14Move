@@ -142,7 +142,7 @@ int engine_load(int slot, const char *id, int activate);   /* activate: then mak
  *   (the page's Sampler window, rfm1cs rfm_move_smp_set) ENG_OP_SMP_SET a the setting (RFM_MOVE_SMP_*), b its value as
  *   SMP_SET sends it (Length: the bars) | ENG_OP_SMP_PRESS: the app's record key (Sample in the app: SMP_PRESS)
  *   (the page's Kit tab, rfm1cs stage 3c; web.c POST /api/kit) ENG_OP_KIT_PLAY a pad, b vel (0 let go) |
- *   ENG_OP_KIT_CHOOSE a pad | ENG_OP_KIT_SET a pad * 32 + setting (RFM_MOVE_KIT_P_*), b its value | ENG_OP_KIT_SAVE: the
+ *   ENG_OP_KIT_CHOOSE a pad | ENG_OP_KIT_SET a pad * 64 + setting (RFM_MOVE_KIT_P_*; pages v2: 64, 63 the Trim), b its value | ENG_OP_KIT_SAVE: the
  *   kit saved as a new kit (as its Save row) | ENG_OP_KIT_OPEN a a saved kit's id (engine_kits_json's): loaded |
  *   (round C) ENG_OP_KIT_EDIT a pad, b RFM_MOVE_KIT_ED_* (the page's Freeze) */
 enum { ENG_OP_ACTIVE = 16, ENG_OP_UNLOAD, ENG_OP_MIX, ENG_OP_ROUTE, ENG_OP_FXLOAD, ENG_OP_FXPARAM, ENG_OP_PAGE,
