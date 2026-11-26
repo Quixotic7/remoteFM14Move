@@ -3068,7 +3068,7 @@ static void frame_at(const voice_t *v, double p, float *l, float *r)
 /* .. a grain's position folded into the loop (looping) or the region */
 static double fold(const voice_t *v, double p)
 {
-    if (v->mode == B_LOOP) {
+    if (v->mode == B_LOOP && v->gate) {                 /* (2026-11-26: let go, the loop is left: on to the end) */
         const double n = v->le - v->ls;
         if (p >= v->le)
             p = v->ls + fmod(p - v->ls, n);
@@ -3279,7 +3279,8 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
             left = v->dir > 0 ? (v->e - v->pos) / v->inc : (v->pos - v->s) / v->inc;
         if (v->mode == B_ONE && !v->legacy && v->stage <= ST_SUSTAIN && v->rel_n && left <= v->rel_n)
             release(v, (uint32_t)left ? (uint32_t)left : 1);
-        if ((v->mode == B_ONE || v->mode == B_MOM) && left <= 0) {
+        if ((v->mode == B_ONE || v->mode == B_MOM || (v->mode == B_LOOP && !v->gate)) && left <= 0) {   /* (2026-11-26:
+                                                         * Loop let go: on through the loop's end to the region's) */
             v->on = 0;
             break;
         }
@@ -3289,7 +3290,8 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
                 grains_frame(k, v, &l, &r);
             else {
                 frame_at(v, v->pos, &l, &r);            /* the frame: linear between the two source frames about pos */
-                if (v->xf > 0) {                        /* (pages v2) Loop's fade: the loop's end into its start */
+                if (v->xf > 0 && v->gate) {             /* (pages v2) Loop's fade: the loop's end into its start (let
+                                                         * go: straight on) */
                     const double x0 = v->dir > 0 ? v->le - v->xf : v->ls + v->xf;
                     const double d = v->dir > 0 ? v->pos - x0 : x0 - v->pos;
                     if (d > 0 && v->pos >= v->ls && v->pos < v->le) {
@@ -3342,7 +3344,7 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
         if (grains) {                                   /* (pages v2) Warp's playhead at its speed */
             if (v->eng != KIT_M_GRANULAR) {
                 v->ph += v->dir * v->spd;
-                if (v->mode == B_LOOP) {
+                if (v->mode == B_LOOP && v->gate) {
                     const double len = v->le - v->ls;
                     if (v->dir > 0 && v->ph >= v->le)
                         v->ph -= len;
@@ -3353,8 +3355,9 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
             continue;
         }
         v->pos += v->dir * v->inc;
-        if (v->mode == B_LOOP) {                        /* round its loop while held (and through its release); (pages
-                                                         * v2) past a fade: on from the fade's end */
+        if (v->mode == B_LOOP && v->gate) {             /* round its loop while held; (pages v2) past a fade: on from
+                                                         * the fade's end; (2026-11-26, the owner's sustain loop) let
+                                                         * go: on to the region's end, the release its tail */
             const double len = v->le - v->ls - v->xf;
             if (v->dir > 0 && v->pos >= v->le)
                 v->pos -= len;

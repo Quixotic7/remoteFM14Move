@@ -29,6 +29,12 @@ static int checks, fails;
             fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #c);                                  \
         }                                                                                                           \
     } while (0)
+#define CHECKF(c, ...)                                                                                              \
+    do {                                                                                                            \
+        CHECK(c);                                                                                                   \
+        if (!(c))                                                                                                   \
+            fprintf(stderr, "  " __VA_ARGS__), fputc('\n', stderr);                                                   \
+    } while (0)
 static char DIRP[512];
 
 /* ---- files */
@@ -1083,6 +1089,48 @@ static void t_lofi(void)
     kit_free(k);
     printf("  ok    LoFi Bits in tenths: 24.0 transparent, 4.0 bits on a 4096 grid, 4.5 bits on 2^11.5\n");
 }
+/* (2026-11-26, the owner's sustain loop) Loop: from Start to Loop End, round Loop End -> Loop Start while held (two
+ * rounds), let go: on past Loop End to the region's End (a long release), then silent; reversed: the mirror */
+static int16_t idx(uint32_t i, int c) { (void)c; return (int16_t)(i + 1); }
+static void t_sustain_loop(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int i, top = 0, past = 0, lo = 99999, ok = 1;
+    snprintf(p, sizeof p, "%s/sl.wav", DIRP), wavf(p, 4000, 48000, idx);   /* (frame i: i + 1) */
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_set(k, 0, KIT_P_MODE, KIT_M_LOOP), kit_set(k, 0, KIT_P_RELEASE, 2000);
+    kit_set(k, 0, KIT_P_LOOPS, KIT_FRAC / 4), kit_set(k, 0, KIT_P_LOOPE, KIT_FRAC / 2);   /* (about 1000 .. 2000) */
+    kit_note(k, 0, 0, 127, 0), run(k, 4000);            /* (held: 2000 to the loop's end, then two rounds) */
+    for (i = 0; i < 4000; i++)
+        top = B[2 * i] > top ? (int)B[2 * i] : top;
+    for (i = 2100; i < 4000; i++)
+        lo = B[2 * i] < lo ? (int)B[2 * i] : lo;
+    CHECKF(top <= 2002 && lo >= 990 && lo <= 1010 && kit_voices(k) == 1, "held: top %d, low after the first round %d", top, lo);
+    kit_note(k, 0, 0, 0, 0), run(k, 4000);              /* (let go: on to the end, 4000) */
+    for (i = 0; i < 4000; i++)
+        past = B[2 * i] > 2100 ? i : past;
+    for (i = 1; i < 4000 && ok; i++)                    /* (no jump back: rising until it ends) */
+        ok = B[2 * i] == 0.0f || B[2 * i] >= B[2 * (i - 1)] - 2.0f || B[2 * (i - 1)] == 0.0f;
+    CHECKF(past > 1000 && ok && !kit_voices(k) && nonzero_until(4000) < 3100, "let go: past the loop until %d, rising %d, voices %d",
+           past, ok, kit_voices(k));
+    kit_set(k, 0, KIT_P_REVERSE, 1);                    /* (reversed: from the end down to Loop Start, round, then on
+                                                         * down to the start) */
+    kit_note(k, 0, 0, 127, 0), run(k, 4000);
+    lo = 99999, top = 0;
+    for (i = 0; i < 4000; i++)
+        lo = B[2 * i] < lo && B[2 * i] > 0 ? (int)B[2 * i] : lo;
+    for (i = 2100; i < 4000; i++)
+        top = B[2 * i] > top ? (int)B[2 * i] : top;
+    CHECKF(lo >= 995 && top >= 1990 && top <= 2010, "reversed held: low %d, top after a round %d", lo, top);
+    kit_note(k, 0, 0, 0, 0), run(k, 4000);
+    for (i = 0, lo = 99999; i < 4000; i++)
+        lo = B[2 * i] < lo && B[2 * i] > 0 ? (int)B[2 * i] : lo;
+    CHECKF(lo < 900, "reversed let go: down to %d", lo);
+    kit_free(k);
+    printf("  ok    Loop: Start to Loop End, round while held, let go: on through Loop End to End (and reversed)\n");
+}
 static void t_flac(void)
 {
     char p[700], d[600];
@@ -1220,6 +1268,7 @@ int main(void)
     t_ghost();
     t_flac();
     t_lofi();
+    t_sustain_loop();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;
