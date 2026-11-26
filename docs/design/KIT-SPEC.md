@@ -435,8 +435,9 @@ the kit bus.
   the chosen pad; on Sample Kit or Kit Mix Delete + Play clears all four kit tracks' clips and Delete + any knob (either
   order) every pad's locks, kit and trig ("Cleared All" "Locks"). One undo step each, said.
 - **Locked or not, on screen (the owner's 2026-11-26):** with a step held, every knob popup (each pad page; firmware
-  tracks' CC and TRIG knobs, the FM-1 and ENGINE pages' trigs) shows the step's state: locked, the value solid with a
-  7 x 9 padlock before it (its own room: the value moves over; on the Filter page's line, at its start); not locked,
+  tracks' CC and TRIG knobs, the FM-1 and ENGINE pages' trigs) shows the step's state: locked, the value solid and a
+  7 x 9 padlock in the screen's top-right corner (x 119..125, y 1..9, every popup, the Filter page's line too; the
+  value stays where the unlocked one is, a title reaching the corner clipped); not locked,
   the pad's (track's) own value hollow (a 50 % checker), no padlock. A turn locks it, the padlock at once; step +
   knob + Delete clears it, hollow at once. Several steps held: locked if any is, the first locked one's value. No
   step name ("S5") nor "Lock Cleared" on the screen any more; the held step's velocity popup is "Velocity".
