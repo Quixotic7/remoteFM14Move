@@ -2,6 +2,13 @@
 
 ## 0.6.0 (prepared 2026-11-26, not yet released)
 
+**The power button: Shut Down? (the owner's 2026-11-26; rfm1cs dcece48, Move Remote ded27a9).** A press of the Move's
+power button puts up "Shut Down?" over every screen (said too); the jog click confirms: the core's POWEROFF action,
+`mr_request_power_off()`, Move Remote's BYE(3), the host stops as for Exit (projects and flash saved, `engine_stop`),
+then `mr_plat_power_off()`: Move's power service over D-Bus (the simulator logs it). Back, the power button again or
+any other press cancels and is taken. The 2 s hold still powers off; the host now stops and saves first there too
+(`mr_set_power_off_late`). help.json: Power. tests/power_e2e.sh, `make test-power`.
+
 **Step preview, locks on any step, ghost triggers (rfm1cs a4d74dc).** Stopped, a Kit view step's press plays the
 chosen pad's hits there once (the sequencer's voice path), its release lets them go. A step held + a knob locks with
 or without a hit; a lock on a step without the pad's hit is a ghost trigger (Elektron's trigless lock), shown dim and
