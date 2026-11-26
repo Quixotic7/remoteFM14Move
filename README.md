@@ -30,6 +30,13 @@ A [Schwung](https://github.com/charlesvestal/schwung) standalone tool, **RemoteF
 
 Leave it with **Shift + touch the volume knob + click the jog wheel**: Move's own software starts again.
 
+**Power**, as Move's own software has it: press the power button and the screen asks **Shut Down?**; click the jog
+wheel to confirm (the host stops as for Exit, every firmware's flash and the project saved, then Move Remote asks
+Move's power service to turn the Move off). Back, the power button again or any other button, pad or step cancels.
+Holding the power button 2 s still turns the Move off at once (the host is stopped and saved first). On the simulator
+the power off is only logged; tests/power_e2e.sh (`make test-power`) presses the button through Move Remote's test
+hook (`power 1` / `power 0`).
+
 ## Install
 
 You need a Move with [Schwung](https://schwung.dev) **1.6.0 or later** installed.

@@ -1091,6 +1091,12 @@ static void on_action(const rfm1cs_event_t *ev)
         sock_flush();
         break;
     }
+    case RFM_MOVE_ACT_POWEROFF:    /* (the owner's 2026-11-26) the power button's "Shut Down?", the jog click: Move
+                                    * Remote stops as for the 2 s hold (BYE(3): everything saved), main.c stops the host
+                                    * as for Exit and then powers the Move off */
+        fprintf(stderr, "engine: Shut Down from the power button\n");
+        mr_request_power_off();
+        break;
     case RFM_MOVE_ACT_SMP_ROWS:    /* (stage 2) the takes: to the take library (README "The take library") */
     case RFM_MOVE_ACT_SMP_PEAKS:
     case RFM_MOVE_ACT_SMP_PLAY:

@@ -102,6 +102,11 @@ test-listen: all
 test-exit: all
 	$(DOCKER_RUN) tests/exit_e2e.sh
 
+# the power button's "Shut Down?" (the host stops, then the power off, logged by the simulator)
+.PHONY: test-power
+test-power: all
+	$(DOCKER_RUN) tests/power_e2e.sh
+
 # the Move catalog (on the Mac: fetches, then builds in the image): all of it, or the test's three
 # signed with the catalog's key (CATALOG_SIGNING_KEY; its public half must be src/catalog_key.h's)
 CATALOG_SIGNING_KEY ?= $(HOME)/.config/remotefm14move/catalog-signing-key.pem

@@ -372,6 +372,7 @@ int main(int argc, char **argv)
     snprintf(banner_name, sizeof banner_name, "remotefm1.local:%d", port);
     mr_set_banner(banner_title, banner_name, port);
     mr_set_port(-1);
+    mr_set_power_off_late(1);   /* (a power off, the 2 s hold or "Shut Down?": the host stops first, below) */
     mr_set_audio_source(engine_audio, NULL);
     if (!no_ain)
         mr_set_audio_in_sink(engine_audio_in, NULL);   /* (ain1: the Move's input for the carts that take it) */
@@ -415,6 +416,10 @@ int main(int argc, char **argv)
     engine_stop();
     midiout_stop();
     ann_stop();
+    if (mr_plat_stopped() == MR_STOP_POWER) {   /* (everything saved: now the Move goes off; the simulator logs it) */
+        fprintf(stderr, "remotefm1-host: powering the Move off\n");
+        mr_plat_power_off();
+    }
     fprintf(stderr, "remotefm1-host: done\n");
     return rc;
 }

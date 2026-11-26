@@ -37,6 +37,25 @@
       ]
     },
     {
+      "title": "Power",
+      "lines": [
+        "Press the power",
+        "button: Shut Down?",
+        "The jog click",
+        "confirms (all is",
+        "saved, then the",
+        "Move turns off).",
+        "",
+        "Back, power again",
+        "or any button,",
+        "pad or step:",
+        "cancel.",
+        "",
+        "Hold power 2 s:",
+        "off at once."
+      ]
+    },
+    {
       "title": "Accessibility",
       "lines": [
         "RemoteFM1 speaks",
