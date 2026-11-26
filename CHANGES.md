@@ -1,6 +1,51 @@
 # Changes
 
-## Unreleased: the kit (stages 3a, 3b and 3c, rounds A, B and C)
+## 0.6.0 (prepared 2026-11-26, not yet released)
+
+**The kit: a 16-pad sampler on Track 4.** Tap Track 4 round Mixer, Routing, Kit (or hold Track 4 + pad 3).
+
+- **Pads and tracks:** the left 4 x 4 is the kit, pad 1 bottom left; each pad row plays on tracks 13..16 (a new project
+  routes them to the kit; a sound loaded onto a pad of an older project routes its empty track to the kit). The right
+  4 x 4 plays the chosen pad as Pitches, In Key, Chromatic, In Key 4ths or Chop (the sound in 16 chops; hold two to
+  loop between them). Shift + step 8 (Layout) chooses it in the Kit view.
+- **Pages:** turn the jog to change page (the pages' icons slide by): Sample Kit (every pad's steps at a glance), Pad
+  Sample (the wave over the pad's steps; start, end, transpose, engine, the envelope), Trig (the sequencer's trigs),
+  Pad Sample 2 (the engine's own settings, choke, reverse), Warp, Filter, Pad Mix, Kit Mix. A page is a picture;
+  touch a knob to see its value.
+- **Engines:** One Shot, Momentary, Loop (loop points and a crossfade), Pitch Env, LoFi, Granular. **Warp:** Repitch,
+  or Grains and Beats that keep the pitch, with Sync to steps, Speed and Pitch. **Filter:** cutoff, resonance, a morph
+  from low-pass to band to high-pass and its own envelope. **Kit Mix:** the kit's level, pan, sends and a low-pass on
+  the whole kit; hold Track 4 and turn the volume knob for the kit's level, as for a firmware.
+- **Loading sounds:** press a pad, click the jog: the browser opens on that pad's sound. My Samples (with RemoteFM1's
+  takes) and the Move Library (Move's own factory sounds). The sound the jog rests on is loaded onto the pad; play the
+  pad to hear it. Long names scroll.
+- **Sounds of the project's own:** a sound kept on a pad is copied into the project's folder
+  (Samples/RemoteFM1/Kits/Projects/NN); the samples you load are never changed. Kits save as folders with their sounds.
+- **Recording and slicing:** hold a pad and tap Sample to record into it (its leading silence skipped). Slice a take
+  over the pads by its hits, equal parts, steps, or by tapping the steps as it plays. Copy held + two pads: copy, mix
+  or join.
+- **Sequencing:** the steps show the chosen pad's hits; hold a step and turn any knob to lock that hit's value, or the
+  volume knob for its velocity; hold a pitch and click a step to enter that pitch.
+- **A sample plays only from its pad or the sequence**, always through the kit's mix, FX sends and the volume knob.
+
+**Also new**
+
+- **Update from the page:** the settings sheet's Update installs a signed `.rfm1u` build (RemoteFM1's, or another Move
+  app of ours such as Feverdream), with Undo last update.
+- **Listen here:** the headphones button plays the Move's output on the iPad or phone with the page open, the Move
+  silent meanwhile.
+- **Exit** is Global settings' last row (click, then click again).
+- **Shift menus with one setting** (Layout) change it with the jog's turn, no click first.
+
+**Fixes**
+
+- Saving a project no longer deletes its firmwares' own copies (a project could come back with fresh firmwares).
+- The kit follows the volume knob.
+
+Projects are now version 15: 0.5.0 and older cannot read them back. Older projects load as they were.
+
+### Development log (the kit's rounds, newest first)
+
 
 - **Browser and sound (2026-11-26):** the browser's root is My Samples and the Move Library (Move's own factory
   sounds; `--core-library DIR`, default `/data/CoreLibrary`, only folders with sounds the host reads); Takes and Kits
