@@ -73,9 +73,10 @@ refused() {   # file, what the message says
 
 start "$M" || { bad "the host did not start"; tail -20 "$L"; exit 1; }
 j=$(st)
-echo "$j" | grep -q '"state":"idle"' && echo "$j" | grep -q '"running":{"version":"0.5.0"' && echo "$j" | grep -q '"can":true' \
+VER=$(sed -n 's/^#define VERSION "\(.*\)"/\1/p' src/main.c)   # (this build's own, not a number to bump here)
+echo "$j" | grep -q '"state":"idle"' && echo "$j" | grep -q "\"running\":{\"version\":\"$VER\"" && echo "$j" | grep -q '"can":true' \
     && echo "$j" | grep -q '"undo":false' && echo "$j" | grep -q '"installed":{"version":"0.4.9"' \
-    && ok "the status: idle, running 0.5.0 ($(echo "$j" | sed -n 's/.*"running":{"version":"[^"]*","commit":"\([^"]*\)".*/\1/p')), installed 0.4.9 (module.json), no undo" || bad "the status: $j"
+    && ok "the status: idle, running $VER ($(echo "$j" | sed -n 's/.*"running":{"version":"[^"]*","commit":"\([^"]*\)".*/\1/p')), installed 0.4.9 (module.json), no undo" || bad "the status: $j"
 T0=$(tree "$M"); B0=$(backups)
 
 # ---------------------------------------------------------------- refused, nothing changed
