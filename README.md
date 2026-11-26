@@ -1383,7 +1383,7 @@ kept frames exactly, `ainchk trimmed`), the Takes tab's row on the screen, Undo,
 file, Delete held + the click and Undo, Play, the Capture preview, and a silent run where a take played while the
 master records is in the output (`mix.raw`) and not in the master's take.
 
-## The kit (rfm1cs stages 3a, 3b and 3c, src/kit.c)
+## The kit (rfm1cs stages 3a, 3b and 3c, round A; src/kit.c)
 
 rfm1cs-abletonmove's Kit view (its README "The kit (stage 3a)"; `docs/design/KIT-SPEC.md`): 16 sampled pads on Track
 4's third view, tracks 13..16 routed to them. The host sets `RFM_MOVE_CAP_KIT` (with a kit: always, unless out of
@@ -1478,7 +1478,31 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   kit's strip), `kit_name`, the counts `kit_mix` (MIX slot 3), `kit_saved` (with `kit_saved_name`), `kit_kits`
   (kits opened), `kit_to` (takes put on a pad by To Kit).; (3c) `kit_file`, `kit_frames`, `kit_start`, `kit_end` (the chosen pad's file and region), `kit_sl_on`, `kit_sl_n`,
   `kit_sl_first` (the slicing), `kit_mg` (Copy held: 1 a pad, 2 two), the counts `kit_made` (merges and edits asked),
-  `kit_slices` (cuts answered), `kit_slplay` (slices heard)
+  `kit_slices` (cuts answered), `kit_slplay` (slices heard); (round A) `kit_mode` (the chosen pad's Play mode),
+  `kit_trim` (the Kit tab's Trim silence), `kit_tsel` and `kit_depth` (Files' row and folders in), `kit_aud` (an
+  audition sounds), `kit_lead` (the last take into a pad: its first sound's frame less 5 ms, -1 none), the counts
+  `kit_finds` (KIT_FIND answered), `kit_zooms` (close-up peaks asked), `kit_auds` (auditions), `kit_trims` (takes
+  whose start Trim silence moved)
+- **(round A, 2026-11-25) Pad-first loading:** `KIT_FIND` (`kit_find`, the file thread's `do_find`): where the pad's
+  sound sits: a take (`tl_row_of`) its row in Takes (`tl_rows` `TL_ALL`, the newest first), else under Samples its
+  folders (each listed, their ids kept as `KIT_ROWS` gives them) and the row in each, answered
+  `rfm_move_kit_found` (place 0: not found, Files stays). Sounds are loaded as the jog rests on them (the core's
+  `KIT_LOAD` 120 ms after the jog stops; the preview path is no longer used for Files' sounds); a landed sound's
+  answer makes the core play the pad once.
+- **(round A) The close-up of Start / End:** `KIT_PEAKS` (`kit_zoom`, `do_peaks` on the file thread, a newer ask
+  replacing one not started): the pad's frames `[from, from + count)` as 64 peaks scaled as its whole wave (the
+  sound's peak found once and kept with the shared sound), answered `rfm_move_kit_peaks`. `KIT_AUDITION`
+  (`kit_audition`): the pad's frames played once at its own rate on the preview path (after the recorder's tap; a
+  sound replaced on the pad stops it).
+- **(round A) Hits' sensitivity:** `KIT_SLICE` `_ASK`'s `count` 1..100 (`kit_slice_sens`, `kit_cuts_ex`): the rise
+  over the 40 ms before is 2.8x at 1, 2x at 50 (as before), 1.2x at 100; the floor a fifth, a tenth, nothing of the
+  loudest; hits `KIT_HIT_GAP_MS` (60) apart at least (`kit_cuts_ex` takes the spacing).
+- **(round A) Trim silence:** `KIT_REC`'s `param` 1: the take recorded into the pad is loaded with `kit_load_rec`;
+  the file thread finds its first frame at -50 dBFS or louder (`kit_lead`: 104 of 32767) and answers that frame less
+  5 ms; the engine sets the pad's Start there (`rfm_move_kit_set`) once the take is on it. The file stays whole.
+  `kit.json` keeps it as `"trim"` (0 / 1; a kit.json without it: on).
+- **(round A) Toggle:** Play mode 3 (`KIT_M_TOGGLE`): a note-on starts the pad (looping start..end while on), its
+  note-off is ignored, the next note-on releases it (the pad's Release, 5 ms at least); a step's notes the same.
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
@@ -1486,11 +1510,16 @@ the region, loop, momentary, the attack, the one shot's tail, the hold, choke, a
 velocity, 24 voices), Samples' rows and a folder, Takes from a take library on its worker, the preview, the kit's own
 thread; (3b) Stretch (its length, the region, a voice re-fitted), the sends and the strip (a pad's send, the strip's,
 level 0, a hard pan, the kit's own output), kits saved / listed / opened (copies, kit.json, one at a time, a kit not
-there), a folder onto the pads (name order, the rest emptied). `tests/kit_e2e.sh` (in the image after make; in
+there), a folder onto the pads (name order, the rest emptied); (round A) the Hits' sensitivity and spacing, Trim
+silence's lead, the close-up's peaks, an audition, Toggle voices, `KIT_FIND` (Samples' folders, a take's row).
+`tests/kit_e2e.sh` (in the image after make; in
 `tests/in_image.sh` and `make test-sampler`; alone `make test-kit`): on the simulator, the Kit view, Files (Samples, a
 folder, the preview, a load), a pad, a step and Play, a knob, Stretch and the tempo halved, a pad's Send 1 into
 freeverb, the Mixer's kit strip, All To Pads and its Undo, Save then Load in a new project, the sampler's Source Kit
-and To Kit, a take recorded into a pad, the kit in the output (`mix.raw`), the project's kit back after a restart.
+and To Kit, a take recorded into a pad, the kit in the output (`mix.raw`), the project's kit back after a restart;
+(round A) the jog at rest on a sound puts it on the pad (heard, the mix's peak), a quick turn back one load, the click
+keeps it, Files again on the pad's take, a take into pad 4 with a second of silence first (its Start moved), Toggle on
+and off.
 
 ## The page's Sampler window
 

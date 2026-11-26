@@ -146,3 +146,33 @@ as left. The take is written as any take (Takes list, Samples/RemoteFM1/<day>/) 
 thread the takes' tools use, never the audio thread; 48 kHz stereo voices, linear interpolation, an AHR each, a Kit
 bus into the sends and the master; the project gains the kit (a new project version; an older host reads it as no
 kit).
+
+## Round A, 2026-11-25
+
+The owner tried the kit and asked for a rethink of loading sounds and a few additions (the canvas
+https://claude.ai/artifact/Xzv8SYTaqAcB8bPhdaproH). Built as follows; round B (tap chop, a pad filter, step locks)
+comes next.
+
+- **Pad-first loading** (the owner's words: "I'd like to press a pad and then the sample on that pad should be
+  selected. If I have a pad selected and then select a new sample it should immediately be on that pad so I can use
+  the pad itself to preview."): Files opens on the chosen pad's sound (its place, folder and row; an empty pad: where
+  the last load came from). The jog at rest 120 ms on a sound puts it on the chosen pad, which plays it once (no
+  separate preview for sounds; a fast spin loads only the sound it rests on; file reads on the worker). A folder or a
+  kit loads nothing. A pad pressed in Files plays and becomes the target (blinking white); the list jumps to its
+  sound. The click keeps the sound and goes back to the Pad tab; Back as before (up a folder, then the tabs).
+  **Undo is one step for the whole browse**: what the pad held before Files was opened for it; a pad pressed
+  meanwhile starts a new browse for that pad. The pad's settings stay; a new sound gets its whole region.
+- **Close-up Start and End:** Start (knob 2, its row) and End (its row's popup) show the value large over the frames
+  round the point, 8 times nearer than the whole sound (32 with Shift, which also makes the turn fine); the point a
+  line with a notch on top; what does not play dithered. The host gives the peaks (KIT_PEAKS, off the audio
+  thread). At rest 150 ms it is heard (KIT_AUDITION): a moved start from it for a second, a moved end the region's
+  last second; each further turn cancels the pending one.
+- **Hits' sensitivity:** in the slicing screen with Hits, knob 3 (it was free) sets the sensitivity 1..100 (50 as
+  before); the cuts are asked again 100 ms after a turn. The host's onset detection takes the sensitivity and a
+  minimum spacing between hits (60 ms).
+- **Trim silence:** a take recorded into a pad (a pad held + Sample) starts 5 ms before its first sound (-50 dBFS);
+  the file stays whole. The Kit tab's fourth row, Trim silence On / Off (default On), kept with the kit (project
+  version 13) and in kit.json ("trim").
+- **Toggle play mode:** the fourth Play mode: a tap starts the pad, the next stops it (a short release); it loops while
+  on; a step's note toggles it the same way. Its icon I_TOGGLE (play, then stop); the Play popup draws the four.
+- **Recording gesture:** unchanged (a pad held + Sample), as the owner confirmed.

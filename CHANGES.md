@@ -1,6 +1,18 @@
 # Changes
 
-## Unreleased: the kit (stages 3a, 3b and 3c)
+## Unreleased: the kit (stages 3a, 3b and 3c, round A)
+
+- **Choosing sounds, pad first (round A):** press a pad, then open Files: it opens on that pad's sound (an empty pad:
+  where you last loaded from). Rest the jog on a sound and it is on the pad at once and plays; tap the pad or let the
+  pattern run to hear it in place. Press another pad to fill that one instead. The jog's click keeps the sound and
+  goes back to the Pad tab; Undo brings back what the pad had before you started browsing.
+- **Close-up Start and End:** turning Start (knob 2) or End (its row) shows the point up close (Shift: closer, and
+  finer turns); what will not play is drawn faint. Let go for a moment and you hear it: from the start, or the last
+  second up to the end.
+- **Slicing by hits:** knob 3 sets how sensitive the hit finding is; the cuts follow as you turn.
+- **Trim silence (the Kit tab, on at first):** a take recorded into a pad starts just before its first sound; the
+  file is kept whole.
+- **Toggle play mode:** tap to start, tap again to stop; it loops while on, and a step's note does the same.
 
 - **Listen here:** the headphones button in the page's header plays the Move's whole output on that iPad or phone
   (AirPods too), the Move silent meanwhile; the speaker button beside it keeps the Move playing too. Turning it off,
