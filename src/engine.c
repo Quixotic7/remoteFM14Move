@@ -995,6 +995,10 @@ static int g_smp_to;                     /* the sampler's To (RFM_MOVE_SMP_TO_*:
 static void kit_action(const rfm_move_act_t *a);
 static int g_smp_force;                  /* (the page's Sampler window) its JSON made again at once (smp_json) */
 static int g_kit_force;                  /* (the page's Kit tab) its JSON made again at once (kit_json) */
+static char g_kits_dir[1024];            /* (round C) Samples/RemoteFM1/Kits ("" none) */
+static int g_kit_proj = -2;              /* .. the project whose folder the kit has (kit_project) */
+static uint32_t g_kit_t_owned, g_kit_t_cleans;   /* (tests, round C) */
+static void kit_proj_sync(void);
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
 static void on_action(const rfm1cs_event_t *ev)
@@ -1135,6 +1139,13 @@ static void on_action(const rfm1cs_event_t *ev)
         }
         if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE)    /* (its FX modules' own state beside it) */
             fx_state_save(a->index);
+        if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE && g_kit && a->index == rfm_move_project_slot(&S->core)) {
+            const char *refs[3 * RFM_MOVE_KIT_PADS];   /* (round C: the open project saved: its folder's files nothing
+                                                         * refers to go) */
+            kit_proj_sync();
+            kit_clean(g_kit, refs, rfm_move_kit_refs(&S->core, refs, 3 * RFM_MOVE_KIT_PADS));
+            g_kit_t_cleans++;
+        }
         if (a->kind == RFM_MOVE_ACT_PROJECT_DELETE || a->kind == RFM_MOVE_ACT_PROJECT_CUT) {
             char p[ST_PATH];
             st_fx_state_path(p, sizeof p, a->index);
@@ -3108,6 +3119,11 @@ static void page_edit(int op, int a, int b)
             kit_open(g_kit, (uint32_t)a);
         g_kit_force = 1;
         return;
+    case ENG_OP_KIT_EDIT:   /* (round C) the page's Freeze (a pad's own edit, as the Sound row's tools) */
+        g_kit_force = 1;
+        if (!rfm_move_kit_edit(m, a, b))
+            return;
+        break;
     case ENG_OP_SMP_PRESS: {   /* .. its record button: Sample in the app (SMP_PRESS: the recorder's key) */
         rfm_move_act_t act;
         if (!g_rec || !(m->fw.caps & RFM_MOVE_CAP_SAMPLER))
@@ -4652,10 +4668,22 @@ static void smp_json(const rfm_move_smp_status_t *st, uint32_t now)
 /* the core's KIT_* actions (on_action): the voices at once (a note's frame within the block the sequencer stamped it
  * in), the sounds and Files to the kit's file work (the take library's worker), a pad recorded into through the
  * recorder with the sampler's settings */
+/* (round C) the open project's own folder for the kit (Kits/Projects/NN), before any of its requests */
+static void kit_proj_sync(void)
+{
+    const int slot = rfm_move_project_slot(&S->core);
+    char d[1100];
+    if (!g_kit || slot == g_kit_proj)
+        return;
+    g_kit_proj = slot;
+    kit_proj_dir(g_kits_dir, slot, d, sizeof d);
+    kit_project(g_kit, d);
+}
 static void kit_action(const rfm_move_act_t *a)
 {
     if (!g_kit)
         return;
+    kit_proj_sync();
     switch (a->kind) {
     case RFM_MOVE_ACT_KIT_NOTE:
         kit_note_lk(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0,
@@ -4709,12 +4737,19 @@ static void kit_action(const rfm_move_act_t *a)
         if (a->data && a->len) {
             char p[KIT_PATH];
             snprintf(p, sizeof p, "%.*s", (int)(a->len < sizeof p ? a->len : sizeof p - 1), (const char *)a->data);
-            kit_load(g_kit, a->index, p);
-        } else if (a->take)
-            kit_load_row(g_kit, a->index, a->value, a->take);
-        else
+            if (a->param == 1)   /* (round C: kept: copied into the project's folder) */
+                kit_load_own(g_kit, a->index, p);
+            else
+                kit_load(g_kit, a->index, p);
+        } else if (a->take) {
+            if (a->param == 1)
+                kit_load_row_own(g_kit, a->index, a->value, a->take);
+            else
+                kit_load_row(g_kit, a->index, a->value, a->take);
+        } else
             kit_load(g_kit, a->index, NULL);
         break;
+    case RFM_MOVE_ACT_KIT_KEEP: kit_keep(g_kit, a->index); break;   /* (round C) Files left: the sound copied in */
     case RFM_MOVE_ACT_KIT_ROWS: kit_rows(g_kit, a->value, a->take, (int)a->from, (int)a->count); break;
     case RFM_MOVE_ACT_KIT_PREVIEW: kit_preview(g_kit, a->value, a->take, a->down); break;
     case RFM_MOVE_ACT_KIT_REC:   /* the recorder as Sample in the app; the pad let go: a take recording ends, an armed one
@@ -4752,13 +4787,19 @@ static void kit_json(uint32_t now)
     const rfm_move_kit_t *t = &m->kit;
     int n, k, p, glow = 0;
     char nm[RFM_MOVE_KIT_NAME * 2 + 8];
+    static char fp[2 * KIT_PATH + 8];
     if (!g_kit || (!g_kit_force && now - last < 66u))
         return;
     glow = (int)kit_sounding(g_kit);
+    {   /* (round C) the chosen pad's file (the project's own copy where it has one) */
+        char f[KIT_PATH];
+        kit_resolve(g_kit, t->pad[t->cur & 15].path, f, sizeof f);
+        mj_escape(f, fp, sizeof fp);
+    }
     mj_escape(rfm_move_kit_name(m), nm, sizeof nm);
     n = snprintf(j, sizeof j, "{\"type\":\"kit\",\"on\":1,\"shown\":%d,\"cur\":%d,\"name\":\"%s\",\"layout\":%d,"
-                 "\"saved\":%u,\"kits\":%u,\"glow\":%d,\"trim\":%d,\"pads\":[", rfm_move_kit_shown(m), t->cur, nm, t->rh,
-                 g_kit_t_saved, g_kit_t_kits, glow, rfm_move_kit_trim(m));
+                 "\"saved\":%u,\"kits\":%u,\"glow\":%d,\"trim\":%d,\"path\":\"%s\",\"pads\":[", rfm_move_kit_shown(m),
+                 t->cur, nm, t->rh, g_kit_t_saved, g_kit_t_kits, glow, rfm_move_kit_trim(m), fp);
     for (k = 0; k < RFM_MOVE_KIT_PADS && n < (int)sizeof j - 400; k++) {
         const rfm_move_kit_pad_t *d = &t->pad[k];
         char pk[2 * RFM_MOVE_KIT_PEAKS + 1];
@@ -4829,6 +4870,9 @@ static int kit_answers(void)
                 g_kit_t_kits++;
             } else
                 redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);
+        } else if (a.kind == KIT_A_OWNED) {   /* (round C) the pad's sound now the project's own copy */
+            redraw |= rfm_move_kit_owned(&S->core, a.pad, a.was, a.path);
+            g_kit_t_owned++;
         } else if (a.kind == KIT_A_LOADED) {
             if (a.status == KIT_EMPTY) {   /* (3b: All To Pads past the folder's sounds) */
                 redraw |= rfm_move_kit_loaded(&S->core, a.pad, RFM_MOVE_KIT_EMPTY, NULL, NULL, 0, 0, 0, NULL);
@@ -4870,12 +4914,13 @@ static void rec_tick(uint32_t now)
         g_rec_last_take = t.take;
         if (g_kit_rec >= 0) {   /* (the kit: the take onto the pad it was recorded into) */
             if (t.reason < REC_END_NOTHING && t.path[0])
-                kit_load_rec(g_kit, g_kit_rec, t.path, g_kit_rec_trim);   /* (round A: Trim silence, its lead) */
+                kit_proj_sync(), kit_load_rec(g_kit, g_kit_rec, t.path, g_kit_rec_trim);   /* (round A: Trim silence,
+                                                         * its lead; round C: copied into the project's folder) */
             g_kit_rec = -1;
         } else if (g_kit && g_smp_to == RFM_MOVE_SMP_TO_KIT && t.reason < REC_END_NOTHING && t.path[0]) {
             const int pad = rfm_move_kit_next_empty(&S->core, 1);   /* (3b) To Kit: the next empty pad */
             if (pad >= 0)
-                kit_load(g_kit, pad, t.path), g_kit_t_to++;
+                kit_proj_sync(), kit_load_own(g_kit, pad, t.path), g_kit_t_to++;   /* (round C: copied in) */
             else
                 fprintf(stderr, "engine: take %u: the kit has no empty pad\n", t.take);
         }
@@ -5521,13 +5566,15 @@ static void housekeeping(uint32_t now)
                               "\"kit_end\":%d,\"kit_made\":%u,\"kit_slices\":%u,\"kit_slplay\":%u,\"kit_sl_on\":%d,"
                               "\"kit_sl_n\":%d,\"kit_sl_first\":%d,\"kit_mg\":%d,\"kit_finds\":%u,\"kit_zooms\":%u,"
                               "\"kit_auds\":%u,\"kit_aud\":%d,\"kit_trims\":%u,\"kit_lead\":%d,\"kit_mode\":%d,"
-                              "\"kit_trim\":%d,\"kit_tsel\":%d,\"kit_depth\":%d", kp,
+                              "\"kit_trim\":%d,\"kit_tsel\":%d,\"kit_depth\":%d,\"kit_owned\":%u,\"kit_cleans\":%u,"
+                              "\"kit_own\":%d", kp,
                               kit_frames(g_kit, t->cur), t->pad[t->cur].v[RFM_MOVE_KIT_P_START],
                               t->pad[t->cur].v[RFM_MOVE_KIT_P_END], g_kit_t_made, g_kit_t_slices, g_kit_t_slplay, t->sl_on,
                               t->sl_ok == 1 ? t->sl_n : -1, t->sl_first, t->mg_b ? 2 : t->mg_a ? 1 : 0, g_kit_t_finds,
                               g_kit_t_zooms, g_kit_t_auds, kit_auditioning(g_kit), g_kit_t_trims, (int)g_kit_t_lead,
                               t->pad[t->cur].v[RFM_MOVE_KIT_P_MODE], rfm_move_kit_trim(&S->core), t->fsel[t->depth],
-                              t->depth);
+                              t->depth, g_kit_t_owned, g_kit_t_cleans,   /* (round C: the pad's sound the project's own) */
+                              !strncmp(t->pad[t->cur].path, KIT_OWN, 2));
             }
         }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
@@ -5841,6 +5888,11 @@ int engine_start(const engine_cfg_t *cfg)
             snprintf(kits, sizeof kits, "%s/Kits", g_takes_dir), kc.kits_dir = kits;
         if (!(g_kit = kit_new(&kc)))
             fprintf(stderr, "engine: no kit (no memory)\n");
+        else {   /* (round C: the projects' own folders, Kits/Projects/NN; the storage moves them with the projects) */
+            snprintf(g_kits_dir, sizeof g_kits_dir, "%s", kc.kits_dir ? kc.kits_dir : "");
+            st_set_kits_dir(g_kits_dir);
+            kit_proj_sync();
+        }
     }
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
                                    (g_kit ? RFM_MOVE_CAP_KIT : 0) | RFM_MOVE_CAP_EXIT);

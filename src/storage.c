@@ -22,6 +22,7 @@
 #include "minijson.h"
 #include "projmem.h"
 #include "rfm1cs/store.h"
+#include "kit.h"
 
 static char g_root[ST_PATH];
 
@@ -742,6 +743,89 @@ static uint8_t *mem_encode(const ms_snap_t *m, const uint8_t *img, uint32_t n, s
     pm_hash_hex(img, n, ih);
     return ms_encode(m, ih, en);
 }
+/* ---- (the kit, round C) a project's own sound folder (Kits/Projects/NN) goes with the project */
+static char g_kits[ST_PATH];
+void st_set_kits_dir(const char *dir) { snprintf(g_kits, sizeof g_kits, "%s", dir ? dir : ""); }
+static int kdir_ok(const char *d)   /* a project's folder (or the buffer's): never anything else */
+{
+    return g_kits[0] && d[0] && !strncmp(d, g_kits, strlen(g_kits)) && strstr(d + strlen(g_kits), "/Projects/");
+}
+static void kdir_drop(const char *d)   /* its files deleted one by one, then the folder */
+{
+    DIR *x;
+    struct dirent *e;
+    if (!kdir_ok(d) || !(x = opendir(d)))
+        return;
+    while ((e = readdir(x))) {
+        char f[ST_PATH + 256];
+        struct stat st;
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+            continue;
+        snprintf(f, sizeof f, "%s/%s", d, e->d_name);
+        if (!lstat(f, &st) && S_ISREG(st.st_mode))
+            unlink(f);
+    }
+    closedir(x);
+    rmdir(d);
+}
+static int copy_file(const char *from, const char *to);
+static void kdir_copy(const char *a, const char *b)   /* b made a's copy (its files; none: b gone) */
+{
+    DIR *x;
+    struct dirent *e;
+    kdir_drop(b);
+    if (!kdir_ok(a) || !kdir_ok(b) || !(x = opendir(a)))
+        return;
+    st_mkdirs(b);
+    while ((e = readdir(x))) {
+        char f[ST_PATH + 256], t[ST_PATH + 256];
+        struct stat st;
+        if (e->d_name[0] == '.')
+            continue;
+        snprintf(f, sizeof f, "%s/%s", a, e->d_name);
+        snprintf(t, sizeof t, "%s/%s", b, e->d_name);
+        if (!lstat(f, &st) && S_ISREG(st.st_mode) && copy_file(f, t) != 0)
+            fprintf(stderr, "storage: %s not copied to %s\n", f, b);
+    }
+    closedir(x);
+}
+static void kdir_move(const char *a, const char *b)
+{
+    kdir_drop(b);
+    if (kdir_ok(a) && kdir_ok(b) && access(a, F_OK) == 0 && rename(a, b) != 0)
+        kdir_copy(a, b), kdir_drop(a);
+}
+static void kit_files(int act, int slot, int to)   /* as proj_files does the firmwares' copies */
+{
+    char a[ST_PATH], b[ST_PATH], p[ST_PATH];
+    if (!g_kits[0])
+        return;
+    kit_proj_dir(g_kits, slot, a, sizeof a);
+    kit_proj_clip(g_kits, b, sizeof b);
+    switch (act) {
+    case RFM_MOVE_ACT_PROJECT_DELETE: kdir_drop(a); break;
+    case RFM_MOVE_ACT_PROJECT_CUT:
+    case RFM_MOVE_ACT_PROJECT_COPY:
+        proj_path(p, sizeof p, slot);
+        if (access(p, F_OK) != 0)
+            return;   /* (no project there: the buffer as it was) */
+        if (act == RFM_MOVE_ACT_PROJECT_CUT)
+            kdir_move(a, b);
+        else
+            kdir_copy(a, b);
+        break;
+    case RFM_MOVE_ACT_PROJECT_PASTE:
+        if (g_store.clip_len)
+            kdir_copy(b, a);   /* (a copy: the buffer pastes again) */
+        break;
+    case -1:   /* (the page's duplicate: slot's onto to) */
+        kit_proj_dir(g_kits, to, b, sizeof b);
+        kdir_copy(a, b);
+        break;
+    case -2: kdir_drop(a); break;   /* (an import: an empty folder) */
+    default: break;
+    }
+}
 static int copy_file(const char *from, const char *to)   /* (st_copy without its chmod) 0, -1 */
 {
     size_t n;
@@ -774,6 +858,7 @@ static void proj_files(const st_job_t *j)
 {
     char a[ST_PATH], b[ST_PATH], p[ST_PATH];
     int s;
+    kit_files(j->act, j->index, 0);   /* (round C: the kit's own sounds' folder too) */
     proj_path(p, sizeof p, j->index);
     for (s = 0; s < PM_SLOTS; s++) {
         pm_copy_path(a, sizeof a, g_root, j->index, s);
@@ -898,6 +983,7 @@ static void project_dup(st_job_t *j)
     st_fx_state_path(b, sizeof b, j->value);
     if (copy_file(a, b) != 0)
         unlink(b);
+    kit_files(-1, j->index, j->value);   /* (round C: its kit's own sounds with it) */
     for (s = 0; s < PM_SLOTS; s++) {   /* (its firmwares' copies with it: a copy restores the same sound) */
         pm_copy_path(a, sizeof a, g_root, j->index, s);
         pm_copy_path(b, sizeof b, g_root, j->value, s);
@@ -929,6 +1015,7 @@ static void project_import(st_job_t *j)
     proj_path(p, sizeof p, j->index);
     if (access(p, F_OK) == 0)   /* (the project there gone first, its blob before its copies) */
         rfm1cs_store_request(&g_store, RFM_MOVE_ACT_PROJECT_DELETE, j->index, 0, NULL, 0);
+    kit_files(-2, j->index, 0);   /* (round C: no kit sounds of its own: an imported kit's paths stay as they are) */
     for (s = 0; s < PM_SLOTS; s++) {
         char nm[32];
         pm_copy_path(p, sizeof p, g_root, j->index, s);

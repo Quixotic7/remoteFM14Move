@@ -149,6 +149,9 @@ void st_job_free(st_job_t *j);
 uint32_t st_projects_scan(int open_slot, uint8_t **blob, uint32_t *n);
 /* a project's FX state file (move/projects/move-project-NN.fx.json), slot 0..31 */
 void st_fx_state_path(char *out, size_t cap, int slot);
+/* (the kit, round C) the projects' own sound folders' home (Samples/RemoteFM1/Kits: kit.h kit_proj_dir): a project's
+ * folder goes with it (deleted, cut, copied, pasted, duplicated; an imported one starts empty). "" none */
+void st_set_kits_dir(const char *dir);
 /* the states a firmware has stored (bit k: state-k), any thread */
 uint32_t st_states_used(const char *id);
 

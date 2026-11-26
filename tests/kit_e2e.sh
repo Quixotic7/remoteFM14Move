@@ -15,7 +15,8 @@
 #   - the Mixer's fourth strip, the kit's (knob 4: its level);
 #   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
-#   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in Kits/Edits on pad 2), Undo; Copy let go before the
+#   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in the project's
+#     folder, Kits/Projects/NN, on pad 2), Undo; Copy let go before the
 #     click: nothing; Join (its length the two's); the Sound row's Normalize (the pad's own copy, the join untouched),
 #     Undo; a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
 #     1..8 (one file in memory once), Undo;
@@ -214,12 +215,12 @@ wait_for 8 '[ "$(field kit_kits)" = 1 ] && [ "$(field kit_pads)" = 3 ]' && [ "$(
 # ---------------------------------------------------------------- (stage 3c) mix and join, a pad's own edit, slicing
 frames() { build/tools/ainchk info "$1" | sed -n 's/^frames \([0-9]*\) .*/\1/p'; }
 peak() { build/tools/ainchk info "$1" | sed -n 's/.* peak \([0-9]*\)$/\1/p'; }
-ED="$LIB/Kits/Edits"
+ED="$LIB/Kits/Projects/$(printf %02d $(($(field proj_cur) + 1)))"   # (round C: the project's own folder)
 m0=$(field kit_made)
 cmd "cc 60 127"; hit 68; hit 69; jog 1 1; click; cmd "cc 60 0"   # Copy held, pad 1, pad 2: Mix
 wait_for 8 '[ "$(field kit_file)" = "Mix 1+2.wav" ]' && [ -s "$ED/Mix 1+2.wav" ] && [ "$(field kit_cur)" = 1 ] \
     && [ "$(peak "$ED/Mix 1+2.wav")" -le 32767 ] \
-    && ok "Copy held, pad 1, pad 2, Mix: a new file on pad 2 (Kits/Edits/Mix 1+2.wav, peak $(peak "$ED/Mix 1+2.wav"))" \
+    && ok "Copy held, pad 1, pad 2, Mix: a new file on pad 2 (Kits/Projects/NN/Mix 1+2.wav, peak $(peak "$ED/Mix 1+2.wav"))" \
     || bad "Mix: file '$(field kit_file)' cur '$(field kit_cur)' made '$(field kit_made)' (from $m0): $(ls "$ED" 2>&1 | tr '\n' ' ')"
 sleep 1.2; press 56
 wait_for 5 '[ "$(field kit_file)" != "Mix 1+2.wav" ] && [ -n "$(field kit_file)" ]' \

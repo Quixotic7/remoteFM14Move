@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "minijson.h"
 #include "takes.h"
@@ -68,7 +69,7 @@ enum { ST_ATTACK, ST_HOLD, ST_DECAY, ST_SUSTAIN, ST_RELEASE, ST_FADE };
 #define FLT_GLIDE_MS 10           /* .. its cutoff's glide */
 typedef struct { int pad, semis, vel; uint32_t frame; int mask; int16_t lk[KIT_LK_N]; } ev_t;
 enum { RQ_LOAD = 1, RQ_LOAD_ROW, RQ_ROWS, RQ_PREVIEW, RQ_SAVE, RQ_OPEN, RQ_FOLDER, RQ_MERGE, RQ_EDIT, RQ_SLICE,
-       RQ_FIND, RQ_PEAKS };   /* (round A: FIND, PEAKS) */
+       RQ_FIND, RQ_PEAKS, RQ_KEEP };   /* (round A: FIND, PEAKS; round C: KEEP) */
 typedef struct {
     int kind, pad, place, n, from;
     uint32_t id, gen;
@@ -83,12 +84,19 @@ typedef struct {
      * frames, n the peaks */
     int trim;
     uint32_t zf, zc;
+    /* (round C) the project's folder when asked ("" none); LOAD: own (the sound copied in first); EDIT FREEZE: v the
+     * pad's settings, us its Stretch */
+    char proj[KIT_PATH];
+    int own;
+    int16_t v[KIT_P_N];
 } req_t;
 typedef struct {                  /* the file thread's answer, and the sound it made (the engine's thread puts it on) */
     kit_ans_t a;
     int16_t *pcm;                 /* LOADED OK, PREVIEW: the sound (the engine's from then); (3c) SLICES: the take */
     int preview;
     uint32_t gen;
+    char abs[KIT_PATH];           /* (round C) LOADED, OWNED: the file (path is the core's: KIT_OWN.. in the project's) */
+    char abs2[KIT_PATH];          /* .. OWNED: the file before */
 } ans_t;
 typedef struct {                  /* (3c, mu) a sound in memory and the pads (answers) holding it */
     int16_t *pcm;
@@ -110,6 +118,7 @@ struct kit {
     float dry[2 * RBUF], sb[3][2 * RBUF];   /* .. the voices before it */
     char kits[KIT_PATH];          /* saved kits' folder ("" none) */
     kit_kit_t save;               /* (mu) the kit a save works on, save_busy while it does */
+    char save_proj[KIT_PATH];     /* (mu, round C) .. the project's folder then */
     int save_busy;
     voice_t vo[NV];
     uint32_t age;
@@ -146,6 +155,15 @@ struct kit {
     uint32_t ls_folder;
     int ls_ok, ls_n;
     struct { char name[256]; int dir; } *ls;
+    /* (round C) the project's own sounds */
+    char proj[KIT_PATH];          /* the open project's folder (the engine's; "" none) */
+    char wlast[KIT_PADS][KIT_PATH];   /* (the file thread's) the file each pad's latest load or edit gave */
+    struct { char src[KIT_PATH], dst[KIT_PATH]; long long mtime, size; } own[32];   /* (the file thread's) copies made */
+    int own_n;
+    int clean_due;                /* (mu) kit_clean asked: clean_dir's files but clean_keep's */
+    char clean_dir[KIT_PATH];
+    char clean_keep[64][256];
+    int clean_n;
     /* the own thread */
     pthread_t th;
     pthread_cond_t cv;
@@ -424,8 +442,12 @@ static void wake(kit_t *k)   /* (mu held) the file thread called for, once */
         tl_post(k->cfg.tl, &q);
     }
 }
-static void request(kit_t *k, const req_t *r)
+static void request(kit_t *k, const req_t *r0)
 {
+    static req_t rq;                                    /* (the engine's thread only: 3 KB not on its stack) */
+    const req_t *r = &rq;
+    rq = *r0;
+    snprintf(rq.proj, sizeof rq.proj, "%s", k->proj);   /* (round C: the project's folder as it is now) */
     pthread_mutex_lock(&k->mu);
     if (r->kind == RQ_PREVIEW || r->kind == RQ_ROWS || r->kind == RQ_SLICE || r->kind == RQ_PEAKS || r->kind == RQ_FIND) {   /* (a newer one replaces one not
                                                          * started) */
@@ -762,6 +784,173 @@ static uint64_t room_for(kit_t *k, int pad)
     pthread_mutex_unlock(&k->mu);
     return used < k->cfg.max_bytes ? k->cfg.max_bytes - used : 0;
 }
+/* ---- (round C) the project's own sounds */
+static int mkdirs(const char *path);
+static int copy_file(const char *from, const char *to);
+static int in_dir(const char *dir, const char *path)  /* path a file right in dir */
+{
+    const size_t n = strlen(dir);
+    return dir[0] && !strncmp(path, dir, n) && path[n] == '/' && path[n + 1] && !strchr(path + n + 1, '/');
+}
+/* the core's path for a file: KIT_OWN + its name in the project's folder, else the file's */
+static void core_path(const char *proj, const char *abs, char *o, size_t cap)
+{
+    if (in_dir(proj, abs) && strlen(abs + strlen(proj) + 1) + 3 <= cap)
+        snprintf(o, cap, "%s%s", KIT_OWN, abs + strlen(proj) + 1);
+    else
+        snprintf(o, cap, "%s", abs);
+}
+static void resolve_in(const char *proj, const char *in, char *o, size_t cap)
+{
+    if (!strncmp(in, KIT_OWN, 2) && proj[0])
+        snprintf(o, cap, "%s/%s", proj, in + 2);
+    else
+        snprintf(o, cap, "%s", in);
+}
+void kit_resolve(const kit_t *k, const char *in, char *out, size_t cap)
+{
+    resolve_in(k ? k->proj : "", in ? in : "", out, cap);
+}
+static int same_bytes(const char *a, const char *b)
+{
+    FILE *x = fopen(a, "rb"), *y = fopen(b, "rb");
+    static char ba[65536], bb[65536];                   /* (the file thread's) */
+    int same = x && y;
+    while (same) {
+        const size_t n = fread(ba, 1, sizeof ba, x), m = fread(bb, 1, sizeof bb, y);
+        same = n == m && !memcmp(ba, bb, n);
+        if (!n || !m)
+            break;
+    }
+    if (x)
+        fclose(x);
+    if (y)
+        fclose(y);
+    return same;
+}
+/* src kept: its copy in the project's folder into o (made now, or found: the same file copied before, or a file there
+ * with the same bytes); a file already there, no folder, a failure: src itself. 1 a copy */
+static int own_copy(kit_t *k, const char *proj, const char *src, char *o, size_t cap)
+{
+    struct stat st, sd;
+    char base[256], ext[32], cand[KIT_PATH];
+    const char *b = strrchr(src, '/'), *dot;
+    int i;
+    snprintf(o, cap, "%s", src);
+    if (!proj[0] || !src[0] || in_dir(proj, src) || stat(src, &st) || !S_ISREG(st.st_mode))
+        return 0;
+    for (i = 0; i < k->own_n; i++)                      /* (the same file copied before: that copy) */
+        if (!strcmp(k->own[i].src, src) && k->own[i].mtime == (long long)st.st_mtime &&
+            k->own[i].size == (long long)st.st_size && in_dir(proj, k->own[i].dst) && !stat(k->own[i].dst, &sd) &&
+            (long long)sd.st_size == k->own[i].size) {
+            snprintf(o, cap, "%s", k->own[i].dst);
+            return 1;
+        }
+    if (mkdirs(proj))
+        return 0;
+    snprintf(base, sizeof base, "%s", b ? b + 1 : src);
+    ext[0] = 0;
+    if ((dot = strrchr(base, '.')) && dot != base) {
+        snprintf(ext, sizeof ext, "%s", dot);
+        base[dot - base] = 0;
+    }
+    for (i = 0; base[i]; i++)                           /* (a readable name: printable) */
+        if ((unsigned char)base[i] < 32 || (unsigned char)base[i] > 126)
+            base[i] = '_';
+    base[100] = 0;
+    for (i = 1; i < 1000; i++) {
+        if (i == 1)
+            snprintf(cand, sizeof cand, "%s/%s%s", proj, base, ext);
+        else
+            snprintf(cand, sizeof cand, "%s/%s %d%s", proj, base, i, ext);
+        if (!stat(cand, &sd)) {
+            if (sd.st_size == st.st_size && same_bytes(src, cand))
+                break;                                  /* (that sound there already) */
+            continue;
+        }
+        {
+            char tmp[KIT_PATH + 8];
+            snprintf(tmp, sizeof tmp, "%s.tmp", cand);
+            if (copy_file(src, tmp) || rename(tmp, cand)) {
+                remove(tmp);
+                return 0;
+            }
+        }
+        break;
+    }
+    if (i >= 1000)
+        return 0;
+    {
+        const int j = k->own_n < 32 ? k->own_n++ : (int)(fnv(src) % 32u);
+        snprintf(k->own[j].src, sizeof k->own[j].src, "%s", src);
+        snprintf(k->own[j].dst, sizeof k->own[j].dst, "%s", cand);
+        k->own[j].mtime = (long long)st.st_mtime, k->own[j].size = (long long)st.st_size;
+    }
+    snprintf(o, cap, "%s", cand);
+    return 1;
+}
+static void do_keep(kit_t *k, const req_t *r)
+{
+    ans_t a;
+    char to[KIT_PATH];
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_OWNED, a.a.pad = r->pad;
+    if (!k->wlast[r->pad][0] || !own_copy(k, r->proj, k->wlast[r->pad], to, sizeof to))
+        return;                                         /* (no sound; already the project's; not copied: as it was) */
+    snprintf(a.abs2, sizeof a.abs2, "%s", k->wlast[r->pad]);
+    snprintf(a.abs, sizeof a.abs, "%s", to);
+    core_path(r->proj, k->wlast[r->pad], a.a.was, sizeof a.a.was);
+    core_path(r->proj, to, a.a.path, sizeof a.a.path);
+    snprintf(k->wlast[r->pad], sizeof k->wlast[0], "%s", to);
+    answer(k, &a);
+}
+static int cleaning_keeps(const char (*keep)[256], int n, const char *name)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!strcmp(keep[i], name))
+            return 1;
+    return 0;
+}
+/* (kit_work) the project's folder's files nothing refers to: gone (regular files right in it, a minute old) */
+static void do_clean(kit_t *k)
+{
+    static char keep[64 + NANS + KIT_PADS][256];
+    char dir[KIT_PATH];
+    int n, i;
+    DIR *d;
+    struct dirent *e;
+    const time_t now = time(NULL);
+    pthread_mutex_lock(&k->mu);
+    k->clean_due = 0;
+    snprintf(dir, sizeof dir, "%s", k->clean_dir);
+    n = k->clean_n;
+    memcpy(keep, k->clean_keep, sizeof k->clean_keep[0] * (size_t)n);
+    for (i = 0; i < k->ann; i++) {                      /* (answers on their way: theirs too) */
+        const ans_t *x = &k->an[(k->anh + i) % NANS];
+        if (in_dir(dir, x->abs))
+            snprintf(keep[n++], sizeof keep[0], "%s", strrchr(x->abs, '/') + 1);
+    }
+    pthread_mutex_unlock(&k->mu);
+    for (i = 0; i < KIT_PADS; i++)                      /* (and each pad's latest: a load not answered yet) */
+        if (in_dir(dir, k->wlast[i]))
+            snprintf(keep[n++], sizeof keep[0], "%s", strrchr(k->wlast[i], '/') + 1);
+    if (!dir[0] || !k->kits[0] || strncmp(dir, k->kits, strlen(k->kits)) || !strstr(dir, "/Projects/") ||
+        !(d = opendir(dir)))
+        return;                                         /* (never outside a project's folder) */
+    while ((e = readdir(d))) {
+        char f[KIT_PATH + 256];
+        struct stat st;
+        if (e->d_name[0] == '.' || cleaning_keeps((const char (*)[256])keep, n, e->d_name))
+            continue;
+        snprintf(f, sizeof f, "%s/%s", dir, e->d_name);
+        if (lstat(f, &st) || !S_ISREG(st.st_mode) || now - st.st_mtime < 60)
+            continue;
+        if (!remove(f))
+            fprintf(stderr, "kit: %s: not used by the project, deleted\n", f);
+    }
+    closedir(d);
+}
 static void do_load(kit_t *k, const req_t *r)
 {
     ans_t a;
@@ -784,10 +973,16 @@ static void do_load(kit_t *k, const req_t *r)
     }
     if (!path[0]) {                                     /* (emptied: no sound) */
         a.a.status = KIT_OK;
+        k->wlast[r->pad][0] = 0;
         answer(k, &a);
         return;
     }
     (void)i;
+    if (r->own) {                                       /* (round C: kept: the project's own copy, read from there) */
+        char cp[KIT_PATH];
+        own_copy(k, r->proj, path, cp, sizeof cp);
+        snprintf(path, sizeof path, "%s", cp);
+    }
     a.pcm = shared_get(k, path, &a.a.frames, &a.a.rate);   /* (3c: in memory already, another pad's: shared) */
     if (!a.pcm) {
         max = room_for(k, r->pad);
@@ -796,7 +991,9 @@ static void do_load(kit_t *k, const req_t *r)
             shared_put(k, path, a.pcm, a.a.frames, a.a.rate);
     } else
         a.a.status = KIT_OK;
-    snprintf(a.a.path, sizeof a.a.path, "%s", path);
+    core_path(r->proj, path, a.a.path, sizeof a.a.path);   /* (round C: the project's own: KIT_OWN..) */
+    snprintf(a.abs, sizeof a.abs, "%s", path);
+    snprintf(k->wlast[r->pad], sizeof k->wlast[0], "%s", path);
     if (a.pcm) {
         a.a.npk = peaks_of(a.pcm, a.a.frames, KIT_PEAKS, a.a.pk);
         if (tr.id)                                      /* (a take: named as its row, its length now known) */
@@ -817,8 +1014,18 @@ uint32_t kit_lead(const int16_t *pcm, uint32_t frames, uint32_t rate)
     return 0;                                           /* (silent all through: kept whole) */
 }
 /* FIND: a take (Takes, its row in the list) or a sound in Samples (its folders, their rows) */
-static void do_find(kit_t *k, const req_t *r)
+static void do_find(kit_t *k, const req_t *r0)
 {
+    static req_t rr;                                    /* (round C: a copy of the project's: where its source is, when
+                                                         * this run made it) */
+    const req_t *r = &rr;
+    int oi;
+    rr = *r0;
+    for (oi = 0; oi < k->own_n; oi++)
+        if (!strcmp(k->own[oi].dst, r0->path) && !access(k->own[oi].src, F_OK)) {
+            snprintf(rr.path, sizeof rr.path, "%s", k->own[oi].src);
+            break;
+        }
     ans_t a;
     const size_t sl = strlen(k->samples);
     tl_row_t t;
@@ -1060,8 +1267,12 @@ static void do_save(kit_t *k)
                     break;
                 }
             snprintf(fin, sizeof fin, "%s/%s", dir, files[i]);
-            if (copy_file(x->path[i], fin))
-                files[i][0] = 0;                        /* (gone: the pad saved empty) */
+            {                                           /* (round C: a project's own sound: its file there) */
+                char src[KIT_PATH];
+                resolve_in(k->save_proj, x->path[i], src, sizeof src);
+                if (copy_file(src, fin))
+                    files[i][0] = 0;                    /* (gone: the pad saved empty) */
+            }
         }
         snprintf(tmp, sizeof tmp, "%s/kit.json.tmp", dir);
         snprintf(fin, sizeof fin, "%s/kit.json", dir);
@@ -1159,9 +1370,15 @@ static void do_open(kit_t *k, const req_t *r)
             for (j = 0; j < KIT_P_N; j++)
                 if (!mj_int(e, PKEY[j], &v))
                     x->v[i][j] = (int16_t)clampi((int)v, -32768, 32767);
-            if (!mj_string(e, "file", file, sizeof file) && file[0] && !strchr(file, '/') && strcmp(file, "..") &&
-                strlen(k->kits) + strlen(rel + 5) + strlen(file) + 3 <= KIT_KPATH)
-                snprintf(x->path[i], sizeof x->path[i], "%s/%s/%s", k->kits, rel + 5, file);
+            if (!mj_string(e, "file", file, sizeof file) && file[0] && !strchr(file, '/') && strcmp(file, "..")) {
+                char src[KIT_PATH], cp[KIT_PATH], cpath[KIT_PATH];
+                snprintf(src, sizeof src, "%s/%s/%s", k->kits, rel + 5, file);
+                own_copy(k, r->proj, src, cp, sizeof cp);   /* (round C: into the project's folder: editing it never
+                                                         * changes the saved kit) */
+                core_path(r->proj, cp, cpath, sizeof cpath);
+                if (strlen(cpath) < KIT_KPATH)
+                    snprintf(x->path[i], sizeof x->path[i], "%s", cpath);
+            }
         }
         a->a.status = KIT_OK;
         free(js);
@@ -1227,7 +1444,8 @@ static void do_folder(kit_t *k, const req_t *r)
     for (i = 0; i < KIT_PADS; i++) {                    /* the first 16 onto pads 1..16, the rest of the pads emptied */
         req_t q;
         memset(&q, 0, sizeof q);
-        q.kind = RQ_LOAD, q.pad = i;
+        q.kind = RQ_LOAD, q.pad = i, q.own = 1;      /* (round C: kept: copied in) */
+        snprintf(q.proj, sizeof q.proj, "%s", r->proj);
         if (i < n) {
             snprintf(q.path, sizeof q.path, "%s/%s", dir, names[i]);
             do_load(k, &q);
@@ -1275,17 +1493,18 @@ static int write_wav(const char *path, const int16_t *pcm, uint32_t frames, uint
     return 0;
 }
 /* a new file's path in the Edits folder: name, else "name 2", "name 3" ..; 0 found (and the folder made) */
-static int new_path(kit_t *k, const char *name, char *path, size_t cap)
+static int new_path(kit_t *k, const char *proj, const char *name, char *path, size_t cap)
 {
     struct stat st;
+    const char *dir = proj[0] ? proj : k->edits;        /* (round C: the project's own folder; none: Kits/Edits) */
     int i;
-    if (!k->edits[0] || mkdirs(k->edits))
+    if (!dir[0] || mkdirs(dir))
         return -1;
     for (i = 1; i < 1000; i++) {
         if (i == 1)
-            snprintf(path, cap, "%s/%s.wav", k->edits, name);
+            snprintf(path, cap, "%s/%s.wav", dir, name);
         else
-            snprintf(path, cap, "%s/%s %d.wav", k->edits, name, i);
+            snprintf(path, cap, "%s/%s %d.wav", dir, name, i);
         if (stat(path, &st))
             return 0;
     }
@@ -1412,9 +1631,11 @@ static void do_make(kit_t *k, const req_t *r)
         (void)whole;
     }
     if (o && no) {
-        if (!new_path(k, name, path, sizeof path) && !write_wav(path, o, no, rx)) {
+        if (!new_path(k, r->proj, name, path, sizeof path) && !write_wav(path, o, no, rx)) {
             a.pcm = o, a.a.status = KIT_OK, a.a.frames = no, a.a.rate = rx;
-            snprintf(a.a.path, sizeof a.a.path, "%s", path);
+            core_path(r->proj, path, a.a.path, sizeof a.a.path);
+            snprintf(a.abs, sizeof a.abs, "%s", path);
+            snprintf(k->wlast[r->pad], sizeof k->wlast[0], "%s", path);
             base_name(path, a.a.name, sizeof a.a.name);
             a.a.npk = peaks_of(o, no, KIT_PEAKS, a.a.pk);
             shared_put(k, path, o, no, rx);
@@ -1538,6 +1759,7 @@ static void do_slice(kit_t *k, const req_t *r)
     }
     answer(k, &a);
 }
+static void do_freeze(kit_t *k, const req_t *r);
 void kit_work(void *arg)
 {
     kit_t *k = arg;
@@ -1569,12 +1791,26 @@ void kit_work(void *arg)
         case RQ_SAVE: do_save(k); break;
         case RQ_OPEN: do_open(k, &r); break;
         case RQ_FOLDER: do_folder(k, &r); break;
-        case RQ_MERGE:
-        case RQ_EDIT: do_make(k, &r); break;
+        case RQ_MERGE: do_make(k, &r); break;
+        case RQ_EDIT:
+            if (r.op == KIT_ED_FREEZE)
+                do_freeze(k, &r);                       /* (round C) */
+            else
+                do_make(k, &r);
+            break;
+        case RQ_KEEP: do_keep(k, &r); break;
         case RQ_SLICE: do_slice(k, &r); break;
         case RQ_FIND: do_find(k, &r); break;             /* (round A) */
         case RQ_PEAKS: do_peaks(k, &r); break;
-        default: return;                                /* (nothing more) */
+        default:
+            pthread_mutex_lock(&k->mu);
+            i = k->clean_due;
+            pthread_mutex_unlock(&k->mu);
+            if (i) {                                    /* (round C: after the requests before it) */
+                do_clean(k);
+                break;
+            }
+            return;                                     /* (nothing more) */
         }
     }
 }
@@ -1583,7 +1819,7 @@ static void *own_thread(void *arg)
     kit_t *k = arg;
     pthread_mutex_lock(&k->mu);
     while (!k->quit) {
-        if (!k->rqn && !k->ngarb) {
+        if (!k->rqn && !k->ngarb && !k->clean_due) {
             pthread_cond_wait(&k->cv, &k->mu);
             continue;
         }
@@ -1663,35 +1899,69 @@ void kit_free(kit_t *k)
 }
 
 /* ================================================================ the engine's thread === */
-void kit_load(kit_t *k, int pad, const char *path)
+static void load_as(kit_t *k, int pad, const char *path, int own, int trim)
 {
-    req_t r;
+    static req_t r;
     if (!k || pad < 0 || pad >= KIT_PADS)
         return;
     memset(&r, 0, sizeof r);
-    r.kind = RQ_LOAD, r.pad = pad;
-    snprintf(r.path, sizeof r.path, "%s", path ? path : "");
+    r.kind = RQ_LOAD, r.pad = pad, r.own = own, r.trim = trim != 0;
+    kit_resolve(k, path ? path : "", r.path, sizeof r.path);   /* (round C: KIT_OWN.. the project's folder's) */
     request(k, &r);
 }
-void kit_load_rec(kit_t *k, int pad, const char *path, int trim)
-{
-    req_t r;
-    if (!k || pad < 0 || pad >= KIT_PADS)
-        return;
-    memset(&r, 0, sizeof r);
-    r.kind = RQ_LOAD, r.pad = pad, r.trim = trim != 0;
-    snprintf(r.path, sizeof r.path, "%s", path ? path : "");
-    request(k, &r);
-}
+void kit_load(kit_t *k, int pad, const char *path) { load_as(k, pad, path, 0, 0); }
+void kit_load_own(kit_t *k, int pad, const char *path) { load_as(k, pad, path, 1, 0); }
+/* (round C: a take recorded into a pad: copied into the project's folder, the take library keeps its own) */
+void kit_load_rec(kit_t *k, int pad, const char *path, int trim) { load_as(k, pad, path, 1, trim); }
 void kit_find(kit_t *k, int pad, const char *path)
 {
-    req_t r;
+    static req_t r;
     if (!k || pad < 0 || pad >= KIT_PADS || !path || !path[0])
         return;
     memset(&r, 0, sizeof r);
     r.kind = RQ_FIND, r.pad = pad;
-    snprintf(r.path, sizeof r.path, "%s", path);
+    kit_resolve(k, path, r.path, sizeof r.path);
     request(k, &r);
+}
+void kit_project(kit_t *k, const char *dir)
+{
+    if (k)
+        snprintf(k->proj, sizeof k->proj, "%s", dir ? dir : "");
+}
+void kit_keep(kit_t *k, int pad)
+{
+    static req_t r;
+    if (!k || pad < 0 || pad >= KIT_PADS)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_KEEP, r.pad = pad;
+    request(k, &r);
+}
+void kit_clean(kit_t *k, const char *const *refs, int n)
+{
+    int i, j;
+    char f[KIT_PATH];
+    if (!k || !k->proj[0])
+        return;
+    pthread_mutex_lock(&k->mu);
+    snprintf(k->clean_dir, sizeof k->clean_dir, "%s", k->proj);
+    k->clean_n = 0;
+    for (i = 0; i < n + KIT_PADS && k->clean_n < 64; i++) {   /* (the core's paths, then what the pads hold) */
+        const char *p = i < n ? refs[i] : k->ppath[i - n];
+        if (!p || !p[0])
+            continue;
+        resolve_in(k->proj, p, f, sizeof f);
+        if (!in_dir(k->proj, f))
+            continue;
+        for (j = 0; j < k->clean_n && strcmp(k->clean_keep[j], strrchr(f, '/') + 1); j++)
+            ;
+        if (j == k->clean_n)
+            snprintf(k->clean_keep[k->clean_n++], sizeof k->clean_keep[0], "%s", strrchr(f, '/') + 1);
+    }
+    k->clean_due = 1;
+    k->posted = 0;                                      /* (called for now) */
+    wake(k);
+    pthread_mutex_unlock(&k->mu);
 }
 void kit_zoom(kit_t *k, int pad, uint32_t from, uint32_t count, int n)
 {
@@ -1716,15 +1986,17 @@ void kit_audition(kit_t *k, int pad, uint32_t from, uint32_t count)
     k->aud_inc = (double)(s->rate ? s->rate : k->cfg.fs) / k->cfg.fs, k->aud_on = 1;
 }
 int kit_auditioning(const kit_t *k) { return k && k->aud_on; }
-void kit_load_row(kit_t *k, int pad, int place, uint32_t id)
+static void load_row_as(kit_t *k, int pad, int place, uint32_t id, int own)
 {
-    req_t r;
+    static req_t r;
     if (!k || pad < 0 || pad >= KIT_PADS)
         return;
     memset(&r, 0, sizeof r);
-    r.kind = RQ_LOAD_ROW, r.pad = pad, r.place = place, r.id = id;
+    r.kind = RQ_LOAD_ROW, r.pad = pad, r.place = place, r.id = id, r.own = own;
     request(k, &r);
 }
+void kit_load_row(kit_t *k, int pad, int place, uint32_t id) { load_row_as(k, pad, place, id, 0); }
+void kit_load_row_own(kit_t *k, int pad, int place, uint32_t id) { load_row_as(k, pad, place, id, 1); }
 void kit_rows(kit_t *k, int place, uint32_t folder, int from, int n)
 {
     req_t r;
@@ -1803,13 +2075,15 @@ int kit_poll(kit_t *k, kit_ans_t *out)
                     k->aud_on = 0;                      /* (round A: its audition with it) */
                 garbage(k, s->pcm);
                 s->pcm = a.pcm, s->frames = a.pcm ? a.a.frames : 0, s->rate = a.pcm ? a.a.rate : 0;
-                snprintf(k->ppath[a.a.pad], sizeof k->ppath[0], "%s", a.pcm ? a.a.path : "");
+                snprintf(k->ppath[a.a.pad], sizeof k->ppath[0], "%s", a.pcm ? (a.abs[0] ? a.abs : a.a.path) : "");
                 pthread_mutex_lock(&k->mu);             /* (3c: what it holds, for the memory's count) */
                 k->used[a.a.pad] = a.pcm ? a.a.frames * 4u : 0;
                 k->held[a.a.pad] = a.pcm;
                 pthread_mutex_unlock(&k->mu);
             }
         }
+        if (a.a.kind == KIT_A_OWNED && !strcmp(k->ppath[a.a.pad], a.abs2))   /* (round C: the same sound, its copy) */
+            snprintf(k->ppath[a.a.pad], sizeof k->ppath[0], "%s", a.abs);
         *out = a.a;
         return 1;
     }
@@ -2236,8 +2510,10 @@ void kit_save(kit_t *k, const kit_kit_t *kit)
         return;
     pthread_mutex_lock(&k->mu);
     busy = k->save_busy;
-    if (!busy)
+    if (!busy) {
         k->save = *kit, k->save_busy = 1;
+        snprintf(k->save_proj, sizeof k->save_proj, "%s", k->proj);
+    }
     pthread_mutex_unlock(&k->mu);
     if (busy) {                                         /* (one at a time) */
         ans_t a;
@@ -2298,7 +2574,7 @@ void kit_edit(kit_t *k, int pad, int op)
     req_t r;
     if (!k || pad < 0 || pad >= KIT_PADS)
         return;
-    if (!k->ppath[pad][0] || op < KIT_ED_TRIM || op > KIT_ED_REVERSE) {
+    if (!k->ppath[pad][0] || op < KIT_ED_TRIM || op > KIT_ED_FREEZE) {
         fail_now(k, pad);
         return;
     }
@@ -2306,6 +2582,8 @@ void kit_edit(kit_t *k, int pad, int op)
     r.kind = RQ_EDIT, r.pad = pad, r.op = op;
     snprintf(r.path, sizeof r.path, "%s", k->ppath[pad]);
     r.r0[0] = k->v[pad][KIT_P_START], r.r0[1] = k->v[pad][KIT_P_END];
+    memcpy(r.v, k->v[pad], sizeof r.v);                 /* (round C: Freeze renders the pad as it is now) */
+    r.us = k->st_us[pad];
     request(k, &r);
 }
 void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us) { kit_slice_sens(k, take, method, step_us, 50); }
@@ -2417,4 +2695,97 @@ uint32_t kit_sounding(const kit_t *k)
         if (k->vo[i].on && k->vo[i].stage != ST_FADE)
             b |= 1u << k->vo[i].pad;
     return b;
+}
+
+/* ---- (round C) Freeze: the pad as it sounds now, rendered offline on the file thread by a voice of a kit of its own
+ * (the same code that plays it): the region, pitch and fine, stretch, reverse, the envelope, the filter, level and
+ * pan (not the sends: the FX run on the engine's thread). One shot: the whole note to its end (the release its tail);
+ * the held modes: held for the region once, then released (its tail). At most KIT_FREEZE_S, the kit's memory. A new
+ * file (16-bit stereo at the engine's rate, "<name> frz") in the project's folder, onto the pad (LOADED) */
+static void do_freeze(kit_t *k, const req_t *r)
+{
+    ans_t a;
+    kit_t *t = calloc(1, sizeof *t);
+    int16_t *src = NULL, *o = NULL;
+    uint32_t fr = 0, rate = 0, no = 0, cap = 0, gate_n = 0, max;
+    int st = KIT_FAILED, gated = 1, i;
+    voice_t *v = NULL;
+    char name[KIT_NAME + 16], path[KIT_PATH], b[KIT_NAME];
+    memset(&a, 0, sizeof a);
+    a.a.kind = KIT_A_LOADED, a.a.pad = r->pad, a.a.status = KIT_FAILED;
+    if (!t || !(src = load_sound(r->path, k->cfg.max_bytes, 0, &fr, &rate, &st))) {
+        free(t);
+        a.a.status = st == KIT_OK ? KIT_FAILED : st;
+        answer(k, &a);
+        return;
+    }
+    t->cfg = k->cfg, t->glide = k->glide;
+    memcpy(t->v[0], r->v, sizeof t->v[0]);
+    t->v[0][KIT_P_MUTE] = 0, t->v[0][KIT_P_CHOKE] = 0;
+    t->st_us[0] = r->us;
+    t->snd[0].pcm = src, t->snd[0].frames = fr, t->snd[0].rate = rate;
+    note_on(t, 0, 0, 127, 0, NULL);
+    for (i = 0; i < NV && !v; i++)
+        if (t->vo[i].on)
+            v = &t->vo[i];
+    max = (uint32_t)((uint64_t)room_for(k, r->pad) / 4u);
+    if (max > (uint32_t)KIT_FREEZE_S * t->cfg.fs)
+        max = (uint32_t)KIT_FREEZE_S * t->cfg.fs;
+    if (v) {
+        v->sg[0] = v->sg[1] = v->sg[2] = 0.0f;         /* (no sends) */
+        if (v->mode != KIT_M_ONESHOT) {                 /* (held: the region once) */
+            const double n = (v->e - v->s) / v->inc;
+            gate_n = n < 1 ? 1 : n > max ? max : (uint32_t)n;
+            gated = 0;
+        }
+    }
+    while (v && v->on && no < max) {
+        static float buf[2 * 1024];
+        float *sb[3] = { buf, buf, buf };
+        uint32_t n = max - no < 1024 ? max - no : 1024, j;
+        if (!gated && no >= gate_n) {                   /* (let go: its release) */
+            gated = 1;
+            if (v->mode == KIT_M_TOGGLE) {
+                const uint32_t rn = ms_n(t, t->v[0][KIT_P_RELEASE]), f = ms_n(t, FADE_MS);
+                release(v, rn > f ? rn : f);
+            } else
+                v->gate = 0;
+        }
+        if (!gated && gate_n - no < n)
+            n = gate_n - no;
+        if (no + n > cap) {
+            int16_t *g = realloc(o, (size_t)(cap = cap ? cap * 2 : 1u << 16) * 4u);
+            if (!g)
+                break;
+            o = g;
+            continue;
+        }
+        memset(buf, 0, sizeof(float) * 2u * n);
+        voice_run(t, v, buf, sb, n);
+        for (j = 0; j < 2 * n; j++) {
+            const long x = lrintf(buf[j]);
+            o[2 * no + j] = (int16_t)(x > 32767 ? 32767 : x < -32768 ? -32768 : x);
+        }
+        no += n;
+    }
+    free(src);
+    if (!max)
+        a.a.status = KIT_TOO_LONG;
+    if (o && no) {
+        base_name(r->path, b, 16);
+        snprintf(name, sizeof name, "%s frz", b);
+        if (!new_path(k, r->proj, name, path, sizeof path) && !write_wav(path, o, no, t->cfg.fs)) {
+            a.pcm = o, a.a.status = KIT_OK, a.a.frames = no, a.a.rate = t->cfg.fs;
+            core_path(r->proj, path, a.a.path, sizeof a.a.path);
+            snprintf(a.abs, sizeof a.abs, "%s", path);
+            snprintf(k->wlast[r->pad], sizeof k->wlast[0], "%s", path);
+            base_name(path, a.a.name, sizeof a.a.name);
+            a.a.npk = peaks_of(o, no, KIT_PEAKS, a.a.pk);
+            shared_put(k, path, o, no, t->cfg.fs);
+            o = NULL;
+        }
+    }
+    free(o);
+    free(t);
+    answer(k, &a);
 }

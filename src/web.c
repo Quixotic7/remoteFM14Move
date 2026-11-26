@@ -349,6 +349,8 @@ static void api_kit_post(client_t *c, const char *body)
         engine_panel(ENG_OP_KIT_SAVE, 0, 0);
     else if (!strcmp(op, "open"))
         engine_panel(ENG_OP_KIT_OPEN, (int)(uint32_t)(unsigned long)id, 0);
+    else if (!strcmp(op, "freeze"))   /* (round C) the pad rendered as it sounds into a file of the project's */
+        engine_panel(ENG_OP_KIT_EDIT, (int)pad, RFM_MOVE_KIT_ED_FREEZE);
     else {
         json_reply(c, "400 Bad Request", "{\"ok\":false,\"error\":\"no such op\"}");
         return;

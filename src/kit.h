@@ -12,13 +12,41 @@
  * kit_work). The memory a sound leaves is freed there too, never on the engine's thread. libc + pthreads (+ libm).
  *
  * (stage 3c, making sounds) Mix and join two pads, a pad's own edits (trim, normalize, reverse), a take sliced over
- * the pads: every new file written on the file thread into the kits' Edits folder (kits_dir/Edits:
+ * the pads: every new file written on the file thread (round C: into the project's own folder, below; without one)
+ * into the kits' Edits folder (kits_dir/Edits:
  * Samples/RemoteFM1/Kits/Edits, seen by Move's browser; never listed as a kit, it has no kit.json), 16-bit stereo WAV
  * at the first sound's rate, its name the result's ("Join 2+5", "Kick trim"; " 2", " 3" .. when taken). A sound read
  * for several pads (a take's slices: each pad a region of it) is in memory once (shared, counted once). */
 #ifndef RFM14_KIT_H
 #define RFM14_KIT_H
 #include <stdint.h>
+#include <stdio.h>
+
+/* (round C, 2026-11-26) the project's own sounds: every project has a folder of its own, kits_dir/Projects/NN (NN its
+ * slot 01..32: Samples/RemoteFM1/Kits/Projects/03, seen by Move's browser; never listed as a kit, it has no kit.json).
+ * A pad's sound kept (Files' click, Files left, All To Pads, To Kit, a kit loaded, a take recorded into a pad, the
+ * sampler's next empty pad, a take's slices) is copied in first (once: a file already there, or the same file copied
+ * before, is not copied again; its name the source's, " 2", " 3" .. when another file has it); every new file (mix,
+ * join, trim, normalize, reverse, freeze) is written there. The core keeps such a path as KIT_OWN + its name
+ * ("@/Kick.wav": the open project's folder, whatever its slot), so a project cut and pasted, or duplicated, keeps its
+ * sounds (the storage moves or copies the folder with it). Older projects' paths (Samples, Takes, Kits/Edits) still
+ * load; their sound is copied in at its first keep or edit. The folder's files nothing refers to (the pads, the
+ * Undo, the answers on their way) are deleted when the project is saved (kit_clean), a minute old at least. */
+#define KIT_OWN "@/"
+static inline void kit_proj_dir(const char *kits, int slot, char *o, size_t cap)
+{
+    if (kits && kits[0] && slot >= 0)
+        snprintf(o, cap, "%s/Projects/%02d", kits, slot + 1);
+    else if (cap)
+        o[0] = 0;
+}
+static inline void kit_proj_clip(const char *kits, char *o, size_t cap)   /* a project cut or copied: its folder */
+{
+    if (kits && kits[0])
+        snprintf(o, cap, "%s/Projects/.clip", kits);
+    else if (cap)
+        o[0] = 0;
+}
 
 struct tl;
 #define KIT_PADS 16
@@ -61,14 +89,16 @@ typedef struct {
     uint32_t frames, rate;
     uint8_t thumb[KIT_THUMB];
 } kit_row_t;
-enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES, KIT_A_FOUND, KIT_A_PEAKS };
+enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES, KIT_A_FOUND, KIT_A_PEAKS,
+       KIT_A_OWNED };             /* (round C) OWNED: pad, was (the core's path) now path (the project's copy) */
 #define KIT_DEPTH 8               /* (round A) folders deep in Samples, as rfm1cs's RFM_MOVE_KIT_DEPTH */
 #define KIT_LEAD_LEVEL 104        /* (round A) Trim silence: -50 dBFS (of 32767) */
 #define KIT_LEAD_MS 5             /* .. the start this much before the first sound */
 #define KIT_HIT_GAP_MS 60         /* (round A) the Hits' minimum spacing (the default) */
 /* (stage 3c) as rfm1cs's RFM_MOVE_KIT_MG_*, _ED_*, _SM_* */
 enum { KIT_MG_COPY, KIT_MG_MIX, KIT_MG_JOIN };
-enum { KIT_ED_TRIM = 1, KIT_ED_NORMALIZE, KIT_ED_REVERSE };
+enum { KIT_ED_TRIM = 1, KIT_ED_NORMALIZE, KIT_ED_REVERSE, KIT_ED_FREEZE };   /* (round C: Freeze) */
+#define KIT_FREEZE_S 60           /* (round C) a freeze renders this much at most */
 enum { KIT_SM_HITS, KIT_SM_EQ16, KIT_SM_EQ8, KIT_SM_EQ4, KIT_SM_STEPS, KIT_SM_TAP, KIT_SM_N };   /* (round B: Tap, the core
                                                          * taps the cuts: one slice, the whole take) */
 #define KIT_SLICES 16
@@ -106,6 +136,7 @@ typedef struct {
     uint32_t folders[KIT_DEPTH + 1];
     int16_t sels[KIT_DEPTH + 1];
     uint32_t zfrom, zcount;
+    char was[KIT_PATH];           /* (round C) OWNED: the pad's path before */
 } kit_ans_t;
 typedef struct kit kit_t;
 
@@ -179,6 +210,21 @@ uint32_t kit_frames(const kit_t *k, int pad);   /* a pad's sound's frames (0 non
 double kit_rate_of(const kit_t *k, int pad, int semis);   /* (3b) a voice's source frames an output frame */
 int kit_previewing(const kit_t *k);       /* the preview sounds */
 uint32_t kit_sounding(const kit_t *k);    /* (3c) the pads a voice sounds for (bits) */
+
+/* ---- (round C) the project's own sounds (README "The kit (round C)") */
+/* the open project's folder (kit_proj_dir; "" none: nothing copied, new files into Kits/Edits). Paths KIT_OWN.. are
+ * read from it; set before the project's loads */
+void kit_project(kit_t *k, const char *dir);
+/* as kit_load / kit_load_row, the sound kept: copied into the project's folder first, the pad gets the copy */
+void kit_load_own(kit_t *k, int pad, const char *path);
+void kit_load_row_own(kit_t *k, int pad, int place, uint32_t id);
+/* KIT_KEEP: the sound the pad has now (its latest load) copied into the project's folder: answer KIT_A_OWNED */
+void kit_keep(kit_t *k, int pad);
+/* the project saved: its folder's files that none of refs (the core's paths: rfm_move_kit_refs) nor a pad, nor an
+ * answer on its way, refers to deleted on the file thread (regular files of that folder only, a minute old at least) */
+void kit_clean(kit_t *k, const char *const *refs, int n);
+/* a path as the core keeps it, as a file (KIT_OWN.. in the project's folder; others as they are) */
+void kit_resolve(const kit_t *k, const char *in, char *out, size_t cap);
 
 /* ---- the file thread: the requests waiting, done (the take library's worker calls it through TL_Q_JOB) */
 void kit_work(void *k);
