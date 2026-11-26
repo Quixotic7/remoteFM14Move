@@ -1290,6 +1290,63 @@ static void t_flac(void)
     printf("  ok    FLAC: 16-bit stereo and 24-bit mono sample for sample, a row's picture, Too Long; the Move Library's "
            "categories nested, its root, the unsupported rows, the status (\"Reading...\" first %d times)\n", rd);
 }
+/* (the owner's 2026-11-26: "The kit should be polyphonic between pads, unless a pad is set to a choke group") two
+ * pads' notes in the same block, at the same frame and apart, on a track's pads (1, 2) and across tracks (1, 5): every
+ * pad sounds at once; only pads sharing a non-zero choke group cut each other */
+static int live(const kit_t *k, int pad)
+{
+    int c, f, fs, a, as;
+    return kit_live(k, pad, &c, &f, &fs, &a, &as);
+}
+static void t_poly(void)
+{
+    char p[600], q[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int16_t lk[KIT_LK_N], pv[KIT_P_N];
+    int i;
+    snprintf(p, sizeof p, "%s/pa.wav", DIRP), wav(p, 24000, 2, 16, 0, 48000);
+    snprintf(q, sizeof q, "%s/pb.wav", DIRP), wav(q, 24000, 1, 16, 0, 44100);
+    CHECK(load(k, 0, p, &a) == KIT_OK && load(k, 1, q, &a) == KIT_OK && load(k, 4, p, &a) == KIT_OK);
+    memset(lk, 0, sizeof lk), memset(pv, 0, sizeof pv);
+    for (i = 0; i < 3; i++) {                           /* (as the core sends a sequencer's hit: locks given, none set) */
+        kit_note_pl(k, 0, 0, 100, 40, 0, lk, 0, pv, 0);
+        kit_note_pl(k, 1, 0, 100, 40, 0, lk, 0, pv, 0);
+        kit_note_pl(k, 4, 0, 100, i == 2 ? 10 : 40, 0, lk, 0, pv, 0);
+        run(k, 600);                                    /* (a pad again: its own voice's fade, 5 ms) */
+        CHECKF(live(k, 0) && live(k, 1) && live(k, 4) && kit_voices(k) == 3, "round %d: %d %d %d, %d voices", i,
+               live(k, 0), live(k, 1), live(k, 4), kit_voices(k));
+        kit_note(k, 0, 0, 0, 0), kit_note(k, 1, 0, 0, 0), kit_note(k, 4, 0, 0, 0);   /* (the steps' ends: one shots
+                                                         * play on) */
+        run(k, 1200);
+        CHECK(live(k, 0) && live(k, 1) && live(k, 4));
+    }
+    run(k, 24000);
+    {                                                   /* the held engines (Loop, Momentary, Granular), a hit's locks
+                                                         * and a ghost beside another pad's hit: each pad its own */
+        static const int M3[3] = { KIT_M_LOOP, KIT_M_MOMENTARY, KIT_M_GRANULAR };
+        int j;
+        for (j = 0; j < 3; j++) {
+            kit_set(k, 0, KIT_P_MODE, M3[j]), kit_set(k, 1, KIT_P_MODE, M3[(j + 1) % 3]);
+            pv[KIT_P_LEVEL] = -12, pv[KIT_P_SEND1] = 50;
+            kit_note_pl(k, 0, 0, 100, 40, 0, lk, 1ull << KIT_P_LEVEL | 1ull << KIT_P_SEND1, pv, 0);
+            kit_note_pl(k, 1, 0, 100, 40, 0, lk, 0, pv, 0);
+            kit_ghost(k, 4, 40, 1ull << KIT_P_LEVEL, pv);
+            run(k, 2400);
+            CHECKF(live(k, 0) && live(k, 1) && kit_voices(k) == 2, "engines %d: %d %d, %d voices", j, live(k, 0),
+                   live(k, 1), kit_voices(k));
+            kit_note(k, 0, 0, 0, 0), kit_note(k, 1, 0, 0, 0);
+            run(k, 24000);
+        }
+        kit_set(k, 0, KIT_P_MODE, KIT_M_ONESHOT), kit_set(k, 1, KIT_P_MODE, KIT_M_ONESHOT);
+        pv[KIT_P_CHOKE] = 0;
+    }
+    kit_set(k, 0, KIT_P_CHOKE, 1), kit_set(k, 1, KIT_P_CHOKE, 1);   /* (a group: the later of the two cuts the other) */
+    kit_note(k, 0, 0, 100, 10), kit_note(k, 1, 0, 100, 20), kit_note(k, 4, 0, 100, 30);
+    run(k, 1000);
+    CHECK(!live(k, 0) && live(k, 1) && live(k, 4));
+    kit_free(k);
+}
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -1313,6 +1370,7 @@ int main(void)
     t_lofi();
     t_sustain_loop();
     t_scan();
+    t_poly();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

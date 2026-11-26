@@ -2,6 +2,14 @@
 
 ## 0.6.0 (prepared 2026-11-26, not yet released)
 
+**Kit: Copy's modes on the jog, a held step's length and timing (the owner's 2026-11-26; rfm1cs d457792).** Copy held
+shows Copy / Mix / Join, the jog picks one (each press starts on Copy), the first pad is the source and each further
+pad a target done at once ("Copied 2>5", "Mixed 2+5"); Mix and Join onto an empty pad copy; one Undo a hold. A step
+held + the jog sets the chosen pad's hits' length (never the pages), + Left / Right their timing. Polyphony between
+pads ("only one pad plays"): not reproduced on this host, 40f78f8's core or the simulator; tests/kit_test.c t_poly
+keeps two pads in one block sounding together (a track's pads and across tracks, the held engines, locks, a ghost
+beside), only a shared non-zero choke group cutting. KIT-SPEC "Copy on the jog ...", help.json, kit_e2e's Copy steps.
+
 **The power button: Shut Down? (the owner's 2026-11-26; rfm1cs dcece48, Move Remote ded27a9).** A press of the Move's
 power button puts up "Shut Down?" over every screen (said too); the jog click confirms: the core's POWEROFF action,
 `mr_request_power_off()`, Move Remote's BYE(3), the host stops as for Exit (projects and flash saved, `engine_stop`),

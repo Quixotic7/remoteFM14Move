@@ -19,9 +19,9 @@
 #   - the Mixer's fourth strip, the kit's (knob 4: its level);
 #   - Shift + the click on a folder: All To Pads (its three sounds on pads 1..3), Undo: the kit back;
 #   - Save (Kit 1: its folder, kit.json), a new project (an empty kit), Load: Kit 1 there;
-#   - (stage 3c) Copy held + pad 1 + pad 2: Mix (a new file in the project's
-#     folder, Kits/Projects/NN, on pad 2), Undo; Copy let go before the
-#     click: nothing; Join (its length the two's) (the owner's follow-up: the pad's tools gone, their Normalize with
+#   - (stage 3c; the owner's 2026-11-26 Copy) Copy held, the jog's turn: Mix, pad 1 + pad 2: done at once (a new
+#     file in the project's folder, Kits/Projects/NN, on pad 2), Undo; Copy held + the jog + only the source: nothing,
+#     its next press on Copy; Join (its length the two's) (the owner's follow-up: the pad's tools gone, their Normalize with
 #     them); a take's To Kit then Slice: its hits, Equal 8, Shift + pad 1, a slice heard, the click: 8 slices on pads
 #     1..8 (one file in memory once), Undo;
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
@@ -249,22 +249,22 @@ frames() { build/tools/ainchk info "$1" | sed -n 's/^frames \([0-9]*\) .*/\1/p';
 peak() { build/tools/ainchk info "$1" | sed -n 's/.* peak \([0-9]*\)$/\1/p'; }
 ED="$LIB/Kits/Projects/$(printf %02d $(($(field proj_cur) + 1)))"   # (round C: the project's own folder)
 m0=$(field kit_made)
-cmd "cc 60 127"; hit 68; hit 69; jog 1 1; click; cmd "cc 60 0"   # Copy held, pad 1, pad 2: Mix
+cmd "cc 60 127"; jog 1 1; hit 68; hit 69; cmd "cc 60 0"     # Copy held, the jog: Mix, pad 1, pad 2: done
 wait_for 8 '[ "$(field kit_file)" = "Mix 1+2.wav" ]' && [ -s "$ED/Mix 1+2.wav" ] && [ "$(field kit_cur)" = 1 ] \
     && [ "$(peak "$ED/Mix 1+2.wav")" -le 32767 ] \
-    && ok "Copy held, pad 1, pad 2, Mix: a new file on pad 2 (Kits/Projects/NN/Mix 1+2.wav, peak $(peak "$ED/Mix 1+2.wav"))" \
+    && ok "Copy held, the jog's Mix, pad 1, pad 2: at once a new file on pad 2 (Kits/Projects/NN/Mix 1+2.wav, peak $(peak "$ED/Mix 1+2.wav"))" \
     || bad "Mix: file '$(field kit_file)' cur '$(field kit_cur)' made '$(field kit_made)' (from $m0): $(ls "$ED" 2>&1 | tr '\n' ' ')"
 sleep 1.2; press 56
 wait_for 5 '[ "$(field kit_file)" != "Mix 1+2.wav" ] && [ -n "$(field kit_file)" ]' \
     && ok "Undo: pad 2 back ($(field kit_file))" || bad "Undo of the mix: '$(field kit_file)'"
 f2=$(field kit_frames)
-cmd "cc 60 127"; hit 68; hit 69
-wait_for 3 '[ "$(field kit_mg)" = 2 ]' || bad "the Copy menu: '$(field kit_mg)'"
-jog 2 1; sleep 0.2; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_merge.pbm
-cmd "cc 60 0"                                                # (Copy let go before the click: nothing)
-wait_for 3 '[ "$(field kit_mg)" = 0 ]' && sleep 0.5 && [ "$(field kit_made)" = $((m0 + 1)) ] && ok "Copy let go before the click: nothing done" \
+cmd "cc 60 127"; jog 2 1; hit 68
+wait_for 3 '[ "$(field kit_mg)" = 1 ]' || bad "the Copy modes, the source: '$(field kit_mg)'"
+sleep 0.2; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_merge.pbm
+cmd "cc 60 0"                                                # (Copy let go with only the source: nothing)
+wait_for 3 '[ "$(field kit_mg)" = 0 ]' && sleep 0.5 && [ "$(field kit_made)" = $((m0 + 1)) ] && ok "Copy let go with only the source: nothing done" \
     || bad "Copy let go: mg '$(field kit_mg)' made '$(field kit_made)'"
-cmd "cc 60 127"; hit 68; hit 69; jog 2 1; click; cmd "cc 60 0"   # Join
+cmd "cc 60 127"; jog 2 1; hit 68; hit 69; cmd "cc 60 0"     # Join (the press on Copy again: two detents)
 wait_for 8 '[ "$(field kit_file)" = "Join 1+2.wav" ]' && [ "$(frames "$ED/Join 1+2.wav")" = $((88200 + f2)) ] \
     && ok "Join: pad 1 then pad 2 on pad 2 (88200 + $f2 = $(frames "$ED/Join 1+2.wav") frames)" \
     || bad "Join: file '$(field kit_file)' frames $(frames "$ED/Join 1+2.wav" 2>/dev/null) (want $((88200 + f2)))"

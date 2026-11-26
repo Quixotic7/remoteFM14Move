@@ -130,7 +130,7 @@ as left. The take is written as any take (Takes list, Samples/RemoteFM1/<day>/) 
 - **Mix and join (settled + kit_merge a):** Copy held, a pad, then another: the screen offers **Copy** (I_COPY),
   **Mix** (I_MIX: both summed, normalized not to clip), **Join** (I_JOIN: the first then the second, end to end); the
   jog chooses, the click does it (board N); the result is a new file on the second pad (board O: "Join 2+5"); Undo
-  brings the pad back. Release of Copy before a choice: nothing done.
+  brings the pad back. Release of Copy before a choice: nothing done. (Reworked 2026-11-26: "Copy on the jog" below.)
 - **Slice (kit_slice a):** a take's actions: To Kit -> Slice: the wave with its cuts (board P), a row choosing
   **Hits** (onsets; the default), **Equal** (16 / 8 / 4) or **Steps** (a slice a step at the tempo); knobs 1 and 2
   move the chosen cut, the pads light and play the slices; the click puts them onto pads 1..16 from the chosen pad
@@ -451,3 +451,37 @@ the kit bus.
   more ("Locks full" past them). No project format change. The host applies each lock to that hit only: at note-on
   (engine, Warp, Sync, region, envelope, choke ...) and while it sounds (the filter, its envelope, LoFi, Granular, Warp
   speed and pitch), the pad's later edits leaving a locked value alone.
+
+## Copy on the jog, a held step's length and timing, 2026-11-26
+
+The owner's, after testing: "instead of having to turn and click the jogwheel each time, you should while holding copy
+just turn the jogwheel to change the mode, it should default to Copy whenever you release copy and press again ... If
+the other pad is empty, then for mix and join it just does a copy to the empty pad slot." "Holding a step + turning
+the jogwheel should always change the step length." "Holding a step plus using the left and right arrow keys should
+be a shortcut to always adjust the microtiming."
+
+- **Copy held:** the screen shows Copy, Mix, Join (board N's icons), the current one marked and named; the jog's turn
+  changes it (no click; the pages stay); every Copy press starts on Copy. The first pad pressed is the source (it
+  blinks; its number and an arrow on the screen). Each further pad is a target, done at once in the mode: **Copy** the
+  source's sound and settings ("Copied 2>5"); **Mix**, **Join** the host's new file on the target ("Mixed 2+5",
+  "Joined 2+5"); an empty target: Mix and Join just copy; an empty source: "Empty". The jog's click does nothing (the
+  old confirm step is gone). Copy let go ends it; Back ends it until Copy is let go. Copy + a step stays the
+  sequencer's step copy.
+- **Repeated targets** while Copy is still held: each gets the same operation from the same source. Move's own Copy
+  keeps its clipboard until Copy is pressed again (manual 6.1.4, 11.8, 17.1.3: copy a pad, then press where to paste),
+  so a held Copy pasting onto several pads matches it; a new source needs a new press of Copy. One Undo brings back
+  every target of the hold (one target: that pad; several: the kit as it was before the first).
+- **A step held + the jog:** the chosen pad's hits on the held steps get a new length, as a firmware track's held step
+  (2 ticks a detent, about a tenth of a step; Shift a whole step; 1 tick .. the clip's length); the LENGTH popup
+  ("Length", the value, the bar strip); the pages never turn while a step is held. **+ Left / Right:** their timing
+  (micro), 2 ticks a press, Shift 1, clamped to the step's -12..+11; the Nudge popup ("+16%"). Firmware tracks already
+  do both. The other pads' hits on the step are untouched. One undo step a hold for each. A ghost (locks, no hit) or an
+  empty step: nothing (a ghost has no timing or length of its own).
+- **Polyphony between pads** (the owner: "I sequenced a pattern on one pad and then another pad with triggers on same
+  steps and only one pad plays"): not reproduced. On the core (d457792 and 1958869, the installed host's) two pads' hits
+  on one step each send a KIT_NOTE (a shared track or not; steps stopped or playing; a held step + pads; Record; a
+  locked hit beside a plain one); the host's voices sound together (kit_test: same block, same frame and apart, the
+  held engines, locks and a ghost beside); on the simulator two pads on one step give two voices. Only pads sharing a
+  non-zero choke group cut each other; a pad again takes its own voice back; past 24 voices the oldest is stolen.
+  Kept as checks: move_kit 63, kit_test t_poly.
+
