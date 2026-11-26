@@ -176,3 +176,34 @@ comes next.
 - **Toggle play mode:** the fourth Play mode: a tap starts the pad, the next stops it (a short release); it loops while
   on; a step's note toggles it the same way. Its icon I_TOGGLE (play, then stop); the Play popup draws the four.
 - **Recording gesture:** unchanged (a pad held + Sample), as the owner confirmed.
+
+## Round B, 2026-11-26
+
+From the owner's approved canvas (Demo.dc.html; the brief wins where they differ). Built for rapid iteration: no new
+tests yet (the owner's "move fast"), the full suites when the design is locked.
+
+- **AHDSR:** Decay (envelope steps) and Sustain (0..100 %, 100 at first) after Hold. Held modes sit at Sustain until
+  let go; a one shot runs A-H-D, sustains to the region's end with Release as its tail. A one shot with Hold > 0,
+  Decay 0 and Sustain 100 % keeps round A's sound (released after the hold). The popup draws the five stages, the one
+  turned thick.
+- **Filter:** a TPT state-variable low-pass a voice; Filter 0..100 (20 Hz .. 20 kHz, 100 open: bypassed, the frames
+  as before) and Resonance 0..100 (Q 0.5 .. 16), rows after Release. The cutoff glides (10 ms) and the coefficients are
+  made every 32 frames and ramped between.
+- **Knob pages** (the page chosen at the touch): 1 Pitch, 2 Start, 3 Stretch, 4 Play, 5 Filter, 6 Resonance, 7 Level,
+  8 Send 1 (pink); Shift held at the touch (blue): 1 Attack, 2 Hold, 3 Decay, 4 Sustain, 5 Release, 6 Choke, 7 Pan,
+  8 Fine (cents: Shift + knob 1 before). Shift pressed after Start is touched: the 32x close-up and a fine turn, as
+  round A.
+- **A step held:** the volume knob sets the chosen pad's hits' velocity there ("Step 5 Velo"); the step keys show
+  velocity by brightness (100 as before). The knobs that lock light yellow (Pitch, Start, Filter, Resonance, Level;
+  Shift: Decay, Pan), the rest dark: a turn gives that hit its own value ("Step 5" / the setting / the value). Locks
+  are sequencer locks (cc 136 + lock x 4 + pad % 4, the value 0..254: move.h RFM_MOVE_KIT_LOCK0), saved with the
+  project, sent with the note (KIT_NOTE's klk_mask / klk) and applied to that voice only. A locked step blinks slowly
+  (1 s round) while its pad is chosen. Delete + a step clears its notes and locks.
+- **Tap:** Slice's sixth method. The first step pressed plays the take from its start (the preview path), a cut at 0;
+  each further press a cut where the sound heard is: the core's clock less 17 ms (768 frames at 44.1 kHz: the host's
+  5-block lead plus Move's SPI block; the host's lead_us when it sets one), 16 slices at most. The steps light white a
+  cut each, the slice under the playhead in the take's colour; the screen shows the playhead. A press after the take
+  ended: a new pass. Delete + a step: the cuts cleared. Knobs 1 and 2 nudge, the click puts the slices on the pads.
+- **The page's Kit tab:** Decay, Sustain, Filter, Resonance, Trim silence (setting 31), Toggle.
+- **Saving:** project version 14 (20 settings a pad; 13, 12, 11 read with Decay 0, Sustain 100, the filter open);
+  kit.json gains "decay", "sustain", "cutoff", "reso" (missing: the same defaults).

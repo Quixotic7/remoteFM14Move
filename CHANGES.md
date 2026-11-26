@@ -1,7 +1,11 @@
 # Changes
 
-## Unreleased: the kit (stages 3a, 3b and 3c, round A)
+## Unreleased: the kit (stages 3a, 3b and 3c, rounds A and B)
 
+- **Round B:** each pad's envelope has Decay and Sustain, and a resonant low-pass filter (knobs 5 and 6). Hold Shift
+  as you touch a knob for the envelope page (attack, hold, decay, sustain, release, choke, pan, fine). Hold a step and
+  turn the volume knob to set that hit's velocity, or a yellow knob to give it its own pitch, start, filter, level,
+  pan or decay (the step blinks). Slicing gains Tap: tap steps along with the take to cut it.
 - **Choosing sounds, pad first (round A):** press a pad, then open Files: it opens on that pad's sound (an empty pad:
   where you last loaded from). Rest the jog on a sound and it is on the pad at once and plays; tap the pad or let the
   pattern run to hear it in place. Press another pad to fill that one instead. The jog's click keeps the sound and

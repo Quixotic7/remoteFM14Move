@@ -1514,6 +1514,13 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   `kit.json` keeps it as `"trim"` (0 / 1; a kit.json without it: on).
 - **(round A) Toggle:** Play mode 3 (`KIT_M_TOGGLE`): a note-on starts the pad (looping start..end while on), its
   note-off is ignored, the next note-on releases it (the pad's Release, 5 ms at least); a step's notes the same.
+- **(round B, 2026-11-26) AHDSR, the filter, locks, Tap** (KIT-SPEC "Round B"): settings 16..19 Decay, Sustain,
+  Filter (cutoff 0..100, 100 open: bypassed), Resonance (kit.json "decay", "sustain", "cutoff", "reso"); each voice an
+  A-H-D-S-R envelope and a TPT state-variable low-pass (coefficients every 32 frames, ramped; the cutoff's 10 ms glide;
+  no allocation or lock on the audio thread). `KIT_NOTE`'s `klk_mask` / `klk` (a step's locks: pitch, start, filter,
+  resonance, level, pan, decay) go to `kit_note_lk` and apply to that voice only, at its frame. Slice's Tap
+  (`KIT_SM_TAP`): the host answers one slice (the whole take); the core taps the cuts; `KIT_SLICE` `_PLAY` with count 0
+  stops the pass. The page's Kit tab: the four settings, Trim silence (`ENG_OP_KIT_SET` setting 31), Toggle.
 
 `tests/kit_test.sh` (no make): `tests/kit_test.c` plain, with ASan + UBSan and with TSan: the formats, a sound past
 the memory (the pad keeps its own), a missing file, the voices sample for sample (a note's frame, reverse, an octave,
