@@ -2,6 +2,11 @@
 
 ## 0.6.0 (prepared 2026-11-26, not yet released)
 
+**Every level in dB, one popup (rfm1cs 00df8ed).** A firmware's level, the kit's and a pad's all show the same popup
+(title, the value in dB, the source's name, a bar per sibling) wherever they are set, and turn 0.5 dB a detent. The
+host's gain law is unchanged (a 0..127 level is a linear gain, 127 unity, for a slot and the kit alike: 100 is
+-2.1 dB). The page's Mixer and the Sampler's pad Level show dB too (moveui.js `levelText`, `padLevelText`).
+
 **The kit: a 16-pad sampler on Track 4.** Tap Track 4 round Mixer, Routing, Kit (or hold Track 4 + pad 3).
 
 - **Pads and tracks:** the left 4 x 4 is the kit, pad 1 bottom left; each pad row plays on tracks 13..16 (a new project

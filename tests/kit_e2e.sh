@@ -164,7 +164,8 @@ cmd "cc 75 68"; sleep 0.2; jog 5 127; sleep 1.1            # (Send 1 0; Pad Samp
 m0=$(field kit_mix)
 cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # Track 4: Kit -> the Mixer
 wait_for 3 '[ "$(field kit_shown)" = 0 ]' || bad "the Mixer: kit shown '$(field kit_shown)'"
-cmd "cc 74 78"; sleep 0.4                                   # knob 4: the kit's level -50
+cmd "cc 74 116"; sleep 0.4                                  # knob 4: the kit's level 12 detents down (rfm1cs
+                                                            # 2026-11-26: 0.5 dB a detent, -2.1 -> -8.1 dB: 100 -> 50)
 wait_for 3 '[ "$(field kit_level)" = 50 ]' && [ "$(field kit_mix)" -gt "${m0:-0}" ] \
     && ok "the Mixer: knob 4 the kit's strip (its level 100 -> 50, MIX slot 3 to the host)" \
     || bad "the kit's strip: level '$(field kit_level)' mix '$(field kit_mix)' (from $m0)"

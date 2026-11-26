@@ -133,8 +133,8 @@ tap "cc 40"; tap "cc 40"   # (Track 4 again: the Kit (stage 3a: the host has the
 edit 18 0 50 >/dev/null
 wait_for 3 '[ "$(field level0)" = 50 ]' || bad "the page's level: $(field level0)"
 cmd "cc 71 3"; sleep 0.4
-wait_for 3 '[ "$(field level0)" = 53 ]' && mix | grep -q '"level":53' \
-    && ok "the page set slot 1's level to 50 in the core; the Move's knob 1 then made it 53, and the page sees 53" \
+wait_for 3 '[ "$(field level0)" = 59 ]' && mix | grep -q '"level":59' \
+    && ok "the page set slot 1's level to 50 in the core; the Move's knob 1 then made it 59 (3 detents of 0.5 dB, rfm1cs 2026-11-26), and the page sees 59" \
     || bad "level: $(field level0)"
 press "note 89"; cmd "cc 71 5"; sleep 0.4   # (0.5.0 Mixer: the right 4 x 4's Send 2, then knob 1 for slot 1)
 wait_for 3 'mix | grep -q "\"sends\":\[100,5,0\]"' && ok "the Move's Mixer: Send 2 picked (its pad), knob 1 sets slot 1's: the page's sends follow (100, 5, 0)" \

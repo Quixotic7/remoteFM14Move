@@ -21,7 +21,7 @@
 //           (a new kit) and Load (the kits saved, GET /api/kit/kits). The Move's screen and pads follow. (round C)
 //           the chosen pad's file's path (the project's own copy once kept or edited); Freeze gone (the owner's follow-up).
 // The takes are named by the library's ids only (src/web.c /api/takes).
-import { OP, h, svg, IC, bar, segs, choice, closePop, openPop, popItem } from "./moveui.js";
+import { OP, h, svg, IC, bar, segs, choice, closePop, openPop, popItem, padLevelText } from "./moveui.js";
 import { download } from "./movefs.js";
 
 const TABS = ["Record", "Takes", "Kit"];
@@ -581,7 +581,7 @@ export class SmpView {
       row("F release", env(KP.FRELEASE, "Filter release"), KP.FRELEASE),
       row("Choke", S(KP.CHOKE, "Choke", ["Off", "1", "2", "3", "4"]), KP.CHOKE),
       row("Reverse", S(KP.REVERSE, "Reverse", ["Off", "On"]), KP.REVERSE),
-      row("Level", B(KP.LEVEL, "Level", { min: -60, max: 6, fmt: (v) => (v <= -60 ? "-inf" : `${v > 0 ? "+" : ""}${v} dB`) }), KP.LEVEL),
+      row("Level", B(KP.LEVEL, "Level", { min: -60, max: 6, fmt: padLevelText }), KP.LEVEL),
       row("Pan", B(KP.PAN, "Pan", { min: -50, max: 50, fmt: (v) => (v ? `${v < 0 ? "L" : "R"}${Math.abs(v)}` : "C") }), KP.PAN),
       row("Mute", S(KP.MUTE, "Mute", ["Off", "On"]), KP.MUTE),
       row("Sync", B(KP.STRETCH, "Sync", { min: 0, max: 64, fmt: (v) => (v ? `${v} step${v === 1 ? "" : "s"}` : "Off") }), KP.STRETCH),

@@ -12,7 +12,7 @@
 // it (the PAGE op with the row, the FXPG op). Every edit is one of the host's ops (moveui.js OP: the same core path as
 // the Move's own knobs; parameters by index, FXPAR); what shows is the core's state as /ws reports it.
 // Desktop: a panel that slides over the faceplate, dials and faders. Phone: a full-screen dark sheet, bar sliders.
-import { NSLOT, OP, COLS, MIXP, UNSET, FX_COLOR, MFX_COLOR, h, svg, IC, panText, tracksText, mfxText, paramText, wetHint,
+import { NSLOT, OP, COLS, MIXP, UNSET, FX_COLOR, MFX_COLOR, h, svg, IC, panText, levelText, tracksText, mfxText, paramText, wetHint,
   shortName, modPages, openPop, closePop, popItem, dial, fader, bar, segs, choice, meter } from "./moveui.js";
 
 const RUN = "#3BD47A", BUSY = "#F5A524", ERR = "#FF5F57";
@@ -134,7 +134,7 @@ export class MixView {
     return this.ph ? bar(this, { ...o, cls: "small", caption: "Pan" }) : dial(this, { ...o, caption: "Pan" });
   }
   levelCtl(i) {
-    const st = this.store, o = { key: `level-${i}`, label: `${st.slot(i).name} level`, get: () => st.slot(i).level | 0, set: (v) => st.edit(OP.MIX, i * 8, v), def: 100, color: () => st.colorOf(i) };
+    const st = this.store, o = { key: `level-${i}`, label: `${st.slot(i).name} level`, get: () => st.slot(i).level | 0, set: (v) => st.edit(OP.MIX, i * 8, v), def: 100, fmt: levelText, color: () => st.colorOf(i) };
     return this.ph ? bar(this, { ...o, cls: "big", caption: "Level" }) : fader(this, o);
   }
   tracksPill(i) {
@@ -295,7 +295,7 @@ export class MixView {
       const b = h("button", { class: "mv-pill", "aria-haspopup": "menu", onclick: () => this.ui.loadMenu(b, i) }, svg(IC.plus, 13), "Load a firmware");
       return h("div", { class: "mv-fxdetail" }, h("div", { class: "mv-card mv-fxedit mv-empty" }, h("div", { class: "mv-fx-none" }, h("b", {}, `Slot ${i + 1} is empty`), b)));
     }
-    const lvl = { key: `level-${i}`, label: `${s.name} level`, get: () => st.slot(i).level | 0, set: (v) => st.edit(OP.MIX, i * 8, v), def: 100, color: () => st.colorOf(i) };
+    const lvl = { key: `level-${i}`, label: `${s.name} level`, get: () => st.slot(i).level | 0, set: (v) => st.edit(OP.MIX, i * 8, v), def: 100, fmt: levelText, color: () => st.colorOf(i) };
     const editor = h("div", { class: "mv-card mv-fxedit mv-fwedit", style: { "--c": st.colorOf(i) }, "data-slot": i },
       h("div", { class: "mv-row" }, this.mini(i, "s40"), h("div", { class: "mv-grow mv-min0" }, h("div", { class: "mv-h mv-c" }, `Firmware ${i + 1}${i === st.active ? " · playing" : ""}`),
         h("div", { class: "mv-name mv-ell" }, s.name))),
