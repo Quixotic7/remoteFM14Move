@@ -429,6 +429,10 @@ the kit bus.
   chosen pad plays on it, bright in the row's colour; a step held + a pitch pad toggles that pitch.
 - **Layout (Shift + step 8)** in the Kit view sets the right half's mode (Pitches, In Key, Chromatic, In Key 4ths,
   Chop: five icons, the chosen one marked and named; the jog or knob 1), as Sample Kit's knob 1.
+- **Clearing, scoped by the page (the owner's 2026-11-26):** on a pad page Delete + Play clears the chosen pad's
+  hits, ghosts and locks over its clip (its track's other pads keep theirs), Delete + a knob that setting's locks of
+  the chosen pad; on Sample Kit or Kit Mix Delete + Play clears all four kit tracks' clips and Delete + any knob (either
+  order) every pad's locks, kit and trig ("Cleared All" "Locks"). One undo step each, said.
 - **Locked or not, on screen (the owner's 2026-11-26):** with a step held, every knob popup (each pad page; firmware
   tracks' CC and TRIG knobs, the FM-1 and ENGINE pages' trigs) shows the step's state: locked, the value solid with a
   7 x 9 padlock before it (its own room: the value moves over; on the Filter page's line, at its start); not locked,
