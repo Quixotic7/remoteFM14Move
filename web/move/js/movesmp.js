@@ -28,7 +28,9 @@ const TABS = ["Record", "Takes", "Kit"];
 // the envelope's steps (ms, as the knobs)
 const KROW = ["#FF3CA0", "#FF8C28", "#78DCFF", "#AA78FF"];
 const KP = { PITCH: 0, START: 1, END: 2, MODE: 3, ATTACK: 4, HOLD: 5, RELEASE: 6, CHOKE: 7, REVERSE: 8, LEVEL: 9, PAN: 10, MUTE: 11,
-  STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15 };
+  STRETCH: 12, SEND1: 13, SEND2: 14, SEND3: 15, DECAY: 16, SUSTAIN: 17, CUTOFF: 18, RESO: 19, TRIM: 31 };   // (round B: the last four;
+// TRIM: the kit's Trim silence, set through setting 31)
+const cutText = (v) => { if (v >= 100) return "Open"; const hz = 20 * Math.pow(1000, v / 100); return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`; };
 const KFRAC = 32767;
 const ENV = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 10000];
 const envIdx = (ms) => { let b = 0; ENV.forEach((v, i) => { if (Math.abs(v - ms) < Math.abs(ENV[b] - ms)) b = i; }); return b; };
@@ -434,7 +436,7 @@ export class SmpView {
   }
 
   // ================================================================ Kit (rfm1cs stage 3c)
-  pad(i) { return (this.kit && this.kit.pads && this.kit.pads[i]) || { n: "", has: 0, v: [0, 0, KFRAC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }; }
+  pad(i) { return (this.kit && this.kit.pads && this.kit.pads[i]) || { n: "", has: 0, v: [0, 0, KFRAC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 100, 0] }; }
   kv(p) { const d = this.pad(this.kit ? this.kit.cur : 0); return d.v ? d.v[p] | 0 : 0; }
   async kpost(body) {
     try {
@@ -542,14 +544,20 @@ export class SmpView {
       row("Play", S(KP.MODE, "Play", ["One shot", "Momentary", "Loop", "Toggle"]), KP.MODE),
       row("Attack", env(KP.ATTACK, "Attack"), KP.ATTACK),
       row("Hold", env(KP.HOLD, "Hold"), KP.HOLD),
+      row("Decay", env(KP.DECAY, "Decay"), KP.DECAY),
+      row("Sustain", B(KP.SUSTAIN, "Sustain", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.SUSTAIN),
       row("Release", env(KP.RELEASE, "Release"), KP.RELEASE),
+      row("Filter", B(KP.CUTOFF, "Filter", { min: 0, max: 100, fmt: cutText }), KP.CUTOFF),
+      row("Resonance", B(KP.RESO, "Resonance", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.RESO),
       row("Choke", S(KP.CHOKE, "Choke", ["Off", "1", "2", "3", "4"]), KP.CHOKE),
       row("Reverse", S(KP.REVERSE, "Reverse", ["Off", "On"]), KP.REVERSE),
       row("Level", B(KP.LEVEL, "Level", { min: -60, max: 6, fmt: (v) => (v <= -60 ? "-inf" : `${v > 0 ? "+" : ""}${v} dB`) }), KP.LEVEL),
       row("Pan", B(KP.PAN, "Pan", { min: -50, max: 50, fmt: (v) => (v ? `${v < 0 ? "L" : "R"}${Math.abs(v)}` : "C") }), KP.PAN),
       row("Mute", S(KP.MUTE, "Mute", ["Off", "On"]), KP.MUTE),
       row("Stretch", B(KP.STRETCH, "Stretch", { min: 0, max: 64, fmt: (v) => (v ? `${v} step${v === 1 ? "" : "s"}` : "Off") }), KP.STRETCH),
-      [1, 2, 3].map((n) => row(`Send ${n}`, B(KP.SEND1 + n - 1, `Send ${n}`, { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.SEND1 + n - 1)));
+      [1, 2, 3].map((n) => row(`Send ${n}`, B(KP.SEND1 + n - 1, `Send ${n}`, { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.SEND1 + n - 1)),
+      row("Trim silence", segs(this, { key: "ktrim", label: "Trim silence", options: ["Off", "On"], get: () => ((this.kit || {}).trim === 0 ? 0 : 1),
+        set: (v) => this.kset(KP.TRIM, v) }), KP.TRIM));
     const title = h("div", { class: "mv-row mv-kit-ptitle" }, h("span", { class: "mv-kit-big-no", style: { "--c": col } }, String(cur + 1)),
       h("b", { class: "mv-ell", id: "mv-kit-pname" }, d.has ? d.n || "…" : "Empty"),
       h("span", { class: "mv-val mv-mut" }, d.has && d.f && d.r ? `${(d.f / d.r).toFixed(2)} s` : ""));

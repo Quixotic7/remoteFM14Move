@@ -3086,6 +3086,10 @@ static void page_edit(int op, int a, int b)
         break;
     case ENG_OP_KIT_SET:
         g_kit_force = 1;
+        if ((a & 31) == 31) {   /* (round B) setting 31: the Kit tab's Trim silence */
+            rfm_move_kit_set_trim(m, b != 0);
+            break;
+        }
         if (!rfm_move_kit_set(m, a >> 5, a & 31, b))
             return;
         break;
@@ -4654,7 +4658,8 @@ static void kit_action(const rfm_move_act_t *a)
         return;
     switch (a->kind) {
     case RFM_MOVE_ACT_KIT_NOTE:
-        kit_note(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0);
+        kit_note_lk(g_kit, a->index, a->value, a->down ? a->vel : 0, g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0,
+                    a->klk_mask, a->klk);   /* (round B: the step's locks on this hit) */
         g_kit_t_notes++;
         break;
     case RFM_MOVE_ACT_KIT_SET:
@@ -4752,8 +4757,8 @@ static void kit_json(uint32_t now)
     glow = (int)kit_sounding(g_kit);
     mj_escape(rfm_move_kit_name(m), nm, sizeof nm);
     n = snprintf(j, sizeof j, "{\"type\":\"kit\",\"on\":1,\"shown\":%d,\"cur\":%d,\"name\":\"%s\",\"layout\":%d,"
-                 "\"saved\":%u,\"kits\":%u,\"glow\":%d,\"pads\":[", rfm_move_kit_shown(m), t->cur, nm, t->rh,
-                 g_kit_t_saved, g_kit_t_kits, glow);
+                 "\"saved\":%u,\"kits\":%u,\"glow\":%d,\"trim\":%d,\"pads\":[", rfm_move_kit_shown(m), t->cur, nm, t->rh,
+                 g_kit_t_saved, g_kit_t_kits, glow, rfm_move_kit_trim(m));
     for (k = 0; k < RFM_MOVE_KIT_PADS && n < (int)sizeof j - 400; k++) {
         const rfm_move_kit_pad_t *d = &t->pad[k];
         char pk[2 * RFM_MOVE_KIT_PEAKS + 1];

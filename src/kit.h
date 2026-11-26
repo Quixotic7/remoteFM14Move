@@ -32,7 +32,11 @@ struct tl;
 #define KIT_PREVIEW_S 30          /* a preview plays this much of a sound at most */
 /* a pad's settings (as rfm1cs's RFM_MOVE_KIT_P_*; stage 3b: Stretch and the sends) */
 enum { KIT_P_PITCH, KIT_P_START, KIT_P_END, KIT_P_MODE, KIT_P_ATTACK, KIT_P_HOLD, KIT_P_RELEASE, KIT_P_CHOKE,
-       KIT_P_REVERSE, KIT_P_LEVEL, KIT_P_PAN, KIT_P_MUTE, KIT_P_STRETCH, KIT_P_SEND1, KIT_P_SEND2, KIT_P_SEND3, KIT_P_N };
+       KIT_P_REVERSE, KIT_P_LEVEL, KIT_P_PAN, KIT_P_MUTE, KIT_P_STRETCH, KIT_P_SEND1, KIT_P_SEND2, KIT_P_SEND3,
+       KIT_P_DECAY, KIT_P_SUSTAIN, KIT_P_CUTOFF, KIT_P_RESO,   /* (round B: AHDSR, the pad's low-pass: 100 open) */
+       KIT_P_N };
+/* (round B) a step's locks on one hit (as rfm1cs's RFM_MOVE_KIT_LK_*), in the settings' units */
+enum { KIT_LK_PITCH, KIT_LK_START, KIT_LK_CUTOFF, KIT_LK_RESO, KIT_LK_LEVEL, KIT_LK_PAN, KIT_LK_DECAY, KIT_LK_N };
 #define KIT_KPATH 160             /* a saved kit's sound's path, as the core keeps it (RFM_MOVE_KIT_PATH) */
 #define KIT_FRAC 32767            /* START / END: the whole sound */
 enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_TOGGLE };   /* (round A: Toggle, a tap on, the next off) */
@@ -65,7 +69,8 @@ enum { KIT_A_LOADED = 1, KIT_A_ROWS, KIT_A_SAVED, KIT_A_KIT, KIT_A_SLICES, KIT_A
 /* (stage 3c) as rfm1cs's RFM_MOVE_KIT_MG_*, _ED_*, _SM_* */
 enum { KIT_MG_COPY, KIT_MG_MIX, KIT_MG_JOIN };
 enum { KIT_ED_TRIM = 1, KIT_ED_NORMALIZE, KIT_ED_REVERSE };
-enum { KIT_SM_HITS, KIT_SM_EQ16, KIT_SM_EQ8, KIT_SM_EQ4, KIT_SM_STEPS, KIT_SM_N };
+enum { KIT_SM_HITS, KIT_SM_EQ16, KIT_SM_EQ8, KIT_SM_EQ4, KIT_SM_STEPS, KIT_SM_TAP, KIT_SM_N };   /* (round B: Tap, the core
+                                                         * taps the cuts: one slice, the whole take) */
 #define KIT_SLICES 16
 #define KIT_NORM_PEAK 31656       /* normalize, and a mix past full scale: the peak, -0.3 dBFS */
 typedef struct {                  /* (stage 3b) a kit as saved: its pads' paths and settings, the right half, the strip */
@@ -111,6 +116,8 @@ void kit_free(kit_t *k);
 /* a pad plays (vel 1..127) or is let go (vel 0); semis: over its pitch (the right half); frame: into the next
  * kit_render's frames (later ones wait their frame) */
 void kit_note(kit_t *k, int pad, int semis, int vel, uint32_t frame);
+/* (round B) .. a note-on with its step's locks (bit l of mask: lk[l], KIT_LK_*) on this voice only */
+void kit_note_lk(kit_t *k, int pad, int semis, int vel, uint32_t frame, int mask, const int16_t *lk);
 void kit_set(kit_t *k, int pad, int param, int value);
 /* (stage 3b) Stretch's microseconds (KIT_SET's `from`): the pad's start..end lasts so long (0: its Pitch); a voice
  * sounding follows at once */
@@ -142,7 +149,8 @@ void kit_edit(kit_t *k, int pad, int op);             /* KIT_ED_*: the pad's own
 void kit_slice(kit_t *k, uint32_t take, int method, uint32_t step_us);
 /* (round A) .. the Hits' sensitivity 1..100 (0: 50) */
 void kit_slice_sens(kit_t *k, uint32_t take, int method, uint32_t step_us, int sens);
-void kit_slice_play(kit_t *k, uint32_t from, uint32_t count);
+void kit_slice_play(kit_t *k, uint32_t from, uint32_t count);   /* (round B: count 0 stops it) */
+uint32_t kit_slice_pos(const kit_t *k);   /* (round B, status) the slice preview's frame now (0: none) */
 void kit_slice_done(kit_t *k);
 /* (the file thread, tests) a take's cuts as KIT_SLICE gives them: n slices (cuts[0..n]) of pcm (stereo) */
 int kit_cuts(const int16_t *pcm, uint32_t frames, uint32_t rate, int method, uint32_t step_us, uint32_t *cuts);
