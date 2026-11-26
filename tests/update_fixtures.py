@@ -14,6 +14,8 @@
     gnulong, paxlong .rfm1u   names over 100 characters (GNU 'L', pax "path")
     skips.rfm1u        ._ and .DS_Store entries beside the files (skipped)
     noexec.rfm1u       remotefm1-host not executable;  notelf.rfm1u: remotefm1-host a shell script
+    fever-good.rfm1u   another app's package (feverdream 0.2.0, make_update.py --app);  ghost.rfm1u: an app not
+                       installed;  fever-badid.rfm1u: feverdream's folder, its module.json naming another app
 
     tests/update_fixtures.py OUT --key build/testkey/update-test-key.pem --catkey build/testkey/test-key.pem
 """
@@ -142,6 +144,21 @@ def main():
         t.add(os.path.join(pkg, 'remotefm1'), arcname='remotefm1')
     subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'make_update.py'), '--key', a.key, '--expect', hdr,
                     '--version', '9.9.11-full', '--full', tball, '--out', os.path.join(out, 'full.rfm1u')], check=True)
+    # (other apps) a whole package of another Move app, for its own folder: feverdream 0.2.0 (make_update.py --app);
+    # ghost: an app not installed; fever-badid: feverdream's folder but a module.json naming another app (signed well)
+    for app, mj, extra, name in (('feverdream', '{"id": "feverdream", "name": "Feverdream", "version": "0.2.0"}',
+                                  'fever 0.2.0\n', 'fever-good.rfm1u'),
+                                 ('ghost', '{"id": "ghost", "version": "1.0.0"}', 'ghost\n', 'ghost.rfm1u')):
+        tb = os.path.join(out, app + '-module.tar.gz')
+        p = tgz([(app + '/module.json', tarfile.REGTYPE, mj.encode(), 0o644),
+                 (app + '/fever-marker.txt', tarfile.REGTYPE, extra.encode(), 0o644)])
+        open(tb, 'wb').write(p)
+        subprocess.run([sys.executable, os.path.join(REPO, 'tools', 'make_update.py'), '--key', a.key, '--expect', hdr,
+                        '--app', tb, '--commit', 'test', '--out', os.path.join(out, name)], check=True)
+    p = tgz([('feverdream/module.json', tarfile.REGTYPE, b'{"id": "other"}', 0o644)])
+    m = manifest('0.3.0', p, 'full')
+    m.update({'module': 'feverdream', 'name': 'Feverdream'})
+    w('fever-badid.rfm1u', make_update.build(m, p, a.key))
     print('update_fixtures: %s' % out)
 
 

@@ -25,6 +25,7 @@ const CSS = `
 const IC = { up: '<path d="M8 11V2M4.5 5.5L8 2l3.5 3.5M3 14h10"/>', undo: '<path d="M5 3L2 6l3 3M2 6h7.5a4 4 0 010 8H6"/>' };
 const BUSY = new Set(["receiving", "checking", "installing", "undoing"]);
 const short = (c) => String(c || "").slice(0, 12);
+const appOf = (id) => (!id || id === "remotefm1" ? "RemoteFM1" : id.charAt(0).toUpperCase() + id.slice(1));
 
 // the file's own header (src/update.h): "RFM1UPD\0", u32 format, u32 manifest bytes, u64 payload bytes, the manifest
 async function readManifest(file) {
@@ -60,7 +61,7 @@ export function mountMoveUpdate({ sheet, toast }) {
     updBtn.disabled = busy || !st || !st.can;
     undoBtn.hidden = !(st && st.undo);
     undoBtn.disabled = busy;
-    if (st && st.undo && st.undo_to) undoBtn.title = `Back to ${st.undo_to.version || "the previous build"}`;
+    if (st && st.undo && st.undo_to) undoBtn.title = `${appOf(st.undo_to.app)} back to ${st.undo_to.version || "its previous build"}`;
     line.className = "st";
     if (note) { line.textContent = note; line.classList.add("bad"); }
     else if (sending > 0) line.textContent = `Sending ${Math.round(sending * 100)} %`;
@@ -82,7 +83,7 @@ export function mountMoveUpdate({ sheet, toast }) {
     if (!/\.rfm1u$/i.test(file.name)) { note = `${file.name}: not an update file (.rfm1u)`; render(); return; }
     const man = await readManifest(file);
     if (!man || !man.version) { note = `${file.name}: not an update file (.rfm1u)`; render(); return; }
-    if (!confirm(`Install RemoteFM1 ${man.version} (${short(man.host_commit)}) on the Move?`)) return;
+    if (!confirm(`Install ${man.name || "RemoteFM1"} ${man.version}${man.host_commit && man.host_commit !== "unknown" ? ` (${short(man.host_commit)})` : ""} on the Move?`)) return;
     sending = 0.001; render();
     const r = await new Promise((resolve) => {
       const x = new XMLHttpRequest();
@@ -100,7 +101,7 @@ export function mountMoveUpdate({ sheet, toast }) {
   }
   async function undo() {
     const to = st && st.undo_to && st.undo_to.version ? st.undo_to.version : "the previous build";
-    if (!confirm(`Put back ${to}?`)) return;
+    if (!confirm(`Put ${appOf(st && st.undo_to && st.undo_to.app)} back to ${to}?`)) return;
     note = null;
     try {
       const x = await fetch(`${API}/undo`, { method: "POST" });

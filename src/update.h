@@ -64,6 +64,7 @@ int upd_undo_start(char *why, size_t wcap);
 /* ------------------------------------------------------------------ the parts (tests/update_test.c) --- */
 typedef struct {
     char version[64], commit[64], core[64], built[64], kind[16];
+    char module[48], name[64];  /* the app it is for (its folder in modules/tools; none: "remotefm1") and its name */
     int nfiles;
     uint32_t mlen;
     uint64_t plen, poff;      /* the payload's bytes and where it starts */

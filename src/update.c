@@ -201,6 +201,21 @@ int upd_check_file(const char *path, const uint8_t (*keys)[32], int nkeys, upd_m
     mj_string(m->json, "core_commit", m->core, sizeof m->core);
     mj_string(m->json, "built", m->built, sizeof m->built);
     mj_string(m->json, "kind", m->kind, sizeof m->kind);
+    if (mj_string(m->json, "module", m->module, sizeof m->module) != 0 || !m->module[0])
+        snprintf(m->module, sizeof m->module, "remotefm1");
+    {   /* (an app id: its folder's name, [a-z0-9][a-z0-9_-]*) */
+        const char *c = m->module;
+        int ok = (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9');
+        for (; ok && *c; c++)
+            ok = (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '_' || *c == '-';
+        if (!ok) {
+            say(why, cap, "the update names no app this Move takes");
+            upd_manifest_free(m);
+            return -1;
+        }
+    }
+    if (mj_string(m->json, "name", m->name, sizeof m->name) != 0 || !m->name[0])
+        snprintf(m->name, sizeof m->name, "%s", strcmp(m->module, "remotefm1") ? m->module : "RemoteFM1");
     if ((it = mj_find(m->json, "files")) && *it == '[')
         while (mj_elem(&it))
             m->nfiles++;
@@ -260,7 +275,8 @@ int upd_name(const char *in, char *out, size_t cap, const char **why)
 
 typedef struct {
     const char *dest;          /* NULL: a scan */
-    int strip;                 /* (unpack) the remotefm1/ dropped; (scan) every name under it so far */
+    int strip;                 /* (unpack) the app's folder (remotefm1/) dropped; (scan) every name under it so far */
+    char top[52];              /* that folder's name: the manifest's module */
     int seen;                  /* (scan) a name seen */
     uint8_t hdr[512];
     size_t hn;
@@ -393,7 +409,8 @@ static int tar_header(tarx_t *t)
     if (r > 0)
         return 0;   /* (skipped: its data too) */
     if (!t->dest) {   /* a scan: the names */
-        const int under = !strcmp(rel, "remotefm1") || !strncmp(rel, "remotefm1/", 10);
+        const size_t tl = strlen(t->top);
+        const int under = !strcmp(rel, t->top) || (!strncmp(rel, t->top, tl) && rel[tl] == '/');
         t->strip = (t->seen ? t->strip : 1) && under;
         t->seen = 1;
         if (type != '5') {
@@ -412,9 +429,9 @@ static int tar_header(tarx_t *t)
         struct stat st;
         int mode;
         if (t->strip) {
-            if (!strcmp(rel, "remotefm1"))
+            if (!strcmp(rel, t->top))
                 return 0;
-            name = rel + 10;
+            name = rel + strlen(t->top) + 1;
         }
         if (type == '5')
             return mkparents(t, name, 1);
@@ -534,6 +551,7 @@ int upd_payload(const char *path, const upd_manifest_t *m, const char *dest, int
     }
     t->dest = dest;
     t->strip = dest ? *strip : 0;
+    snprintf(t->top, sizeof t->top, "%s", m->module[0] ? m->module : "remotefm1");
     fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0 || lseek(fd, (off_t)m->poff, SEEK_SET) != (off_t)m->poff) {
         say(why, cap, "cannot read the file");
@@ -732,6 +750,7 @@ static struct {
     char part[PATH_MAX];
     char version[64], commit[64], core[64], built[64];
     char staged_version[64], staged_commit[64];
+    char tgt[PATH_MAX], tid[48];   /* (the worker's) the app folder an install or undo works on and its id */
 } G;
 
 static void set_state(int state, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -764,18 +783,66 @@ static int inside(void)
 }
 static void paths(char *n, char *p, char *u, size_t cap)   /* the staged copy, the previous build, the one going */
 {
-    if (inside()) {
-        snprintf(n, cap, "%s/.update-new", G.mod);
-        snprintf(p, cap, "%s/.update-prev", G.mod);
-        snprintf(u, cap, "%s/.update-undone", G.mod);
+    const int own = !strcmp(G.tid, "remotefm1");
+    const char *dash = own ? "" : "-", *id = own ? "" : G.tid;
+    if (own && inside()) {
+        snprintf(n, cap, "%s/.update-new", G.tgt);
+        snprintf(p, cap, "%s/.update-prev", G.tgt);
+        snprintf(u, cap, "%s/.update-undone", G.tgt);
     } else {
-        snprintf(n, cap, "%s/.remotefm1-update-new", G.beside);
-        snprintf(p, cap, "%s/.remotefm1-update-prev", G.beside);
-        snprintf(u, cap, "%s/.remotefm1-update-undone", G.beside);
+        snprintf(n, cap, "%s/.remotefm1-update-new%s%s", G.beside, dash, id);
+        snprintf(p, cap, "%s/.remotefm1-update-prev%s%s", G.beside, dash, id);
+        snprintf(u, cap, "%s/.remotefm1-update-undone%s%s", G.beside, dash, id);
     }
+}
+/* the app the last install was for (Undo puts that one back): <beside>/.remotefm1-update-last holds its id; none or
+ * unreadable: RemoteFM1 */
+static void last_app(char *id, size_t cap)
+{
+    char p[PATH_MAX + 32];
+    FILE *f;
+    size_t k = 0;
+    snprintf(id, cap, "remotefm1");
+    snprintf(p, sizeof p, "%s/.remotefm1-update-last", G.beside);
+    if (!(f = fopen(p, "r")))
+        return;
+    if (fgets(id, (int)cap, f))
+        k = strcspn(id, "\r\n");
+    fclose(f);
+    id[k] = 0;
+    if (!k || strchr(id, '/') || strchr(id, '.'))
+        snprintf(id, cap, "remotefm1");
+}
+static void set_last_app(const char *id)
+{
+    char p[PATH_MAX + 32];
+    FILE *f;
+    snprintf(p, sizeof p, "%s/.remotefm1-update-last", G.beside);
+    if (!strcmp(id, "remotefm1")) {
+        unlink(p);
+        return;
+    }
+    if ((f = fopen(p, "w"))) {
+        fprintf(f, "%s\n", id);
+        fclose(f);
+    }
+}
+/* the folder of app id (RemoteFM1's own, or its sibling in modules/tools) */
+static void app_dir(const char *id, char *out, size_t cap)
+{
+    if (!strcmp(id, "remotefm1"))
+        snprintf(out, cap, "%s", G.mod);
+    else
+        snprintf(out, cap, "%s/%s", G.parent, id);
 }
 static int undo_dir(char *out, size_t cap)   /* the build an Undo brings back: 0 (out), -1 none */
 {
+    char id[48];
+    last_app(id, sizeof id);
+    if (strcmp(id, "remotefm1")) {
+        snprintf(out, cap, "%s/.remotefm1-update-prev-%s", G.beside, id);
+        return G.side_ok && is_dir(out) ? 0 : -1;
+    }
     snprintf(out, cap, "%s/.update-prev", G.mod);
     if (is_dir(out))
         return 0;
@@ -847,6 +914,19 @@ void upd_init(const upd_cfg_t *c)
     snprintf(n, sizeof n, "%s/.remotefm1-update-undone", G.beside), upd_rmtree(n);
     snprintf(n, sizeof n, "%s/.update-new", G.mod), upd_rmtree(n);
     snprintf(n, sizeof n, "%s/.update-undone", G.mod), upd_rmtree(n);
+    snprintf(G.tgt, sizeof G.tgt, "%s", G.mod);
+    snprintf(G.tid, sizeof G.tid, "remotefm1");
+    {   /* (another app's staged or undone copy a stop left) */
+        DIR *d = opendir(G.beside);
+        struct dirent *e;
+        while (d && (e = readdir(d)))
+            if (!strncmp(e->d_name, ".remotefm1-update-new-", 22) || !strncmp(e->d_name, ".remotefm1-update-undone-", 25)) {
+                snprintf(n, sizeof n, "%s/%s", G.beside, e->d_name);
+                upd_rmtree(n);
+            }
+        if (d)
+            closedir(d);
+    }
     G.ready = 1;
     fprintf(stderr, "update: the module %s (%s), uploads and backups in %s\n", G.mod,
             inside() ? "swapped inside it" : "swapped beside it", G.beside);
@@ -910,6 +990,12 @@ int upd_status_json(char *out, size_t cap)
         CATS(v);
         CAT(",\"commit\":");
         CATS(cm);
+        {
+            char id[48];
+            last_app(id, sizeof id);
+            CAT(",\"app\":");
+            CATS(id);
+        }
         CAT("}");
     } else
         CAT("null");
@@ -1034,13 +1120,13 @@ static int swap_in(const char *n, const char *p, const char *u, int in)
     if (had && rename(p, u) != 0)
         return -1;
     if (!in) {
-        if (rename(G.mod, p) != 0) {
+        if (rename(G.tgt, p) != 0) {
             if (had)
                 rename(u, p);
             return -1;
         }
-        if (rename(n, G.mod) != 0) {
-            rename(p, G.mod);
+        if (rename(n, G.tgt) != 0) {
+            rename(p, G.tgt);
             if (had)
                 rename(u, p);
             return -1;
@@ -1051,14 +1137,14 @@ static int swap_in(const char *n, const char *p, const char *u, int in)
                 rename(u, p);
             return -1;
         }
-        if (move_all(G.mod, p) != 0) {
+        if (move_all(G.tgt, p) != 0) {
             rmdir(p);
             if (had)
                 rename(u, p);
             return -1;
         }
-        if (move_all(n, G.mod) != 0) {
-            move_all(p, G.mod);
+        if (move_all(n, G.tgt) != 0) {
+            move_all(p, G.tgt);
             rmdir(p);
             if (had)
                 rename(u, p);
@@ -1072,20 +1158,20 @@ static int swap_in(const char *n, const char *p, const char *u, int in)
 static int swap_back(const char *p, const char *u, int in)
 {
     if (!in) {
-        if (rename(G.mod, u) != 0)
+        if (rename(G.tgt, u) != 0)
             return -1;
-        if (rename(p, G.mod) != 0) {
-            rename(u, G.mod);
+        if (rename(p, G.tgt) != 0) {
+            rename(u, G.tgt);
             return -1;
         }
         return 0;
     }
-    if (mkdir(u, 0755) != 0 || move_all(G.mod, u) != 0) {
+    if (mkdir(u, 0755) != 0 || move_all(G.tgt, u) != 0) {
         rmdir(u);
         return -1;
     }
-    if (move_all(p, G.mod) != 0) {
-        move_all(u, G.mod);
+    if (move_all(p, G.tgt) != 0) {
+        move_all(u, G.tgt);
         return -1;
     }
     rmdir(p);
@@ -1172,7 +1258,7 @@ static void *install_main(void *arg)
     uint8_t keys[2][32];
     char why[320], n[PATH_MAX], p[PATH_MAX], u[PATH_MAX], bk[PATH_MAX + 128], name[128];
     upd_manifest_t m;
-    int strip = 0, files = 0, nk = 0, in;
+    int strip = 0, files = 0, nk = 0, in, own;
     uint64_t bytes = 0, need;
     (void)arg;
 #ifdef __linux__
@@ -1188,6 +1274,34 @@ static void *install_main(void *arg)
         set_state(S_FAILED, "%s", why);
         return NULL;
     }
+    own = !strcmp(m.module, "remotefm1");
+    snprintf(G.tid, sizeof G.tid, "%s", m.module);
+    app_dir(m.module, G.tgt, sizeof G.tgt);
+    if (!own) {   /* (another app: it must be installed, its module.json its id; swapped beside, never inside) */
+        char mj[PATH_MAX + 16], id[64] = "";
+        FILE *f;
+        char buf[4096];
+        size_t k;
+        snprintf(mj, sizeof mj, "%s/module.json", G.tgt);
+        if ((f = fopen(mj, "rb"))) {
+            k = fread(buf, 1, sizeof buf - 1, f);
+            buf[k] = 0;
+            fclose(f);
+            mj_string(buf, "id", id, sizeof id);
+        }
+        if (!is_dir(G.tgt) || strcmp(id, m.module)) {
+            unlink(G.part);
+            set_state(S_FAILED, "%s is not installed on this Move (nothing was changed)", m.name);
+            upd_manifest_free(&m);
+            return NULL;
+        }
+        if (!G.side_ok || access(G.parent, W_OK) != 0) {
+            unlink(G.part);
+            set_state(S_FAILED, "%s's folder cannot be swapped on this Move (nothing was changed)", m.name);
+            upd_manifest_free(&m);
+            return NULL;
+        }
+    }
     pthread_mutex_lock(&g_mu);
     snprintf(G.staged_version, sizeof G.staged_version, "%s", m.version);
     snprintf(G.staged_commit, sizeof G.staged_commit, "%s", m.commit);
@@ -1198,7 +1312,7 @@ static void *install_main(void *arg)
         set_state(S_FAILED, "%s (nothing was changed)", why);
         return NULL;
     }
-    need = du(G.mod) + bytes + UPD_RESERVE;
+    need = du(G.tgt) + bytes + UPD_RESERVE;
     if (disk_free(G.beside) < need) {
         unlink(G.part);
         upd_manifest_free(&m);
@@ -1206,11 +1320,11 @@ static void *install_main(void *arg)
         return NULL;
     }
     /* the staged copy */
-    in = inside();
+    in = own && inside();
     paths(n, p, u, sizeof n);
-    set_state(S_INSTALLING, "Unpacking %s (%d file%s)", m.version, files, files == 1 ? "" : "s");
+    set_state(S_INSTALLING, "Unpacking %s %s (%d file%s)", m.name, m.version, files, files == 1 ? "" : "s");
     upd_rmtree(n);
-    if (copy_tree(G.mod, n, 1, why, sizeof why) != 0 ||
+    if (copy_tree(G.tgt, n, 1, why, sizeof why) != 0 ||
         upd_payload(G.part, &m, n, &strip, NULL, NULL, why, sizeof why) != 0) {
         upd_rmtree(n);
         unlink(G.part);
@@ -1219,7 +1333,21 @@ static void *install_main(void *arg)
         return NULL;
     }
     {
-        const char *bad = host_ok(n);
+        const char *bad = own ? host_ok(n) : NULL;
+        if (!own) {   /* (another app's staged copy: still that app) */
+            char mj[PATH_MAX + 16], id[64] = "", buf[4096];
+            FILE *f;
+            size_t k;
+            snprintf(mj, sizeof mj, "%s/module.json", n);
+            if ((f = fopen(mj, "rb"))) {
+                k = fread(buf, 1, sizeof buf - 1, f);
+                buf[k] = 0;
+                fclose(f);
+                mj_string(buf, "id", id, sizeof id);
+            }
+            if (strcmp(id, m.module))
+                bad = "the update would leave the app's module.json naming another app";
+        }
         if (bad) {
             upd_rmtree(n);
             unlink(G.part);
@@ -1228,9 +1356,9 @@ static void *install_main(void *arg)
             return NULL;
         }
     }
-    /* the data backup (once the staged copy is good: a refused update leaves none) */
-    set_state(S_INSTALLING, "Backing up the RemoteFM1 folder's move/");
-    {
+    /* the data backup (once the staged copy is good: a refused update leaves none); RemoteFM1's own only */
+    if (own) {
+        set_state(S_INSTALLING, "Backing up the RemoteFM1 folder's move/");
         const time_t now = time(NULL);
         struct tm tm;
         localtime_r(&now, &tm);
@@ -1256,7 +1384,7 @@ static void *install_main(void *arg)
     }
     write_manifest(n, &m);
     sync();
-    set_state(S_INSTALLING, "Putting %s in place", m.version);
+    set_state(S_INSTALLING, "Putting %s %s in place", m.name, m.version);
     if (swap_in(n, p, u, in) != 0) {
         const int e = errno;
         upd_rmtree(n);
@@ -1268,24 +1396,31 @@ static void *install_main(void *arg)
     sync();
     upd_rmtree(u);
     unlink(G.part);
-    set_state(S_DONE, "Installed %s. Relaunch RemoteFM1 on the Move to start it.", m.version);
+    set_last_app(m.module);
+    if (own)
+        set_state(S_DONE, "Installed %s. Relaunch RemoteFM1 on the Move to start it.", m.version);
+    else
+        set_state(S_DONE, "Installed %s %s. Start it from the Move's Tools menu.", m.name, m.version);
     upd_manifest_free(&m);
     return NULL;
 }
 static void *undo_main(void *arg)
 {
     char p[PATH_MAX], u[PATH_MAX], v[64], cm[64], bt[64];
-    int in;
+    int in, own;
     (void)arg;
 #ifdef __linux__
     pthread_setname_np(pthread_self(), "rfm1-update");
 #endif
-    in = is_dir((snprintf(p, sizeof p, "%s/.update-prev", G.mod), p));
+    last_app(G.tid, sizeof G.tid);
+    app_dir(G.tid, G.tgt, sizeof G.tgt);
+    own = !strcmp(G.tid, "remotefm1");
+    in = own && is_dir((snprintf(p, sizeof p, "%s/.update-prev", G.mod), p));
     if (in) {
         snprintf(u, sizeof u, "%s/.update-undone", G.mod);
     } else {
-        snprintf(p, sizeof p, "%s/.remotefm1-update-prev", G.beside);
-        snprintf(u, sizeof u, "%s/.remotefm1-update-undone", G.beside);
+        char n[PATH_MAX];
+        paths(n, p, u, sizeof n);
     }
     build_of(p, v, cm, bt, sizeof v);
     upd_rmtree(u);
@@ -1298,7 +1433,11 @@ static void *undo_main(void *arg)
     pthread_mutex_lock(&g_mu);
     G.staged_version[0] = G.staged_commit[0] = 0;
     pthread_mutex_unlock(&g_mu);
-    set_state(S_DONE, "Put back %s. Relaunch RemoteFM1 on the Move to start it.", v[0] ? v : "the previous build");
+    set_last_app("remotefm1");
+    if (own)
+        set_state(S_DONE, "Put back %s. Relaunch RemoteFM1 on the Move to start it.", v[0] ? v : "the previous build");
+    else
+        set_state(S_DONE, "Put %s back to %s.", G.tid, v[0] ? v : "its previous build");
     return NULL;
 }
 static int spawn(void *(*fn)(void *))

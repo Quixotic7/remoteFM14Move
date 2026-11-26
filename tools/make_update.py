@@ -154,7 +154,10 @@ def main():
     ap.add_argument('--base', help='an unpacked module folder: only site files that differ from its site/ go in')
     ap.add_argument('--add', action='append', default=[], metavar='SRC=DEST', help='another file, DEST in the module')
     ap.add_argument('--full', help='a module package (.tar.gz, one remotefm1/ folder) as the payload')
-    ap.add_argument('--version', help='the version named (default: src/main.c VERSION)')
+    ap.add_argument('--app', help="another Move app's module package (.tar.gz, one <id>/ folder with its module.json): "
+                    "installed into that app's own folder (README \"Other apps\")")
+    ap.add_argument('--commit', help='with --app: the commit it was built from (named on the page)')
+    ap.add_argument('--version', help='the version named (default: src/main.c VERSION; --app: its module.json)')
     ap.add_argument('--any-machine', action='store_true', help='(tests) do not insist on an aarch64 host program')
     ap.add_argument('--check', metavar='FILE', help='check FILE (with --pub) and list it')
     ap.add_argument('--pub', default=os.path.join(REPO, 'src', 'update_key.h'), help='with --check: the public key header')
@@ -168,6 +171,9 @@ def main():
         pub = sign_index.public_key(a.key)
         if pub != sign_index.header_key(a.expect):
             die('%s is not the key %s names (public %s): refused' % (a.key, a.expect, pub.hex()))
+    if a.app:
+        app(a)
+        return
     info = buildinfo()
     ver = a.version or version()
     commit = info.get('RFM14_GIT', 'unknown')
@@ -227,6 +233,8 @@ def main():
         'core_commit': info.get('RFM14_GIT_CORE', 'unknown'),
         'built': info.get('RFM14_BUILT', ''),
         'kind': kind,
+        'module': 'remotefm1',
+        'name': 'RemoteFM1',
         'files': [{'path': n[10:] if kind == 'full' else n, 'size': s} for n, s in listed],
     }
     data = build(manifest, payload, a.key)
@@ -239,6 +247,45 @@ def main():
     if not sign_index.verify(sign_index.public_key(a.key), msg, sig):
         die('the new signature does not check: refused')
     print('make_update: %s (%s %s, %s, %d files, %d bytes)' % (rel(out), ver, commit, kind, len(listed), len(data)))
+
+
+def app(a):
+    """(another Move app) its whole module package, for its own folder beside RemoteFM1's"""
+    import io, re, tarfile
+    payload = open(a.app, 'rb').read()
+    listed = names_in(payload)
+    tops = {n.split('/')[0] for n, _ in listed}
+    if len(tops) != 1:
+        die('%s: not a module package (one top folder, its id)' % a.app)
+    mid = tops.pop()
+    if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,39}', mid) or mid == 'remotefm1':
+        die('%s: its folder %r is not an app id this takes' % (a.app, mid))
+    with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as tf:
+        try:
+            mj = json.load(tf.extractfile('%s/module.json' % mid))
+        except (KeyError, ValueError):
+            die('%s: no %s/module.json' % (a.app, mid))
+    if mj.get('id') != mid:
+        die('%s: %s/module.json says id %r' % (a.app, mid, mj.get('id')))
+    if len(payload) > MAX:
+        die('the payload is %d bytes: more than the Move takes' % len(payload))
+    ver = a.version or str(mj.get('version', '0'))
+    commit = a.commit or 'unknown'
+    manifest = {
+        'format': FORMAT, 'version': ver, 'host_commit': commit, 'core_commit': '', 'built': '',
+        'kind': 'full', 'module': mid, 'name': str(mj.get('name', mid))[:60],
+        'files': [{'path': n[len(mid) + 1:], 'size': s} for n, s in listed if n != mid],
+    }
+    data = build(manifest, payload, a.key)
+    out = a.out or os.path.join(REPO, 'dist', 'updates', '%s-%s-%s.rfm1u' % (mid, ver, commit[:12]))
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    with open(out + '.tmp', 'wb') as f:
+        f.write(data)
+    os.replace(out + '.tmp', out)
+    _, msg, sig, _ = parse(data)
+    if not sign_index.verify(sign_index.public_key(a.key), msg, sig):
+        die('the new signature does not check: refused')
+    print('make_update: %s (%s %s %s, %d files, %d bytes)' % (rel(out), manifest['name'], ver, commit, len(listed), len(data)))
 
 
 if __name__ == '__main__':

@@ -8,6 +8,8 @@
 #     catalog's key, a ".." name, a link, a program that is not an ELF, one not executable, a cut-short upload, no room;
 #   - good.rfm1u: done; the module has its files (the program, help.json, the marker), keeps the rest (bin/heal, the
 #     firmware), .prev holds the old ones, a data backup of move/ that GNU tar and BusyBox tar read, the status;
+#   - another app (feverdream): one not installed and one naming another app refused; its package into its own
+#     folder, RemoteFM1's untouched, no data backup; Undo puts it back;
 #   - good2.rfm1u over it: .prev is the first update's now (one .prev); Undo: the first back, no .prev, Undo again 409;
 #   - full.rfm1u (a module package): remotefm1/ dropped; the backups pruned to the newest 3;
 #   - the inside layout (RFM14_TEST_UPDATE_INSIDE=1: the folder above the module's not writable): install and Undo
@@ -146,6 +148,33 @@ NEWEST=$(ls "$D" | grep -E '^remotefm1-data-backup-[0-9]{8}-[0-9]{6}\.tar\.gz$' 
     && [ -n "$NEWEST" ] && st | grep -q "\"backup\":\"$NEWEST\"" \
     && ok "a fourth install: its own backups pruned to the newest 3 (this one's kept: $NEWEST), the 3 hand-made ones untouched" \
     || bad "the backups: $(backups) ('$(state)' '$(msg)')"
+stop
+
+# ---------------------------------------------------------------- another app (feverdream beside remotefm1)
+FV=$MODS/feverdream; mkdir -p "$FV"
+echo '{"id": "feverdream", "name": "Feverdream", "version": "0.1.0"}' > "$FV/module.json"; echo old > "$FV/old-only.txt"
+start "$M" || { bad "the host did not start (another app)"; exit 1; }
+TM=$(tree "$M"); TF=$(tree "$FV"); B1=$(backups)
+code=$(post $F/ghost.rfm1u); settle
+[ "$(state)" = failed ] && msg | grep -q "not installed" && [ ! -e "$MODS/ghost" ] && [ "$(tree "$M")" = "$TM" ] \
+    && ok "an app not installed: refused ($(msg))" || bad "ghost: '$(state)' '$(msg)'"
+code=$(post $F/fever-badid.rfm1u); settle
+[ "$(state)" = failed ] && [ "$(tree "$FV")" = "$TF" ] && [ ! -e "$D/.remotefm1-update-prev-feverdream" ] \
+    && ok "a package whose module.json names another app: refused, nothing changed ($(msg))" || bad "badid: '$(state)' '$(msg)'"
+sleep 1.1
+code=$(post $F/fever-good.rfm1u); settle
+[ "$code" = 202 ] && [ "$(state)" = done ] && msg | grep -q "Installed Feverdream 0.2.0" && grep -q 'fever 0.2.0' "$FV/fever-marker.txt" \
+    && [ -f "$FV/old-only.txt" ] && grep -q '"0.1.0"' "$D/.remotefm1-update-prev-feverdream/module.json" \
+    && ok "feverdream 0.2.0 into its own folder ($(msg)), the old one in .remotefm1-update-prev-feverdream" \
+    || bad "fever install: $code '$(state)' '$(msg)'"
+[ "$(tree "$M")" = "$TM" ] && [ "$(backups)" = "$B1" ] && [ "$(ls -A "$MODS" | tr '\n' ' ')" = "feverdream remotefm1 " ] \
+    && st | grep -q '"app":"feverdream"' \
+    && ok "RemoteFM1's folder untouched, no data backup, nothing new in tools/, Undo names feverdream" \
+    || bad "after fever: remotefm1 $( [ "$(tree "$M")" = "$TM" ] && echo same || echo CHANGED) backups $(backups) tools '$(ls -A "$MODS")' $(st)"
+code=$(curl -s -o "$T/post.json" -w '%{http_code}' -X POST "$U/api/update/undo"); settle
+[ "$code" = 202 ] && [ "$(state)" = done ] && [ "$(tree "$FV")" = "$TF" ] && [ "$(tree "$M")" = "$TM" ] \
+    && [ ! -e "$D/.remotefm1-update-prev-feverdream" ] \
+    && ok "Undo: feverdream as it was ($(msg)), RemoteFM1 untouched" || bad "fever undo: $code '$(state)' '$(msg)'"
 stop
 
 # ---------------------------------------------------------------- no room

@@ -1006,6 +1006,17 @@ catalog and the bundled set stay as they are.
   backup, natively with ASan + UBSan; tests/update_e2e.sh: installs, refusals, Undo and the inside layout on the
   simulator). Both are part of `make test`.
 
+### Other apps
+
+The same Update installs another Move app of ours into its own folder beside RemoteFM1's (`modules/tools/<id>`), for
+when only the iPad is at hand: `tools/make_update.py --app dist/<id>-module.tar.gz --commit <sha>` signs that app's
+whole module package (one `<id>/` folder with its `module.json`) into `dist/updates/<id>-<version>-<commit>.rfm1u`. The
+manifest names the app (`module`, `name`). On the Move the app must already be installed with that id in its
+`module.json` (else refused, nothing changed); its folder is staged, swapped and kept as before, the copies named
+`/data/UserData/.remotefm1-update-{new,prev,undone}-<id>`; RemoteFM1's `move/` is not backed up for it. Undo puts back
+whichever app was installed last (`.remotefm1-update-last`), RemoteFM1 or another. The page asks "Install Feverdream
+0.2.0 on the Move?" and, once done, says to start it from the Move's Tools menu.
+
 ## Layout
 
 | Path | What |
