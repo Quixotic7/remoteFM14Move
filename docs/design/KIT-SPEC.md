@@ -417,9 +417,10 @@ the kit bus.
   Samples, kits stay Sample Kit's (and Kit Mix's) Load / Save (Back from Kits returns to Load / Save). Files still
   opens on the pad's sound: a take's in My Samples, a Move Library sound's there (its project copy traced back).
 - **The Move Library's index:** built once a launch on the kit's file thread at its first use (never the audio
-  thread): every folder below it walked (8 deep), each WAV / AIFF / AIFF-C probed; listed: the folders with a sound this
-  host reads somewhere below them and those sounds (PCM 16 / 24 / 32-bit and float WAV, PCM AIFF, AIFF-C NONE / sowt).
-  FLAC, compressed AIFF-C and presets are hidden. Kept, its sound is copied into the project's own folder (round C).
+  thread; since FLAC, its own thread, "Reading..." until done): every folder below it walked, each sound probed;
+  listed: the folders with a sound this host reads somewhere below them and those sounds (PCM 16 / 24 / 32-bit and
+  float WAV, PCM AIFF, AIFF-C NONE / sowt, FLAC), Move's categories nested as on disk; a folder's sounds not read as
+  one dead row a kind ("3 .ogg (unsupported)"); presets hidden. Kept, its sound is copied into the project's own folder (round C).
 - **The marquee:** the chosen row's name wider than its 112 px scrolls: 1 s still, 25 px a second (whole pixels) to its
   end, 1 s, back, again; from its start when the choice changes. Other rows are cut at 9 characters.
 - **Steps (the same day):** a step's click toggles at its release only when it was a click (UX-RULES R2: held 300 ms or
@@ -428,6 +429,10 @@ the kit bus.
   chosen pad plays on it, bright in the row's colour; a step held + a pitch pad toggles that pitch.
 - **Layout (Shift + step 8)** in the Kit view sets the right half's mode (Pitches, In Key, Chromatic, In Key 4ths,
   Chop: five icons, the chosen one marked and named; the jog or knob 1), as Sample Kit's knob 1.
+- **Step lights (the owner's 2026-11-26: a ghost looked like an empty step):** the chosen pad's steps: empty dim
+  white; a hit its row's colour, brighter the harder; a locked hit blinks slowly (1 s round); a ghost trigger (locks,
+  no hit) the row's colour as a steady pastel, half way to white and brighter than an empty step (outside the loop
+  dimmer); the playhead white. The step keys take any RGB colour (Move's sysex, no hardware animation on that path).
 - **Step locks on every pad setting:** a step held lights every knob of Pad Sample, Pad Sample 2, Warp, Filter and Pad
   Mix yellow (Sample Kit, Kit Mix dark; Trig its own). The nine round B locks stay as they were; any other setting
   takes one of nine slots a hit (two sequencer locks: the setting, its value), so a hit locks the nine and up to nine
