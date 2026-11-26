@@ -552,7 +552,7 @@ export class SmpView {
         get: () => this.kv(KP.PDEPTH), set: (v) => this.kset(KP.PDEPTH, v), fmt: (v) => `${v > 0 ? "+" : ""}${v} st` }), KP.PDEPTH),
       row("P attack", env(KP.PATTACK, "Pitch env attack"), KP.PATTACK),
       row("P release", env(KP.PRELEASE, "Pitch env release"), KP.PRELEASE),
-      row("Bits", B(KP.BITS, "Bits", { min: 1, max: 16, fmt: (v) => `${v}` }), KP.BITS),
+      row("Bits", B(KP.BITS, "Bits", { min: 10, max: 240, fmt: (v) => `${(v / 10).toFixed(1)} bit` }), KP.BITS),   // (2026-11-26: tenths, 1.0..24.0)
       row("Downsample", B(KP.DOWNS, "Downsample", { min: 1, max: 32, fmt: (v) => (v > 1 ? `1/${v}` : "Off") }), KP.DOWNS),
       row("Grain pos", B(KP.GPOS, "Grain position", { min: 0, max: 100, fmt: (v) => `${v} %` }), KP.GPOS),
       row("Grain size", B(KP.GSIZE, "Grain size", { min: 10, max: 500, fmt: (v) => `${v} ms` }), KP.GSIZE),

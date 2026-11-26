@@ -103,7 +103,7 @@ typedef struct {
     uint32_t pe_a, pe_r, pe_t;
     float pe_mul;                 /* .. the rate's multiplier now (every FLT_N frames) */
     uint32_t cn;                  /* frames to the next control block (the pitch envelope, LoFi, the filter's envelope) */
-    float q_step;                 /* LoFi: the quantum (1: none), a sample held so many frames */
+    float q_step;                 /* LoFi: the quantum (0: none), a sample held so many frames */
     int ds, ds_n;
     float hold_l, hold_r;
     double ph, spd;               /* Warp Grains / Beats: the playhead and its speed (source frames a frame) */
@@ -1775,7 +1775,7 @@ static void do_save(kit_t *k)
         if ((f = fopen(tmp, "w"))) {
             int bad;
             mj_escape(name, esc, sizeof esc);
-            fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 2, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
+            fprintf(f, "{\n  \"format\": \"rfm1-kit\", \"version\": 3, \"name\": \"%s\", \"layout\": %d,\n", esc, x->layout);
             fprintf(f, "  \"mix\": [%d, %d, %d, %d, %d], \"trim\": %d, \"bus\": [%d, %d],\n  \"pads\": [\n", x->mix[0],
                     x->mix[1], x->mix[2], x->mix[3], x->mix[4], x->trim ? 1 : 0, x->bus[0], x->bus[1]);   /* (round A:
                                                          * the Trim silence; pages v2: the kit bus's low-pass) */
@@ -1865,7 +1865,7 @@ static void do_open(kit_t *k, const req_t *r)
         for (i = 0; i < KIT_PADS; i++) {                /* (round B: a kit.json without them: Sustain 100, open; pages
                                                          * v2: as the core's defaults) */
             x->v[i][KIT_P_END] = KIT_FRAC, x->v[i][KIT_P_SUSTAIN] = 100, x->v[i][KIT_P_CUTOFF] = 100;
-            x->v[i][KIT_P_LOOPE] = KIT_FRAC, x->v[i][KIT_P_PRELEASE] = 100, x->v[i][KIT_P_BITS] = 16;
+            x->v[i][KIT_P_LOOPE] = KIT_FRAC, x->v[i][KIT_P_PRELEASE] = 100, x->v[i][KIT_P_BITS] = 160;
             x->v[i][KIT_P_DOWNS] = 1, x->v[i][KIT_P_GSIZE] = 80, x->v[i][KIT_P_GDENS] = 4, x->v[i][KIT_P_SPEED] = 100;
             x->v[i][KIT_P_WGRAIN] = 50, x->v[i][KIT_P_WSEARCH] = 10, x->v[i][KIT_P_FDECAY] = 300;
             x->v[i][KIT_P_FRELEASE] = 300;
@@ -1883,6 +1883,8 @@ static void do_open(kit_t *k, const req_t *r)
             for (j = 0; j < KIT_P_N; j++)
                 if (!mj_int(e, PKEY[j], &v))
                     x->v[i][j] = (int16_t)clampi((int)v, -32768, 32767);
+            if (ver < 3 && x->v[i][KIT_P_BITS] <= 16)   /* (2026-11-26, kit.json version 3) whole bits as tenths */
+                x->v[i][KIT_P_BITS] = (int16_t)(x->v[i][KIT_P_BITS] * 10);
             if (ver < 2) {                              /* (pages v2) an older kit.json: Toggle as Loop, Stretch as Warp
                                                          * Repitch */
                 if (x->v[i][KIT_P_MODE] == 3)
@@ -2392,7 +2394,7 @@ kit_t *kit_new(const kit_cfg_t *cfg)
         k->v[p][KIT_P_END] = KIT_FRAC, k->v[p][KIT_P_SUSTAIN] = 100, k->v[p][KIT_P_CUTOFF] = 100;
     k->glide = (float)(1.0 - exp(-(double)FLT_N / ((double)k->cfg.fs * FLT_GLIDE_MS / 1000.0)));
     for (p = 0; p <= SLP; p++)                          /* (pages v2: as the core's defaults) */
-        k->v[p][KIT_P_LOOPE] = KIT_FRAC, k->v[p][KIT_P_BITS] = 16, k->v[p][KIT_P_DOWNS] = 1, k->v[p][KIT_P_GSIZE] = 80,
+        k->v[p][KIT_P_LOOPE] = KIT_FRAC, k->v[p][KIT_P_BITS] = 160, k->v[p][KIT_P_DOWNS] = 1, k->v[p][KIT_P_GSIZE] = 80,
         k->v[p][KIT_P_GDENS] = 4, k->v[p][KIT_P_SPEED] = 100, k->v[p][KIT_P_WGRAIN] = 50, k->v[p][KIT_P_WSEARCH] = 10;
     for (p = 0; p <= 1024; p++)                         /* (pages v2) the grains' window */
         k->hann[p] = (float)(0.5 - 0.5 * cos(2.0 * 3.14159265358979323846 * p / 1024.0));
@@ -2963,7 +2965,7 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
         v->pe_mul = v->pe_a ? 1.0f : exp2f((v->pe_r ? v->pe_depth : 0.0f) / 12.0f);
         v->inc = v->binc * v->pe_mul, v->ginc *= v->pe_mul;
     }
-    v->q_step = 1.0f, v->ds = 1;
+    v->q_step = 0.0f, v->ds = 1;
     v->morph_lk = (mask >> KIT_LK_MORPH) & 1, v->fenv_lk = (mask >> KIT_LK_FENV) & 1;
     v->morph = (float)clampi(v->morph_lk ? lk[KIT_LK_MORPH] : p[KIT_P_MORPH], 0, 100) / 100.0f;
     v->fe_amt = (float)clampi(v->fenv_lk ? lk[KIT_LK_FENV] : p[KIT_P_FENV], -100, 100) * 0.08f;   /* (100: 8 octaves) */
@@ -3195,9 +3197,11 @@ static void control(const kit_t *k, voice_t *v)
             v->pe_mul = mul;
         }
     }
-    if (v->eng == KIT_M_LOFI) {
-        const int bits = clampi(p[KIT_P_BITS], 1, 16);
-        v->q_step = (float)(1 << (16 - bits));
+    if (v->eng == KIT_M_LOFI) {                         /* (2026-11-26) bits in tenths, a real depth: the quantum
+                                                         * 2^(16 - bits) of the int16 scale (2^(1 - bits) of full
+                                                         * scale), smooth as it turns; 24 bits: none */
+        const int bt = clampi(p[KIT_P_BITS], 10, 240);
+        v->q_step = bt >= 240 ? 0.0f : exp2f(16.0f - (float)bt / 10.0f);
         v->ds = clampi(p[KIT_P_DOWNS], 1, 32);
     }
     if (v->fe_amt != 0.0f) {
@@ -3303,7 +3307,7 @@ static void voice_run(const kit_t *k, voice_t *v, float *acc, float *const sb[3]
                     v->ds_n--;
                     l = v->hold_l, r = v->hold_r;
                 }
-                if (v->q_step > 1.0f)
+                if (v->q_step > 0.0f)
                     l = floorf(l / v->q_step + 0.5f) * v->q_step, r = floorf(r / v->q_step + 0.5f) * v->q_step;
             }
             if (v->flt && !v->fn)                       /* (round B) the low-pass (open: bypassed, the frames as ever) */

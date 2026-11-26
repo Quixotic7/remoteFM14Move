@@ -67,7 +67,8 @@ enum { KIT_P_PITCH, KIT_P_START, KIT_P_END, KIT_P_MODE, KIT_P_ATTACK, KIT_P_HOLD
        /* (pages v2, 2026-11-26) the engines' own, Warp (Sync is KIT_P_STRETCH), the filter's morph and envelope */
        KIT_P_LOOPS, KIT_P_LOOPE, KIT_P_LOOPXF,          /* Loop: its points (of KIT_FRAC, inside the region), fade % */
        KIT_P_PDEPTH, KIT_P_PATTACK, KIT_P_PRELEASE,     /* Pitch Env: semitones -48..48, ms, ms */
-       KIT_P_BITS, KIT_P_DOWNS,                         /* LoFi: 1..16 bits, a sample held 1..32 frames */
+       KIT_P_BITS, KIT_P_DOWNS,                         /* LoFi: bits in tenths 10..240 (1.0..24.0; 2026-11-26),
+                                                         * a sample held 1..32 frames */
        KIT_P_GPOS, KIT_P_GSIZE, KIT_P_GDENS, KIT_P_GSPRAY, KIT_P_GSPREAD,   /* Granular: %, ms, grains at once, %, st */
        KIT_P_WARP, KIT_P_SPEED, KIT_P_WPITCH,           /* Warp: KIT_W_*, speed x 100 (25..400), cents */
        KIT_P_WGRAIN, KIT_P_WJITTER, KIT_P_WSEARCH,      /* .. a grain's ms, Grains' jitter %, Beats' search ms */

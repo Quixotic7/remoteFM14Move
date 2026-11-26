@@ -1046,6 +1046,43 @@ static int row_named(const kit_ans_t *a, const char *name, int kind)
             return i;
     return -1;
 }
+/* (2026-11-26) LoFi's Bits in tenths: 24.0 transparent, 4.0 and 4.5 bits quantised to 2^12 and 2^11.5 of the int16
+ * scale */
+static int on_grid(uint32_t n, double q)
+{
+    uint32_t i;
+    for (i = 0; i < 2 * n; i++) {
+        const double x = B[i] / q;
+        if (fabs(x - floor(x + 0.5)) > 1e-3)
+            return 0;
+    }
+    return 1;
+}
+static void t_lofi(void)
+{
+    char p[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int i, same = 1, any = 0;
+    snprintf(p, sizeof p, "%s/lofi.wav", DIRP), wavf(p, 4000, 48000, ramp2);
+    CHECK(load(k, 0, p, &a) == KIT_OK);
+    kit_set(k, 0, KIT_P_MODE, KIT_M_LOFI), kit_set(k, 0, KIT_P_BITS, 240);
+    kit_note(k, 0, 0, 127, 0), run(k, 2000);
+    for (i = 0; i < 2000; i++)
+        same &= fabsf(B[2 * i] - ramp2((uint32_t)i, 0)) < 1.0f;
+    CHECK(same);
+    run(k, 4000);
+    kit_set(k, 0, KIT_P_BITS, 40), kit_note(k, 0, 0, 127, 0), run(k, 2000);
+    CHECK(on_grid(2000, 4096.0));
+    run(k, 4000);
+    kit_set(k, 0, KIT_P_BITS, 45), kit_note(k, 0, 0, 127, 0), run(k, 2000);
+    CHECK(on_grid(2000, exp2(11.5)) && !on_grid(2000, 4096.0));
+    for (i = 0; i < 2000; i++)
+        any |= B[2 * i] != 0.0f;
+    CHECK(any);
+    kit_free(k);
+    printf("  ok    LoFi Bits in tenths: 24.0 transparent, 4.0 bits on a 4096 grid, 4.5 bits on 2^11.5\n");
+}
 static void t_flac(void)
 {
     char p[700], d[600];
@@ -1182,6 +1219,7 @@ int main(void)
     t_master_plock();
     t_ghost();
     t_flac();
+    t_lofi();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

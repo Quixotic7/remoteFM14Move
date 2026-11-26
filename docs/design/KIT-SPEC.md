@@ -324,7 +324,7 @@ is touched or turned, full screen, the knobs' lights saying which have a job):
 | Momentary | the region once while held | - |
 | Loop | then round its loop while held | 1 Loop Start, 2 Loop End (inside the region; the close-up), 3 Loop Fade (0..100 % of half the loop: the loop's end crossfaded into its start) |
 | Pitch Env | as One Shot, the pitch moved by an attack / release envelope | 1 Depth (-48..+48 st), 2 Attack, 3 Release |
-| LoFi | as One Shot, bits and rate reduced | 1 Bits (16..1), 2 Downsample (a sample held 1..32 frames) |
+| LoFi | as One Shot, bits and rate reduced | 1 Bits (1.0..24.0 in 0.1 steps, "12.5 bit"; a real depth, the quantum 2^(1 - bits) of full scale, smooth as it turns; 24.0 transparent; stored in tenths 10..240, locks too; 2026-11-26), 2 Downsample (a sample held 1..32 frames) |
 | Granular | grains of the region while held | 1 Position, 2 Size (10..500 ms), 3 Density (1..16 grains), 4 Spray, 5 Spread (0..24 st) |
 
 Toggle is gone: a pad saved with it loads as Loop.
