@@ -429,6 +429,12 @@ the kit bus.
   chosen pad plays on it, bright in the row's colour; a step held + a pitch pad toggles that pitch.
 - **Layout (Shift + step 8)** in the Kit view sets the right half's mode (Pitches, In Key, Chromatic, In Key 4ths,
   Chop: five icons, the chosen one marked and named; the jog or knob 1), as Sample Kit's knob 1.
+- **Locked or not, on screen (the owner's 2026-11-26):** with a step held, every knob popup (each pad page; firmware
+  tracks' CC and TRIG knobs, the FM-1 and ENGINE pages' trigs) shows the step's state: locked, the value solid with a
+  7 x 9 padlock before it (its own room: the value moves over; on the Filter page's line, at its start); not locked,
+  the pad's (track's) own value hollow (a 50 % checker), no padlock. A turn locks it, the padlock at once; step +
+  knob + Delete clears it, hollow at once. Several steps held: locked if any is, the first locked one's value. No
+  step name ("S5") nor "Lock Cleared" on the screen any more; the held step's velocity popup is "Velocity".
 - **Step lights (the owner's 2026-11-26: a ghost looked like an empty step):** the chosen pad's steps: empty dim
   white; a hit its row's colour, brighter the harder; a locked hit blinks slowly (1 s round); a ghost trigger (locks,
   no hit) the row's colour as a steady pastel, half way to white and brighter than an empty step (outside the loop
