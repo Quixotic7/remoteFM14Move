@@ -1555,8 +1555,15 @@ pad's path and twelve settings), and says which notes play which pad. The help p
   silence (it was 31); the page's Kit tab has rows for the new pad settings. kit_test's Toggle test removed.
 
 (2026-11-26, KIT-SPEC "Browser, 2026-11-26") Files' places: My Samples (`KIT_PL_SAMPLES`) and the Move Library
-(`KIT_PL_CORE`: `--core-library DIR`, default `/data/CoreLibrary`, its `Samples/` when there; indexed once on the file
-thread, only folders with sounds the host reads, FLAC and compressed AIFF-C hidden). No preview or audition path:
+(`KIT_PL_CORE`: `--core-library DIR`, default `/data/CoreLibrary`; indexed once a launch on a thread of its own, the
+place showing a dead "Reading..." row (`KIT_ROW_NOTE`) until it is done, its rows sent again then; its top `Samples/`
+when the sounds are there, else the whole folder, a lone wrapper folder skipped; the category folders nested as on
+disk, only folders with sounds below them; a folder's sounds not read here as a dead row a kind, "3 .ogg
+(unsupported)"; nothing at all: "No sounds found"). The sounds read: PCM WAV (16/24/32-bit, float), AIFF, AIFF-C
+NONE / sowt and FLAC (dr_flac, 4..32-bit, any rate, its length from STREAMINFO so Too Long is known before decoding;
+an ID3 tag before it skipped; Ogg FLAC not). The index's totals by extension go to the log ("kit: core library ...:
+N sounds in M folders (3200 .flac, ...); skipped 120: 120 .ablpreset ...") and to the status (`kit_corelib`: `cl_state`,
+`cl_root`, `cl_sounds`, `cl_folders`, `cl_skipped`, `cl_unsupported`, `cl_read` and `cl_skip` by extension). No preview or audition path:
 `kit_preview` and `kit_audition` do nothing, the slices and Tap's pass are voices of a hidden pad on the kit's bus. The
 sampler's take playback (`tl_mix`) scaled by the volume knob's master. `kit_note_pl`: a hit's locks on any setting
 (KIT_NOTE's `kp_mask` / `kp[]`, a locked Sync's microseconds), kept per voice.

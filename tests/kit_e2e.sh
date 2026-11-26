@@ -40,13 +40,15 @@ T=$(mktemp -d /tmp/rfm14kit.XXXXXX)
 FWS=$T/fws; mkdir -p "$FWS"
 cp build/fw/felucca-1.8.2.* build/fw/choralroot-0.43.* "$FWS/"
 SIM=$T/sim; R=$T/root; SMP=$T/Samples; LIB=$SMP/RemoteFM1; CAP=$T/cap; CORE=$T/CoreLibrary
-mkdir -p "$SIM" "$R" "$SMP/Drums" "$SMP/Kit808" "$LIB" "$CAP" "$CORE/Drum Hits" "$CORE/Presets"
+mkdir -p "$SIM" "$R" "$SMP/Drums" "$SMP/Kit808" "$LIB" "$CAP" "$CORE/Drums/Kicks" "$CORE/Keys/Bells" "$CORE/Presets"
 echo "http://127.0.0.1:1" > "$R/catalog-url"
 build/tools/ainchk make "$SMP/Drums/Tone.wav" >/dev/null || { echo "  FAIL  ainchk"; exit 1; }
 cp "$SMP/Drums/Tone.wav" "$SMP/Drums/Zap.wav"
 for f in c b a; do cp "$SMP/Drums/Tone.wav" "$SMP/Kit808/$f.wav"; done   # (3b: a folder for All To Pads)
-cp "$SMP/Drums/Tone.wav" "$CORE/Drum Hits/Hit.wav"   # (2026-11-26: the Move Library: one folder with a sound, one without)
-echo x > "$CORE/Drum Hits/Hit.flac"; echo '{}' > "$CORE/Presets/Kit.ablpreset"
+# (2026-11-26: the Move Library: two categories, a sound in each kind's folder (a WAV, a FLAC), a broken FLAC beside the
+# good one (its "unsupported" row), a folder without sounds)
+cp "$SMP/Drums/Tone.wav" "$CORE/Drums/Kicks/Hit.wav"; cp tests/flac/tone.flac "$CORE/Keys/Bells/Bell.flac"
+echo x > "$CORE/Keys/Bells/Junk.flac"; echo '{}' > "$CORE/Presets/Kit.ablpreset"
 PORT=17839; U="http://127.0.0.1:$PORT"; L=$T/host.log
 mkdir -p build/test-out
 status() { curl -s "$U/api/status"; }
@@ -81,12 +83,26 @@ wait_for 3 '[ "$(field kit_shown)" = 1 ]' && [ "$(field kit_route)" = 61440 ] &&
 sleep 1.1; shot; cp "$SIM/mr-screen.pbm" build/test-out/kit_rest.pbm
 jog 1 1; click                               # (pages) Pad Sample; the click: the browser's root (My Samples chosen)
 jog 1 1; click                               # (2026-11-26) the Move Library
-wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 1 ]' \
-    && ok "the root's Move Library: its one folder with sounds (Presets hidden)" \
+wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 2 ]' \
+    && ok "the root's Move Library: its categories with sounds (Drums, Keys; Presets hidden)" \
     || bad "the Move Library: place '$(field kit_place)' total '$(field kit_total)'"
-click                                        # Drum Hits: Hit (the FLAC hidden)
-wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Drum Hits: total '$(field kit_total)'"
-press 51; press 51; sleep 0.2                # (Back: the folder up, the root)
+[ "$(field cl_sounds)" = 2 ] && [ "$(field cl_unsupported)" = 1 ] && [ "$(field cl_root)" = "$CORE" ] \
+    && grep -q "kit: core library $CORE (root: .): 2 sounds in 4 folders (1 .wav, 1 .flac\|kit: core library $CORE (root: .): 2 sounds in 4 folders (1 .flac, 1 .wav" "$L" \
+    && ok "the index in the status (kit_corelib: 2 sounds, 1 unsupported) and the log ($(grep 'kit: core library' "$L" | tail -1 | cut -c1-150))" \
+    || bad "the index: sounds '$(field cl_sounds)' unsupported '$(field cl_unsupported)' root '$(field cl_root)' $(grep 'kit: core library' "$L" | tail -1)"
+jog 1 1; click                               # Keys: Bells
+wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Keys: total '$(field kit_total)'"
+click                                        # Bells: Bell (the FLAC), "1 .flac (unsupported)" (Junk)
+wait_for 3 '[ "$(field kit_total)" = 2 ] && [ "$(field kit_depth)" = 2 ]' \
+    && ok "Keys, Bells: nested categories, the FLAC and the broken one's unsupported row" \
+    || bad "Bells: total '$(field kit_total)' depth '$(field kit_depth)'"
+jog 1 1; sleep 0.6; jog 1 127                # (the dead row: nothing; back on Bell: on pad 1)
+wait_for 5 '[ "$(field kit_file)" = Bell.flac ] && [ "$(field kit_frames)" = 12000 ]' \
+    && ok "the jog at rest on a FLAC (Bell): on pad 1 (12000 frames), the unsupported row passed over" \
+    || bad "Bell.flac: file '$(field kit_file)' frames '$(field kit_frames)'"
+sleep 0.3; hit 68; wait_for 3 '[ "$(field peak)" -gt 1000 ]' && ok "pad 1 pressed: the FLAC heard (the mix's peak $(field peak))" \
+    || bad "the FLAC heard: peak '$(field peak)'"
+press 51; press 51; press 51; sleep 0.2      # (Back: Keys, the place's top, the root)
 jog 1 127; click                             # My Samples
 wait_for 3 '[ "$(field kit_place)" = 2 ] && [ "$(field kit_total)" = 3 ]' \
     && ok "Files, Samples: its folders (Drums, Kit808, RemoteFM1) listed" \
@@ -331,19 +347,21 @@ wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "the Kit view (2): '$(field kit
 cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.2           # (Shift + pad 5: chosen)
 jog 1 1; click; sleep 0.3                                   # (Pad Sample; the browser: the root)
 jog 1 1; click                                              # the Move Library
-wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 1 ]' || bad "the Move Library (2): place '$(field kit_place)' total '$(field kit_total)'"
-click; wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Drum Hits (2): total '$(field kit_total)'"
-jog 1 1                                                     # Hit: on pad 5
-wait_for 5 '[ "$(field kit_file)" = Hit.wav ]' || bad "Hit: file '$(field kit_file)' cur '$(field kit_cur)'"
-click                                                       # kept: copied into the project's folder
-wait_for 5 'ls "$LIB"/Kits/Projects/*/Hit.wav >/dev/null 2>&1' \
-    && ok "a Move Library sound kept: copied into the project's folder ($(ls "$LIB"/Kits/Projects/*/Hit.wav 2>/dev/null | sed "s|$T/||"))" \
+wait_for 5 '[ "$(field kit_place)" = 4 ] && [ "$(field kit_total)" = 2 ]' || bad "the Move Library (2): place '$(field kit_place)' total '$(field kit_total)'"
+jog 1 1; click; wait_for 3 '[ "$(field kit_total)" = 1 ]' || bad "Keys (2): total '$(field kit_total)'"
+click; wait_for 3 '[ "$(field kit_total)" = 2 ]' || bad "Bells (2): total '$(field kit_total)'"
+jog 1 1; sleep 0.6; jog 1 127                               # Bell: on pad 5
+wait_for 5 '[ "$(field kit_file)" = Bell.flac ]' || bad "Bell: file '$(field kit_file)' cur '$(field kit_cur)'"
+click                                                       # kept: copied into the project's folder, as it is
+wait_for 5 'ls "$LIB"/Kits/Projects/*/Bell.flac >/dev/null 2>&1' \
+    && cmp -s tests/flac/tone.flac "$(ls "$LIB"/Kits/Projects/*/Bell.flac | head -1)" \
+    && ok "a Move Library FLAC kept: copied into the project's folder as it is ($(ls "$LIB"/Kits/Projects/*/Bell.flac 2>/dev/null | sed "s|$T/||"))" \
     || bad "the Move Library's copy-in: cur '$(field kit_cur)' owned '$(field kit_owned)' $(grep 'kept where' "$L" | tail -1)"
 f0=$(field kit_finds)
-click                                                       # Files again: on Hit, in the Move Library
+click                                                       # Files again: on Bell, in the Move Library
 wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 4 ]' \
     && ok "Files again: on the pad's sound in the Move Library (KIT_FIND through its copy)" \
-    || bad "Files on Hit: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
+    || bad "Files on Bell: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)'"
 press 51; press 51; press 51; sleep 0.3                     # (Back: out of Files)
 # (2026-11-26) pad 5's pages v2 settings from the page (a = pad * 64 + setting): Warp Grains (33), the Loop's fade 30
 # (22), Morph 70 (39), the filter envelope -40 (40); saved, a third start: the project's own copy ("@/") and each back
@@ -356,9 +374,9 @@ start || { bad "the host did not start (3)"; tail -20 "$L"; exit 1; }
 wait_for 8 '[ "$(field kit_pads)" -ge 15 ]' || bad "the kit after the third start: pads '$(field kit_pads)'"
 cmd "cc 40 127"; sleep 0.4; hit 94; cmd "cc 40 0"; sleep 0.3   # the Kit view
 cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.3           # (Shift + pad 5: chosen)
-wait_for 5 '[ "$(field kit_cur)" = 4 ] && [ "$(field kit_own)" = 1 ] && [ "$(field kit_file)" = Hit.wav ]' \
+wait_for 5 '[ "$(field kit_cur)" = 4 ] && [ "$(field kit_own)" = 1 ] && [ "$(field kit_file)" = Bell.flac ] && [ "$(field kit_frames)" = 12000 ]' \
     && [ "$(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)" = 2/30/70/-40 ] \
-    && ok "a third start: pad 5's sound from the project's own copy (\"@/\" Hit.wav), its Warp, Loop fade, Morph, filter envelope kept" \
+    && ok "a third start: pad 5's sound from the project's own copy (\"@/\" Bell.flac, read as FLAC), its Warp, Loop fade, Morph, filter envelope kept" \
     || bad "pad 5 after a start: cur '$(field kit_cur)' own '$(field kit_own)' file '$(field kit_file)' settings $(padv 4 33)/$(padv 4 22)/$(padv 4 39)/$(padv 4 40)"
 stop
 cp "$L" build/test-out/kit_host.log

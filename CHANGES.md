@@ -64,6 +64,12 @@ Projects are now version 15: 0.5.0 and older cannot read them back. Older projec
 ### Development log (the kit's rounds, newest first)
 
 
+- **FLAC and the Move Library (2026-11-26):** the kit reads FLAC (dr_flac, public domain / MIT-0) everywhere it reads
+  a sound: the pads, the pictures, My Samples, the Move Library, a FLAC kept copied into the project as it is. The
+  Move Library is indexed on a thread of its own ("Reading..." until done, then the list refreshes), lists Move's
+  category folders nested, picks its top by where the sounds are, shows a folder's sounds it can't read as
+  "N .ogg (unsupported)", and logs and reports (`kit_corelib` in the status) its totals by extension.
+
 - **Browser and sound (2026-11-26):** the browser's root is My Samples and the Move Library (Move's own factory
   sounds; `--core-library DIR`, default `/data/CoreLibrary`, only folders with sounds the host reads); Takes and Kits
   left it. The chosen row's long name scrolls slowly back and forth. A sample plays only from its pad or the

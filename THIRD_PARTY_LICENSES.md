@@ -17,6 +17,10 @@ RemoteFM14Move itself is MPL-2.0 (LICENSE). What it is built from:
 - **TweetNaCl** (https://tweetnacl.cr.yp.to/, 20140427, public domain; D. J. Bernstein, W. Janssen, T. Lange,
   P. Schwabe, S. Smetsers, B. van Gastel): the Ed25519 field and group arithmetic in `src/ed25519.c` (verification
   only, adapted), which checks the catalog index's signature.
+- **dr_flac** (third_party/dr_flac/dr_flac.h, v0.12.29, https://github.com/mackron/dr_libs, David Reid; public domain
+  (Unlicense) or MIT No Attribution, the licence text at the end of the header; the package carries it as
+  `licenses/dr_flac.txt`): the FLAC decoder compiled into remotefm1-host (src/kit.c: the kit's sounds, the Move
+  Library's factory FLACs), unchanged.
 - **OpenSSL 3** (https://www.openssl.org/, Apache-2.0): not shipped. remotefm1-host opens the system's own
   `libssl.so.3` / `libcrypto.so.3` at run time (dlopen) for the catalog's HTTPS downloads.
 - **The firmwares** (firmwares/*.rfm1m in the package): each is its own work under its own licence (FIRMWARES.md,

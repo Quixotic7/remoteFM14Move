@@ -16,6 +16,23 @@
 #include "minijson.h"
 #include "takes.h"
 
+/* (2026-11-26) FLAC: dr_flac (third_party/dr_flac, public domain or MIT-0), decoding on the file thread only, read
+ * through the kit's own FILE (no stdio of its own), no Ogg */
+#define DR_FLAC_IMPLEMENTATION
+#define DR_FLAC_NO_STDIO
+#define DR_FLAC_NO_OGG
+#define DR_FLAC_NO_WCHAR
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
+#include "../third_party/dr_flac/dr_flac.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #define NV 32                     /* voice slots: KIT_VOICES sounding, the rest fading out */
 #define NEV 256                   /* notes waiting for their frame */
 #define NREQ 64                   /* file requests waiting */
@@ -209,8 +226,22 @@ struct kit {
     /* (2026-11-26) the Move Library: its folder ("" none); its index (the file thread's, built once at its first use):
      * the folders with sounds somewhere below them, the sounds this host reads (sorted relative paths) */
     char core[KIT_PATH];
-    int cx_ok, cx_nd, cx_nf;
-    char **cx_d, **cx_f;
+    char cx_root[KIT_PATH];       /* (mu: set once cx_st CX_READY) the place's top: core/cx_pre */
+    char cx_pre[512];             /* .. relative to core ("": core itself) */
+    int cx_st;                    /* (mu) CX_NONE, CX_BUILDING, CX_READY */
+    int cx_quit;                  /* (atomic) kit_free: the walk stops */
+    pthread_t cx_th;
+    int cx_th_on;
+    pthread_cond_t cx_cv;         /* (mu) the index done */
+    int cx_wq, cx_wfrom, cx_wn;   /* (mu) a rows ask answered "Reading...": asked again when it is done */
+    uint32_t cx_wf;
+    /* (the index's thread's, read by the others once CX_READY) the folders with sounds read here below them, the
+     * sounds (relative paths, sorted); the folders with sounds not read here below them, those sounds; the files'
+     * totals by extension */
+    int cx_nd, cx_nf, cx_nud, cx_nuf;
+    char **cx_d, **cx_f, **cx_ud, **cx_uf;
+    struct { char ext[12]; int ok, skip; } cx_x[48];
+    int cx_nx, cx_skipped;
     /* Samples' last listing (the file thread's) */
     int ls_pl;
     uint32_t ls_folder;
@@ -255,7 +286,19 @@ static const char *ext_of(const char *n)
 static int sound_file(const char *n)
 {
     const char *e = ext_of(n);
-    return lower_eq(e, "wav") || lower_eq(e, "aif") || lower_eq(e, "aiff") || lower_eq(e, "aifc");
+    return lower_eq(e, "wav") || lower_eq(e, "aif") || lower_eq(e, "aiff") || lower_eq(e, "aifc") || lower_eq(e, "flac");
+}
+static int audio_file(const char *n)   /* (2026-11-26) a sound by its name, read here or not (the index's "unsupported") */
+{
+    static const char *const X[] = { "ogg", "oga", "opus", "mp3", "m4a", "aac", "caf", "wma", "wv", "ape", "alac", "mp4" };
+    const char *e = ext_of(n);
+    size_t i;
+    if (sound_file(n))
+        return 1;
+    for (i = 0; i < sizeof X / sizeof X[0]; i++)
+        if (lower_eq(e, X[i]))
+            return 1;
+    return 0;
 }
 static void base_name(const char *path, char *o, int cap)   /* the file's name, no extension, printable */
 {
@@ -285,10 +328,26 @@ static double ext80(const uint8_t *p)   /* an AIFF's 80-bit IEEE extended sample
     return ldexp((double)m, e) * (p[0] & 0x80 ? -1 : 1);
 }
 typedef struct {
-    long data;                    /* the sample data's offset */
+    long data;                    /* the sample data's offset (FLAC: the stream's, after an ID3 tag) */
     uint32_t frames, rate, ch, bps;
-    int fmt;                      /* 1 PCM little-endian, 3 float, 2 PCM big-endian (AIFF) */
+    int fmt;                      /* 1 PCM little-endian, 3 float, 2 PCM big-endian (AIFF), 4 FLAC */
+    FILE *f;                      /* (FLAC) the file the decoder reads, */
+    drflac *fl;                   /* .. the decoder (opened at the first read_frames; info_done closes it) */
+    uint64_t at;                  /* .. its frame now */
 } info_t;
+#define FMT_FLAC 4
+static size_t fl_read(void *u, void *buf, size_t n) { return fread(buf, 1, n, ((info_t *)u)->f); }
+static drflac_bool32 fl_seek(void *u, int off, drflac_seek_origin o)
+{
+    const info_t *in = u;
+    return fseek(in->f, o == drflac_seek_origin_start ? in->data + off : off, o == drflac_seek_origin_start ? SEEK_SET : SEEK_CUR) == 0;
+}
+static void info_done(info_t *in)
+{
+    if (in->fl)
+        drflac_close(in->fl);
+    in->fl = NULL;
+}
 /* the file's header: where its samples are and what they are. 0 ok, else why */
 static const char *probe(FILE *f, info_t *in)
 {
@@ -296,6 +355,30 @@ static const char *probe(FILE *f, info_t *in)
     long size, at;
     memset(in, 0, sizeof *in);
     if (fseek(f, 0, SEEK_END) || (size = ftell(f)) < 12 || fseek(f, 0, SEEK_SET) || fread(h, 1, 12, f) != 12)
+        return "not a sound";
+    at = 0;
+    if (!memcmp(h, "ID3", 3) && h[3] < 5) {             /* (FLAC: an ID3v2 tag first, skipped) */
+        at = 10 + ((long)(h[6] & 0x7F) << 21 | (long)(h[7] & 0x7F) << 14 | (long)(h[8] & 0x7F) << 7 | (h[9] & 0x7F)) +
+             (h[5] & 0x10 ? 10 : 0);
+        if (at + 12 > size || fseek(f, at, SEEK_SET) || fread(h, 1, 12, f) != 12)
+            return "not a sound";
+    }
+    if (!memcmp(h, "fLaC", 4)) {                        /* (2026-11-26) FLAC: its STREAMINFO (the first block) */
+        uint8_t si[34];
+        uint64_t total;
+        if ((h[4] & 0x7F) != 0 || ((uint32_t)h[5] << 16 | (uint32_t)h[6] << 8 | h[7]) < 34 ||
+            fseek(f, at + 8, SEEK_SET) || fread(si, 1, 34, f) != 34)
+            return "not a FLAC";
+        in->rate = (uint32_t)si[10] << 12 | (uint32_t)si[11] << 4 | si[12] >> 4;
+        in->ch = (uint32_t)((si[12] >> 1) & 7) + 1;
+        in->bps = (uint32_t)(((si[12] & 1) << 4 | si[13] >> 4) + 1 + 7) / 8;   /* (its bytes, as a WAV's) */
+        total = (uint64_t)(si[13] & 0x0F) << 32 | (uint64_t)si[14] << 24 | (uint64_t)si[15] << 16 | (uint64_t)si[16] << 8 | si[17];
+        if (!in->rate || !total || total > 0x7FFFFFFF)
+            return "a FLAC of no known length";
+        in->fmt = FMT_FLAC, in->data = at, in->frames = (uint32_t)total, in->f = f;
+        return NULL;
+    }
+    if (at)
         return "not a sound";
     if (!memcmp(h, "RIFF", 4) && !memcmp(h + 8, "WAVE", 4)) {
         uint32_t fmt = 0, dlen = 0;
@@ -382,12 +465,45 @@ static int16_t sample_of(const uint8_t *p, const info_t *in)
     default: return (int16_t)((int32_t)le32(p) >> 16);
     }
 }
+/* (FLAC) frames [from, from + n) decoded: the decoder opened once, a seek only when not where it is */
+static int read_flac(info_t *in, uint32_t from, uint32_t n, int16_t *out)
+{
+    int16_t buf[2048];
+    uint32_t done = 0;
+    if (!in->fl) {
+        if (fseek(in->f, in->data, SEEK_SET) || !(in->fl = drflac_open(fl_read, fl_seek, in, NULL)))
+            return -1;
+        in->at = 0;
+        if (in->fl->channels != in->ch)
+            return -1;
+    }
+    if (in->at != from) {
+        if (!drflac_seek_to_pcm_frame(in->fl, from))
+            return -1;
+        in->at = from;
+    }
+    while (done < n) {
+        const uint32_t per = (uint32_t)(sizeof buf / sizeof buf[0]) / in->ch, k = n - done < per ? n - done : per;
+        const uint32_t got = (uint32_t)drflac_read_pcm_frames_s16(in->fl, k, buf);
+        uint32_t i;
+        for (i = 0; i < got; i++) {
+            out[2 * (done + i)] = buf[i * in->ch];
+            out[2 * (done + i) + 1] = in->ch > 1 ? buf[i * in->ch + 1] : buf[i * in->ch];
+        }
+        done += got, in->at += got;
+        if (got < k)
+            return -1;                                  /* (short: a broken stream) */
+    }
+    return 0;
+}
 /* frames [from, from + n) as stereo int16 into out (mono: L = R) */
-static int read_frames(FILE *f, const info_t *in, uint32_t from, uint32_t n, int16_t *out)
+static int read_frames(FILE *f, info_t *in, uint32_t from, uint32_t n, int16_t *out)
 {
     uint8_t buf[4096];
-    const uint32_t fb = in->bps * in->ch, per = (uint32_t)sizeof buf / fb;
+    const uint32_t fb = in->bps * in->ch, per = (uint32_t)sizeof buf / (fb ? fb : 1);
     uint32_t done = 0;
+    if (in->fmt == FMT_FLAC)
+        return read_flac(in, from, n, out);
     if (fseek(f, in->data + (long)from * fb, SEEK_SET))
         return -1;
     while (done < n) {
@@ -423,17 +539,19 @@ static int16_t *load_sound(const char *path, uint64_t max, uint32_t limit, uint3
     }
     if (limit && in.frames > limit)
         in.frames = limit;
-    if ((uint64_t)in.frames * 4u > max) {
+    if ((uint64_t)in.frames * 4u > max) {               /* (a FLAC too: its length from its header, nothing decoded) */
         fclose(f);
         *status = KIT_TOO_LONG;
         return NULL;
     }
     if (!(pcm = malloc((size_t)in.frames * 4u)) || read_frames(f, &in, 0, in.frames, pcm)) {
         free(pcm);
+        info_done(&in);
         fclose(f);
         *status = KIT_FAILED;
         return NULL;
     }
+    info_done(&in);
     fclose(f);
     *frames = in.frames, *rate = in.rate, *status = KIT_OK;
     return pcm;
@@ -483,6 +601,7 @@ static void thumb_of(const char *path, kit_row_t *r)
         for (c = 0; c < KIT_THUMB; c++)
             r->thumb[c] = (uint8_t)(raw[c] * 255 / top);
     }
+    info_done(&in);
     fclose(f);
 }
 
@@ -503,13 +622,8 @@ static void wake(kit_t *k)   /* (mu held) the file thread called for, once */
         tl_post(k->cfg.tl, &q);
     }
 }
-static void request(kit_t *k, const req_t *r0)
+static void queue_mu(kit_t *k, const req_t *r)   /* (mu held) */
 {
-    static req_t rq;                                    /* (the engine's thread only: 3 KB not on its stack) */
-    const req_t *r = &rq;
-    rq = *r0;
-    snprintf(rq.proj, sizeof rq.proj, "%s", k->proj);   /* (round C: the project's folder as it is now) */
-    pthread_mutex_lock(&k->mu);
     if (r->kind == RQ_PREVIEW || r->kind == RQ_ROWS || r->kind == RQ_SLICE || r->kind == RQ_PEAKS || r->kind == RQ_FIND) {   /* (a newer one replaces one not
                                                          * started) */
         int i;
@@ -522,6 +636,14 @@ static void request(kit_t *k, const req_t *r0)
     k->rq[(k->rqh + k->rqn) % NREQ] = *r;
     k->rqn++;
     wake(k);
+}
+static void request(kit_t *k, const req_t *r0)
+{
+    static req_t rq;                                    /* (the engine's thread only: 3 KB not on its stack) */
+    rq = *r0;
+    snprintf(rq.proj, sizeof rq.proj, "%s", k->proj);   /* (round C: the project's folder as it is now) */
+    pthread_mutex_lock(&k->mu);
+    queue_mu(k, &rq);
     pthread_mutex_unlock(&k->mu);
 }
 /* (3c, mu held) one holder of p fewer: 1 when its memory is to go (the caller frees it; a sound not shared: at once) */
@@ -584,16 +706,21 @@ static int id_rel(kit_t *k, uint32_t id, char *rel, size_t cap)
 }
 
 /* ================================================================ the file thread === */
+static int ls_rank(int dir);
 static int cmp_ls(const void *a, const void *b)
 {
     const struct { char name[256]; int dir; } *x = a, *y = b;
     if (x->dir != y->dir)
-        return y->dir - x->dir;                         /* (folders first) */
+        return ls_rank(x->dir) - ls_rank(y->dir);       /* (folders first; 2026-11-26: the dead rows last) */
     return strcasecmp(x->name, y->name);
 }
 /* ---- (2026-11-26) the places with folders: My Samples (k->samples) and the Move Library (k->core). A row's id: FNV-1a
  * of its path in the place ("core:" before it in the Move Library's) */
-static const char *pl_base(const kit_t *k, int pl) { return pl == KIT_PL_CORE ? k->core : pl == KIT_PL_SAMPLES ? k->samples : ""; }
+static int cx_ready(kit_t *k);
+static const char *pl_base(kit_t *k, int pl)            /* (the Move Library: its top once indexed, "" before) */
+{
+    return pl == KIT_PL_CORE ? (k->core[0] && cx_ready(k) ? k->cx_root : "") : pl == KIT_PL_SAMPLES ? k->samples : "";
+}
 static uint32_t pl_id(int pl, const char *sub)
 {
     char t[300];
@@ -639,7 +766,8 @@ static int push_str(char ***v, int *n, int *cap, const char *s)
     (*n)++;
     return 0;
 }
-static int sound_ok(const char *path)                   /* a sound this host reads (PCM WAV, AIFF, AIFF-C sowt / NONE) */
+static int sound_ok(const char *path)                   /* a sound this host reads (PCM WAV, AIFF, AIFF-C sowt / NONE,
+                                                         * FLAC) */
 {
     FILE *f = fopen(path, "rb");
     info_t in;
@@ -650,104 +778,294 @@ static int sound_ok(const char *path)                   /* a sound this host rea
     fclose(f);
     return ok;
 }
+/* ---- (2026-11-26) the Move Library's index: built once a launch on a thread of its own (kit_new), the browser's
+ * place "Reading..." until it is done (its rows asked again then). Paths in it are relative to k->core (the folder
+ * given); the place's top is cx_root (k->core/cx_pre): Samples/ when it has sounds, else the whole, filtered, and a
+ * lone wrapper folder skipped */
 #define CX_MAX 50000                                    /* the Move Library's sounds indexed at most */
-static void cx_walk(kit_t *k, const char *rel, int depth, int *capd, int *capf)
+#define CX_WALK (KIT_DEPTH + 3)                         /* (folders deep: the browser's 8 below a skipped wrapper) */
+enum { CX_NONE, CX_BUILDING, CX_READY };
+static int cx_ready(kit_t *k)
+{
+    int r;
+    pthread_mutex_lock(&k->mu);
+    r = k->cx_st == CX_READY;
+    pthread_mutex_unlock(&k->mu);
+    return r;
+}
+static void cx_wait(kit_t *k)                           /* (the file thread) the index done */
+{
+    pthread_mutex_lock(&k->mu);
+    while (k->cx_st == CX_BUILDING)
+        pthread_cond_wait(&k->cx_cv, &k->mu);
+    pthread_mutex_unlock(&k->mu);
+}
+static void cx_key(const kit_t *k, const char *rel, char *o, size_t cap)   /* a place's path as the index's */
+{
+    snprintf(o, cap, "%s%s%s", k->cx_pre, k->cx_pre[0] && rel[0] ? "/" : "", rel);
+}
+static void cx_count(kit_t *k, const char *name, int ok)   /* the totals by extension */
+{
+    char e[12];
+    const char *x = ext_of(name);
+    int i;
+    snprintf(e, sizeof e, "%s", x[0] && x != name + 1 ? x : "(none)");
+    for (i = 0; e[i]; i++)
+        e[i] = (char)tolower((unsigned char)e[i]);
+    for (i = 0; i < k->cx_nx && strcmp(k->cx_x[i].ext, e); i++)
+        ;
+    if (i == k->cx_nx) {
+        if (k->cx_nx == (int)(sizeof k->cx_x / sizeof k->cx_x[0]))
+            i = k->cx_nx - 1, snprintf(e, sizeof e, "(other)");
+        else
+            k->cx_nx++;
+        if (strcmp(k->cx_x[i].ext, e))
+            snprintf(k->cx_x[i].ext, sizeof k->cx_x[i].ext, "%s", e);
+    }
+    if (ok)
+        k->cx_x[i].ok++;
+    else
+        k->cx_x[i].skip++, k->cx_skipped++;
+}
+static void cx_up(char ***v, int *n, int *cap, const char *sub)   /* a file's folders, each one up to the top */
+{
+    char up[512], *sl;
+    snprintf(up, sizeof up, "%s", sub);
+    while ((sl = strrchr(up, '/'))) {
+        *sl = 0;
+        if (push_str(v, n, cap, up))
+            break;
+    }
+}
+static void cx_walk(kit_t *k, const char *rel, int depth, int cap[4])
 {
     char path[KIT_PATH];
     DIR *d;
     struct dirent *e;
     snprintf(path, sizeof path, "%s%s%s", k->core, rel[0] ? "/" : "", rel);
-    if (depth > KIT_DEPTH || !(d = opendir(path)))
+    if (depth > CX_WALK || !(d = opendir(path)))
         return;
-    while ((e = readdir(d)) && k->cx_nf < CX_MAX) {
-        char sub[256], p[KIT_PATH];
+    while ((e = readdir(d)) && k->cx_nf < CX_MAX && !__atomic_load_n(&k->cx_quit, __ATOMIC_RELAXED)) {
+        char sub[512], p[KIT_PATH];
         struct stat st;
         if (e->d_name[0] == '.')
             continue;
-        if (snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name) >= (int)sizeof sub)
-            continue;
+        if (snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name) >= 250)
+            continue;                                   /* (a row's path: 256 at most, "core:" and all) */
         snprintf(p, sizeof p, "%s/%s", k->core, sub);
         if (stat(p, &st))
             continue;
         if (S_ISDIR(st.st_mode))
-            cx_walk(k, sub, depth + 1, capd, capf);
-        else if (S_ISREG(st.st_mode) && sound_file(e->d_name) && sound_ok(p) && !push_str(&k->cx_f, &k->cx_nf, capf, sub)) {
-            char up[256], *sl;                          /* (its folders: each one up to the top) */
-            snprintf(up, sizeof up, "%s", sub);
-            while ((sl = strrchr(up, '/'))) {
-                *sl = 0;
-                if (push_str(&k->cx_d, &k->cx_nd, capd, up))
-                    break;
-            }
+            cx_walk(k, sub, depth + 1, cap);
+        else if (S_ISREG(st.st_mode)) {
+            const int ok = sound_file(e->d_name) && sound_ok(p);
+            cx_count(k, e->d_name, ok);
+            if (ok && !push_str(&k->cx_f, &k->cx_nf, &cap[1], sub))
+                cx_up(&k->cx_d, &k->cx_nd, &cap[0], sub);
+            else if (!ok && audio_file(e->d_name) && k->cx_nuf < CX_MAX && !push_str(&k->cx_uf, &k->cx_nuf, &cap[3], sub))
+                cx_up(&k->cx_ud, &k->cx_nud, &cap[2], sub);
         }
     }
     closedir(d);
 }
-static void cx_build(kit_t *k)                          /* (the file thread, once a launch) */
+static void cx_sort(char **v, int *n, int uniq)
 {
-    int capd = 0, capf = 0, i, j;
-    if (k->cx_ok || !k->core[0])
+    int i, j;
+    if (*n < 2)
         return;
-    k->cx_ok = 1;
-    cx_walk(k, "", 0, &capd, &capf);
-    if (k->cx_nf)
-        qsort(k->cx_f, (size_t)k->cx_nf, sizeof *k->cx_f, cmp_str);
-    if (k->cx_nd) {
-        qsort(k->cx_d, (size_t)k->cx_nd, sizeof *k->cx_d, cmp_str);
-        for (i = 1, j = 1; i < k->cx_nd; i++)         /* (each once) */
-            if (strcmp(k->cx_d[i], k->cx_d[j - 1]))
-                k->cx_d[j++] = k->cx_d[i];
-            else
-                free(k->cx_d[i]);
-        k->cx_nd = j;
-    }
-    fprintf(stderr, "kit: the Move Library %s: %d sounds in %d folders\n", k->core, k->cx_nf, k->cx_nd);
+    qsort(v, (size_t)*n, sizeof *v, cmp_str);
+    if (!uniq)
+        return;
+    for (i = 1, j = 1; i < *n; i++)                     /* (each once) */
+        if (strcmp(v[i], v[j - 1]))
+            v[j++] = v[i];
+        else
+            free(v[i]);
+    *n = j;
 }
-/* a place's folder's rows (dot files skipped; folders, then WAV / AIFF files, by name; the Move Library: only the
- * folders with sounds below them and the sounds this host reads) */
+/* the one child of pre (a folder with sounds, read or not, below it; no file of its own beside it), else NULL */
+static const char *cx_only_child(const kit_t *k, const char *pre)
+{
+    char *const *lists[4] = { k->cx_d, k->cx_ud, k->cx_f, k->cx_uf };
+    const int ns[4] = { k->cx_nd, k->cx_nud, k->cx_nf, k->cx_nuf };
+    const size_t pl = strlen(pre);
+    const char *one = NULL;
+    int l, i;
+    for (l = 0; l < 4; l++)
+        for (i = 0; i < ns[l]; i++) {
+            const char *s = lists[l][i], *rest;
+            if (pl && (strncmp(s, pre, pl) || s[pl] != '/'))
+                continue;
+            rest = s + (pl ? pl + 1 : 0);
+            if (strchr(rest, '/'))
+                continue;                               /* (deeper) */
+            if (l >= 2)
+                return NULL;                            /* (a file right there) */
+            if (one && strcmp(one, s))
+                return NULL;
+            one = s;
+        }
+    return one;
+}
+static void cx_build(kit_t *k)                          /* (the index's thread, once a launch) */
+{
+    int cap[4] = { 0, 0, 0, 0 }, i, n;
+    char pre[512] = "", sum[600];
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    cx_walk(k, "", 0, cap);
+    cx_sort(k->cx_f, &k->cx_nf, 0), cx_sort(k->cx_uf, &k->cx_nuf, 0);
+    cx_sort(k->cx_d, &k->cx_nd, 1), cx_sort(k->cx_ud, &k->cx_nud, 1);
+    if (in_set(k->cx_d, k->cx_nd, "Samples") || (!k->cx_nf && in_set(k->cx_ud, k->cx_nud, "Samples")))
+        snprintf(pre, sizeof pre, "Samples");          /* (its Samples/ when the sounds are there; else the whole) */
+    for (i = 0; i < 3; i++) {                           /* (a lone wrapper folder: where the categories start) */
+        const char *c = cx_only_child(k, pre);
+        if (!c)
+            break;
+        snprintf(pre, sizeof pre, "%s", c);
+    }
+    for (i = 0, n = 0, sum[0] = 0; i < k->cx_nx; i++)  /* (the log: the totals by extension) */
+        if (k->cx_x[i].ok)
+            n += snprintf(sum + n, sizeof sum - (size_t)n, "%s%d .%s", n ? ", " : "", k->cx_x[i].ok, k->cx_x[i].ext);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    fprintf(stderr, "kit: core library %s (root: %s): %d sounds in %d folders (%s); skipped %d:", k->core,
+            pre[0] ? pre : ".", k->cx_nf, k->cx_nd, n ? sum : "none read", k->cx_skipped);
+    for (i = 0; i < k->cx_nx; i++)
+        if (k->cx_x[i].skip)
+            fprintf(stderr, " %d .%s", k->cx_x[i].skip, k->cx_x[i].ext);
+    fprintf(stderr, "; %.1f s\n", (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9);
+    pthread_mutex_lock(&k->mu);
+    snprintf(k->cx_pre, sizeof k->cx_pre, "%s", pre);
+    snprintf(k->cx_root, sizeof k->cx_root, "%s%s%s", k->core, pre[0] ? "/" : "", pre);
+    k->cx_st = CX_READY;
+    pthread_cond_broadcast(&k->cx_cv);
+    if (k->cx_wq) {                                     /* (the place shown "Reading...": its rows again) */
+        req_t r;
+        memset(&r, 0, sizeof r);
+        r.kind = RQ_ROWS, r.place = KIT_PL_CORE, r.id = k->cx_wf, r.from = k->cx_wfrom, r.n = k->cx_wn;
+        k->cx_wq = 0;
+        queue_mu(k, &r);
+    }
+    pthread_mutex_unlock(&k->mu);
+}
+static void *cx_thread(void *arg)
+{
+    cx_build(arg);
+    return NULL;
+}
+int kit_corelib_json(kit_t *k, char *o, int cap)
+{
+    int n, i, st;
+    char root[KIT_PATH];
+    if (!k || !k->core[0])
+        return snprintf(o, (size_t)cap, "null");
+    pthread_mutex_lock(&k->mu);
+    st = k->cx_st;
+    pthread_mutex_unlock(&k->mu);
+    if (st != CX_READY)
+        return snprintf(o, (size_t)cap, "{\"cl_state\":\"reading\"}");
+    snprintf(root, sizeof root, "%s", k->cx_root);
+    for (i = 0; root[i]; i++)
+        if (root[i] == '"' || root[i] == '\\' || (unsigned char)root[i] < 32)
+            root[i] = '_';
+    n = snprintf(o, (size_t)cap, "{\"cl_state\":\"ready\",\"cl_root\":\"%s\",\"cl_sounds\":%d,\"cl_folders\":%d,"
+                 "\"cl_skipped\":%d,\"cl_unsupported\":%d,\"cl_read\":{", root, k->cx_nf, k->cx_nd, k->cx_skipped, k->cx_nuf);
+    for (i = 0, st = 0; i < k->cx_nx && n < cap; i++)
+        if (k->cx_x[i].ok)
+            n += snprintf(o + n, (size_t)(cap - n), "%s\"%s\":%d", st++ ? "," : "", k->cx_x[i].ext, k->cx_x[i].ok);
+    if (n < cap)
+        n += snprintf(o + n, (size_t)(cap - n), "},\"cl_skip\":{");
+    for (i = 0, st = 0; i < k->cx_nx && n < cap; i++)
+        if (k->cx_x[i].skip)
+            n += snprintf(o + n, (size_t)(cap - n), "%s\"%s\":%d", st++ ? "," : "", k->cx_x[i].ext, k->cx_x[i].skip);
+    if (n < cap)
+        n += snprintf(o + n, (size_t)(cap - n), "}}");
+    return n < cap ? n : cap - 1;
+}
+/* a place's folder's rows (dot files skipped; folders, then the sounds, by name; the Move Library: only the folders
+ * with sounds below them and the sounds this host reads, then a row a kind of sound not read there, "3 .ogg
+ * (unsupported)"; its top with nothing at all: "No sounds found") */
+static int ls_rank(int dir) { return dir == 1 ? 0 : dir == 0 ? 1 : 2; }
 static int list_folder(kit_t *k, int pl, uint32_t folder)
 {
     char rel[256] = "", path[KIT_PATH];
     const char *base = pl_base(k, pl);
     DIR *d;
     struct dirent *e;
-    int cap = 0;
+    int cap = 0, i;
+    struct { char ext[12]; int n; } un[8];
+    int nun = 0;
     if (k->ls_ok && k->ls_folder == folder && k->ls_pl == pl)
         return 0;
     k->ls_ok = 0, k->ls_n = 0;
     if (!base[0] || (folder && !pl_rel(k, pl, folder, rel, sizeof rel)))
         return -1;
-    if (pl == KIT_PL_CORE)
-        cx_build(k);
     snprintf(path, sizeof path, "%s%s%s", base, rel[0] ? "/" : "", rel);
     if (!(d = opendir(path)))
         return -1;
     while ((e = readdir(d))) {
         char p[KIT_PATH];
         struct stat st;
+        int dir;
         if (e->d_name[0] == '.')
             continue;
         snprintf(p, sizeof p, "%s/%s", path, e->d_name);
         if (stat(p, &st))
             continue;
-        if (!S_ISDIR(st.st_mode) && !(S_ISREG(st.st_mode) && sound_file(e->d_name)))
+        dir = S_ISDIR(st.st_mode);
+        if (!dir && !(S_ISREG(st.st_mode) && (sound_file(e->d_name) || (pl == KIT_PL_CORE && audio_file(e->d_name)))))
             continue;
         if (pl == KIT_PL_CORE) {                        /* (the index's) */
-            char sub[256];
-            snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
-            if (!in_set(S_ISDIR(st.st_mode) ? k->cx_d : k->cx_f, S_ISDIR(st.st_mode) ? k->cx_nd : k->cx_nf, sub))
+            char key[600];
+            snprintf(key, sizeof key, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
+            {
+                char t[600];
+                cx_key(k, key, t, sizeof t);
+                snprintf(key, sizeof key, "%s", t);
+            }
+            if (dir ? !in_set(k->cx_d, k->cx_nd, key) && !in_set(k->cx_ud, k->cx_nud, key) : !in_set(k->cx_f, k->cx_nf, key)) {
+                if (!dir && in_set(k->cx_uf, k->cx_nuf, key)) {   /* (a sound not read here: counted) */
+                    char x[12];
+                    const char *ex = ext_of(e->d_name);
+                    int j;
+                    snprintf(x, sizeof x, "%s", ex);
+                    for (j = 0; x[j]; j++)
+                        x[j] = (char)tolower((unsigned char)x[j]);
+                    for (j = 0; j < nun && strcmp(un[j].ext, x); j++)
+                        ;
+                    if (j == nun && nun < 8)
+                        snprintf(un[nun].ext, sizeof un[0].ext, "%s", x), un[nun++].n = 0;
+                    if (j < nun)
+                        un[j].n++;
+                }
                 continue;
+            }
         }
-        if (k->ls_n == cap) {
+        if (k->ls_n + 9 >= cap) {                       /* (room for the unsupported rows too) */
             void *n = realloc(k->ls, sizeof *k->ls * (size_t)(cap = cap ? cap * 2 : 64));
             if (!n)
                 break;
             k->ls = n;
         }
         snprintf(k->ls[k->ls_n].name, sizeof k->ls[0].name, "%s", e->d_name);
-        k->ls[k->ls_n++].dir = S_ISDIR(st.st_mode);
+        k->ls[k->ls_n++].dir = dir;
     }
     closedir(d);
+    if (pl == KIT_PL_CORE && (nun || (!folder && !k->ls_n))) {
+        if (k->ls_n + 9 >= cap) {
+            void *n = realloc(k->ls, sizeof *k->ls * (size_t)(cap = k->ls_n + 16));
+            if (n)
+                k->ls = n;
+            else
+                nun = 0, cap = 0;
+        }
+        for (i = 0; i < nun && cap; i++) {
+            snprintf(k->ls[k->ls_n].name, sizeof k->ls[0].name, "%d .%s (unsupported)", un[i].n, un[i].ext);
+            k->ls[k->ls_n++].dir = 2;
+        }
+        if (!folder && !k->ls_n && cap)
+            snprintf(k->ls[k->ls_n].name, sizeof k->ls[0].name, "No sounds found"), k->ls[k->ls_n++].dir = 2;
+    }
     qsort(k->ls, (size_t)k->ls_n, sizeof *k->ls, cmp_ls);
     k->ls_ok = 1, k->ls_folder = folder, k->ls_pl = pl;
     return 0;
@@ -838,6 +1156,14 @@ static void do_rows(kit_t *k, const req_t *r)
             memcpy(o->thumb, t[i].thumb, KIT_THUMB);
         }
         a.a.n = n;
+    } else if (r->place == KIT_PL_CORE && k->core[0] && !cx_ready(k)) {   /* (2026-11-26) the index not done yet:
+                                                         * "Reading...", the rows again when it is */
+        pthread_mutex_lock(&k->mu);
+        k->cx_wq = 1, k->cx_wf = r->id, k->cx_wfrom = r->from, k->cx_wn = r->n;
+        pthread_mutex_unlock(&k->mu);
+        a.a.total = 1, a.a.n = r->from == 0 && r->n > 0;
+        a.a.rows[0].kind = KIT_ROW_NOTE;
+        snprintf(a.a.rows[0].name, sizeof a.a.rows[0].name, "Reading...");
     } else if ((r->place == KIT_PL_SAMPLES || r->place == KIT_PL_CORE) && !list_folder(k, r->place, r->id)) {
         char rel[256] = "";
         if (r->id)
@@ -847,6 +1173,11 @@ static void do_rows(kit_t *k, const req_t *r)
             kit_row_t *o = &a.a.rows[i];
             char sub[256], path[KIT_PATH];
             snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", k->ls[r->from + i].name);
+            if (k->ls[r->from + i].dir == 2) {          /* (2026-11-26) a dead row: its text, no id */
+                o->kind = KIT_ROW_NOTE;
+                snprintf(o->name, sizeof o->name, "%s", k->ls[r->from + i].name);
+                continue;
+            }
             o->id = pl_keep(k, r->place, sub), o->kind = k->ls[r->from + i].dir ? KIT_ROW_DIR : KIT_ROW_FILE;
             if (o->kind == KIT_ROW_DIR)
                 snprintf(o->name, sizeof o->name, "%s", k->ls[r->from + i].name);
@@ -1214,6 +1545,8 @@ static void do_find(kit_t *k, const req_t *r0)
     int pi;
     memset(&a, 0, sizeof a);
     a.a.kind = KIT_A_FOUND, a.a.pad = r->pad;
+    if (k->core[0] && !strncmp(r->path, k->core, strlen(k->core)))
+        cx_wait(k);                                     /* (2026-11-26: a Move Library sound: its index first) */
     /* (2026-11-26) no Takes place: a take is a file in My Samples (RemoteFM1/<day>/), found there as any other */
     (void)t;
     for (pi = 0; pi < 2 && !a.a.place; pi++) {
@@ -1603,6 +1936,8 @@ static void do_folder(kit_t *k, const req_t *r)
     DIR *d = NULL;
     struct dirent *e;
     int n = 0, cap = 0, i;
+    if (r->place == KIT_PL_CORE)
+        cx_wait(k);                                     /* (2026-11-26: the index first) */
     if ((r->place == KIT_PL_SAMPLES || r->place == KIT_PL_CORE) && pl_base(k, r->place)[0] &&
         (!r->id || pl_rel(k, r->place, r->id, rel, sizeof rel))) {
         snprintf(dir, sizeof dir, "%s%s%s", pl_base(k, r->place), rel[0] ? "/" : "", rel);
@@ -1617,10 +1952,10 @@ static void do_folder(kit_t *k, const req_t *r)
         if (stat(p, &st) || !S_ISREG(st.st_mode))
             continue;
         if (r->place == KIT_PL_CORE) {                  /* (the Move Library: the sounds this host reads) */
-            char sub[256];
+            char sub[600], key[600];
             snprintf(sub, sizeof sub, "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
-            cx_build(k);
-            if (!in_set(k->cx_f, k->cx_nf, sub))
+            cx_key(k, sub, key, sizeof key);
+            if (!in_set(k->cx_f, k->cx_nf, key))
                 continue;
         }
         if (n == cap) {
@@ -2041,14 +2376,13 @@ kit_t *kit_new(const kit_cfg_t *cfg)
         k->cfg.max_bytes = KIT_MAX_BYTES;
     snprintf(k->samples, sizeof k->samples, "%s", cfg->samples_dir ? cfg->samples_dir : "");
     snprintf(k->kits, sizeof k->kits, "%s", cfg->kits_dir ? cfg->kits_dir : "");
-    if (cfg->core_dir && cfg->core_dir[0]) {            /* (2026-11-26) the Move Library: its Samples/ when there */
+    if (cfg->core_dir && cfg->core_dir[0]) {            /* (2026-11-26) the Move Library: the folder, indexed (cx_build:
+                                                         * its top Samples/ when the sounds are there) */
         struct stat st;
-        char sm[KIT_PATH];
-        snprintf(sm, sizeof sm, "%s/Samples", cfg->core_dir);
-        if (!stat(sm, &st) && S_ISDIR(st.st_mode))
-            snprintf(k->core, sizeof k->core, "%s", sm);
-        else if (!stat(cfg->core_dir, &st) && S_ISDIR(st.st_mode))
+        if (!stat(cfg->core_dir, &st) && S_ISDIR(st.st_mode))
             snprintf(k->core, sizeof k->core, "%s", cfg->core_dir);
+        while (strlen(k->core) > 1 && k->core[strlen(k->core) - 1] == '/')
+            k->core[strlen(k->core) - 1] = 0;
     }
     if (k->kits[0])                                     /* (3c) the new files: Kits/Edits */
         snprintf(k->edits, sizeof k->edits, "%s/Edits", k->kits);
@@ -2065,12 +2399,18 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     k->bus_c = 100;
     pthread_mutex_init(&k->mu, NULL);
     pthread_cond_init(&k->cv, NULL);
+    pthread_cond_init(&k->cx_cv, NULL);
+    if (k->core[0]) {                                   /* (2026-11-26) the Move Library's index, on its own thread */
+        k->cx_st = CX_BUILDING;
+        if (!pthread_create(&k->cx_th, NULL, cx_thread, k))
+            k->cx_th_on = 1;
+        else
+            cx_build(k);                                /* (no thread: here) */
+    }
     if (!cfg->tl && cfg->own_thread) {
         if (pthread_create(&k->th, NULL, own_thread, k)) {
-            pthread_cond_destroy(&k->cv);
-            pthread_mutex_destroy(&k->mu);
-            free(k->an);
-            free(k);
+            k->th_on = 0;
+            kit_free(k);
             return NULL;
         }
         k->th_on = 1;
@@ -2093,11 +2433,19 @@ void kit_free(kit_t *k)
         if (unref(k, k->snd[p].pcm))
             free(k->snd[p].pcm);
     free(k->prev.pcm);
+    if (k->cx_th_on) {
+        __atomic_store_n(&k->cx_quit, 1, __ATOMIC_RELAXED);
+        pthread_join(k->cx_th, NULL);
+    }
     for (p = 0; p < k->cx_nd; p++)
         free(k->cx_d[p]);
     for (p = 0; p < k->cx_nf; p++)
         free(k->cx_f[p]);
-    free(k->cx_d), free(k->cx_f);
+    for (p = 0; p < k->cx_nud; p++)
+        free(k->cx_ud[p]);
+    for (p = 0; p < k->cx_nuf; p++)
+        free(k->cx_uf[p]);
+    free(k->cx_d), free(k->cx_f), free(k->cx_ud), free(k->cx_uf);
     while (k->ann) {
         if (unref(k, k->an[k->anh].pcm))
             free(k->an[k->anh].pcm);
@@ -2109,6 +2457,7 @@ void kit_free(kit_t *k)
     free(k->ls);
     free(k->an);
     pthread_cond_destroy(&k->cv);
+    pthread_cond_destroy(&k->cx_cv);
     pthread_mutex_destroy(&k->mu);
     free(k);
 }

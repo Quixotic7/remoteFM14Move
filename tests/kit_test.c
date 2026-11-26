@@ -1006,6 +1006,162 @@ static void t_ghost(void)
     kit_free(k);
     printf("  ok    a ghost trigger: Level -6 dB halves the sounding voice, -inf silences it, Start ignored, the next hit its own\n");
 }
+/* (2026-11-26) FLAC (tests/flac/, made by `flac` from ramp WAVs): loaded sample for sample (16-bit stereo, 24-bit mono
+ * without a seektable), a row's picture, too long refused; the Move Library's index: nested categories, its root
+ * (Samples/ without sounds: the whole; a lone wrapper skipped), "Reading..." until done, the unsupported rows, the
+ * status */
+static void cp_file(const char *from, const char *to)
+{
+    FILE *a = fopen(from, "rb"), *b = fopen(to, "wb");
+    char buf[4096];
+    size_t n;
+    while (a && b && (n = fread(buf, 1, sizeof buf, a)) > 0)
+        fwrite(buf, 1, n, b);
+    if (a)
+        fclose(a);
+    if (b)
+        fclose(b);
+}
+static void touch(const char *p) { FILE *f = fopen(p, "w"); if (f) fputs("x", f), fclose(f); }
+static int core_rows(kit_t *k, uint32_t folder, kit_ans_t *a, int *reading)   /* the rows, past "Reading..." */
+{
+    int i;
+    kit_rows(k, KIT_PL_CORE, folder, 0, 8);
+    for (i = 0; i < 400; i++) {
+        kit_work(k);
+        if (kit_poll(k, a) && a->kind == KIT_A_ROWS) {
+            if (!(a->n == 1 && a->rows[0].kind == KIT_ROW_NOTE && !strcmp(a->rows[0].name, "Reading...")))
+                return 1;
+            ++*reading;                                 /* (asked again by the index when done: not by us) */
+        }
+        usleep(5000);
+    }
+    return 0;
+}
+static int row_named(const kit_ans_t *a, const char *name, int kind)
+{
+    int i;
+    for (i = 0; i < a->n; i++)
+        if (!strcmp(a->rows[i].name, name) && a->rows[i].kind == kind)
+            return i;
+    return -1;
+}
+static void t_flac(void)
+{
+    char p[700], d[600];
+    kit_ans_t a;
+    kit_t *k = mk(0);
+    int ok, i, rd = 0;
+    CHECK(load(k, 0, "tests/flac/ramp-s16.flac", &a) == KIT_OK && a.frames == 1000 && a.rate == 48000 &&
+          !strcmp(a.name, "ramp-s16") && a.npk == KIT_PEAKS);
+    CHECK(load(k, 1, "tests/flac/ramp-m24.flac", &a) == KIT_OK && a.frames == 500 && a.rate == 48000);
+    kit_set(k, 0, KIT_P_MODE, KIT_M_ONESHOT), kit_set(k, 1, KIT_P_MODE, KIT_M_ONESHOT);
+    kit_note(k, 0, 0, 127, 0), run(k, 400);
+    for (i = 0, ok = 1; i < 300; i++)                   /* (lossless: every frame as written) */
+        ok &= fabsf(B[2 * i] - ramp((uint32_t)i)) < 1.0f && fabsf(B[2 * i + 1] + ramp((uint32_t)i)) < 1.0f;
+    CHECK(ok);
+    run(k, 2000);
+    kit_note(k, 1, 0, 127, 0), run(k, 400);
+    for (i = 0, ok = 1; i < 300; i++)
+        ok &= fabsf(B[2 * i] - ramp((uint32_t)i)) < 1.0f && fabsf(B[2 * i + 1] - ramp((uint32_t)i)) < 1.0f;
+    CHECK(ok);
+    kit_free(k);
+    k = mk(999 * 4);                                    /* (1000 frames past it: Too Long, from the header) */
+    CHECK(load(k, 0, "tests/flac/ramp-s16.flac", &a) == KIT_TOO_LONG && !kit_frames(k, 0));
+    kit_free(k);
+    /* My Samples: a FLAC listed, its picture */
+    snprintf(d, sizeof d, "%s/FlacSamples", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/Ramp.flac", d), cp_file("tests/flac/ramp-s16.flac", p);
+    {
+        kit_cfg_t c;
+        int any = 0;
+        memset(&c, 0, sizeof c);
+        c.samples_dir = d;
+        k = kit_new(&c);
+        kit_rows(k, KIT_PL_SAMPLES, 0, 0, 8);
+        kit_work(k);
+        CHECK(kit_poll(k, &a) && a.total == 1 && a.rows[0].kind == KIT_ROW_FILE && !strcmp(a.rows[0].name, "Ramp") &&
+              a.rows[0].frames == 1000);
+        for (i = 0; i < KIT_THUMB; i++)
+            any |= a.rows[0].thumb[i];
+        CHECK(any);
+        kit_free(k);
+    }
+    /* the Move Library: Samples/ has an .ogg only, the sounds in Packs/<category>/<kind>/ */
+    snprintf(d, sizeof d, "%s/Core", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/Samples", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Samples/Pad.ogg", d), touch(p);
+    snprintf(p, sizeof p, "%s/Presets", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Presets/Kit.ablpreset", d), touch(p);
+    snprintf(p, sizeof p, "%s/Packs", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Packs/Keys", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Packs/Keys/Bells", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Packs/Keys/Bells/Glass.flac", d), cp_file("tests/flac/ramp-s16.flac", p);
+    snprintf(p, sizeof p, "%s/Packs/Keys/Bells/Tin.mp3", d), touch(p);
+    snprintf(p, sizeof p, "%s/Packs/Drums", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Packs/Drums/Kicks", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Packs/Drums/Kicks/Deep.wav", d), wav(p, 800, 2, 16, 0, 48000);
+    {
+        kit_cfg_t c;
+        char js[1024];
+        uint32_t keys, bells, samples;
+        memset(&c, 0, sizeof c);
+        c.core_dir = d;
+        k = kit_new(&c);
+        CHECK(kit_has_core(k));
+        CHECK(core_rows(k, 0, &a, &rd) && a.total == 2 && row_named(&a, "Packs", KIT_ROW_DIR) == 0 &&
+              row_named(&a, "Samples", KIT_ROW_DIR) == 1);   /* (Samples/ has no sound read: the whole, Presets hidden) */
+        samples = a.rows[1].id;
+        CHECK(core_rows(k, a.rows[0].id, &a, &rd) && a.total == 2 && row_named(&a, "Drums", KIT_ROW_DIR) == 0 &&
+              row_named(&a, "Keys", KIT_ROW_DIR) == 1);
+        keys = a.rows[1].id;
+        CHECK(core_rows(k, keys, &a, &rd) && a.total == 1 && row_named(&a, "Bells", KIT_ROW_DIR) == 0);
+        bells = a.rows[0].id;
+        CHECK(core_rows(k, bells, &a, &rd) && a.total == 2 && row_named(&a, "Glass", KIT_ROW_FILE) == 0 &&
+              row_named(&a, "1 .mp3 (unsupported)", KIT_ROW_NOTE) == 1 && !a.rows[1].id && a.rows[0].frames == 1000);
+        kit_load_row(k, 2, KIT_PL_CORE, a.rows[0].id);
+        kit_work(k);
+        CHECK(kit_poll(k, &a) && a.kind == KIT_A_LOADED && a.status == KIT_OK && a.frames == 1000 &&
+              strstr(a.path, "/Packs/Keys/Bells/Glass.flac"));
+        CHECK(core_rows(k, samples, &a, &rd) && a.total == 1 && row_named(&a, "1 .ogg (unsupported)", KIT_ROW_NOTE) == 0);
+        kit_corelib_json(k, js, sizeof js);
+        CHECK(strstr(js, "\"cl_state\":\"ready\"") && strstr(js, "\"cl_sounds\":2") && strstr(js, "\"cl_unsupported\":2") &&
+              strstr(js, "\"flac\":1") && strstr(js, "\"wav\":1") && strstr(js, "\"ablpreset\":1") &&
+              strstr(js, "\"ogg\":1") && strstr(js, "\"cl_skipped\":3"));
+        if (!strstr(js, "\"cl_sounds\":2"))
+            fprintf(stderr, "corelib: %s\n", js);
+        kit_free(k);
+    }
+    /* a lone wrapper folder (Library/) skipped: the categories at the top; nothing at all: "No sounds found" */
+    snprintf(d, sizeof d, "%s/Core2", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/Library", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Library/Keys", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Library/Keys/Bells", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Library/Keys/Bells/Glass.flac", d), cp_file("tests/flac/ramp-m24.flac", p);
+    snprintf(p, sizeof p, "%s/Library/Drums", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Library/Drums/Hit.aif", d), aiff(p, 300, 1, 0, 48000);
+    {
+        kit_cfg_t c;
+        memset(&c, 0, sizeof c);
+        c.core_dir = d;
+        k = kit_new(&c);
+        CHECK(core_rows(k, 0, &a, &rd) && a.total == 2 && row_named(&a, "Drums", KIT_ROW_DIR) == 0 &&
+              row_named(&a, "Keys", KIT_ROW_DIR) == 1);
+        kit_free(k);
+    }
+    snprintf(d, sizeof d, "%s/Core3", DIRP), mkdir(d, 0755);
+    snprintf(p, sizeof p, "%s/notes.txt", d), touch(p);
+    {
+        kit_cfg_t c;
+        memset(&c, 0, sizeof c);
+        c.core_dir = d;
+        k = kit_new(&c);
+        CHECK(core_rows(k, 0, &a, &rd) && a.total == 1 && row_named(&a, "No sounds found", KIT_ROW_NOTE) == 0);
+        kit_free(k);
+    }
+    printf("  ok    FLAC: 16-bit stereo and 24-bit mono sample for sample, a row's picture, Too Long; the Move Library's "
+           "categories nested, its root, the unsupported rows, the status (\"Reading...\" first %d times)\n", rd);
+}
 int main(void)
 {
     const char *d = getenv("KIT_TEST_DIR");
@@ -1025,6 +1181,7 @@ int main(void)
     t_rounda();
     t_master_plock();
     t_ghost();
+    t_flac();
     printf("kit_test: %d checks, %d failed\n", checks, fails);
     if (fails)
         return 1;

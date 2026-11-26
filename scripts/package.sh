@@ -22,6 +22,7 @@ cp module/module.json module/help.json module/standalone build/move/remotefm1-ho
     THIRD_PARTY_LICENSES.md "$P/"
 cp /usr/share/doc/wabt/copyright "$P/licenses/wabt-wasm2c-runtime.txt"
 cp /usr/share/common-licenses/Apache-2.0 "$P/licenses/Apache-2.0.txt"
+sed -n '/^This software is available as a choice of the following licenses/,$p' third_party/dr_flac/dr_flac.h > "$P/licenses/dr_flac.txt"
 chmod 755 "$P/standalone" "$P/remotefm1-host" "$P/remotefm1-heal"
 cp -R build/site "$P/site"
 {

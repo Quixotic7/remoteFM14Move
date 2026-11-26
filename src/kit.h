@@ -90,7 +90,8 @@ enum { KIT_LK_PITCH, KIT_LK_START, KIT_LK_CUTOFF, KIT_LK_RESO, KIT_LK_LEVEL, KIT
 enum { KIT_M_ONESHOT, KIT_M_MOMENTARY, KIT_M_LOOP, KIT_M_PITCHENV, KIT_M_LOFI, KIT_M_GRANULAR, KIT_M_N };
 /* Files' places (as rfm1cs's RFM_MOVE_KIT_PL_*), a row's kind, a load's status (as RFM_MOVE_KIT_ROW_*, RFM_MOVE_KIT_*) */
 enum { KIT_PL_TAKES = 1, KIT_PL_SAMPLES = 2, KIT_PL_KITS = 3, KIT_PL_CORE = 4 };   /* (CORE 2026-11-26: Move Library) */
-enum { KIT_ROW_DIR = 1, KIT_ROW_FILE = 2, KIT_ROW_KIT = 3 };
+enum { KIT_ROW_DIR = 1, KIT_ROW_FILE = 2, KIT_ROW_KIT = 3,
+       KIT_ROW_NOTE = 4 };      /* (2026-11-26) a dead row: "Reading...", "3 .ogg (unsupported)" (no id) */
 enum { KIT_OK = 0, KIT_TOO_LONG = 1, KIT_FAILED = 2, KIT_MISSING = 3, KIT_EMPTY = 5 };   /* (EMPTY: All To Pads past the
                                                                                       * folder's sounds) */
 
@@ -246,6 +247,9 @@ uint32_t kit_frames(const kit_t *k, int pad);   /* a pad's sound's frames (0 non
 double kit_rate_of(const kit_t *k, int pad, int semis);   /* (3b) a voice's source frames an output frame */
 int kit_previewing(const kit_t *k);       /* a slice voice sounds */
 int kit_has_core(const kit_t *k);         /* (2026-11-26) the Move Library is there (the browser's second place) */
+/* (2026-11-26, status) the Move Library's index as JSON: null (none), {"cl_state":"reading"}, or its top, its sounds,
+ * folders, the files skipped and the sounds among them not read here, the totals by extension (read, skipped) */
+int kit_corelib_json(kit_t *k, char *o, int cap);
 uint32_t kit_sounding(const kit_t *k);    /* (3c) the pads a voice sounds for (bits) */
 
 /* ---- (round C) the project's own sounds (README "The kit (round C)") */

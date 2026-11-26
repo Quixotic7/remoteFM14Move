@@ -5589,6 +5589,10 @@ static void housekeeping(uint32_t now)
                           t->pad[t->cur].st, g_kit_t_mix, g_kit_t_saved, g_kit_t_saved_name, g_kit_t_kits, g_kit_t_to, kn,
                           t->pad[t->cur].v[RFM_MOVE_KIT_P_STRETCH], kit_rate_of(g_kit, t->cur, 0),
                           rfm_move_kit_mix(&S->core, RFM_MOVE_KIT_MIX_LEVEL));
+            if (n + 16 < (int)sizeof tmp) {   /* (2026-11-26) the Move Library's index: its top, its totals */
+                n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"kit_corelib\":");
+                n += kit_corelib_json(g_kit, tmp + n, (int)sizeof tmp - n);
+            }
             {   /* (stage 3c) the chosen pad's file and sound, the slicing, the merges and edits asked */
                 char kp[160];
                 const char *pp = kit_pad_path(g_kit, t->cur), *b = strrchr(pp, '/');

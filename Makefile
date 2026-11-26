@@ -178,7 +178,7 @@ RF := third_party/RemoteFM1
 RF_SRC := $(addprefix $(RF)/host/src/,codec.c screen.c panel.c session.c audio.c)
 RF_SIM_SRC := $(addprefix $(RF)/host/src/,fake.c tiles_ref.c) src/fm1sim.c
 RF_INC := -I$(RF)/host/include -I$(RF)/proto -I$(RF)/firmware/src
-HOST_HDR := $(wildcard src/*.h) build/gen/web_page.h build/gen/bridge_page.h build/gen/buildinfo.h
+HOST_HDR := $(wildcard src/*.h) third_party/dr_flac/dr_flac.h build/gen/web_page.h build/gen/bridge_page.h build/gen/buildinfo.h
 
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix in-tkdemo
 in-all: in-tools in-fw in-testfw in-cpu2fix in-tkdemo in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
