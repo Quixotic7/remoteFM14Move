@@ -195,7 +195,7 @@ HOST_HDR := $(wildcard src/*.h) third_party/dr_flac/dr_flac.h build/gen/web_page
 .PHONY: in-all in-host in-fw in-testfw in-tools in-ref in-package in-fxmods in-wifisim in-cpu2fix in-tkdemo
 in-all: in-tools in-fw in-testfw in-cpu2fix in-tkdemo in-ref in-host in-fxmods $(if $(wildcard build/wifisim-src/app-wifi),in-wifisim)
 in-tools: build/tools/rfm1info build/tools/fwrun build/tools/unit build/tools/wsprobe build/tools/listenprobe build/tools/ainchk build/tools/fake-tts \
-          build/tools/rtpmidi-peer
+          build/tools/rtpmidi-peer build/tools/tksync
 in-fw: $(FW_OUT)
 in-testfw: $(FW_TEST_OUT) $(FW_DEV_OUT)
 # the core-1 test firmware (tests/cpu2fix: its .rfm1 kept in git, made on the Mac by its build.sh), for tests/threads_e2e.sh
@@ -209,6 +209,10 @@ build/tkdemo/tkdemo-1.0.rfm1m: tests/tkdemo/tkdemo-1.0.rfm1 tools/build_fw.sh to
 	tools/build_fw.sh $< build/tkdemo build/w2c >/dev/null
 in-ref: build/ref/rfm1_run
 in-host: build/move/remotefm1-host build/move/remotefm1-heal build/sim/remotefm1-host
+
+build/tools/tksync: tests/tksync.c
+	mkdir -p build/tools
+	$(CC) $(CFLAGS) $(WARN) -o $@ tests/tksync.c -lm
 
 build/tools/ainchk: tests/ainchk.c src/wav.c src/wav.h
 	mkdir -p build/tools

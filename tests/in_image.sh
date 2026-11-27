@@ -8,7 +8,7 @@
 # latch per slot (tests/latch_e2e.sh), the slots' render threads and core 1 (tests/threads_e2e.sh; FIZZ's and
 # ChoralRoot's cpu2 builds when among the inputs: tests/cpu2fw_e2e.sh), readouts (an rd1 ChoralRoot among
 # them: tests/rd1_e2e.sh), session view (tests/sess_e2e.sh), projects that hold their firmwares and the States
-# (tests/projfw_e2e.sh), the States and projects holding the firmware's working memory, played (tests/states_e2e.sh), the page's States and projects through their API, played the same way (tests/store_e2e.sh), a project or a state opened while the Move is stopped silent and stopped (tests/loadstop_e2e.sh), a new random project (tests/projnew_e2e.sh), the takeover (tk1, tests/tkdemo: tests/tk_e2e.sh; ChoralRoot's CHORDS when a tk1 build of it is among them: tests/cr_tk_e2e.sh), engine parameters (ep1: an ep1 build of ChoralRoot among them, the ENGINE knob page: tests/ep1_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh; RemoteFM1's Speech mode: tests/speechmode_e2e.sh) and the firmwares' own words through it (the
+# (tests/projfw_e2e.sh), the States and projects holding the firmware's working memory, played (tests/states_e2e.sh), the page's States and projects through their API, played the same way (tests/store_e2e.sh), a project or a state opened while the Move is stopped silent and stopped (tests/loadstop_e2e.sh), a new random project (tests/projnew_e2e.sh), the takeover (tk1, tests/tkdemo: tests/tk_e2e.sh; ChoralRoot's CHORDS when a tk1 build of it is among them: tests/cr_tk_e2e.sh, and on RemoteFM1's clock and song position: tests/cr_tk_sync_e2e.sh), engine parameters (ep1: an ep1 build of ChoralRoot among them, the ENGINE knob page: tests/ep1_e2e.sh), Schwung's screen reader (tests/speech_e2e.sh; RemoteFM1's Speech mode: tests/speechmode_e2e.sh) and the firmwares' own words through it (the
 # FM-1 screen reader protocol: tests/fmreader_e2e.sh), Out: network MIDI and USB-A (tests/midiout_e2e.sh), the recorder
 # as the sampler app (tests/rec_e2e.sh), the take library as its Takes and Tools tabs (tests/takes_e2e.sh), the kit
 # (tests/kit_e2e.sh), the looper (tests/looper_e2e.sh), the power button's Shut Down? (tests/power_e2e.sh), Listen here (tests/listen_e2e.sh), the page's Update (tests/update_e2e.sh).
@@ -67,6 +67,7 @@ tests/loadstop_e2e.sh || fail=1
 tests/projnew_e2e.sh || fail=1
 tests/tk_e2e.sh || fail=1
 tests/cr_tk_e2e.sh || fail=1
+tests/cr_tk_sync_e2e.sh || fail=1
 tests/ep1_e2e.sh || fail=1
 tests/speech_e2e.sh || fail=1
 tests/speechmode_e2e.sh || fail=1

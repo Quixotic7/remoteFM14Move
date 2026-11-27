@@ -5225,6 +5225,40 @@ static void rec_labels(void)
 }
 
 /* ------------------------------------------------------------------ the clock --- */
+/* (rfm1cs 0.17.0) a takeover's tempo request, RFM_MOVE_TEMPO_REQ (F0 7D 52 54 hi lo F7), in the active slot's MIDI out:
+ * assembled from its packets, handed to the core (which takes it while the takeover is shown) and taken out of what
+ * goes on to the page, the routes and Out. Every F0 7D 52 frame is ours (the screen reader's are F0 7D 53). The
+ * packets left */
+static int tempo_req(int s, uint32_t now, uint32_t *pk, int n)
+{
+#ifdef RFM_MOVE_TEMPO_REQ
+    static const int8_t LEN[8] = { 0, 0, 0, 0, 3, 1, 2, 3 };
+    static uint8_t b[NSLOT][8];
+    static int bn[NSLOT];
+    int i, j, k = 0;
+    for (i = 0; i < n; i++) {
+        const uint32_t p = pk[i];
+        const int cin = (int)(p & 0xF);
+        if (cin >= 4 && cin <= 7 && (bn[s] || (cin == 4 && (p >> 8 & 0xFFFFFF) == 0x527DF0u))) {
+            for (j = 0; j < LEN[cin]; j++)
+                if (bn[s] < (int)sizeof b[s])
+                    b[s][bn[s]++] = (uint8_t)(p >> (8 * (j + 1)));
+            if (cin != 4) {
+                if (bn[s] == RFM_MOVE_TEMPO_REQ_LEN && !memcmp(b[s], RFM_MOVE_TEMPO_REQ, 4))
+                    rfm1cs_session_midi_in(S, now, b[s], bn[s]);
+                bn[s] = 0;
+            }
+            continue;
+        }
+        pk[k++] = p;
+    }
+    return k;
+#else
+    (void)s, (void)now, (void)pk;
+    return n;
+#endif
+}
+
 static void render_block_(uint32_t now);
 static void render_block(uint32_t now)   /* (g_nest: a snapshot does not render ahead from inside one) */
 {
@@ -5320,7 +5354,8 @@ static void render_block_(uint32_t now)
             }
             if (s == g_active && sl->on) {   /* its MIDI out: the clock the sequencer can follow; the rest to the page */
                 uint32_t raw[64], pk[65];
-                const int n = fmr_filter(s, raw, fw_midi_out(&sl->fw, raw, 64), pk);   /* (the reader's frames out) */
+                const int n = tempo_req(s, now, pk, fmr_filter(s, raw, fw_midi_out(&sl->fw, raw, 64), pk));   /* (the
+                                                       * reader's frames out; a takeover's tempo request to the core) */
                 int i;
                 for (i = 0; i < n; i++) {
                     const uint8_t b = (uint8_t)(pk[i] >> 8);
@@ -5524,6 +5559,10 @@ static void housekeeping(uint32_t now)
                           "\"smp_reds\":%u,\"rec_play_f\":%llu,\"rec_first_f\":%llu,\"rec_beat0\":%.4f,",
                           g_rec_t_greens, g_rec_t_msgs, g_rec_t_msg, g_rec_t_reds, (unsigned long long)g_rec_t_play,
                           (unsigned long long)g_rec_t_first, g_rec_t_beat0);
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"seq_pos\":%.4f,\"seq_bpm10\":%d,\"seq_set10\":%d,",
+                          rfm_move_seq_pos(&S->core, NULL), rfm_move_seq_bpm10(&S->core), S->core.seq.bpm10);
+                          /* (tests, rfm1cs 0.17.0: the song's position in ticks at frame blocks x FW_BLOCK, -1 stopped;
+                           * the tempo in use and the one set, x 10: tests/cr_tk_sync_e2e.sh) */
         }
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, "\"slots\":[");
         for (s = 0; s < NSLOT; s++) {

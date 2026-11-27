@@ -112,12 +112,13 @@ wait_for 4 '[ "$(mode)" = 4 ]' && wait_for 3 '[ "$(padrgb 8)" = ffd228 ] && [ "$
     && ok "Track 1 held + pad 2 again: the takeover as left (Scale, memory 6)" || bad "re-entered: pad 8 '$(padrgb 8)' memory 6 '$(padrgb 21)'"
 grep -q "trap" "$T/host.log" && bad "the host's log: $(grep -m1 'trap' "$T/host.log")"
 # ---- proposal 6: Back with the volume knob touched stays in; Play: RemoteFM1's sequencer starts and stops with it
+# (rfm1cs 0.17.0: on its own clock, ChoralRoot following it: tests/cr_tk_sync_e2e.sh)
 mark; cmd "note 8 127"; cmd "cc 51 127" "cc 51 0"; cmd "note 8 0"; sleep 0.8
 [ "$(mode)" = 4 ] && [ "$(field tk_shown)" = 0 ] && ok "Back with the volume knob touched: still the takeover (the firmware's Back)" \
     || bad "volume + Back: mode '$(mode)' shown '$(field tk_shown)'"
 cmd "cc 85 127" "cc 85 0"
-wait_for 3 '[ "$(field seq_playing)" = 1 ]' && [ "$(field seq_following)" = 1 ] \
-    && ok "Play: ChoralRoot's loop and RemoteFM1's sequencer start together (it follows the takeover's clock)" \
+wait_for 3 '[ "$(field seq_playing)" = 1 ]' && [ "$(field seq_following)" = 0 ] \
+    && ok "Play: ChoralRoot's loop and RemoteFM1's sequencer start together (on RemoteFM1's clock: rfm1cs 0.17.0)" \
     || bad "Play: seq_playing '$(field seq_playing)' following '$(field seq_following)'"
 cmd "cc 85 127" "cc 85 0"
 wait_for 3 '[ "$(field seq_playing)" = 0 ]' && ok "Play again: both stop" || bad "Play again: seq_playing '$(field seq_playing)'"
