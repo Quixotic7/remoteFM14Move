@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* kit.h: the kit's sounds and voices */
 #include "kit.h"
+#include "stretch.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -50,12 +51,7 @@ typedef struct {                  /* a sound in memory */
     uint32_t frames, rate;
 } snd_t;
 #define NGR 16                    /* (pages v2) grains a voice at most (Warp: 2; Granular: its density) */
-typedef struct {
-    double pos;                   /* the grain's read position (source frames) */
-    double inc;                   /* .. source frames a frame (its pitch) */
-    uint32_t age;                 /* frames since it started (its window) */
-    int on;
-} grain_t;
+typedef st_grain_t grain_t;       /* (looper round 2: stretch.h's, shared with the looper) */
 typedef struct {
     int on;
     int pad, semis;
@@ -1240,6 +1236,31 @@ static int row_path(kit_t *k, int place, uint32_t id, char *path, size_t cap, ch
         return 1;
     }
     return 0;
+}
+/* (looper round 2) a Files row's sound for the looper, from its file thread: read (any format the kit reads) at fs,
+ * at most max bytes; its name. NULL: *status KIT_MISSING / _FAILED / _TOO_LONG */
+static int16_t *resample(int16_t *b, uint32_t *n, uint32_t rb, uint32_t ra);
+int16_t *kit_row_read(kit_t *k, int place, uint32_t id, uint32_t fs, uint64_t max, uint32_t *frames, char *name, int ncap,
+                      int *status)
+{
+    char path[KIT_PATH];
+    uint32_t rate = 0;
+    int16_t *p;
+    *frames = 0, *status = KIT_FAILED;
+    if (!k || !row_path(k, place, id, path, sizeof path, name, ncap, NULL)) {
+        *status = KIT_MISSING;
+        return NULL;
+    }
+    if (!(p = load_sound(path, max, 0, frames, &rate, status)))
+        return NULL;
+    if (rate != fs && !(p = resample(p, frames, rate, fs)))
+        *status = KIT_FAILED, *frames = 0;
+    if (p && (uint64_t)*frames * 4u > max) {
+        free(p);
+        *status = KIT_TOO_LONG, *frames = 0;
+        return NULL;
+    }
+    return p;
 }
 /* ---- (3c) sounds shared: a file read once whatever the pads that hold it (a take's slices) */
 static void file_id(const char *path, long long *mtime, long long *size)
@@ -2487,8 +2508,7 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     for (p = 0; p <= SLP; p++)                          /* (pages v2: as the core's defaults) */
         k->v[p][KIT_P_LOOPE] = KIT_FRAC, k->v[p][KIT_P_BITS] = 160, k->v[p][KIT_P_DOWNS] = 1, k->v[p][KIT_P_GSIZE] = 80,
         k->v[p][KIT_P_GDENS] = 4, k->v[p][KIT_P_SPEED] = 100, k->v[p][KIT_P_WGRAIN] = 50, k->v[p][KIT_P_WSEARCH] = 10;
-    for (p = 0; p <= 1024; p++)                         /* (pages v2) the grains' window */
-        k->hann[p] = (float)(0.5 - 0.5 * cos(2.0 * 3.14159265358979323846 * p / 1024.0));
+    st_hann_make(k->hann);                              /* (pages v2) the grains' window (stretch.h) */
     k->bus_c = 100;
     pthread_mutex_init(&k->mu, NULL);
     pthread_cond_init(&k->cv, NULL);
@@ -3096,8 +3116,7 @@ static void note_on(kit_t *k, int pad, int semis, int vel, int mask, const int16
                                                          * to one): the first from its middle, so the attack is kept */
             v->jit = v->warp == KIT_W_BEATS ? (double)ms_n(k, clampi(p[KIT_P_WSEARCH], 1, 30))
                                             : v->glen * 0.5 * clampi(p[KIT_P_WJITTER], 0, 100) / 100.0 * v->ginc;
-            v->gr[0].on = 1, v->gr[0].pos = v->pos, v->gr[0].inc = v->ginc, v->gr[0].age = v->glen / 2;
-            v->gr[1].on = 1, v->gr[1].pos = v->pos, v->gr[1].inc = v->ginc, v->gr[1].age = 0;
+            st_start(v->gr, v->pos, v->ginc, v->glen);
         }
     }
     level_pan(v, p, mask, lk, vel);
@@ -3165,16 +3184,7 @@ static void release(voice_t *v, uint32_t n)
     v->stage = ST_RELEASE, v->t = 0, v->r_from = v->env, v->rel_n = n;
 }
 /* (pages v2) a source frame of the voice at p (linear between frames; past the sound's ends its edge) */
-static void frame_at(const voice_t *v, double p, float *l, float *r)
-{
-    const int16_t *pcm = v->snd->pcm;
-    const uint32_t last = v->snd->frames - 1;
-    const double ps = p < 0 ? 0 : p;
-    const uint32_t a = (uint32_t)ps > last ? last : (uint32_t)ps, b = a + 1 > last ? last : a + 1;
-    const float fr = (float)(ps - a);
-    *l = pcm[2 * a] + (pcm[2 * b] - pcm[2 * a]) * fr;
-    *r = pcm[2 * a + 1] + (pcm[2 * b + 1] - pcm[2 * a + 1]) * fr;
-}
+static void frame_at(const voice_t *v, double p, float *l, float *r) { st_frame_at(v->snd->pcm, v->snd->frames, p, l, r); }
 /* .. a grain's position folded into the loop (looping) or the region */
 static double fold(const voice_t *v, double p)
 {
@@ -3187,33 +3197,7 @@ static double fold(const voice_t *v, double p)
     }
     return p < v->s ? v->s : p > v->e - 1 ? v->e - 1 : p;
 }
-/* (pages v2, Warp Beats) WSOLA: the start within +-jit of the playhead whose next frames best match the frames the
- * fading grain plays next (a normalised cross-correlation, mono, every 4th frame over 256; offsets every 4th) */
-static double beats_align(const voice_t *v, double nat, double ph)
-{
-    const int16_t *pcm = v->snd->pcm;
-    const int64_t last = (int64_t)v->snd->frames - 1, S = (int64_t)v->jit, L = 256;
-    int64_t o, j, best = 0;
-    double bestc = -1e30;
-    const int64_t n0 = (int64_t)nat, p0 = (int64_t)ph;
-    if (S < 4 || n0 < 0 || n0 + L * v->dir > last || n0 + L * v->dir < 0)
-        return ph;
-    for (o = -S; o <= S; o += 4) {
-        const int64_t c = p0 + o;
-        double xy = 0, yy = 1e-9;
-        if (c < (int64_t)v->s || c > (int64_t)v->e - 1 || c + L * v->dir < 0 || c + L * v->dir > last)
-            continue;
-        for (j = 0; j < L; j += 4) {
-            const int64_t ia = n0 + j * v->dir, ib = c + j * v->dir;
-            const float x = (float)pcm[2 * ia] + pcm[2 * ia + 1], y = (float)pcm[2 * ib] + pcm[2 * ib + 1];
-            xy += x * y, yy += y * y;
-        }
-        xy /= sqrt(yy);
-        if (xy > bestc)
-            bestc = xy, best = o;
-    }
-    return ph + (double)best;
-}
+static double fold_u(const void *u, double p) { return fold((const voice_t *)u, p); }   /* (stretch.h's fold) */
 /* (pages v2) a frame of the grains: Warp's two (one restarts at the playhead each half grain), Granular's cloud */
 static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
 {
@@ -3270,12 +3254,9 @@ static void grains_frame(const kit_t *k, voice_t *v, float *l, float *r)
             }
             {                                           /* (Warp) restarted at the playhead (Grains: its jitter; Beats:
                                                          * aligned with the other grain's next frames) */
-                const grain_t *o = &v->gr[i ^ 1];
-                double at = v->ph;
-                if (v->warp == KIT_W_BEATS)
-                    at = beats_align(v, fold(v, o->pos + v->dir * o->inc * o->age), v->ph);
-                else if (v->jit > 0)
-                    at += v->jit * rnd_bi(v);
+                const st_src_t x = { v->snd->pcm, v->snd->frames, v->s, v->e, v->dir };
+                double at = st_restart(&x, v->warp == KIT_W_BEATS, v->jit, &v->gr[i ^ 1], v->ph,
+                                       v->warp == KIT_W_BEATS || v->jit <= 0 ? 0.0f : rnd_bi(v), fold_u, v);
                 if (v->mode != B_LOOP) {                /* (the grain inside the region: no edge mid-grain) */
                     const double need = v->glen * v->ginc;
                     if (v->dir > 0 && at > v->e - need)

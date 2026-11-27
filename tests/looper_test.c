@@ -53,6 +53,7 @@ static looper_ans_t ANS[64];
 static int nans;
 
 static int src_const;                                   /* (t_mix: a steady source) */
+static const int16_t *mon_buf;                          /* (round 2: the monitored input, each block) */
 static int16_t pat(uint64_t f) { return (int16_t)((int)(f % 16000u) + 100); }   /* (the source: a frame's own value) */
 static double bpf(void) { return bpm / 60.0 / FS; }
 static void blk(void)                                   /* one engine block */
@@ -69,6 +70,8 @@ static void blk(void)                                   /* one engine block */
     src.slot[0] = s1;
     {
         float *sends[3] = { sbus[0], sbus[1], sbus[2] };
+        if (mon_buf)
+            looper_monitor(L, mon_buf);
         looper_render_bus(L, &c, acc, sends, own, N);
     }
     looper_record(L, &src, own, N);
@@ -467,6 +470,199 @@ static void t_cap_clean(void)
     L = was;
 }
 
+/* ---- 6. (round 2) a Files row's sound (its copy in Loops/, its bars at the tempo), the markers and Steps, Warp's
+ * engines (Repitch: the pitch follows; Grains, Beats: kept), the close-up's peaks, an overdub (its layer, its file,
+ * Undo), the monitor, the input armed */
+#define SINE_P 100                                      /* (441 Hz at 44.1 kHz) */
+static int16_t sine_at(uint32_t i) { return (int16_t)lrint(4000.0 * sin(2.0 * 3.14159265358979 * (i % SINE_P) / SINE_P)); }
+static int reads;
+static int16_t *fake_read(void *ctx, int place, uint32_t id, uint32_t fs, uint64_t max, uint32_t *frames, char *name,
+                          int ncap, int *status)
+{
+    const uint32_t n = id == 3 ? (uint32_t)(88200 * 3.7) : 88200;
+    int16_t *p;
+    uint32_t i;
+    (void)ctx, (void)fs, (void)max;
+    reads++;
+    if (place != 2 || (id != 1 && id != 3)) {
+        *status = LOOPER_MISSING;
+        return NULL;
+    }
+    if (!(p = malloc((size_t)n * 4u))) {
+        *status = LOOPER_FAILED;
+        return NULL;
+    }
+    for (i = 0; i < n; i++)
+        p[2 * i] = p[2 * i + 1] = sine_at(i);
+    *frames = n, *status = LOOPER_OK;
+    snprintf(name, (size_t)ncap, "%s", id == 3 ? "Long/Sine" : "Sine");
+    return p;
+}
+static double crossings_hz(int blocks)                  /* the looper's own output's rising zero crossings a second */
+{
+    int b, i, n = 0, prev = 0;
+    for (b = 0; b < blocks; b++) {
+        blk();
+        for (i = 0; i < N; i++) {
+            const int v = own[2 * i], sg = v < -300 ? -1 : v > 300 ? 1 : 0;   /* (a hysteresis: no jitter counted) */
+            if (sg && sg != prev) {
+                n += prev < 0 && sg > 0;
+                prev = sg;
+            }
+        }
+    }
+    return n / ((double)blocks * N / FS);
+}
+static void t_round2(void)
+{
+    const looper_ans_t *a;
+    looper_status_t st;
+    char p[1024];
+    uint32_t n = 0, i;
+    const char *why;
+    int16_t *w;
+    double hz;
+    ans_clear();
+    for (i = 0; i < LOOPER_LANES; i++)
+        looper_stop(L, (int)i, LOOPER_Q_INSTANT, 0);
+    play_from_start();
+    run_blocks(4);
+    /* item 1: a file into slot 20: its copy, 1 bar at 120; one 3.7 bars long: 4; one missing */
+    looper_file(L, 20, 2, 1, 1200);
+    a = wait_ans(LOOPER_A_RECORDED, 20);
+    CHECKF(a && a->status == LOOPER_OK && a->bars == 1 && a->frames == 88200 && !strcmp(a->path, "@/Loops/Sine.wav"),
+           "%d %d %u %s", a ? a->status : -1, a ? a->bars : 0, a ? a->frames : 0, a ? a->path : "");
+    looper_resolve(L, "@/Loops/Sine.wav", p, sizeof p);
+    w = wav_read(p, &n, &why);
+    CHECK(w && n == 88200 && w[2 * 7] == sine_at(7));
+    free(w);
+    ans_clear();
+    looper_file(L, 21, 2, 3, 1200);
+    a = wait_ans(LOOPER_A_RECORDED, 21);
+    CHECKF(a && a->status == LOOPER_OK && a->bars == 4 && !strcmp(a->path, "@/Loops/Long_Sine.wav"), "%d %d %s",
+           a ? a->status : -1, a ? a->bars : 0, a ? a->path : "");
+    ans_clear();
+    looper_file(L, 22, 2, 9, 1200);
+    a = wait_ans(LOOPER_A_RECORDED, 22);
+    CHECK(a && a->status == LOOPER_MISSING);
+    /* items 7, 8: Repitch: 441 Hz at its own length; Steps doubled: an octave down; Grains / Beats: the pitch kept */
+    looper_launch(L, 20, LOOPER_Q_INSTANT, 0);
+    run_blocks(8);
+    hz = crossings_hz(200);
+    CHECKF(fabs(hz - 441) < 15, "repitch %.1f Hz", hz);
+    looper_set(L, 20, LOOPER_P_LENGTH, 32);
+    run_blocks(4);
+    hz = crossings_hz(200);
+    CHECKF(fabs(hz - 220.5) < 12, "repitch, 2 bars: %.1f Hz", hz);
+    looper_set(L, 20, LOOPER_P_WARP, LOOPER_W_GRAINS);
+    run_blocks(4);
+    hz = crossings_hz(300);
+    CHECKF(fabs(hz - 441) < 30, "grains, 2 bars: %.1f Hz", hz);
+    looper_status(L, &st);
+    {                                                   /* (its place still the song's: half a cycle a bar) */
+        const double q = fmod(gf * bpf(), 8.0) / 8.0;
+        CHECKF(fabs(st.lane[2].pos / 65535.0 - q) < 0.03 || fabs(st.lane[2].pos / 65535.0 - q) > 0.97, "pos %u q %.3f",
+               st.lane[2].pos, q);
+    }
+    looper_set(L, 20, LOOPER_P_WARP, LOOPER_W_BEATS);
+    run_blocks(4);
+    hz = crossings_hz(300);
+    CHECKF(fabs(hz - 441) < 30, "beats, 2 bars: %.1f Hz", hz);
+    /* the markers: its first half over a bar (Repitch): an octave down */
+    looper_set(L, 20, LOOPER_P_WARP, LOOPER_W_REPITCH);
+    looper_set(L, 20, LOOPER_P_LENGTH, 16);
+    looper_set(L, 20, LOOPER_P_MEND, LOOPER_MK_ONE / 2);
+    run_blocks(4);
+    hz = crossings_hz(200);
+    CHECKF(fabs(hz - 220.5) < 12, "first half over a bar: %.1f Hz", hz);
+    looper_set(L, 20, LOOPER_P_MEND, LOOPER_MK_ONE);
+    /* the close-up's peaks */
+    ans_clear();
+    looper_peaks(L, 20, 1000, 2000, 10);
+    a = wait_ans(LOOPER_A_PEAKS, 20);
+    CHECK(a && a->from == 1000 && a->count == 2000 && a->npk == 10 && a->pk[3] >= 30 && a->pk[3] <= 32);
+    /* item 9: an overdub: Track 1's steady 8000 layered from its next cycle; ended: a new file of the loop + its layer,
+     * the loop's sound swapped in seamlessly; Undo: the loop before it, from memory */
+    ans_clear();
+    src_const = 1;
+    looper_dub(L, 20, 1, LOOPER_SRC_TRACK1, 0);
+    run_blocks((int)(bar_frame(4) * 3 / 2 / N) + 2);   /* (a cycle to wait at most, then half of one) */
+    looper_dub(L, 20, 0, 0, 0);
+    src_const = 0;
+    a = wait_ans(LOOPER_A_RECORDED, 20);
+    CHECKF(a && a->status == LOOPER_OK && strcmp(a->path, "@/Loops/Sine.wav") && a->frames == 88200, "%d %s",
+           a ? a->status : -1, a ? a->path : "");
+    if (a) {
+        uint32_t lay = 0, none = 0;
+        looper_resolve(L, a->path, p, sizeof p);
+        w = wav_read(p, &n, &why);
+        for (i = 0; w && i < n; i++) {
+            const int d = w[2 * i] - sine_at(i);
+            lay += d == 8000 || d == 16000;
+            none += d == 0;
+        }
+        CHECKF(w && lay > 0 && lay + none == n, "layered %u, untouched %u of %u", lay, none, n);
+        free(w);
+    }
+    run_blocks(20);
+    looper_status(L, &st);
+    CHECK(st.lane[2].play == 4);                        /* (it played on) */
+    ans_clear();
+    reads = 0;
+    looper_load(L, 20, "@/Loops/Sine.wav", 1, 1200);    /* (Undo) */
+    a = wait_ans(LOOPER_A_LOADED, 20);
+    CHECK(a && a->status == LOOPER_OK && !reads);
+    /* item 6: the monitor: heard in the mix, never in the looper's own block */
+    {
+        static int16_t m[2 * N];
+        double sa = 0;
+        int k;
+        for (i = 0; i < LOOPER_LANES; i++)
+            looper_stop(L, (int)i, LOOPER_Q_INSTANT, 0);
+        run_blocks(20);
+        for (k = 0; k < 2 * N; k++)
+            m[k] = 1000;
+        mon_buf = m;
+        blk();
+        mon_buf = NULL;
+        {
+            int nz = 0;
+            for (k = 0; k < 2 * N; k++)
+                sa += acc[k], nz += own[k] != 0;
+            CHECK(nz == 0);
+        }
+        CHECKF(fabs(sa / (2 * N) - 1000) < 1, "monitor %.1f", sa / (2 * N));
+        blk();
+        CHECK(acc[0] == 0);                             /* (a block's only) */
+    }
+    /* (item 7) the cost: four lanes in Beats (the dearest: its WSOLA search each half grain), a block's time */
+    {
+        static const int to[3] = { 4, 12, 28 };
+        int k;
+        clock_t t0;
+        double us;
+        for (k = 0; k < 3; k++)
+            looper_copy(L, to[k], 20), looper_set(L, to[k], LOOPER_P_WARP, LOOPER_W_BEATS), looper_launch(L, to[k], LOOPER_Q_INSTANT, 0);
+        looper_set(L, 20, LOOPER_P_WARP, LOOPER_W_BEATS), looper_set(L, 20, LOOPER_P_LENGTH, 32);
+        looper_launch(L, 20, LOOPER_Q_INSTANT, 0);
+        run_blocks(50);
+        CHECK(looper_sounding(L) == 4);
+        t0 = clock();
+        run_blocks(2000);
+        us = (double)(clock() - t0) * 1e6 / CLOCKS_PER_SEC / 2000.0;
+        printf("  cost: 4 lanes in Beats, %.1f us a block of %d frames (%.1f %% of its %.0f us)\n", us, N,
+               us * 100.0 / (N * 1e6 / FS), N * 1e6 / FS);
+        for (k = 0; k < 3; k++)
+            looper_load(L, to[k], NULL, 0, 0);
+        looper_set(L, 20, LOOPER_P_WARP, LOOPER_W_REPITCH), looper_set(L, 20, LOOPER_P_LENGTH, 16);
+    }
+    /* Monitor Auto's cue: an input recording armed */
+    looper_rec(L, 7, 0, LOOPER_SRC_INPUT, 0, 0);
+    CHECK(looper_input_armed(L));
+    looper_rec_cancel(L, 7);
+    CHECK(!looper_input_armed(L));
+}
+
 int main(void)
 {
     looper_cfg_t c;
@@ -475,6 +671,7 @@ int main(void)
     mkdir(PROJ, 0755);
     memset(&c, 0, sizeof c);
     c.fs = FS;
+    c.read = fake_read;                                 /* (round 2: looper_file's rows) */
     L = looper_new(&c);
     if (!L) {
         fprintf(stderr, "looper_new failed\n");
@@ -486,6 +683,7 @@ int main(void)
     t_launch();
     t_mix();
     t_more();
+    t_round2();
     CHECKF(la_engine_allocs == 0, "%ld allocations on the engine's thread", la_engine_allocs);
     t_cap_clean();
     CHECKF(la_engine_allocs == 0, "%ld allocations on the engine's thread", la_engine_allocs);

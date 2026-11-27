@@ -158,10 +158,11 @@ int pm_state_match(const char *root, const char *id, const uint8_t *b, uint32_t 
 /* (rfm1cs project.c kit_bytes) the kit part after the firmwares' from version 11: its size by version. A version
  * this file does not know stops the build: its layout must be added here first. (2026-11-26) Version 16: notes of 8
  * bytes (before the parts here, which are read from the end), the kit part as 15's */
-typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 19 ? 1 : -1];   /* (17, 2026-11-26: Scan, 46 settings a pad;
+typedef char pm_version_check[RFM_MOVE_PROJECT_VERSION == 20 ? 1 : -1];   /* (17, 2026-11-26: Scan, 46 settings a pad;
                                                          * 18: the pads' original places at the kit part's end; 19, looper
-                                                         * stage 1: the looper's part after the kit's) */
-static uint32_t loop_bytes(int ver) { return ver >= 19 ? RFM_MOVE_LOOP_BYTES : 0; }
+                                                         * stage 1: the looper's part after the kit's; 20, looper round
+                                                         * 2: its markers) */
+static uint32_t loop_bytes(int ver) { return ver >= 20 ? RFM_MOVE_LOOP_BYTES : ver == 19 ? RFM_MOVE_LOOP_BYTES_V19 : 0; }
 static uint32_t kit_bytes(int ver)
 {
     return ver >= 18 ? RFM_MOVE_KIT_BYTES : ver == 17 ? RFM_MOVE_KIT_BYTES_V17 : ver >= 15 ? RFM_MOVE_KIT_BYTES_V15 : ver == 14 ? RFM_MOVE_KIT_BYTES_V14 : ver >= 12 ? RFM_MOVE_KIT_BYTES_V12

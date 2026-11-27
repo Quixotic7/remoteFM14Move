@@ -30,7 +30,8 @@ files; `tests/looper_test.c`, `tests/looper_e2e.sh`).
 
 ## Recording (lp_rec_gesture a, lp_rec_start a, lp_length a, lp_source a, lp_after_rec a)
 
-- **Tap an empty slot:** it records from the next bar line. Stopped: armed, it starts on Play's first frame. Armed,
+- **Tap an empty slot on the Record page:** it records from the next bar line (round 2: on the other pages the tap
+  picks the slot; below). Stopped: armed, it starts on Play's first frame. Armed,
   a tap again cancels it ("Cancelled").
 - **Tap the red pad, or Sample:** it ends at the next bar line (at least one bar). A lane's **Length** (Open, 1, 2,
   4, 8, 16 bars) ends a fixed one by itself.
@@ -81,8 +82,8 @@ Shift + a pad launches the column now, so choosing silently is:
 - **Loop held + a pad:** that slot chosen, nothing plays or records (Loop is the looper's in this view: its tap does
   nothing, the sequencer's loop layer does not open).
 - **Left / Right:** the chosen slot a scene left or right; **Up / Down:** a lane up or down.
-Any pad's tap also chooses its slot. An empty slot chosen while the Loop or Loop Mix page shows opens the Record
-page.
+Any pad's tap also chooses its slot. (Round 2: an empty slot chosen on the Loop or Loop Mix page no longer opens the
+Record page; those pages show it empty.)
 
 ## Pages (lp_pages a): the jog, as the kit's
 
@@ -93,12 +94,12 @@ a second after; turned: its value changes; Shift: fine. A page's knobs are lit t
 | Page | Picture | Knobs 1..8 |
 |---|---|---|
 | Loops | a lane a row: the scene it plays (2x), its bars as ticks, filled as it plays; waiting: the scene (or "-" a stop) and a dashed box with the beats; stopped: a dotted line; recording: the dot and its wave growing | lanes 1..4 Level |
-| Loop | the chosen loop's wave over its recording, the playhead (past it dotted), its bars, the slot's place top right (the grid in small) | 1 Start (steps), 2 Length (a beat, half a bar, whole bars up to those recorded), 3 Pitch (semitones; Shift: cents), 4 Reverse, 5 Warp (Repitch / Off); 6..8 dark (6: Launch mode, stage 2) |
-| Record | the record icon, the place, the lane's Source and Length rows | 1 Source, 2 Length (the chosen slot's lane) |
+| Loop | the chosen loop's wave over its recording, the markers (outside them dithered), the playhead (past it dotted), its bars, the slot's place top right (the grid in small); empty: a dotted line, "Empty" | (round 2) 1 Start, 2 End (the markers), 3 Steps, 4 Pitch (semitones; Shift: cents), 5 Reverse, 6 Warp (Off, Repitch, Grains, Beats); 7, 8 dark |
+| Record | (round 2) the lane's Source, Length and Count-in rows, under them "Mon Off  0 dB" (the sampler's Monitor and In Level), "STP" while the step looper is on | 1 Source, 2 Length (the chosen slot's lane), 3 Count-in, 4 In Level, 5 Monitor, 6 Step Looper |
 | Loop Mix | the wave, the level as a fader (muted: hollow), the pan, sends 1..3 | 1 Level, 2 Pan, 3..5 Send 1..3, 6 Mute |
 | Looper Mix | the lanes' levels (a cap: it sounds; the chosen loop's lane underlined), the Loops strip's fader, pan, sends | 1..4 the lanes' levels, 5 the Loops strip's level, 6 its pan, 7, 8 its sends 1, 2 |
 
-An empty slot's Loop and Loop Mix pages show the Record page; its loop knobs are dark. Every level is 0..127 with 100
+An empty slot's Loop and Loop Mix pages show it empty (round 2); its loop knobs are dark. Every level is 0..127 with 100
 = 0 dB (a 0.5 dB detent, the shared level popup `rfmv_level_popup`): a loop's ("Loop 2-3 Level"), a lane's ("Lane 2
 Level": every lane and the strip as siblings), the strip's ("Loops Level").
 
@@ -155,7 +156,7 @@ and dead.
 
 ## Saving (lp_files a)
 
-- The project is **version 19**: the looper's part after the kit's (`RFM_MOVE_LOOP_BYTES`, 3904: the chosen slot, the
+- The project is **version 19** (round 2: **20**, below): the looper's part after the kit's (`RFM_MOVE_LOOP_BYTES`, 3904: the chosen slot, the
   page, the strip; each lane's source, length, level; each slot's path, bars, recorded tempo and 11 settings).
   Versions 18 and older load with an empty looper. `projmem.c` reads the firmware ids before both parts.
 - A project load sends every slot's `LOOP_LOAD` (its path, bars, tempo) and `LOOP_SET`s, every lane's and the strip;
@@ -207,6 +208,133 @@ place, its level; the recordings; the beat; the bar's peaks; the memory).
 
 ## Stage 2 (not built)
 
-Overdub (Record held + a playing loop), Grains / Beats stretch (Elasticat-style later), Capture (the last N bars of a
+(Round 2 built overdub, as the step looper's key 2, and Grains / Beats.) Capture (the last N bars of a
 lane's source from the recorder's ring), To Kit / To Takes / a take's To Looper (`RFM_MOVE_SMP_TO_LOOPER`), launch
 modes (Trigger, Gate, Toggle: the Loop page's knob 6), the page's web looper; then monitor + click.
+
+## Round 2 (the owner's first try of stage 1, 2026-11-26)
+
+The owner's words are quoted; where the call was ours it says so. Code: rfm1cs `src/looper.c` (and `kit.c`'s Files,
+`seq.c`'s count-in, `seq_ui.c`'s Play and Shift + step 13, `screen.c`'s overlay), this repo's `src/looper.c`,
+`src/stretch.h`, `src/kit.c`, `src/engine.c`. Tests: rfm1cs `tests/move_looper.c` (`t_round2`, `t_steploop`, the
+markers and Warp in `t_pages`, version 20 in `t_project`); `tests/looper_test.c` (`t_round2`); `looper_e2e` records
+from the Record page.
+
+### 1. Loading a take or a file ("load on takes from the sampler or load in a sample from files")
+
+- **The jog's click** (any page) opens **the kit's own Files** for the chosen slot: the same state, rows, screen and
+  host code (rfm1cs `kit.c` `rfmv_kit_lbr_*`, `files_nav` shared with the kit's click), its root **Takes** (when the
+  host has the take library), **My Samples**, **the Move Library**. No landing: nothing loads until a sound's row is
+  clicked. While it is open a pad picks the slot it goes to (nothing records or plays); Back goes a folder up, the
+  places, then closes it.
+- A sound's click: `LOOP_FILE` (95: index the slot, value the place, take the row's id). The host reads it on the
+  looper's file thread through `looper_cfg_t.read` (the engine's: `kit_row_read`, any format the kit reads, resampled
+  to 44.1 kHz), writes its copy into the project's `Loops/` as a 16-bit WAV ("Name.wav", " 2" .. when taken; the
+  original never changed), and answers as a recording (`rfm_move_loop_recorded`): **its bars its length at the tempo
+  now, rounded to whole bars** (1..64), Steps that many bars, the markers the whole sound. The slot's sound plays on
+  until then; Undo brings back what the slot had ("Loaded 2-3"; refused: "Not Loaded").
+
+### 2. The page decides a tap ("when in the record tab, then that's when it does the current click a pad and it immediately starts recording")
+
+- **Record page:** a tap on an empty slot records (as stage 1).
+- **The other pages** (Loops, Loop, Loop Mix, Looper Mix): it picks the slot; loops' taps launch and stop as before.
+- Gone: "an empty slot chosen on Loop / Loop Mix opens Record". Loop held + a pad and the arrows stay silent picks.
+- The sampler's Loops tab keeps its click (records into an empty slot): it has no pages.
+
+### 3. One input setting ("its input selection is separate from the sampler's line in")
+
+- The looper's Input source is the input **with the sampler's In Level** (engine `ain_gained`, the same buffer the
+  sampler records); there is no looper input setting. The Record page's knob 4 is the sampler's **In Level** and knob
+  5 its **Monitor** (`rfm_move_smp_set`: the same value in both places, the settings saved, `SMP_SET` to the host).
+
+### 4. Count-in ("the countin should delay the playback when you press play")
+
+- **Count-in** (the Record page's knob 3: Off, 1 Bar, 2 Bars; our call: **global** to the looper, saved in the
+  project's looper part, byte 8). A looper recording armed while stopped, Play: the sequencer's own count-in
+  (`rfmv_seq_count_in_bars`, the same mechanism as Rec armed + Play; the sampler's Bars arm waits for the bar on the
+  host's recorder, which is not a count-in, so it is not shared), 1 or 2 bars of ticks; the metronome's clicks if it
+  is on (each bar's first accented), the screen's count popup either way, the step LEDs red, one a beat to go (the
+  Looper view). Then the transport starts and the recording begins on bar 1: **the sequencer's playback waits the
+  count-in too**, so everything starts together. (`seq.c`: `cin_go` marks the count-in's first tick, so a 2-bar one
+  runs at the tempo; the clock code is otherwise untouched.) `rfm_move_loop_count_in` says the bars.
+
+### 6. Monitor ("an option to monitor Line In")
+
+- The sampler's **Monitor** setting, now offered: **Off** (the default: feedback), **On**, **Auto** (while an input
+  recording is armed or runs: the looper's, an overdub of the input, or the sampler's with Source Input). Reached from
+  the looper's Record page (knob 5) and the sampler's Record tab.
+- The input at its In Level goes **through the Loops strip** (our call, so it has a level, pan, sends and the volume
+  knob: `looper_monitor`; the strip's level is its level), into the mix before the FX returns, never into the
+  looper's own block (the Loops source, the sampler's Looper stream). Latency: a block plus the input ring's lead.
+
+### 7. Warp engines ("we should add different warp stretch engines")
+
+- A loop's **Warp**: **Off** (its own rate round its region), **Repitch** (the region resampled to fill its steps: a
+  tempo change repitches), **Grains**, **Beats** (the kit's time-stretch: the region fills its steps, the pitch kept,
+  Pitch on top). The knob's order is Off, Repitch, Grains, Beats (the values: `RFM_MOVE_LOOP_W_*`, new ones after).
+- The kit's code is **shared, not copied**: `src/stretch.h` (header-only, no allocation) holds the two-grain engine's
+  window, frame reading, restart (Grains' jitter, Beats' WSOLA alignment) and start, factored out of `kit.c` (which
+  uses it unchanged: `kit_test` passes as before). The looper's grains: 60 ms, Grains' jitter 20 % of half a grain,
+  Beats' search 10 ms; its playhead is the song's place in the region, so it stays on the bar.
+- **Cost:** four lanes in Beats, about 13 us a 128-frame block on the Mac (0.4 % of the block; `looper_test` prints
+  it). No "Texture" / "Tones" engine: nothing cheap and verified to fit the Move's CPU yet (our call: not added).
+
+### 8. Start, End and Steps ("here's the start and end of this piece of audio, I would like it to play over this many steps")
+
+- The Loop page: **Start** and **End** markers (`RFM_MOVE_LOOP_P_MSTART` / `_MEND`, 0..`RFM_MOVE_LOOP_MK_ONE` = 2^24 of
+  the sound: sample-accurate to 16 M frames; `LOOP_SET` carries them in `take`). A detent moves a column of the
+  close-up (the sound / 8 / 64); **Shift: one frame** (the close-up 256 times nearer). The close-up as the kit's trim:
+  the value (seconds), the frames round the marker from the host's peaks (`LOOP_PEAKS` 96 -> `rfm_move_loop_peaks`,
+  on the file thread), the marker a line with a notch, outside dithered.
+- **Steps** (Length, 1..1024: a step a detent to 16, a beat to 64, then a bar; Shift: a step): the region between
+  the markers fills exactly that many steps at the tempo now with the loop's Warp, locked to the bar. This replaces
+  "Length = bars of those recorded"; Start (steps) is unused. Version 19's Start / Length load as the markers of that
+  part, played over Length's steps (the same sound).
+- The same for loaded files.
+
+### The project, version 20
+
+The looper part: header byte 8 the Count-in, byte 9 the step looper on; each slot 129 bytes (version 19's 121, then
+the markers u32); an empty slot all zeros (checked). `RFM_MOVE_LOOP_BYTES` 4160 (`_V19` 3904); versions 19 and 18
+load. This repo's `projmem.c` knows 20.
+
+### 9. The step looper ("a looper mode takeover feature you could enable that takes over the step keys")
+
+- **On / off:** **Shift + step 13** (step 13 had no shortcut; its icon lit while on), in the **FM-1 layout Track 4
+  held + step 13** (there Shift is GLO; Track 4 held + a step is the Shift layer in every layout), or the Record
+  page's knob 6. A full-screen card for 1.5 s: "Step Looper On", four boxes (lanes 1..4, keys 1 Rec, 2 Dub, 3 Rpl, 4
+  Nxt); off: "Steps: sequencer". Saved with the project (byte 9).
+- **Where:** every mode and layout (the FM-1 layout, note layouts, Sequencer, the Kit view, session view) but the
+  Looper view (its steps are the scenes) and open menus. It takes the steps without Shift or a Track held; Shift +
+  a step (Track 4 + a step) stays the shortcuts. **Step sequencing is off while it is on.** The pads stay the
+  firmware's.
+- **The FM-1 layout** uses the steps for the FM-1's 16 white keys (its other controls: the pads the FM-1's keys and
+  buttons, Shift GLO, the knobs SELECT / PRESETS / ALGO / K1..K4, the named buttons the FM-1's). While the step
+  looper is on the step keys wait (our call: the least lost: the pads' FM-1 keys still play every key); nothing else
+  moves. Lane levels: a group key held + the volume knob, as in every layout.
+- **The groups:** steps 1-4, 5-8, 9-12, 13-16 are lanes 1..4, each in its **Okabe-Ito** colour: blue {0, 114, 178},
+  orange {230, 159, 0}, bluish green {0, 158, 115}, reddish purple {204, 121, 167} (neighbours far apart for
+  colour-blind players; the steps are RGB LEDs, `LED_RGB`, so these go out as they are, not through a palette index).
+- **The keys** (a group's):
+  - **1 Rec, the pedal.** Empty or stopped: records at the bar into the lane's slot (its first empty one, or the one
+    it recorded or played last: a stopped lane's tap records over it, **Undo brings it back**: "reuse that slot" is
+    one tap); stopped, Play with the Count-in. Armed: cancelled. Recording: it ends at the bar and loops at once.
+    Playing: an overdub ends; else nothing.
+  - **2 Dub: overdub** on / off (`LOOP_DUB` 97). The lane's Source layered onto the playing loop from its next
+    cycle: the first pass replaces a preallocated spare's silence, later passes sum (saturated), each frame once.
+    Heard from the next pass. Off: the file thread writes the loop + its layer as a new WAV; the loop's sound swapped
+    in seamlessly; its settings kept; **one Undo** (the loop before it, from memory). One overdub at a time (another
+    commits it); not while reversed.
+  - **3 Replace:** records over the playing loop from the next bar (Undo: the loop it replaced).
+  - **4 Next:** the lane's next empty slot is the pedal's (the old loop stops when the new recording starts);
+    **a double tap: Stop** (the lane stops at the launch time; the pedal's slot back to what it was). Our call: Stop
+    on the double tap, not Shift + key 4 (Shift + a step stays the shortcuts).
+  - **A group key held + the volume knob:** the lane's level (the level popup).
+- **The lights** (at the step LEDs' own rate; only changes go out): playing: a key a quarter of the loop, the one now
+  in the lane's colour, the others dim; overdub on: that key blinks fast (white); waiting to start or stop: blinking;
+  recording: the bars done red, the bar now blinking red; armed: the group blinking, key 1 red; a loop stopped: dim;
+  empty: very dim; a held key: white. Shift or a Track held: the shortcuts' lights.
+- **The screen:** a change's overlay (rows 0..10, 1.2 s): "Lane 2 REC", "Lane 1 Dub on", "Lane 3 > 3-2", "Lane 4
+  Stop"; while a group key is held its keys' jobs ("L2 Rec Dub Replace Next"); with the volume knob the lane's level.
+  No text on the LEDs.
+- Loops record from each lane's Source, default **Played** (in the FM-1 layout: the firmware played).

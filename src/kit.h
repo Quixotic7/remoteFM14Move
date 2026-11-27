@@ -283,4 +283,9 @@ void kit_resolve(const kit_t *k, const char *in, char *out, size_t cap);
 
 /* ---- the file thread: the requests waiting, done (the take library's worker calls it through TL_Q_JOB) */
 void kit_work(void *k);
+/* (looper round 2) a Files row's sound (place KIT_PL_TAKES, _SAMPLES, _CORE; its id) read for the looper on its own
+ * thread: 16-bit stereo at fs (resampled), at most max bytes; its name. NULL: *status KIT_MISSING, _FAILED, _TOO_LONG.
+ * The caller frees it */
+int16_t *kit_row_read(kit_t *k, int place, uint32_t id, uint32_t fs, uint64_t max, uint32_t *frames, char *name, int ncap,
+                      int *status);
 #endif

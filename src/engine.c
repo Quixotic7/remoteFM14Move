@@ -1101,6 +1101,9 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_LOOP_SET:
     case RFM_MOVE_ACT_LOOP_LOAD:
     case RFM_MOVE_ACT_LOOP_COPY:
+    case RFM_MOVE_ACT_LOOP_FILE:   /* (looper round 2) a Files row into a slot, the markers' peaks, an overdub */
+    case RFM_MOVE_ACT_LOOP_PEAKS:
+    case RFM_MOVE_ACT_LOOP_DUB:
         loop_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
@@ -4244,6 +4247,20 @@ static int tcpu_json(char *out, int cap)
 static char g_takes_dir[ST_PATH];
 static float g_rec_in_gain = 1.0f;      /* the sampler's Input level, as a gain (the input stream only) */
 static int16_t g_rec_in[FW_BLOCK * 2];
+static int g_mon_mode;                   /* (looper round 2) the sampler's Monitor: 0 Off, 1 On, 2 Auto */
+/* (looper round 2, the owner's: "one input setting") the input with the sampler's Input level: what the sampler, the
+ * looper's Input source and the monitor hear (NULL: none arriving) */
+static const int16_t *ain_gained(const int16_t *ain)
+{
+    int s;
+    if (!ain || g_rec_in_gain == 1.0f)
+        return ain;
+    for (s = 0; s < FW_BLOCK * 2; s++) {
+        const float v = ain[s] * g_rec_in_gain;
+        g_rec_in[s] = (int16_t)(v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int)lrintf(v));
+    }
+    return g_rec_in;
+}
 static uint32_t g_rec_takes, g_rec_last_take, g_rec_blocks;
 static uint32_t g_rec_t_greens, g_rec_t_msgs;   /* (tests) */
 static uint32_t g_rec_t_reds;                    /* (tests: Sample red, its level changed: the armed blink) */
@@ -4620,7 +4637,10 @@ static void rec_setting(int index, int value)
     case RFM_MOVE_SMP_TO:   /* (stage 3b) Kit: a take saved goes onto the kit's next empty pad */
         g_smp_to = value;
         break;
-    default:   /* Monitor: later */
+    case RFM_MOVE_SMP_MONITOR:   /* (looper round 2) Off, On, Auto (an input recording armed or running) */
+        g_mon_mode = value < 0 ? 0 : value > 2 ? 2 : value;
+        break;
+    default:
         break;
     }
 }
@@ -4642,17 +4662,8 @@ static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const
         b.st[REC_ST_KIT] = g_kit_blk;   /* (stage 3b) the kit's output alone */
     if (g_looper && looper_bytes(g_looper))
         b.st[REC_ST_LOOPER] = g_loop_blk;   /* (looper stage 1) the looper's output alone (the sampler's Looper) */
-    if (ain) {
-        if (g_rec_in_gain == 1.0f)
-            b.st[REC_ST_INPUT] = ain;
-        else {
-            for (s = 0; s < FW_BLOCK * 2; s++) {
-                const float v = ain[s] * g_rec_in_gain;
-                g_rec_in[s] = (int16_t)(v > 32767.0f ? 32767 : v < -32768.0f ? -32768 : (int)lrintf(v));
-            }
-            b.st[REC_ST_INPUT] = g_rec_in;
-        }
-    }
+    if (ain)
+        b.st[REC_ST_INPUT] = ain_gained(ain);
     b.frames = FW_BLOCK;
     b.playing = pos >= 0;
     b.beat = b.playing ? (pos - FW_BLOCK * per_frame) / (RFM_MOVE_SEQ_BAR / 4.0) : 0.0;
@@ -4730,7 +4741,8 @@ static void loop_proj_sync(void)   /* (the open project's folder, Kits/Projects/
     kit_proj_dir(g_kits_dir, slot, d, sizeof d);
     looper_project(g_looper, d);
 }
-typedef char loop_p_check[(int)LOOPER_P_N == (int)RFM_MOVE_LOOP_P_N && (int)LOOPER_L_N == (int)RFM_MOVE_LOOP_L_N &&
+typedef char loop_p_check[(int)LOOPER_P_N == (int)RFM_MOVE_LOOP_P_N && (int)LOOPER_W_N == (int)RFM_MOVE_LOOP_W_N &&
+                          LOOPER_MK_ONE == RFM_MOVE_LOOP_MK_ONE && (int)LOOPER_L_N == (int)RFM_MOVE_LOOP_L_N &&
                           (int)LOOPER_SRC_N == (int)RFM_MOVE_LOOP_SRC_N && (int)LOOPER_Q_CLIP == (int)RFM_MOVE_LQ_CLIP &&
                           LOOPER_SLOTS == RFM_MOVE_LOOP_SLOTS && LOOPER_PEAKS == RFM_MOVE_LOOP_PEAKS &&
                           LOOPER_RPEAKS == RFM_MOVE_LOOP_RPEAKS && (int)LOOPER_NOTHING == (int)RFM_MOVE_LOOP_NOTHING ? 1 : -1];
@@ -4759,8 +4771,8 @@ static void loop_action(const rfm_move_act_t *a)
     case RFM_MOVE_ACT_LOOP_SET:
         if (a->index >= RFM_MOVE_LOOP_LANE0)
             looper_lane(g_looper, a->index - RFM_MOVE_LOOP_LANE0, a->param, a->value);
-        else
-            looper_set(g_looper, a->index, a->param, a->value);
+        else   /* (round 2: the markers in take) */
+            looper_set(g_looper, a->index, a->param, a->param >= RFM_MOVE_LOOP_P_MSTART ? (int)a->take : a->value);
         break;
     case RFM_MOVE_ACT_LOOP_LOAD: {
         char p[RFM_MOVE_LOOP_PATH];
@@ -4770,8 +4782,23 @@ static void loop_action(const rfm_move_act_t *a)
         break;
     }
     case RFM_MOVE_ACT_LOOP_COPY: looper_copy(g_looper, a->index, (int)a->take); break;
+    case RFM_MOVE_ACT_LOOP_FILE:   /* (round 2) its bars at the tempo now */
+        looper_file(g_looper, a->index, a->value, a->take, rfm_move_seq_bpm10(&S->core));
+        g_loop_t_loads++;
+        break;
+    case RFM_MOVE_ACT_LOOP_PEAKS: looper_peaks(g_looper, a->index, a->from, a->count, a->value); break;
+    case RFM_MOVE_ACT_LOOP_DUB: looper_dub(g_looper, a->index, a->down == 1, a->vel, a->slot); break;
     default: break;
     }
+}
+/* (round 2) LOOP_FILE's sound, on the looper's file thread: the kit's Files row read (kit.c kit_row_read) */
+static int16_t *loop_read(void *ctx, int place, uint32_t id, uint32_t fs, uint64_t max, uint32_t *frames, char *name, int ncap,
+                          int *status)
+{
+    int st = KIT_FAILED;
+    int16_t *p = kit_row_read((kit_t *)ctx, place, id, fs, max, frames, name, ncap, &st);
+    *status = p ? LOOPER_OK : st == KIT_MISSING ? LOOPER_MISSING : st == KIT_TOO_LONG ? LOOPER_TOO_LONG : LOOPER_FAILED;
+    return p;
 }
 static void loop_tick(uint32_t now)
 {
@@ -4788,7 +4815,9 @@ static void loop_tick(uint32_t now)
             if (a.status == LOOPER_OK)
                 fsvc_bump_changed(), fprintf(stderr, "engine: loop %d-%d recorded: %s (%d bars)\n",
                                               a.slot / 8 + 1, a.slot % 8 + 1, a.path, a.bars);
-        } else
+        } else if (a.kind == LOOPER_A_PEAKS)   /* (round 2) the markers' close-up */
+            redraw |= rfm_move_loop_peaks(&S->core, a.slot, a.from, a.count, a.npk, a.pk);
+        else
             redraw |= rfm_move_loop_loaded(&S->core, a.slot, a.status, a.frames, a.rate, a.bars, a.bpm10, a.npk, a.pk);
     }
     if (now - last >= REC_STATUS_MS) {
@@ -5396,11 +5425,20 @@ static void render_block_(uint32_t now)
         lc.playing = spos >= 0;   /* (the song's position at the block's first frame, as the recorder's) */
         lc.bpf = sper / (RFM_MOVE_SEQ_BAR / 4.0);
         lc.beat0 = lc.playing ? (spos - FW_BLOCK * sper) / (RFM_MOVE_SEQ_BAR / 4.0) : 0.0;
+        {   /* (round 2, the owner's: "an option to monitor Line In") the input at its In Level through the Loops strip
+             * (its level, pan, sends, the volume knob); Auto: while an input recording is armed or runs. A block late
+             * (the input ring's lead); Off by default (feedback) */
+            const int smp_in = rfm_move_smp_value(&S->core, RFM_MOVE_SMP_SOURCE) == RFM_MOVE_SMP_SRC_INPUT &&
+                               S->core.smp.st.state != RFM_MOVE_SMP_ST_IDLE;
+            if (ain && (g_mon_mode == 1 || (g_mon_mode == 2 && (looper_input_armed(g_looper) || smp_in))))
+                looper_monitor(g_looper, ain_gained(ain));
+        }
         looper_render_bus(g_looper, &lc, g_mix.acc, ls, g_loop_blk, FW_BLOCK);
         memset(&src, 0, sizeof src);
         for (s = 0; s < NSLOT && s < 3; s++)
             src.slot[s] = dry[s];
-        src.kit = g_kit_blk_on ? g_kit_blk : NULL, src.input = ain, src.mix = g_mix_tap;
+        src.kit = g_kit_blk_on ? g_kit_blk : NULL, src.input = ain_gained(ain), src.mix = g_mix_tap;   /* (round 2:
+                                                         * the input at the sampler's In Level) */
         looper_record(g_looper, &src, g_loop_blk, FW_BLOCK);
     }
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
@@ -6196,6 +6234,7 @@ int engine_start(const engine_cfg_t *cfg)
         looper_cfg_t lc;
         memset(&lc, 0, sizeof lc);
         lc.fs = FW_FS;
+        lc.read = loop_read, lc.rctx = g_kit;   /* (round 2: the kit's Files for LOOP_FILE) */
         if (!(g_looper = looper_new(&lc)))
             fprintf(stderr, "engine: no looper (no memory)\n");
         else
@@ -6205,13 +6244,14 @@ int engine_start(const engine_cfg_t *cfg)
                                    (g_kit ? RFM_MOVE_CAP_KIT : 0) | (g_looper ? RFM_MOVE_CAP_LOOPER : 0) | RFM_MOVE_CAP_EXIT);
     rfm_move_kit_core_lib(&S->core, kit_has_core(g_kit));   /* (2026-11-26: the browser's second place, when there) */
     /* the sampler app offers: Master, Slot 1..3, Input, Stems, (stage 3b, with the kit) Kit; Source, Mode, Length,
-     * Threshold, Input level, (3b) To (not Monitor: later); the Record tab, (stage 2) Takes and Tools with the take
+     * Threshold, Input level, (3b) To, (looper round 2) Monitor; the Record tab, (stage 2) Takes and Tools with the take
      * library; takes to Files, (3b) to the Kit (the next empty pad) */
     rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
                        1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS |
                        (g_kit ? 1u << RFM_MOVE_SMP_SRC_KIT : 0) | (g_looper ? 1u << RFM_MOVE_SMP_SRC_LOOPER : 0),
                        1u << RFM_MOVE_SMP_SOURCE | 1u << RFM_MOVE_SMP_MODE | 1u << RFM_MOVE_SMP_LENGTH |
-                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT | (g_kit ? 1u << RFM_MOVE_SMP_TO : 0),
+                       1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT | (g_kit ? 1u << RFM_MOVE_SMP_TO : 0) |
+                           (g_looper ? 1u << RFM_MOVE_SMP_MONITOR : 0),   /* (looper round 2: Monitor) */
                        1u << RFM_MOVE_SMP_TAB_RECORD | (g_tl ? 1u << RFM_MOVE_SMP_TAB_TAKES | 1u << RFM_MOVE_SMP_TAB_TOOLS : 0) |
                            (g_looper ? 1u << RFM_MOVE_SMP_TAB_LOOPS : 0),
                        1u << RFM_MOVE_SMP_TO_FILES | (g_kit ? 1u << RFM_MOVE_SMP_TO_KIT : 0));

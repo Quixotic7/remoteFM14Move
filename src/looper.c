@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "barcut.h"
+#include "stretch.h"
 #include "wav.h"
 
 #ifdef LOOPER_TEST_ALLOC
@@ -39,6 +40,9 @@
 #define EDGE_MS 2                                       /* a loop's seam: faded this much each side */
 #define MAXB 128                                        /* bar lines a recording keeps */
 #define CLEAN_AGE_S 30                                  /* a file this new is never cleaned (a recording not yet saved) */
+#define GRAIN_MS 60                                     /* (round 2) Grains / Beats: a grain's length */
+#define JITTER 0.2                                      /* .. Grains: its jitter (of half a grain) */
+#define SEARCH_MS 10                                    /* .. Beats: its search */
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 static float lvl_gain(int v) { return v <= 0 ? 0.0f : (float)(v > 127 ? 127 : v) / 100.0f; }
@@ -59,6 +63,11 @@ typedef struct {
     double origin;                                      /* Repitch: the beat its cycles count from */
     double fpos;                                        /* Off: frames played since its start */
     float g, gstep;                                     /* the fade: gain now, per frame (+ in, - out) */
+    st_grain_t gr[2];                                   /* (round 2) Grains / Beats: its two grains */
+    int ginit;                                          /* .. started */
+    uint32_t rnd;                                       /* .. Grains' jitter */
+    double pw;                                          /* its cycle's place last frame (a new cycle: smaller) */
+    int64_t at;                                         /* (an overdub) the frame it read last (-1 none) */
 } voice_t;
 typedef struct {
     voice_t v, old;                                     /* the loop, the one fading out */
@@ -72,15 +81,21 @@ typedef struct {
 typedef struct {
     int16_t *pcm;                                       /* the slot's sound's (a cache of s->pcm per block) */
     snd_t *s;
-    int16_t v[LOOPER_P_N];
+    int32_t v[LOOPER_P_N];
     int bars, bpm10, loading;
+    uint32_t fgen;                                      /* (round 2) a file asked: its generation */
     char path[LOOPER_PATH];
 } lslot_t;
-enum { RQ_LOAD = 1, RQ_WRITE, RQ_CLEAN };
+enum { RQ_LOAD = 1, RQ_WRITE, RQ_CLEAN, RQ_FILE, RQ_PEAKS, RQ_DUB };
 typedef struct {
     int kind, slot, bars, bpm10;
     snd_t *s;
     uint32_t frames;
+    int place, n, spare;                                /* (round 2) FILE: the row's place, id; PEAKS: the columns; DUB:
+                                                         * the layer's spare */
+    uint32_t id, gen, from, count;                      /* .. FILE's generation; PEAKS', DUB's frames (DUB: count the
+                                                         * layer's frames from 0, the rest the base's) */
+    const int16_t *pcm;                                 /* (PEAKS, DUB) the sound's frames as the engine had them */
     char path[LOOPER_PATH];                             /* LOAD: the core's; WRITE: the name wanted */
     char proj[LOOPER_PATH];
 } req_t;
@@ -110,8 +125,22 @@ typedef struct {
     int own;                                            /* SWAP: s gets pcm (its exact copy); GOT: a loaded sound */
     snd_t *s;
     int16_t *pcm;
+    uint32_t gen;                                       /* (round 2) FILE: the slot's generation asked */
 } ans_t;
-enum { OWN_NONE, OWN_SWAP, OWN_GOT, OWN_WFAIL };
+enum { OWN_NONE, OWN_SWAP, OWN_GOT, OWN_WFAIL, OWN_FILE, OWN_PEAKS, OWN_DUB };   /* (round 2: a file's sound,
+                                                         * a peaks' reference let go, an overdub's sound) */
+typedef struct {                                        /* (round 2, item 9) the overdub (one at a time) */
+    int on;                                             /* 0 off, 1 waiting for its loop's next cycle, 2 layering, 3
+                                                         * ended: its file on the way */
+    int slot, spare, src, track;
+    snd_t *base;
+    int pass;                                           /* the cycles layered (0: the first: the layer's silence
+                                                         * replaced) */
+    int64_t hi;                                         /* .. the first pass's frames written [0, hi) */
+    int64_t last;                                       /* the frame written last (a frame read twice: once) */
+    int32_t idx[128];                                   /* this block's frame each output frame reads (-1 none) */
+    int dead;                                           /* its slot changed while its file was made */
+} dub_t;
 
 struct looper {
     looper_cfg_t cfg;
@@ -147,6 +176,9 @@ struct looper {
     float lbuf[2 * 128];
     float dry[2 * 128], sb[3][2 * 128];
     uint16_t src_level;
+    float hann[ST_HANN + 1];                            /* (round 2) the grains' window */
+    dub_t dub;
+    const int16_t *mon;                                 /* (round 2) this block's monitored input */
 };
 
 /* ================================================================ the mutex's queues === */
@@ -284,6 +316,30 @@ static int peaks_of(const int16_t *pcm, uint32_t frames, int n, uint8_t *pk)
         pk[c] = (uint8_t)(raw[c] * 255 / top);
     return n;
 }
+/* (round 2) a new WAV in the project's Loops/: base.wav, "base 2.wav" .. (never over a file Undo may bring back); its
+ * name (with .wav); 0 written */
+static int write_new(looper_t *l, const char *proj, const char *base, const int16_t *pcm, uint32_t frames, char *name,
+                     size_t ncap)
+{
+    char dir[LOOPER_PATH], path[LOOPER_PATH];
+    struct stat st;
+    int i, ok = 0;
+    if (!proj[0])
+        return -1;
+    snprintf(dir, sizeof dir, "%s/Loops", proj);
+    if (mkdirs(dir))
+        return -1;
+    for (i = 1; i < 1000 && !ok; i++) {
+        if (i == 1)
+            snprintf(name, ncap, "%s.wav", base);
+        else
+            snprintf(name, ncap, "%s %d.wav", base, i);
+        snprintf(path, sizeof path, "%s/%s", dir, name);
+        if (stat(path, &st))
+            ok = 1;
+    }
+    return ok && !write_wav(path, pcm, frames, l->cfg.fs) ? 0 : -1;
+}
 static void do_write(looper_t *l, const req_t *r)
 {
     ans_t a;
@@ -395,6 +451,102 @@ static void do_clean(looper_t *l)
     }
     closedir(x);
 }
+/* (round 2) a Files row's sound: read (cfg.read: any format the kit reads, at fs), copied into Loops/, its bars at the
+ * tempo asked */
+static void do_file(looper_t *l, const req_t *r)
+{
+    ans_t a;
+    char nm[64], base[64], name[LOOPER_PATH];
+    uint32_t fr = 0;
+    int st = LOOPER_FAILED, i;
+    int16_t *pcm;
+    memset(&a, 0, sizeof a);
+    a.a.kind = LOOPER_A_RECORDED, a.a.slot = r->slot, a.gen = r->gen, a.a.bpm10 = r->bpm10;
+    nm[0] = 0;
+    pcm = l->cfg.read ? l->cfg.read(l->cfg.rctx, r->place, r->id, l->cfg.fs, l->cfg.max_bytes, &fr, nm, sizeof nm, &st) : NULL;
+    if (!pcm || !fr) {
+        free(pcm);
+        a.a.status = st != LOOPER_OK ? st : LOOPER_FAILED;
+        answer(l, &a);
+        return;
+    }
+    for (i = 0; nm[i] && i < 48; i++)                   /* (a file name: printable, no '/') */
+        base[i] = nm[i] == '/' || nm[i] < 32 || nm[i] > 126 ? '_' : nm[i];
+    base[i] = 0;
+    if (!base[0])
+        snprintf(base, sizeof base, "Loop");
+    {
+        const double bar = (double)l->cfg.fs * 240.0 / (r->bpm10 > 0 ? r->bpm10 / 10.0 : 120.0);
+        a.a.bars = clampi((int)llround(fr / bar), 1, MAXB > 64 ? 64 : MAXB);
+    }
+    if (write_new(l, r->proj, base, pcm, fr, name, sizeof name) || !(a.s = snd_new(l))) {
+        free(pcm);
+        a.a.status = LOOPER_FAILED;
+        answer(l, &a);
+        return;
+    }
+    snprintf(a.s->path, sizeof a.s->path, "%sLoops/%s", LOOPER_OWN, name);
+    a.s->pcm = pcm, a.s->frames = fr, a.s->rate = l->cfg.fs;
+    snprintf(a.a.path, sizeof a.a.path, "%s", a.s->path);
+    a.a.status = LOOPER_OK, a.a.frames = fr, a.a.rate = l->cfg.fs;
+    a.a.npk = peaks_of(pcm, fr, LOOPER_PEAKS, a.a.pk);
+    a.own = OWN_FILE;
+    answer(l, &a);
+}
+static void do_peaks(looper_t *l, const req_t *r)       /* (round 2) the close-up's peaks, linear 0..255 */
+{
+    ans_t a;
+    int c;
+    memset(&a, 0, sizeof a);
+    a.a.kind = LOOPER_A_PEAKS, a.a.slot = r->slot, a.a.status = LOOPER_OK, a.a.from = r->from, a.a.count = r->count;
+    a.own = OWN_PEAKS, a.s = r->s;
+    a.a.npk = r->n;
+    for (c = 0; c < r->n; c++) {
+        const uint32_t x0 = r->from + (uint32_t)((uint64_t)r->count * (uint32_t)c / (uint32_t)r->n);
+        const uint32_t x1 = r->from + (uint32_t)((uint64_t)r->count * (uint32_t)(c + 1) / (uint32_t)r->n);
+        uint32_t i;
+        int p = 0;
+        for (i = 2 * x0; i < 2 * x1 && i < 2 * r->frames; i++)
+            p = abs(r->pcm[i]) > p ? abs(r->pcm[i]) : p;
+        a.a.pk[c] = (uint8_t)(p * 255 / 32767);
+    }
+    answer(l, &a);
+}
+/* (item 9) an overdub ended: the loop and its layer (its first count frames) as a new sound and WAV */
+static void do_dub(looper_t *l, const req_t *r)
+{
+    ans_t a;
+    char base[64], name[LOOPER_PATH];
+    int16_t *cp = malloc((size_t)r->frames * 4u + 4u);
+    const int16_t *lay = l->spare[r->spare];
+    uint32_t i;
+    memset(&a, 0, sizeof a);
+    a.a.kind = LOOPER_A_RECORDED, a.a.slot = r->slot, a.a.bars = r->bars, a.a.bpm10 = r->bpm10;
+    a.own = OWN_DUB;
+    if (!cp) {
+        a.a.status = LOOPER_FAILED;
+        answer(l, &a);
+        return;
+    }
+    for (i = 0; i < 2 * r->frames; i++) {
+        const int v = r->pcm[i] + (i < 2 * r->count ? lay[i] : 0);
+        cp[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+    }
+    snprintf(base, sizeof base, "%d-%d %dbpm %db", r->slot / LOOPER_SCENES + 1, r->slot % LOOPER_SCENES + 1,
+             (r->bpm10 + 5) / 10, r->bars);
+    if (write_new(l, r->proj, base, cp, r->frames, name, sizeof name) || !(a.s = snd_new(l))) {
+        free(cp);
+        a.a.status = LOOPER_FAILED;
+        answer(l, &a);
+        return;
+    }
+    snprintf(a.s->path, sizeof a.s->path, "%sLoops/%s", LOOPER_OWN, name);
+    a.s->pcm = cp, a.s->frames = r->frames, a.s->rate = l->cfg.fs;
+    snprintf(a.a.path, sizeof a.a.path, "%s", a.s->path);
+    a.a.status = LOOPER_OK, a.a.frames = r->frames, a.a.rate = l->cfg.fs;
+    a.a.npk = peaks_of(cp, r->frames, LOOPER_PEAKS, a.a.pk);
+    answer(l, &a);
+}
 static int work(looper_t *l)                            /* one turn: 1 something done */
 {
     req_t r;
@@ -422,6 +574,9 @@ static int work(looper_t *l)                            /* one turn: 1 something
     switch (r.kind) {
     case RQ_LOAD: do_load(l, &r); break;
     case RQ_WRITE: do_write(l, &r); break;
+    case RQ_FILE: do_file(l, &r); break;
+    case RQ_PEAKS: do_peaks(l, &r); break;
+    case RQ_DUB: do_dub(l, &r); break;
     default:
         if (cl)
             do_clean(l);
@@ -485,7 +640,10 @@ looper_t *looper_new(const looper_cfg_t *cfg)
     }
     for (i = 0; i < LOOPER_SLOTS; i++) {
         l->sl[i].v[LOOPER_P_LENGTH] = 16, l->sl[i].v[LOOPER_P_LEVEL] = 100, l->sl[i].v[LOOPER_P_PAN] = 64;
+        l->sl[i].v[LOOPER_P_MEND] = LOOPER_MK_ONE;
     }
+    st_hann_make(l->hann);
+    l->dub.slot = -1;
     for (i = 0; i < LOOPER_LANES; i++)
         l->ln[i].v.slot = l->ln[i].old.slot = -1, l->ln[i].next = -1, l->ln[i].level = 100;
     l->rc[0].slot = l->rc[1].slot = -1;
@@ -519,6 +677,8 @@ void looper_free(looper_t *l)
         ans_t *a = &l->an[l->anh];
         if (a->own == OWN_SWAP)
             free(a->pcm);                               /* (a copy no sound holds yet; a loaded one's: below) */
+        else if ((a->own == OWN_FILE || a->own == OWN_DUB) && a->s && a->s->pcm)
+            free(a->s->pcm), a->s->pcm = NULL;
         l->anh = (l->anh + 1) % NANS, l->ann--;
     }
     for (i = 0; i < LOOPER_SPARES; i++)
@@ -535,7 +695,6 @@ void looper_project(looper_t *l, const char *dir)
 }
 
 /* ================================================================ the slots (the engine's thread) === */
-static int beats_of(const lslot_t *s) { return (s->bars > 0 ? s->bars : 1) * 4; }
 static void voice_off(lane_t *n, int fade_frames)       /* the loop fades out (its voice to old) */
 {
     if (n->v.slot < 0)
@@ -572,6 +731,14 @@ static void slot_put(looper_t *l, int slot, snd_t *s)  /* the slot's sound (a he
     if (was == s) {
         snd_unref(l, s);
         return;
+    }
+    if (l->dub.on && l->dub.slot == slot && s != l->dub.base) {   /* (item 9) its loop gone: the overdub with it */
+        if (l->dub.on < 3) {
+            l->spare_free[l->dub.spare] = 1;
+            snd_unref(l, l->dub.base);
+            memset(&l->dub, 0, sizeof l->dub), l->dub.slot = -1;
+        } else
+            l->dub.dead = 1;                            /* (its file on the way: dropped when it comes) */
     }
     lane_kill_slot(l, slot);
     if (l->ln[slot / LOOPER_SCENES].old.s == was)
@@ -611,6 +778,7 @@ void looper_load(looper_t *l, int slot, const char *path, int bars, int bpm10)
         return;
     d = &l->sl[slot];
     d->loading = 0;
+    d->fgen++;                                          /* (round 2: a file asked before: not wanted now) */
     if (!path || !path[0]) {                            /* emptied */
         slot_put(l, slot, NULL);
         d->path[0] = 0;
@@ -659,7 +827,7 @@ void looper_copy(looper_t *l, int dst, int src)
 void looper_set(looper_t *l, int slot, int p, int v)
 {
     if (l && slot >= 0 && slot < LOOPER_SLOTS && p >= 0 && p < LOOPER_P_N)
-        l->sl[slot].v[p] = (int16_t)v;
+        l->sl[slot].v[p] = v;
 }
 void looper_lane(looper_t *l, int lane, int p, int v)
 {
@@ -739,6 +907,7 @@ static void voice_start(looper_t *l, lane_t *n, int slot, double origin)
         return;
     n->v.slot = slot, n->v.s = d->s, n->v.origin = origin, n->v.fpos = 0;
     n->v.g = 0, n->v.gstep = 1.0f / (float)(l->cfg.fs * FADE_IN_MS / 1000);
+    n->v.ginit = 0, n->v.pw = -1, n->v.rnd = 0x9E3779B9u * (uint32_t)(slot + 1);
 }
 
 /* ================================================================ recording (the engine's thread) === */
@@ -772,6 +941,7 @@ void looper_rec(looper_t *l, int slot, int bars, int src, int played, uint32_t f
     if (r == &l->rc[1] && !l->rc[0].ereq)
         l->rc[0].ereq = 1, l->rc[0].eframe = frame, l->rc[0].eres = 0;   /* (the one running ends at the next bar) */
     memset(r, 0, sizeof *r);
+    l->sl[slot].fgen++;                                 /* (round 2: a file asked before: not wanted now) */
     r->slot = slot, r->bars = clampi(bars, 0, MAXB), r->src = src, r->track = clampi(played, 0, 2);
     r->sframe = frame, r->s_off = r->e_off = -1;
     if ((r->spare = spare_take(l)) < 0) {
@@ -900,7 +1070,8 @@ static void rec_prefinish(looper_t *l, rec_t *r, uint32_t frames)
     l->sl[slot].bars = bars;
     l->sl[slot].bpm10 = (int)llround(l->clk.bpf * l->cfg.fs * 60.0 * 10.0);
     memset(l->sl[slot].v, 0, sizeof l->sl[slot].v);
-    l->sl[slot].v[LOOPER_P_LENGTH] = (int16_t)(bars * 16), l->sl[slot].v[LOOPER_P_LEVEL] = 100, l->sl[slot].v[LOOPER_P_PAN] = 64;
+    l->sl[slot].v[LOOPER_P_LENGTH] = bars * 16, l->sl[slot].v[LOOPER_P_LEVEL] = 100, l->sl[slot].v[LOOPER_P_PAN] = 64;
+    l->sl[slot].v[LOOPER_P_MEND] = LOOPER_MK_ONE;
     slot_put(l, slot, s);
     l->sl[slot].pcm = s->pcm;
     if (r->eres != 2)
@@ -931,50 +1102,118 @@ static float edge(double q, double L, double e)         /* the seam's fade: 0 at
         g = (float)((L - q) / e);
     return g < 0 ? 0 : g;
 }
-/* frame i of the block (beat b): the voice's sample (its gain applied), its cycle's place 0..1 */
-static int voice_frame(const looper_t *l, const voice_t *v, double b, float *lo, float *ro, double *where)
+/* (round 2) the region the markers say: frames [*S, *E) of the sound (one frame at least) */
+static void region_of(const lslot_t *d, const snd_t *s, double *S, double *E)
+{
+    const double F = (double)s->frames;
+    double a = F * clampi(d->v[LOOPER_P_MSTART], 0, LOOPER_MK_ONE) / LOOPER_MK_ONE;
+    double b = F * clampi(d->v[LOOPER_P_MEND], 0, LOOPER_MK_ONE) / LOOPER_MK_ONE;
+    if (b > F)
+        b = F;
+    if (b < a + 1)
+        b = a + 1 <= F ? a + 1 : F, a = b - 1;
+    *S = a, *E = b;
+}
+typedef struct {                                        /* (Grains / Beats) the fold's region */
+    double s, e;
+} reg_t;
+static double reg_fold(const void *u, double p)         /* round the region (a loop) */
+{
+    const reg_t *r = u;
+    const double n = r->e - r->s;
+    if (n <= 0)
+        return r->s;
+    if (p >= r->e || p < r->s)
+        p = r->s + fmod(fmod(p - r->s, n) + n, n);
+    return p;
+}
+static float rnd_bi(uint32_t *x)                        /* (xorshift, -1..1: Grains' jitter) */
+{
+    uint32_t v = *x ? *x : 2463534242u;
+    v ^= v << 13, v ^= v >> 17, v ^= v << 5;
+    *x = v;
+    return (float)(v >> 8) * (2.0f / 16777216.0f) - 1.0f;
+}
+/* frame i of the block (beat b): the voice's sample (its gain applied), its cycle's place 0..1, the frame it reads
+ * (*fr, an overdub's) */
+static int voice_frame(const looper_t *l, voice_t *v, double b, float *lo, float *ro, double *where, int64_t *fr)
 {
     const lslot_t *d = &l->sl[v->slot];
     const snd_t *s = v->s;
-    const double R = beats_of(d), F = (double)s->frames / R, L = len_beats(d);
-    const double r = pow(2.0, d->v[LOOPER_P_PITCH] / 1200.0);
-    const double st = (double)d->v[LOOPER_P_START] / 4.0, e = (double)l->cfg.fs * EDGE_MS / 1000.0;
-    double q, src, pos, fi;
+    const int w = clampi(d->v[LOOPER_P_WARP], 0, LOOPER_W_N - 1), rev = d->v[LOOPER_P_REVERSE] != 0;
+    const double L = len_beats(d), r = pow(2.0, d->v[LOOPER_P_PITCH] / 1200.0);
+    const double e = (double)l->cfg.fs * EDGE_MS / 1000.0;
+    double S, E, RL, q, pos;
     uint32_t i0, i1;
-    float fr, g;
-    if (d->v[LOOPER_P_WARP] == LOOPER_W_OFF) {          /* (its own rate: frames since its start) */
-        const double Lf = L * F;
-        q = fmod(v->fpos, Lf);
-        *where = q / Lf;
-        g = edge(q, Lf, e);
-        src = q;
-        pos = d->v[LOOPER_P_REVERSE] ? st * F + Lf - src : st * F + src;
-    } else {                                            /* (Repitch: the song's beat) */
+    float fr0, g;
+    region_of(d, s, &S, &E);
+    RL = E - S;
+    if (w == LOOPER_W_OFF) {                            /* (its own rate: frames since its start, round the region) */
+        q = fmod(v->fpos, RL);
+        *where = q / RL;
+        g = edge(q, RL, e);
+        pos = rev ? E - 1 - q : S + q;
+    } else {                                            /* (the song's beat: the region fills Length's steps) */
         double x = b - v->origin;
         if (x < 0)
             x = 0;
         q = fmod(x, L);
         *where = q / L;
-        src = q * r;
-        if (src >= L)
-            return 0;                                   /* (pitched up: its part over until the next cycle) */
         g = edge(q, L, e * l->clk.bpf);
-        pos = (d->v[LOOPER_P_REVERSE] ? st + L - src : st + src) * F;
+        if (w == LOOPER_W_REPITCH) {                    /* (resampled: the pitch follows; Pitch on top) */
+            const double src = q * r;
+            if (src >= L)
+                return 0;                               /* (pitched up: its part over until the next cycle) */
+            pos = rev ? E - src / L * RL : S + src / L * RL;
+        } else {                                        /* Grains, Beats (stretch.h, the kit's): the playhead the song's
+                                                         * place, the grains at the pitch's rate */
+            const st_src_t xs = { s->pcm, s->frames, S, E, rev ? -1 : 1 };
+            const reg_t rg = { S, E };
+            const uint32_t glen = (uint32_t)(l->cfg.fs * GRAIN_MS / 1000) > 16 ? (uint32_t)(l->cfg.fs * GRAIN_MS / 1000) : 16;
+            const float wstep = (float)ST_HANN / (float)glen;
+            const int beats = w == LOOPER_W_BEATS;
+            const double jit = beats ? (double)l->cfg.fs * SEARCH_MS / 1000.0 : glen * 0.5 * JITTER * r;
+            double ph = rev ? E - q / L * RL : S + q / L * RL;
+            float sl = 0, sr = 0;
+            int k;
+            ph = reg_fold(&rg, ph);
+            if (!v->ginit)
+                st_start(v->gr, ph, r, glen), v->ginit = 1;
+            for (k = 0; k < 2; k++) {
+                st_grain_t *gk = &v->gr[k];
+                float a, c, wv;
+                if (gk->age >= glen) {
+                    const double at = st_restart(&xs, beats, jit, &v->gr[k ^ 1], ph, beats ? 0.0f : rnd_bi(&v->rnd), reg_fold, &rg);
+                    gk->pos = reg_fold(&rg, at), gk->age = 0, gk->inc = r;
+                }
+                wv = l->hann[(uint32_t)((float)gk->age * wstep) & (ST_HANN - 1)];
+                st_frame_at(s->pcm, s->frames, reg_fold(&rg, gk->pos), &a, &c);
+                sl += a * wv, sr += c * wv;
+                gk->pos += xs.dir * gk->inc, gk->age++;
+            }
+            *lo = sl * g, *ro = sr * g;
+            *fr = (int64_t)ph;
+            return 1;
+        }
     }
-    pos = fmod(pos, (double)s->frames);
     if (pos < 0)
-        pos += s->frames;
+        pos = 0;
+    if (pos >= s->frames)
+        pos = s->frames - 1;
     i0 = (uint32_t)pos;
-    if (i0 >= s->frames)
-        i0 = 0;
-    i1 = i0 + 1 < s->frames ? i0 + 1 : 0;
-    fi = pos - i0, fr = (float)fi;
-    *lo = (s->pcm[2 * i0] + (s->pcm[2 * i1] - s->pcm[2 * i0]) * fr) * g;
-    *ro = (s->pcm[2 * i0 + 1] + (s->pcm[2 * i1 + 1] - s->pcm[2 * i0 + 1]) * fr) * g;
+    i1 = i0 + 1 < s->frames ? i0 + 1 : i0;
+    fr0 = (float)(pos - i0);
+    *fr = (int64_t)llround(pos) < (int64_t)s->frames ? (int64_t)llround(pos) : (int64_t)s->frames - 1;   /* (the overdub's
+                                                         * frame: the nearest, steady at the loop's own tempo) */
+    *lo = (s->pcm[2 * i0] + (s->pcm[2 * i1] - s->pcm[2 * i0]) * fr0) * g;
+    *ro = (s->pcm[2 * i0 + 1] + (s->pcm[2 * i1 + 1] - s->pcm[2 * i0 + 1]) * fr0) * g;
     return 1;
 }
-/* a voice's frames [a, b) into the lane's buffer and the sends (its loop's level, pan, sends; the fade) */
-static void voice_run(looper_t *l, voice_t *v, int lane, uint32_t a, uint32_t b, double *where)
+/* (item 9) the overdub's layer at frame f of its sound: written yet (its first pass so far, or a whole pass) */
+static int dub_has(const looper_t *l, int64_t f) { return f >= 0 && (l->dub.pass > 0 || f < l->dub.hi); }
+/* a voice's frames [a, b) into the lane's buffer and the sends (its loop's level, pan, sends; the fade); dub: the
+ * voice the overdub layers onto (its layer heard, the frames it reads noted) */
+static void voice_run(looper_t *l, voice_t *v, int lane, uint32_t a, uint32_t b, double *where, int dub)
 {
     const lslot_t *d;
     float gl, gr, sg[3];
@@ -997,28 +1236,53 @@ static void voice_run(looper_t *l, voice_t *v, int lane, uint32_t a, uint32_t b,
     (void)lane;
     {
         const double rate = pow(2.0, d->v[LOOPER_P_PITCH] / 1200.0);
-    for (i = a; i < b; i++) {
-        float L = 0, R = 0;
-        const double bt = l->clk.beat0 + i * l->clk.bpf;
-        if (voice_frame(l, v, bt, &L, &R, where)) {
-            const float x = L * gl * v->g, y = R * gr * v->g;
-            l->lbuf[2 * i] += x, l->lbuf[2 * i + 1] += y;
-            for (j = 0; j < 3; j++)
-                if (sg[j] > 0)
-                    l->sb[j][2 * i] += x * sg[j], l->sb[j][2 * i + 1] += y * sg[j];
-        }
-        if (d->v[LOOPER_P_WARP] == LOOPER_W_OFF)
-            v->fpos += rate;
-        if (v->gstep) {
-            v->g += v->gstep;
-            if (v->g >= 1.0f)
-                v->g = 1.0f, v->gstep = 0;
-            else if (v->g <= 0.0f) {
-                v->g = 0, v->gstep = 0, v->slot = -1, v->s = NULL;
-                return;
+        const int16_t *lay = dub && l->dub.on >= 2 ? l->spare[l->dub.spare] : NULL;
+        for (i = a; i < b; i++) {
+            float L = 0, R = 0;
+            int64_t f = -1;
+            double w = -1;
+            const double bt = l->clk.beat0 + i * l->clk.bpf;
+            if (voice_frame(l, v, bt, &L, &R, &w, &f)) {
+                float x, y;
+                if (lay && f >= 0 && f < (int64_t)l->spare_frames && dub_has(l, f))
+                    L += lay[2 * f], R += lay[2 * f + 1];   /* (the layer so far) */
+                x = L * gl * v->g, y = R * gr * v->g;
+                l->lbuf[2 * i] += x, l->lbuf[2 * i + 1] += y;
+                for (j = 0; j < 3; j++)
+                    if (sg[j] > 0)
+                        l->sb[j][2 * i] += x * sg[j], l->sb[j][2 * i + 1] += y * sg[j];
+            }
+            if (w >= 0)
+                *where = w;
+            if (dub) {                                  /* (item 9) the overdub: its cycles, the frame it writes */
+                dub_t *o = &l->dub;
+                const int wrap = w >= 0 && v->pw >= 0 && w < v->pw - 0.5;
+                if (o->on == 1 && wrap)
+                    o->on = 2, o->pass = 0, o->hi = 0;   /* (its loop's next cycle: from here) */
+                else if (o->on == 2 && wrap) {
+                    if (!o->pass && o->hi < (int64_t)v->s->frames) {   /* (the first pass's end: what it never read,
+                                                         * silence: a pitch up's rest, a last frame or two) */
+                        int16_t *lay0 = l->spare[o->spare];
+                        memset(lay0 + 2 * o->hi, 0, (size_t)((int64_t)v->s->frames - o->hi) * 4u);
+                        o->hi = v->s->frames;
+                    }
+                    o->pass++;
+                }
+                o->idx[i] = o->on == 2 && !d->v[LOOPER_P_REVERSE] && f >= 0 && f < (int64_t)l->spare_frames && f < (int64_t)v->s->frames ? (int32_t)f : -1;
+                v->pw = w;
+            }
+            if (d->v[LOOPER_P_WARP] == LOOPER_W_OFF)
+                v->fpos += rate;
+            if (v->gstep) {
+                v->g += v->gstep;
+                if (v->g >= 1.0f)
+                    v->g = 1.0f, v->gstep = 0;
+                else if (v->g <= 0.0f) {
+                    v->g = 0, v->gstep = 0, v->slot = -1, v->s = NULL;
+                    return;
+                }
             }
         }
-    }
     }
 }
 /* the lane's events this block, in order: its waiting launch / stop, its recording's start (the lane stops) and end
@@ -1054,8 +1318,9 @@ static void lane_run(looper_t *l, int k, uint32_t frames)
             if (evs[e] >= 0 && (uint32_t)evs[e] >= at && (uint32_t)evs[e] < end)
                 end = (uint32_t)evs[e];
         if (l->clk.playing) {
-            voice_run(l, &n->old, k, at, end, &where);
-            voice_run(l, &n->v, k, at, end, &where);
+            voice_run(l, &n->old, k, at, end, &where, 0);
+            voice_run(l, &n->v, k, at, end, &where,
+                      l->dub.on && n->v.slot == l->dub.slot && n->v.s == l->dub.base);
         }
         at = end;
         if (at >= frames)
@@ -1108,7 +1373,8 @@ void looper_render_bus(looper_t *l, const looper_clock_t *c, float *acc, float *
         for (k = 0; k < LOOPER_LANES; k++) {
             lane_t *n = &l->ln[k];
             if (n->v.slot >= 0)
-                n->v.origin = c->beat0, n->v.fpos = 0, n->v.g = 0, n->v.gstep = 1.0f / (float)(l->cfg.fs * FADE_IN_MS / 1000);
+                n->v.origin = c->beat0, n->v.fpos = 0, n->v.g = 0, n->v.gstep = 1.0f / (float)(l->cfg.fs * FADE_IN_MS / 1000),
+                n->v.ginit = 0, n->v.pw = -1;
             if (n->next >= 0 && n->next != STOPQ)
                 n->nq = LOOPER_Q_BAR, n->nat = c->beat0, n->nres = 1;
             else if (n->next == STOPQ)
@@ -1117,6 +1383,8 @@ void looper_render_bus(looper_t *l, const looper_clock_t *c, float *acc, float *
         }
     for (k = 0; k < LOOPER_SLOTS; k++)                  /* (a sound swapped for its exact copy: the slot's pointer) */
         l->sl[k].pcm = l->sl[k].s ? l->sl[k].s->pcm : NULL;
+    for (k = 0; k < 128; k++)
+        l->dub.idx[k] = -1;
     rec_resolve(l, frames);
     if (l->rc[0].state && l->rc[0].e_off >= 0)
         rec_prefinish(l, &l->rc[0], frames);            /* (ending this block: its sound before the voices) */
@@ -1155,7 +1423,9 @@ void looper_render_bus(looper_t *l, const looper_clock_t *c, float *acc, float *
     }
     for (i = 0; i < frames; i++) {                      /* the Loops strip: level, pan, sends, the master */
         const float x = l->dry[2 * i] * gl, y = l->dry[2 * i + 1] * gr;
-        acc[2 * i] += x, acc[2 * i + 1] += y;
+        const float ml = l->mon ? l->mon[2 * i] : 0.0f, mr = l->mon ? l->mon[2 * i + 1] : 0.0f;   /* (round 2: the
+                                                         * monitored input, not in own) */
+        acc[2 * i] += x + ml * gl, acc[2 * i + 1] += y + mr * gr;
         if (own) {
             const long a = lrintf(x), b = lrintf(y);
             own[2 * i] = (int16_t)(a > 32767 ? 32767 : a < -32768 ? -32768 : a);
@@ -1163,10 +1433,11 @@ void looper_render_bus(looper_t *l, const looper_clock_t *c, float *acc, float *
         }
         for (j = 0; send && j < 3; j++)
             if (send[j]) {
-                send[j][2 * i] += (l->sb[j][2 * i] + l->dry[2 * i] * sg[j]) * gl;
-                send[j][2 * i + 1] += (l->sb[j][2 * i + 1] + l->dry[2 * i + 1] * sg[j]) * gr;
+                send[j][2 * i] += (l->sb[j][2 * i] + (l->dry[2 * i] + ml) * sg[j]) * gl;
+                send[j][2 * i + 1] += (l->sb[j][2 * i + 1] + (l->dry[2 * i + 1] + mr) * sg[j]) * gr;
             }
     }
+    l->mon = NULL;
     if (own && frames < 128)
         memset(own + 2 * frames, 0, sizeof(int16_t) * 2u * (128 - frames));
     l->was_playing = c->playing;
@@ -1230,6 +1501,46 @@ static void rec_next(looper_t *l)                       /* rc[1] (started where 
     memset(&l->rc[1], 0, sizeof l->rc[1]);
     l->rc[1].slot = -1, l->rc[1].spare = -1, l->rc[1].s_off = l->rc[1].e_off = -1;
 }
+/* (item 9) the overdub's frames this block: each output frame's source onto the frame its loop read (the first pass:
+ * replacing the spare's old content, frames it skipped zeroed; later passes: summed, saturated) */
+static void dub_write(looper_t *l, const looper_src_t *src, const int16_t *own, uint32_t frames)
+{
+    dub_t *o = &l->dub;
+    rec_t q;
+    const int16_t *x;
+    int16_t *lay;
+    uint32_t i;
+    if (o->on != 2)
+        return;
+    memset(&q, 0, sizeof q);
+    q.src = o->src, q.track = o->track;
+    x = src_block(src, own, &q);
+    lay = l->spare[o->spare];
+    for (i = 0; i < frames; i++) {
+        const int32_t f = o->idx[i];
+        int c;
+        if (f < 0)
+            continue;
+        if (!o->pass) {                                 /* (the first pass: the silence up to it, then the source) */
+            int64_t z;
+            for (z = o->hi; z < f; z++)
+                lay[2 * z] = 0, lay[2 * z + 1] = 0;
+            for (c = 0; c < 2; c++)
+                lay[2 * f + c] = x ? x[2 * i + c] : 0;
+            if (f >= o->hi)
+                o->hi = (int64_t)f + 1;
+            o->last = f;
+            continue;
+        }
+        if (f == o->last || !x)
+            continue;                                   /* (read twice: summed once) */
+        o->last = f;
+        for (c = 0; c < 2; c++) {
+            const int v = lay[2 * f + c] + x[2 * i + c];
+            lay[2 * f + c] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+        }
+    }
+}
 void looper_record(looper_t *l, const looper_src_t *src, const int16_t *own, uint32_t frames)
 {
     rec_t *r;
@@ -1238,6 +1549,7 @@ void looper_record(looper_t *l, const looper_src_t *src, const int16_t *own, uin
         return;
     if (frames > 128)
         frames = 128;
+    dub_write(l, src, own, frames);
     r = &l->rc[0];
     l->src_level = 0;
     if (!r->state || !r->started)
@@ -1353,6 +1665,52 @@ int looper_poll(looper_t *l, looper_ans_t *out)
                 continue;                               /* (another load since: this one's answer dropped) */
             }
         }
+        if (a.own == OWN_PEAKS) {                       /* (round 2) the sound's reference let go */
+            snd_unref(l, a.s);
+        } else if (a.own == OWN_FILE && a.s) {          /* (round 2) a file's sound: the slot still wants it */
+            lslot_t *d = &l->sl[a.a.slot];
+            a.s->refs = 1, l->bytes += (uint64_t)a.s->frames * 4u;
+            if (d->fgen != a.gen) {
+                snd_unref(l, a.s);
+                continue;                               /* (asked again since, or loaded, recorded) */
+            }
+            if (l->bytes > l->cfg.max_bytes) {
+                snd_unref(l, a.s);
+                a.a.status = LOOPER_TOO_LONG, a.a.path[0] = 0;
+            } else {
+                int k;
+                slot_put(l, a.a.slot, a.s);
+                d->bars = a.a.bars, d->bpm10 = a.a.bpm10;
+                for (k = 0; k < LOOPER_P_N; k++)
+                    d->v[k] = 0;
+                d->v[LOOPER_P_LENGTH] = a.a.bars * 16, d->v[LOOPER_P_LEVEL] = 100, d->v[LOOPER_P_PAN] = 64;
+                d->v[LOOPER_P_MEND] = LOOPER_MK_ONE;
+            }
+        } else if (a.own == OWN_DUB) {                  /* (item 9) an overdub's sound: swapped in, seamless */
+            dub_t *o = &l->dub;
+            const int ok = a.s && !o->dead && o->on == 3 && o->slot == a.a.slot && l->sl[a.a.slot].s == o->base;
+            if (a.s)
+                a.s->refs = 1, l->bytes += (uint64_t)a.s->frames * 4u;
+            if (ok) {
+                lslot_t *d = &l->sl[a.a.slot];
+                lane_t *n = &l->ln[a.a.slot / LOOPER_SCENES];
+                if (n->v.s == o->base)
+                    n->v.s = a.s;
+                if (n->old.s == o->base)
+                    n->old.s = a.s;
+                d->s = a.s, d->pcm = a.s->pcm;
+                snprintf(d->path, sizeof d->path, "%s", a.s->path);
+                keep_push(l, o->base);                  /* (the slot's reference: Undo's keep) */
+            } else if (a.s)
+                snd_unref(l, a.s);
+            if (o->on == 3) {
+                l->spare_free[o->spare] = 1;
+                snd_unref(l, o->base);                  /* (the overdub's own reference) */
+                memset(o, 0, sizeof *o), o->slot = -1;
+            }
+            if (!ok && a.a.status == LOOPER_OK)
+                a.a.status = LOOPER_FAILED;
+        }
         if (a.a.kind == LOOPER_A_LOADED && a.a.status != LOOPER_OK && a.a.slot >= 0 && a.a.slot < LOOPER_SLOTS)
             l->sl[a.a.slot].loading = 0;
         if (!a.a.kind)
@@ -1377,6 +1735,95 @@ void looper_clean(looper_t *l, const char *const *refs, int n)
     l->clean_due = 1;
     wake(l);
     pthread_mutex_unlock(&l->mu);
+}
+/* ================================================================ (round 2) files, peaks, overdub, monitor === */
+void looper_file(looper_t *l, int slot, int place, uint32_t id, int bpm10)
+{
+    req_t r;
+    if (!l || slot < 0 || slot >= LOOPER_SLOTS)
+        return;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_FILE, r.slot = slot, r.place = place, r.id = id, r.bpm10 = bpm10 > 0 ? bpm10 : 1200;
+    r.gen = ++l->sl[slot].fgen;
+    snprintf(r.proj, sizeof r.proj, "%s", l->proj);
+    request(l, &r);
+}
+void looper_peaks(looper_t *l, int slot, uint32_t from, uint32_t count, int n)
+{
+    req_t r;
+    snd_t *s;
+    if (!l || slot < 0 || slot >= LOOPER_SLOTS || !(s = l->sl[slot].s) || !s->pcm || !s->frames || n <= 0 || !count)
+        return;
+    if (from >= s->frames)
+        return;
+    if (count > s->frames - from)
+        count = s->frames - from;
+    memset(&r, 0, sizeof r);
+    r.kind = RQ_PEAKS, r.slot = slot, r.s = s, r.pcm = s->pcm, r.frames = s->frames, r.from = from, r.count = count;
+    r.n = n > LOOPER_PEAKS ? LOOPER_PEAKS : n;
+    snd_ref(s);                                         /* (let go when its answer comes: OWN_PEAKS) */
+    request(l, &r);
+}
+void looper_dub(looper_t *l, int slot, int on, int src, int played)
+{
+    dub_t *o;
+    lslot_t *d;
+    if (!l || slot < 0 || slot >= LOOPER_SLOTS)
+        return;
+    o = &l->dub, d = &l->sl[slot];
+    if (on) {
+        int sp;
+        if (o->on && o->slot == slot && o->on < 3)
+            return;
+        if (o->on && o->on < 3)
+            looper_dub(l, o->slot, 0, 0, 0);            /* (one at a time: the other's committed) */
+        if (o->on || !d->s || !d->s->pcm || d->s->frames > l->spare_frames ||
+            l->ln[slot / LOOPER_SCENES].v.slot != slot || (l->rc[0].state && l->rc[0].slot / LOOPER_SCENES == slot / LOOPER_SCENES)) {
+            core_answer(l, LOOPER_A_RECORDED, slot, LOOPER_NOTHING);
+            return;
+        }
+        if ((sp = spare_take(l)) < 0) {
+            core_answer(l, LOOPER_A_RECORDED, slot, LOOPER_FAILED);
+            return;
+        }
+        memset(o, 0, sizeof *o);
+        o->on = 1, o->slot = slot, o->spare = sp, o->src = src, o->track = clampi(played, 0, 2), o->base = d->s;
+        snd_ref(d->s);
+        return;
+    }
+    if (!o->on || o->slot != slot || o->on == 3)
+        return;
+    if (o->on == 1 || (!o->pass && !o->hi)) {           /* (nothing layered: nothing kept) */
+        l->spare_free[o->spare] = 1;
+        snd_unref(l, o->base);
+        memset(o, 0, sizeof *o), o->slot = -1;
+        core_answer(l, LOOPER_A_RECORDED, slot, LOOPER_NOTHING);
+        return;
+    }
+    {
+        req_t r;
+        memset(&r, 0, sizeof r);
+        r.kind = RQ_DUB, r.slot = slot, r.s = o->base, r.pcm = o->base->pcm, r.frames = o->base->frames;
+        r.spare = o->spare, r.count = o->pass ? o->base->frames : (uint32_t)o->hi, r.bars = d->bars, r.bpm10 = d->bpm10;
+        snprintf(r.proj, sizeof r.proj, "%s", l->proj);
+        o->on = 3;                                      /* (its layer heard as it is until the swap) */
+        request(l, &r);
+    }
+}
+void looper_monitor(looper_t *l, const int16_t *in)
+{
+    if (l)
+        l->mon = in;
+}
+int looper_input_armed(const looper_t *l)
+{
+    int i;
+    if (!l)
+        return 0;
+    for (i = 0; i < 2; i++)
+        if (l->rc[i].state && l->rc[i].src == LOOPER_SRC_INPUT)
+            return 1;
+    return l->dub.on && l->dub.on < 3 && l->dub.src == LOOPER_SRC_INPUT;
 }
 uint64_t looper_bytes(const looper_t *l) { return l ? l->bytes : 0; }
 int looper_sounding(const looper_t *l)

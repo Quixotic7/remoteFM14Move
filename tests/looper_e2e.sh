@@ -65,6 +65,7 @@ tabs=$(field smp_tabs)
 midi 144 60 110; midi 144 67 100; sleep 0.5                    # (Felucca sounding: the Played source)
 press 85; sleep 0.3                                            # Play
 wait_for 3 '[ "$(field seq_playing)" = 1 ]' || bad "Play: seq_playing '$(field seq_playing)'"
+cmd "cc 14 1"; sleep 0.12; cmd "cc 14 1"; sleep 1.3           # (round 2: the Record page, where a tap records)
 hit 92                                                         # (slot 1-1: the top row's first pad)
 wait_for 4 '[ "$(field loop_rec)" = 0 ] && [ "$(field loop_rec_state)" = 2 ]' \
     && ok "a tap on slot 1-1: recording from the bar (state $(field loop_rec_state))" \
