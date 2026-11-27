@@ -516,7 +516,7 @@ original samples." "Holding a step and turning the volume knob should always cha
   while that file is there, else on the project's copy. The pad still plays the copy (the project keeps working when
   the original moves; copies and pastes of projects carry absolute originals unchanged). Derived audio (Trim,
   Normalize, Reverse, Mix, Join, Freeze) is a new file in the project's folder (never written over anything: each
-  edit `new_path`s a free name) and is its own original. A loaded saved kit's pads open on the project's copy.
+  edit `new_path`s a free name) and is its own original. A loaded saved kit's pads: see "Levels ..." below.
 - **Originals are never written.** Checked: every write of the kit is a new file in the project's folder (`own_copy`,
   edits, Freeze), `Kits/<name>/` (Save) or the export folder; the clean-up deletes only regular files of
   `Kits/Projects/NN/`; the takes are the recorder's new files.
@@ -530,3 +530,25 @@ original samples." "Holding a step and turning the volume knob should always cha
   ghost (no hit): nothing (as a firmware track's held step). The cause: the volume knob's touch went to the main
   handler, which put the Master level popup over the kit's velocity popup, so the turn looked like a master change.
   Firmware tracks: the same touch now shows their VELO popup too.
+
+
+## Levels: 100 is 0 dB; a saved kit's original places, 2026-11-26
+
+The owner's, after 0.6.0: the default level, 100, should be 0 dB.
+
+- **The gain law.** A 0..127 level (a firmware slot's, the kit's strip) is a gain of level / 100: 100 (the default)
+  is unity, 0 dB; 127 is +2.1 dB; 0 silent (engine_dsp.h `lvl_gain`, `mix_add`'s bit-for-bit path now at 100,
+  `pan_gains`, the sends' buses after it; kit.c `kit_render_bus`; the engine's slot meters, held at full scale). The
+  engine's slots and the kit start at 100. A pad's own Level stays whole dB (-60 = -inf .. +6, 0 dB the default);
+  velocity stays v / 127. The core's popup and texts (rfm1cs screen.c `LVL_DB10`: 20 log10(v / 100)), the 0.5 dB
+  detents and the page's `levelText` follow. Saved numbers are unchanged, so an older project's levels sound 2.1 dB
+  louder than before.
+- **Headroom.** The mix is summed in float, then the output limiter (instant attack, ~150 ms release, held at
+  -1 dBFS) and a clip to int16; the FX send buses and the kit's own output clip to int16 too. Several slots at 127
+  cannot wrap: tests/unit.c sums four full-scale slots at 127 and checks no sample passes -1 dBFS or flips sign.
+- **A saved kit's original places.** Save writes each pad's original place into kit.json (`"orig"`, beside
+  `"file"`): the core's (`orig`, project version 18), else the pad's own file when it played one outside the project.
+  Open gives each pad the original while that file is there, else the saved kit's own file in `Kits/<name>/`; the
+  host puts it on the pad (`rfm_move_kit_set_orig` after `rfm_move_kit_apply`), so Files opens there; the project's
+  copy stays the last resort (KIT_FIND). An older kit.json (no `"orig"`) loads as before, its pads opening on the kit's
+  own files. Checked: kit_test `t_kit_orig`, kit_e2e (a kit saved and opened, Files on pad 1's original).

@@ -181,7 +181,7 @@ m0=$(field kit_mix)
 cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # Track 4: Kit -> the Mixer
 wait_for 3 '[ "$(field kit_shown)" = 0 ]' || bad "the Mixer: kit shown '$(field kit_shown)'"
 cmd "cc 74 116"; sleep 0.4                                  # knob 4: the kit's level 12 detents down (rfm1cs
-                                                            # 2026-11-26: 0.5 dB a detent, -2.1 -> -8.1 dB: 100 -> 50)
+                                                            # 2026-11-26: 0.5 dB a detent, 0 -> -6 dB: 100 -> 50)
 wait_for 3 '[ "$(field kit_level)" = 50 ]' && [ "$(field kit_mix)" -gt "${m0:-0}" ] \
     && ok "the Mixer: knob 4 the kit's strip (its level 100 -> 50, MIX slot 3 to the host)" \
     || bad "the kit's strip: level '$(field kit_level)' mix '$(field kit_mix)' (from $m0)"
@@ -409,6 +409,34 @@ wait_for 5 '[ "$(field kit_exports)" = $((x0 + 1)) ] && [ "$(field kit_exported)
 click; wait_for 5 '[ "$(field kit_exports)" = $((x0 + 2)) ]' && sleep 0.5 && [ -d "$SMP/Kit 1 2" ] \
     && ok "Export Samples again: a new folder (Kit 1 2), nothing overwritten" || bad "the second export: $(ls "$SMP" | tr '\n' ' ')"
 press 51; sleep 0.2
+# (2026-11-26) a saved kit keeps its pads' original places: Save (Kit 2: pad 5's "orig" the Move Library's Bell), Load
+# it, a relaunch: Files on pad 5 opens on Bell in the Move Library, not on Kit 2's copy
+kpost() { curl -s -o /dev/null -X POST --data "$1" "$U/api/kit"; }   # (the page's Kit tab: Save, Load)
+kpost '{"op":"save"}'
+wait_for 8 '[ "$(field kit_saved_name)" = "Kit 2" ]' && [ -s "$LIB/Kits/Kit 2/kit.json" ] \
+    && grep -q '"file": "Bell.flac", "orig": "[^"]*/Bell.flac"' "$LIB/Kits/Kit 2/kit.json" \
+    && ! grep '"file": "Bell.flac"' "$LIB/Kits/Kit 2/kit.json" | grep -q '"orig": "[^"]*Kits/' \
+    && ok "Save: Kit 2's kit.json names pad 5's original place ($(sed -n 's/.*"file": "Bell.flac", "orig": "\([^"]*\)".*/\1/p' "$LIB/Kits/Kit 2/kit.json" | sed "s|$T/||"))" \
+    || bad "Save (Kit 2): name '$(field kit_saved_name)' $(grep -o '"file": "Bell.flac"[^,]*,[^,]*' "$LIB/Kits/Kit 2/kit.json" 2>&1)"
+k0=$(field kit_kits)
+kid=$(curl -s "$U/api/kit/kits" | tr '{' '\n' | sed -n 's/^"id":\([0-9]*\),"name":"Kit 2".*/\1/p')
+kpost "{\"op\":\"open\",\"id\":${kid:-0}}"
+wait_for 8 '[ "$(field kit_kits)" = $((k0 + 1)) ] && [ "$(field kit_name)" = "Kit 2" ]' \
+    || bad "Load Kit 2 (id '$kid'): kits '$(field kit_kits)' (from $k0) name '$(field kit_name)'"
+sleep 2.5   # (the project's autosave)
+stop
+start || { bad "the host did not start (4)"; tail -20 "$L"; exit 1; }
+wait_for 8 '[ "$(field kit_pads)" -ge 15 ]' && [ "$(field kit_name)" = "Kit 2" ] || bad "Kit 2 after a start: pads '$(field kit_pads)' name '$(field kit_name)'"
+cmd "cc 40 127"; sleep 0.4; hit 94; cmd "cc 40 0"; sleep 0.3   # the Kit view
+cmd "cc 49 127"; hit 76; cmd "cc 49 0"; sleep 0.3           # (Shift + pad 5: chosen)
+f0=$(field kit_finds)
+wait_for 5 '[ "$(field kit_cur)" = 4 ] && [ "$(field kit_orig)" = 1 ] && [ "$(field kit_file)" = Bell.flac ]' \
+    || bad "pad 5 of Kit 2 after a start: cur '$(field kit_cur)' orig '$(field kit_orig)' file '$(field kit_file)'"
+jog 1 1; click                                              # (Pad Sample at rest; the click: Files on the pad's sound)
+wait_for 5 '[ "$(field kit_finds)" = $((f0 + 1)) ] && [ "$(field kit_place)" = 4 ] && [ "$(field kit_depth)" = 2 ]' \
+    && ok "a saved kit loaded, then a relaunch: Files on pad 5's original (Bell in the Move Library), not the kit's copy" \
+    || bad "Files on Kit 2's pad 5: finds '$(field kit_finds)' (from $f0) place '$(field kit_place)' depth '$(field kit_depth)'"
+press 51; press 51; press 51; sleep 0.3
 stop
 cp "$L" build/test-out/kit_host.log
 echo "kit_e2e: $checks checks, $fail failed (the host's log: build/test-out/kit_host.log; screens build/test-out/kit_*.pbm)"

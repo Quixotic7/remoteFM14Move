@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* The output stage: the slots' blocks summed with their levels, then a soft limiter (the Move's speaker is loud).
  * The limiter: instant attack, ~150 ms release, holding the peak at LIM_THRESH (-1 dBFS). Below it the gain is exactly
- * 1, so one slot at level 127 passes bit for bit. Header-only: the engine and the unit test share it. */
+ * 1, so one slot at level 100 passes bit for bit. Header-only: the engine and the unit test share it. */
 #ifndef RFM14_ENGINE_DSP_H
 #define RFM14_ENGINE_DSP_H
 #include <math.h>
@@ -19,15 +19,17 @@ typedef struct {
 
 static inline void mix_clear(mixer_t *m, int frames) { memset(m->acc, 0, sizeof(float) * 2u * (unsigned)frames); }
 
-/* level 0..127 (127: unity) */
+/* level 0..127 as a gain of level / 100 (the owner's, 2026-11-26: 100, the default, is unity, 0 dB; 127 +2.1 dB) */
+#define LVL_UNITY 100
+static inline float lvl_gain(int level) { return level <= 0 ? 0.0f : (float)(level > 127 ? 127 : level) / (float)LVL_UNITY; }
 static inline void mix_add(mixer_t *m, const int16_t *in, int frames, int level)
 {
     int i;
-    if (level >= 127) {
+    if (level == LVL_UNITY) {
         for (i = 0; i < 2 * frames; i++)
             m->acc[i] += (float)in[i];
     } else if (level > 0) {
-        const float g = (float)level / 127.0f;
+        const float g = lvl_gain(level);
         for (i = 0; i < 2 * frames; i++)
             m->acc[i] += (float)in[i] * g;
     }
@@ -36,7 +38,7 @@ static inline void mix_add(mixer_t *m, const int16_t *in, int frames, int level)
 /* a slot's level and pan (0..127, 64 centre: a balance, so the centre is exactly mix_add's unity) as two gains */
 static inline void pan_gains(int level, int pan, float *gl, float *gr)
 {
-    const float g = level >= 127 ? 1.0f : level <= 0 ? 0.0f : (float)level / 127.0f;
+    const float g = lvl_gain(level);
     *gl = *gr = g;
     if (pan < 64)
         *gr = g * (float)(pan < 0 ? 0 : pan) / 64.0f;

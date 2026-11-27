@@ -1,5 +1,20 @@
 # Changes
 
+## Unreleased
+
+**Levels: 100 is 0 dB (the owner's 2026-11-26).** A 0..127 level, a firmware slot's or the kit's, is now a gain of
+level / 100: the default 100 is unity (0 dB), 127 is +2.1 dB, 0 silent (engine_dsp.h `lvl_gain`, kit.c
+`kit_render_bus`; the core's popup, its 0.5 dB detents and the page's `levelText` show the same). A pad's Level was
+already whole dB and is unchanged. **Existing projects keep their numbers, so they play 2.1 dB louder** (100 was
+-2.1 dB). Headroom: the mix is summed in float, then the -1 dBFS output limiter and a clip; four full-scale slots at
+127 are held there with nothing wrapped (tests/unit.c).
+
+**A saved kit keeps its pads' original places.** Save writes each pad's original sound's path into kit.json
+(`"orig"`); opening the kit puts it back on the pad, so Files opens there after a relaunch, as for a pad loaded
+directly. When a pad has none, or its original is gone, Files opens on the saved kit's own file in `Kits/<name>/`
+(the project's copy the last resort). Older kit.json files load as before. KIT-SPEC "Levels ...", help.json; kit_test
+`t_kit_orig`, kit_e2e.
+
 ## 0.6.0 (2026-11-26)
 
 **Kit: Copy's modes on the jog, a held step's length and timing (the owner's 2026-11-26; rfm1cs d457792).** Copy held

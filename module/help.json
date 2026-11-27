@@ -121,7 +121,8 @@
         "the selected track",
         "on the steps.",
         "Hold Track + volume:",
-        "the slot's level."
+        "the slot's level",
+        "(100: 0 dB)."
       ]
     },
     {
@@ -801,7 +802,10 @@
         "the original. Files",
         "opens a pad's sound",
         "where it came from",
-        "(gone: the copy).",
+        "(a saved kit's too;",
+        "gone: the kit's",
+        "file, then the",
+        "copy).",
         "Shift + step 3 on a",
         "kit track: Export",
         "Samples (the jog's",

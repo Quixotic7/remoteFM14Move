@@ -4717,7 +4717,7 @@ static void kit_action(const rfm_move_act_t *a)
             kit_stretch(g_kit, a->index, a->from);
         break;
     case RFM_MOVE_ACT_KIT_SAVE: {   /* (3b) the core's kit as it is now, saved by the file thread */
-        static kit_kit_t x;   /* (2.6 KB: not on the stack) */
+        static kit_kit_t x;   /* (5 KB: not on the stack) */
         int pad, p;
         memset(&x, 0, sizeof x);
         x.layout = rfm_move_kit_layout(&S->core);
@@ -4728,6 +4728,7 @@ static void kit_action(const rfm_move_act_t *a)
         for (pad = 0; pad < KIT_PADS; pad++) {
             const char *path = rfm_move_kit_path(&S->core, pad);
             snprintf(x.path[pad], sizeof x.path[pad], "%s", path ? path : "");
+            snprintf(x.orig[pad], sizeof x.orig[pad], "%s", S->core.kit.pad[pad].orig);   /* (2026-11-26) its original */
             for (p = 0; p < KIT_P_N; p++)
                 x.v[pad][p] = (int16_t)rfm_move_kit_value(&S->core, pad, p);
         }
@@ -4928,6 +4929,9 @@ static int kit_answers(void)
                                              (const int16_t (*)[RFM_MOVE_KIT_P_N])a.kit.v);
                 rfm_move_kit_set_trim(&S->core, a.kit.trim);   /* (round A) */
                 rfm_move_kit_set_bus(&S->core, a.kit.bus[0], a.kit.bus[1]);   /* (pages v2) */
+                for (pad = 0; pad < KIT_PADS; pad++)   /* (2026-11-26) the pads' original places, for Files */
+                    if (a.kit.orig[pad][0])
+                        rfm_move_kit_set_orig(&S->core, pad, a.kit.orig[pad]);
                 g_kit_t_kits++;
             } else
                 redraw |= rfm_move_kit_apply(&S->core, NULL, 0, NULL, NULL, NULL);
@@ -5182,7 +5186,8 @@ static void render_block_(uint32_t now)
                 if (sends >> k & 1)
                     bus_add(&g_bus[k], sb, FW_BLOCK, sl->level, sl->pan, sl->send[k]);
             {
-                const int p = peak16(sb, FW_BLOCK * 2) * sl->level / 127;
+                const int p = peak16(sb, FW_BLOCK * 2) * sl->level / LVL_UNITY > 32767 ? 32767
+                              : peak16(sb, FW_BLOCK * 2) * sl->level / LVL_UNITY;   /* (100 unity; above: held at full) */
                 if (p > sl->peak)
                     sl->peak = p;
                 if (p > sl->pk_acc)
@@ -6008,7 +6013,7 @@ int engine_start(const engine_cfg_t *cfg)
         }
     }
     for (s = 0; s < NSLOT; s++)   /* (before the project: its FX setup's MIX and ROUTE come as it loads) */
-        SL[s].filt = 0xFFFF, SL[s].level = 127, SL[s].pan = 64, SL[s].pc_proj = SL[s].st_cur = -1;
+        SL[s].filt = 0xFFFF, SL[s].level = LVL_UNITY, SL[s].pan = 64, SL[s].pc_proj = SL[s].st_cur = -1;
     {   /* the Schwung FX modules the user installed: the core's FX setup lists them (before the project names them) */
         int kind, k;
         g_fx_budget = C.fx_budget > 0 ? C.fx_budget : 200;

@@ -105,11 +105,13 @@ static void dsp(void)
         a[i] = (int16_t)(i * 37 - 4000), b[i] = (int16_t)(i % 2 ? 30000 : -30000);
     memset(&m, 0, sizeof m);
     mix_clear(&m, 128);
-    mix_add(&m, a, 128, 127);
+    mix_add(&m, a, 128, 100);
     mix_out(&m, out, 128);
     for (i = 0; i < 256; i++)
         same &= out[i] == a[i];
-    CHECK(same && m.limited == 0, "one slot at 127, under the threshold: bit for bit");
+    CHECK(same && m.limited == 0, "one slot at 100 (0 dB, the owner's 2026-11-26), under the threshold: bit for bit");
+    CHECK(fabsf(lvl_gain(127) - 1.27f) < 1e-6f && lvl_gain(100) == 1.0f && lvl_gain(0) == 0.0f && lvl_gain(200) == lvl_gain(127),
+          "a level's gain is level / 100: 127 +2.1 dB, 100 unity, 0 silent");
     mix_clear(&m, 128);
     mix_add(&m, b, 128, 127);
     mix_add(&m, b, 128, 127);
@@ -117,11 +119,22 @@ static void dsp(void)
     for (i = 0; i < 256; i++)
         over |= abs(out[i]) > (int)(LIM_THRESH * 32768.0f) + 1;
     CHECK(!over && m.limited > 0, "two loud slots: held at -1 dBFS (%u samples limited)", m.limited);
+    {   /* (2026-11-26) headroom: four slots near full scale, each at 127 (+2.1 dB): no wrap, held at -1 dBFS */
+        int k, sgn = 1;
+        mix_clear(&m, 128);
+        for (k = 0; k < 4; k++)
+            mix_add(&m, b, 128, 127);
+        mix_out(&m, out, 128);
+        over = 0;
+        for (i = 0; i < 256; i++)
+            over |= abs(out[i]) > (int)(LIM_THRESH * 32768.0f) + 1, sgn &= (out[i] < 0) == (b[i] < 0);
+        CHECK(!over && sgn, "four full-scale slots at 127: held at -1 dBFS, no sample wrapped");
+    }
     {   /* the release: quiet again, the gain comes back */
         int k;
         for (k = 0; k < 400; k++) {
             mix_clear(&m, 128);
-            mix_add(&m, a, 128, 127);
+            mix_add(&m, a, 128, 100);
             mix_out(&m, out, 128);
         }
         same = 1;
@@ -253,9 +266,9 @@ static void fxstage(void)
     CHECK(!memcmp(plain, old, sizeof old), "pan 64 (centre): the mix is the old one, bit for bit");
     {
         float gl, gr;
-        pan_gains(127, 0, &gl, &gr);
+        pan_gains(100, 0, &gl, &gr);
         CHECK(gl == 1.0f && gr == 0.0f, "pan 0: all left (%g %g)", gl, gr);
-        pan_gains(127, 127, &gl, &gr);
+        pan_gains(100, 127, &gl, &gr);
         CHECK(gl == 0.0f && gr == 1.0f, "pan 127: all right (%g %g)", gl, gr);
     }
     for (i = 0; i < L->n[1]; i++)

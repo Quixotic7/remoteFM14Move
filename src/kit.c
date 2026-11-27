@@ -1857,8 +1857,15 @@ static void do_save(kit_t *k)
                     x->mix[1], x->mix[2], x->mix[3], x->mix[4], x->trim ? 1 : 0, x->bus[0], x->bus[1]);   /* (round A:
                                                          * the Trim silence; pages v2: the kit bus's low-pass) */
             for (i = 0; i < KIT_PADS; i++) {
+                char oe[2 * KIT_KPATH + 8];
+                const char *og = x->orig[i][0] ? x->orig[i] : x->path[i];   /* (2026-11-26) the sound's original
+                                                         * place: the core's, else the file the pad played itself */
                 mj_escape(files[i], esc, sizeof esc);
                 fprintf(f, "    { \"file\": \"%s\"", esc);
+                if (files[i][0] && og[0] == '/') {
+                    mj_escape(og, oe, sizeof oe);
+                    fprintf(f, ", \"orig\": \"%s\"", oe);
+                }
                 for (j = 0; j < KIT_P_N; j++)
                     fprintf(f, ", \"%s\": %d", PKEY[j], x->v[i][j]);
                 fprintf(f, " }%s\n", i + 1 < KIT_PADS ? "," : "");
@@ -1970,13 +1977,19 @@ static void do_open(kit_t *k, const req_t *r)
                     x->v[i][KIT_P_WARP] = KIT_W_REPITCH;
             }
             if (!mj_string(e, "file", file, sizeof file) && file[0] && !strchr(file, '/') && strcmp(file, "..")) {
-                char src[KIT_PATH], cp[KIT_PATH], cpath[KIT_PATH];
+                char src[KIT_PATH], cp[KIT_PATH], cpath[KIT_PATH], og[KIT_PATH];
                 snprintf(src, sizeof src, "%s/%s/%s", k->kits, rel + 5, file);
                 own_copy(k, r->proj, src, cp, sizeof cp);   /* (round C: into the project's folder: editing it never
                                                          * changes the saved kit) */
                 core_path(r->proj, cp, cpath, sizeof cpath);
                 if (strlen(cpath) < KIT_KPATH)
                     snprintf(x->path[i], sizeof x->path[i], "%s", cpath);
+                /* (2026-11-26) where Files opens for the pad: its original place while that file is there, else the
+                 * saved kit's own file (the project's copy: the last resort, kit_find's); an older kit.json: none */
+                if (mj_string(e, "orig", og, sizeof og) || og[0] != '/' || access(og, F_OK) || strlen(og) >= KIT_KPATH)
+                    snprintf(og, sizeof og, "%s", src);
+                if (strlen(og) < KIT_KPATH && strcmp(og, cpath))
+                    snprintf(x->orig[i], sizeof x->orig[i], "%s", og);
             }
         }
         a->a.status = KIT_OK;
@@ -2466,7 +2479,7 @@ kit_t *kit_new(const kit_cfg_t *cfg)
     }
     if (k->kits[0])                                     /* (3c) the new files: Kits/Edits */
         snprintf(k->edits, sizeof k->edits, "%s/Edits", k->kits);
-    k->mix[0] = 127, k->mix[1] = 64;
+    k->mix[0] = 100, k->mix[1] = 64;   /* (unity: level / 100) */
     k->master = 1.0f;                    /* (unity until the core's MIX says) */
     for (p = 0; p <= SLP; p++)
         k->v[p][KIT_P_END] = KIT_FRAC, k->v[p][KIT_P_SUSTAIN] = 100, k->v[p][KIT_P_CUTOFF] = 100;
@@ -3571,7 +3584,8 @@ void kit_render_bus(kit_t *k, float *acc, float *const send[3], int16_t *own, ui
     if (!k)
         return;
     {                                                   /* (3b) the kit's strip: level, pan (a balance), sends */
-        const float g = (float)clampi(k->mix[0], 0, 127) / 127.0f * k->master;
+        const float g = (float)clampi(k->mix[0], 0, 127) / 100.0f * k->master;   /* (2026-11-26, the owner's: level
+                                                         * / 100, 100 unity, 127 +2.1 dB: as engine_dsp.h's lvl_gain) */
         const int pan = clampi(k->mix[1], 0, 127);
         gl = gr = g;
         if (pan < 64)

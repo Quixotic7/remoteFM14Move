@@ -51,7 +51,7 @@ export const IC = {
 // ---- formats
 export const pct = (v, max = 127) => `${Math.round(Math.max(0, Math.min(1, v / max)) * 1000) / 10}%`;
 // (2026-11-26) every level in dB, as the Move's popup (rfm1cs screen.c rfmv_db_text): a 0..127 level is a linear gain,
-// 127 unity (100 = -2.1 dB); a pad's level is whole dB (-60 = -inf); one decimal below 10 dB
+// 100 unity (the owner's, 2026-11-26: 100 = 0 dB, 127 = +2.1 dB); a pad's level is whole dB (-60 = -inf); one decimal below 10 dB
 export function dbText(db) {
   if (db === -Infinity) return "-inf dB";
   const t = Math.round(db * 10);
@@ -59,7 +59,7 @@ export function dbText(db) {
   const s = t < 0 ? "-" : "+";
   return Math.abs(t) < 100 ? `${s}${(Math.abs(t) / 10).toFixed(1)} dB` : `${s}${Math.round(Math.abs(t) / 10)} dB`;
 }
-export const levelText = (v) => dbText(v <= 0 ? -Infinity : 20 * Math.log10(Math.min(127, v) / 127));
+export const levelText = (v) => dbText(v <= 0 ? -Infinity : 20 * Math.log10(Math.min(127, v) / 100));
 export const padLevelText = (v) => dbText(v <= -60 ? -Infinity : v);
 export const panText = (v) => (v === 64 ? "C" : v < 64 ? `L${64 - v}` : `R${v - 64}`);
 // a 16-track filter, said short: "All 16", "None", "Track 6", "1-8", "1, 3, 5", "9 tracks"

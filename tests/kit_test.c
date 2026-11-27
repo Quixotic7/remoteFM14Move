@@ -465,16 +465,25 @@ static void t_sends(void)
     bus_run(k, 512, 1);
     CHECK(fabsf(B[2 * 300] - ramp(300)) < 0.01f && fabsf(S1[2 * 300] - ramp(300) * 0.5f) < 0.01f && S2[2 * 300] == 0.0f &&
           OWN[2 * 300] == ramp(300) && OWN[2 * 300 + 1] == -ramp(300));   /* (the strip at unity at first) */
-    kit_mix(k, 127, 64, sk);                            /* (the strip's sends 2 and 3: the whole kit) */
+    kit_mix(k, 100, 64, sk);                            /* (the strip's sends 2 and 3: the whole kit) */
     bus_run(k, 512, 0);
     CHECK(fabsf(S2[2 * 100] - B[2 * 100]) < 0.01f && fabsf(S1[2 * 100] - B[2 * 100] * 0.5f) < 0.01f && S3[2 * 100] == 0.0f &&
           fabsf(B[2 * 100]) > 100.0f);                  /* (send 3's FX not running: nothing there) */
     kit_mix(k, 0, 64, s0);                              /* (level 0: nothing anywhere) */
     bus_run(k, 512, 1);
     CHECK(B[2 * 50] == 0.0f && S1[2 * 50] == 0.0f && OWN[2 * 50] == 0);
-    kit_mix(k, 127, 0, s0);                             /* (panned hard left) */
+    kit_mix(k, 100, 0, s0);                             /* (panned hard left) */
     bus_run(k, 512, 1);
     CHECK(fabsf(B[2 * 50]) > 100.0f && B[2 * 50 + 1] == 0.0f);
+    {                                                   /* (2026-11-26, the owner's: level / 100, 127 +2.1 dB) */
+        kit_t *k2 = mk(0);
+        CHECK(load(k2, 0, p, &a) == KIT_OK);
+        kit_mix(k2, 127, 64, s0);
+        kit_note(k2, 0, 0, 127, 0);
+        bus_run(k2, 512, 1);
+        CHECKF(fabsf(B[2 * 300] - ramp(300) * 1.27f) < 0.05f, "level 127: %g (unity %d)", B[2 * 300], ramp(300));
+        kit_free(k2);
+    }
     kit_free(k);
 }
 /* (stage 3b) kits: saved (Kit 1, Kit 2: the sounds copied, a name taken twice numbered, kit.json), listed (Files'
@@ -566,6 +575,79 @@ static void t_kits(void)
     }
     CHECK(kit_frames(k, 0) == 100 && kit_frames(k, 2) == 300 && kit_frames(k, 3) == 0 && kit_frames(k, 5) == 0);
     kit_free(k);
+}
+/* (2026-11-26) a saved kit keeps its pads' original places (kit.json "orig"): opened into a project, a pad's original
+ * while that file is there, else the saved kit's own file (not the project's copy); an older kit.json (no "orig"):
+ * the kit's own files; Files then opens there */
+static int wait_kind(kit_t *k, kit_ans_t *a, int kind);
+static void t_kit_orig(void)
+{
+    char d[600], kd[700], proj[700], p[800], q[800], g[800], kj[800];
+    kit_cfg_t c;
+    kit_ans_t a;
+    kit_t *k;
+    static kit_kit_t x;
+    FILE *f;
+    int i;
+    snprintf(p, sizeof p, "%s/KO", DIRP), mkdir(p, 0755);   /* (absolute: an original place is a full path) */
+    if (!realpath(p, d))
+        snprintf(d, sizeof d, "%s", p);
+    snprintf(p, sizeof p, "%s/F", d), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/F/kick.wav", d), wav(p, 100, 1, 16, 0, 48000);
+    snprintf(q, sizeof q, "%s/F/snare.wav", d), wav(q, 200, 1, 16, 0, 48000);
+    snprintf(g, sizeof g, "%s/F/gone.wav", d), wav(g, 300, 1, 16, 0, 48000);
+    snprintf(kd, sizeof kd, "%s/RemoteFM1/Kits", d);
+    snprintf(proj, sizeof proj, "%s/proj", d);
+    memset(&c, 0, sizeof c);
+    c.samples_dir = d, c.kits_dir = kd;
+    k = kit_new(&c);
+    kit_project(k, proj);
+    memset(&x, 0, sizeof x);
+    x.mix[0] = 100, x.mix[1] = 64;
+    for (i = 0; i < KIT_PADS; i++)
+        x.v[i][KIT_P_END] = KIT_FRAC;
+    snprintf(x.path[0], sizeof x.path[0], "%s", q), snprintf(x.orig[0], sizeof x.orig[0], "%s", p);   /* (a copy's
+                                                         * original named by the core) */
+    snprintf(x.path[1], sizeof x.path[1], "%s", q);    /* (the file itself: its original) */
+    snprintf(x.path[2], sizeof x.path[2], "%s", q), snprintf(x.orig[2], sizeof x.orig[2], "%s", g);   /* (removed
+                                                         * before it opens) */
+    kit_save(k, &x);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_SAVED && a.status == KIT_OK && !strcmp(a.name, "Kit 1"));
+    remove(g);
+    kit_rows(k, KIT_PL_KITS, 0, 0, 3);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_ROWS && a.n == 1);
+    kit_open(k, a.rows[0].id);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_KIT && a.status == KIT_OK);
+    snprintf(kj, sizeof kj, "%s/Kit 1/snare.wav", kd);
+    CHECKF(!strncmp(a.kit.path[0], KIT_OWN, 2) && !strcmp(a.kit.orig[0], p), "pad 1: %s from %s", a.kit.path[0],
+           a.kit.orig[0]);
+    CHECKF(!strcmp(a.kit.orig[1], q), "pad 2's original: %s", a.kit.orig[1]);
+    CHECKF(!strcmp(a.kit.orig[2], kj), "pad 3 (its original gone): %s", a.kit.orig[2]);
+    CHECK(!a.kit.path[3][0] && !a.kit.orig[3][0]);
+    kit_find(k, 0, a.kit.path[0], a.kit.orig[0]), kit_work(k);   /* (Files there: the original's row) */
+    CHECK(wait_kind(k, &a, KIT_A_FOUND) && a.place == KIT_PL_SAMPLES && a.depth == 1 && a.sels[1] == 0);
+    /* an older kit.json: no "orig" (the kit's own files) */
+    snprintf(p, sizeof p, "%s/Kit 2", kd), mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/Kit 2/hat.wav", kd), wav(p, 120, 1, 16, 0, 48000);
+    snprintf(kj, sizeof kj, "%s/Kit 2/kit.json", kd);
+    if ((f = fopen(kj, "w"))) {
+        fprintf(f, "{ \"format\": \"rfm1-kit\", \"version\": 3, \"name\": \"Kit 2\", \"pads\": [ { \"file\": \"hat.wav\", "
+                   "\"level\": 0 } ] }\n");
+        fclose(f);
+    }
+    kit_rows(k, KIT_PL_KITS, 0, 0, 3);
+    kit_work(k);
+    CHECK(kit_poll(k, &a) && a.kind == KIT_A_ROWS && a.n == 2 && !strcmp(a.rows[1].name, "Kit 2"));
+    kit_open(k, a.rows[1].id);
+    kit_work(k);
+    CHECKF(kit_poll(k, &a) && a.kind == KIT_A_KIT && a.status == KIT_OK && !strncmp(a.kit.path[0], KIT_OWN, 2) &&
+           !strcmp(a.kit.orig[0], p) && !a.kit.path[1][0], "older kit: %s from %s", a.kit.path[0], a.kit.orig[0]);
+    kit_free(k);
+    printf("  ok    a saved kit's original places: kept in kit.json, back on open (one gone: the kit's own file); an "
+           "older kit.json: its own files\n");
 }
 
 
@@ -1424,6 +1506,7 @@ int main(void)
     t_stretch();
     t_sends();
     t_kits();
+    t_kit_orig();
     t_make();
     t_slice();
     t_rounda();

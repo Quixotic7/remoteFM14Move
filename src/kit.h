@@ -139,6 +139,9 @@ typedef struct {                  /* (stage 3b) a kit as saved: its pads' paths 
     int16_t v[KIT_PADS][KIT_P_N];
     int trim;                     /* (round A) the Trim silence (kit.json "trim"; none: 1) */
     uint8_t bus[2];               /* (pages v2) the kit bus's low-pass: cutoff (100 open), resonance (kit.json "bus") */
+    char orig[KIT_PADS][KIT_KPATH];   /* (2026-11-26) the pads' original places (kit.json "orig"; "" none). Saved: the
+                                   * core's (rfm_move_kit_set_orig), else a pad's own file outside the project. Opened:
+                                   * that one while it is there, else the saved kit's own file in its folder */
 } kit_kit_t;
 typedef struct {
     int kind;                     /* KIT_A_* (SAVED: status KIT_OK and the name in name, else KIT_FAILED; KIT: kit, status
