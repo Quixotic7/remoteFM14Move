@@ -206,6 +206,27 @@ place, its level; the recordings; the beat; the bar's peaks; the memory).
   offered, the project duplicated with its `Loops/`, a second start loading the loop. `make test-looper`; `make test`
   runs both.
 
+## The musician's review (2026-11-27: `AbletonMove/hf-review-20261127`)
+
+- **The grace window (hf_looper_4).** A press up to a 16th (`BC_GRACE`, a quarter beat) after a bar line counts for
+  that line (`bc_grace_line`, `barcut.h`): a recording's start records from it, the frames since from a **pre-roll
+  ring** (every source's last 2 s, `PRE_S`, preallocated at `looper_new`, filled after each block's recording; never
+  more than it holds: else the next line); its end ends on it (the frames since are cut, the loop plays from the line
+  in phase); a launch starts the loop from the line in phase (Warp Off too); a stop stops at once. In the Looper
+  view, the step looper's Rec, grid recordings and stops alike. The step looper's actions carry the press's age
+  (`looper_ago`): the line is the one the press counts for.
+- **Overdub from the press (hf_steplooper_2):** see key 2 above. A spare given back is zeroed on the file thread
+  (`RQ_ZERO`) before it is free again; an overdub takes only a zeroed one.
+- **Keys decided before they act (hf_steplooper_3, _4, _5):** see the keys above.
+- **Another project (hf_looper_10).** The core cancels every recording and overdub before a project load or switch
+  (`R_CANCEL`, `LOOP_DUB` 0); `looper_project` with another folder drops what is left of the old one's (its
+  recordings, an overdub; its files' answers by the project's generation never reach the core) and its sounds' names
+  stop matching a load (the new project's "@/Loops/1-1 .." reads its own file).
+- Tests: `looper_test` 7 (the grace window: a start 20 ms late frame for frame from the line, an end pressed before a
+  line and acted 200 ms later, an end 30 ms late and the loop in phase, a launch 30 ms late in phase, a stop 30 ms late
+  at once, a start 200 ms late the next line), 8 (an overdub from the press, its first frame the loop's place then,
+  the ring's frames before it), 9 (another project mid-recording and with an answer on its way; the old names).
+
 ## Stage 2 (not built)
 
 (Round 2 built overdub, as the step looper's key 2, and Grains / Beats.) Capture (the last N bars of a
@@ -303,7 +324,7 @@ load. This repo's `projmem.c` knows 20.
 - **On / off:** **Shift + step 4**, the printed cylinder (the owner's pick, 2026-11-27; its icon lit while on), in
   the **FM-1 layout Track 4 held + step 4** (there Shift is GLO; Track 4 held + a step is the Shift layer in every layout), or the Record
   page's knob 6. A full-screen card for 1.5 s: "Step Looper On", four boxes (lanes 1..4, keys 1 Rec, 2 Dub, 3 Rpl, 4
-  Nxt); off: "Steps: sequencer". Saved with the project (byte 9).
+  Ply); off: "Steps: sequencer". Saved with the project (byte 9).
 - **Where:** every mode and layout (the FM-1 layout, note layouts, Sequencer, the Kit view, session view) but the
   Looper view (its steps are the scenes) and open menus. It takes the steps without Shift or a Track held; Shift +
   a step (Track 4 + a step) stays the shortcuts. **Step sequencing is off while it is on.** The pads stay the
@@ -320,21 +341,28 @@ load. This repo's `projmem.c` knows 20.
     it recorded or played last: a stopped lane's tap records over it, **Undo brings it back**: "reuse that slot" is
     one tap); stopped, Play with the Count-in. Armed: cancelled. Recording: it ends at the bar and loops at once.
     Playing: an overdub ends; else nothing.
-  - **2 Dub: overdub** on / off (`LOOP_DUB` 97). The lane's Source layered onto the playing loop from its next
-    cycle: the first pass replaces a preallocated spare's silence, later passes sum (saturated), each frame once.
-    Heard from the next pass. Off: the file thread writes the loop + its layer as a new WAV; the loop's sound swapped
+  - **2 Dub: overdub** on / off (`LOOP_DUB` 97). The lane's Source layered onto the playing loop **from the press**
+    (2026-11-27, hf_steplooper_2; was its next cycle), wrapping as the loop wraps: summed (saturated) onto a
+    preallocated spare the file thread zeroed when it was last given back, each frame once; the frames since the
+    press (the key acts at its release) from the pre-roll ring onto the frames the loop read then. Heard from the next
+    pass. Off: the file thread writes the loop + its layer as a new WAV; the loop's sound swapped
     in seamlessly; its settings kept; **one Undo** (the loop before it, from memory). One overdub at a time (another
     commits it); not while reversed.
   - **3 Replace:** records over the playing loop from the next bar (Undo: the loop it replaced).
-  - **4 Next:** the lane's next empty slot is the pedal's (the old loop stops when the new recording starts);
-    **a double tap: Stop** (the lane stops at the launch time; the pedal's slot back to what it was). Our call: Stop
-    on the double tap, not Shift + key 4 (Shift + a step stays the shortcuts).
-  - **A group key held + the volume knob:** the lane's level (the level popup).
+  - **4 Play / Stop, held: Next** (2026-11-27, hf_steplooper_3, _4; was Next, a double tap Stop): a tap plays / stops
+    the lane at the launch time (with the grace window); a stopped lane brings back the loop it played last (else the
+    pedal's, else its first loop). Held 300 ms: Next, the lane's next empty slot is the pedal's (the old loop stops
+    when the new recording starts). Each decided before it acts (R2).
+  - **A group key held + the volume knob:** the lane's level (the level popup), and **the key does nothing**
+    (hf_steplooper_5, the owner's "hold the clip first then turn the volume knob").
+  - **When a key acts** (2026-11-27): at its release (key 4's Next: at its hold), and only when the volume knob was not
+    touched or turned while it was held. The action carries the press's age (`ago_ms`); the host quantizes from the
+    press, so a quick tap (released within ~150 ms) is no later than a press-time action: the bar hides it.
 - **The lights** (at the step LEDs' own rate; only changes go out): playing: a key a quarter of the loop, the one now
   in the lane's colour, the others dim; overdub on: that key blinks fast (white); waiting to start or stop: blinking;
   recording: the bars done red, the bar now blinking red; armed: the group blinking, key 1 red; a loop stopped: dim;
   empty: very dim; a held key: white. Shift or a Track held: the shortcuts' lights.
 - **The screen:** a change's overlay (rows 0..10, 1.2 s): "Lane 2 REC", "Lane 1 Dub on", "Lane 3 > 3-2", "Lane 4
-  Stop"; while a group key is held its keys' jobs ("L2 Rec Dub Replace Next"); with the volume knob the lane's level.
+  Stop"; while a group key is held its keys' jobs ("L2 Rec Dub Replace Play"); with the volume knob the lane's level.
   No text on the LEDs.
 - Loops record from each lane's Source, default **Played** (in the FM-1 layout: the firmware played).

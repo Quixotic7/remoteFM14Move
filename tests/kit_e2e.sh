@@ -26,7 +26,8 @@
 #     1..8 (one file in memory once), Undo;
 #   - the sampler's Kit source and To Kit: a take of the kit alone, onto the next empty pad;
 #   - the output has the kit (the host's mix, --capture);
-#   - (round A) a take recorded into pad 4 with silence first: Trim silence moves its start to just before the sound;
+#   - (round A) a take recorded into pad 4 with silence first: Trim silence moves its start to just before the sound
+#     (2026-11-27: its source Master, set in the kit track's settings' Rec Source row);
 #     (pages v2: Toggle gone) the Loop engine (the page's set): held, looping past the sound's end, let go, off;
 #   - a second start: the project's kit back (its pads loaded from their paths, the routing, its name).
 #   tests/kit_e2e.sh      (after make)
@@ -315,6 +316,11 @@ info=$(build/tools/ainchk info "$tk" 2>/dev/null); pk=$(echo "$info" | sed -n 's
 press 51; sleep 0.3
 wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "back on the kit: '$(field kit_shown)'"
 edit 26 0 0; sleep 0.3                                      # (the sampler's Source: Master again)
+# (2026-11-27, hf_kit_3) a pad recording has the kit's own source (Input at first): Master in the kit track's settings
+cmd "cc 49 127"; hit 18; cmd "cc 49 0"; sleep 0.3           # (Shift + step 3: track 13's settings)
+jog 5 1; click; jog 1 1; click; sleep 0.2                   # (the sixth row, Rec Source: Input -> Master)
+press 51; sleep 0.3
+wait_for 3 '[ "$(field kit_shown)" = 1 ]' || bad "back on the kit after Rec Source: '$(field kit_shown)'"
 t1=$(field kit_trims)
 cmd "note 71 110"; sleep 0.2; press 118; sleep 1.0          # pad 4 held + Sample: a second of silence
 edit 28 0 110; sleep 0.8; edit 28 0 0; sleep 0.3; cmd "note 71 0"   # .. then pad 1's Tone

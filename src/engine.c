@@ -987,6 +987,8 @@ static uint32_t g_kit_t_notes, g_kit_t_loads, g_kit_t_rows, g_kit_t_recs;   /* (
 static uint32_t g_kit_t_mix, g_kit_t_saved, g_kit_t_kits, g_kit_t_to;   /* (tests, stage 3b) */
 static uint32_t g_kit_t_made, g_kit_t_slices, g_kit_t_slplay;   /* (tests, stage 3c) */
 static int g_kit_rec_trim;               /* (round A) KIT_REC's Trim silence: the take's lead found */
+static int g_kit_rec_src;                /* (2026-11-27, hf_kit_3) the kit's own source set for its take: the sampler's
+                                          * Source back after it */
 static uint32_t g_kit_t_finds, g_kit_t_zooms, g_kit_t_auds, g_kit_t_trims;   /* (tests, round A) */
 static int32_t g_kit_t_lead = -1;
 static char g_kit_t_saved_name[KIT_NAME];
@@ -4752,6 +4754,10 @@ static void loop_action(const rfm_move_act_t *a)
     if (!g_looper)
         return;
     loop_proj_sync();
+    if (a->ago_ms && (a->kind == RFM_MOVE_ACT_LOOP_REC || a->kind == RFM_MOVE_ACT_LOOP_LAUNCH ||
+                      a->kind == RFM_MOVE_ACT_LOOP_DUB))   /* (hf_looper_4: the step looper's key, acted at its
+                                                         * release: its quantization from the press) */
+        looper_ago(g_looper, (uint32_t)((uint64_t)a->ago_ms * FW_FS / 1000u));
     switch (a->kind) {
     case RFM_MOVE_ACT_LOOP_REC:
         if (a->param == RFM_MOVE_LOOP_R_START)
@@ -4954,14 +4960,19 @@ static void kit_action(const rfm_move_act_t *a)
                                   * (or a press not yet seen) is dropped; a take ended by its length: nothing more */
         if (!g_rec)
             break;
-        if (a->down) {
+        if (a->down == 1) {
             rec_status_t r;
             rec_get(g_rec, &r);
             if (r.state != REC_IDLE && r.state != REC_SAVING)
                 break;   /* (a take of the sampler's under way: not this one) */
             g_kit_rec = a->index, g_kit_rec_blk = g_rec_blocks, g_kit_rec_trim = a->param != 0;
+            if (a->vel)   /* (hf_kit_3: the kit's own source for this take; applied before the recorder's next block) */
+                rec_setting(RFM_MOVE_SMP_SOURCE, a->vel - 1), g_kit_rec_src = 1;
             rec_press(g_rec);
             g_kit_t_recs++;
+        } else if (a->down == 2) {   /* (hf_kit_3) armed: its source changed (the recorder takes it while not recording) */
+            if (g_kit_rec == a->index && a->vel)
+                rec_setting(RFM_MOVE_SMP_SOURCE, a->vel - 1), g_kit_rec_src = 1;
         } else if (g_kit_rec == a->index && a->value != RFM_MOVE_SMP_M_CAPTURE) {
             rec_status_t r;
             rec_get(g_rec, &r);
@@ -4969,6 +4980,11 @@ static void kit_action(const rfm_move_act_t *a)
                 rec_press(g_rec);
             else if (r.state == REC_ARMED || (r.state == REC_IDLE && g_rec_blocks == g_kit_rec_blk))
                 rec_press(g_rec), g_kit_rec = -1;   /* (dropped: no take for the pad) */
+        }
+        if (!a->down && g_kit_rec_src) {   /* (hf_kit_3) the sampler's Source back: in force once the take ends (the
+                                            * recorder never changes a running take's settings) */
+            rec_setting(RFM_MOVE_SMP_SOURCE, rfm_move_smp_value(&S->core, RFM_MOVE_SMP_SOURCE));
+            g_kit_rec_src = 0;
         }
         break;
     default: break;

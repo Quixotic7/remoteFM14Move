@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**The musician's review of the looper and the kit (2026-11-27; `AbletonMove/hf-review-20261127`; LOOPER-SPEC "The
+musician's review", KIT-SPEC "Recording into a pad").** A press up to a 16th after a bar line counts for that line:
+a recording starts on it (the frames since from a new preallocated pre-roll ring of every source) or ends on it, a
+launch starts the loop from it in phase, a stop stops at once; the step looper's keys act at their release and are
+timed from their press. Overdub starts at the press, not the next cycle (its layer zeroed on the file thread). The
+step looper's key 4: a tap plays / stops the lane, held it is Next; a key held + the volume knob does nothing but the
+lane's level. A project switch mid-recording or mid-overdub no longer writes into the new project (the core cancels
+them; the looper drops the old project's answers and names). A kit pad recording has its own Source (default Input,
+saved, big on its screen, set there while armed or in the kit track's settings' Rec Source row). Tests: looper_test 7-9, move_looper, move_kit.
+
 **The looper, round 2 (the owner's first try; `docs/design/LOOPER-SPEC.md` "Round 2").** A slot loads a take
 or a sound from Files (the kit's own browser and reader, `kit_row_read`; copied into the project's `Loops/`, its
 bars at the tempo); the page decides a tap; the Count-in; one input setting (the looper's Input at the sampler's In

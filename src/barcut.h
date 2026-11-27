@@ -17,4 +17,16 @@ static inline double bc_next_line(double beat, double every)
 {
     return every > 0 ? every * ceil(beat / every - 1e-9) : beat;
 }
+/* (hf_looper_4) the grace window: a press this late after a line (a 16th, in beats) counts for that line */
+#define BC_GRACE 0.25
+/* the grid line a press at beat counts for: the line before it when the press is at most grace after it (the line
+ * itself included), else the next */
+static inline double bc_grace_line(double beat, double every, double grace)
+{
+    double p;
+    if (every <= 0)
+        return beat;
+    p = every * floor(beat / every + 1e-9);
+    return beat - p <= grace + 1e-9 ? p : p + every;
+}
 #endif

@@ -86,9 +86,17 @@ typedef struct {
 typedef struct looper looper_t;
 looper_t *looper_new(const looper_cfg_t *cfg);   /* NULL: no memory (its spares, the thread) */
 void looper_free(looper_t *l);
-void looper_project(looper_t *l, const char *dir);   /* the open project's own folder (Kits/Projects/NN; "" none) */
+/* the open project's own folder (Kits/Projects/NN; "" none). (hf_looper_10) another one: the old one's recordings and
+ * overdub dropped, its files' answers never reach the core */
+void looper_project(looper_t *l, const char *dir);
 
-/* ---- the engine's thread: the core's actions (frame: into the next block, as the sequencer stamps it) */
+/* ---- the engine's thread: the core's actions (frame: into the next block, as the sequencer stamps it). (hf_looper_4)
+ * a press up to a 16th after a bar line (BC_GRACE; the launch's line for a launch, a stop) counts for that line: a
+ * start records from it (the frames since from a pre-roll ring of every source, made at looper_new), an end ends on
+ * it, a launch starts the loop from it in phase */
+/* the next action (rec, rec_end, launch, stop, dub)'s press was this many frames before its frame (the step looper
+ * acts at a key's release; its quantization from the press) */
+void looper_ago(looper_t *l, uint32_t frames);
 void looper_rec(looper_t *l, int slot, int bars, int src, int played_slot, uint32_t frame);   /* R_START */
 void looper_rec_end(looper_t *l, int slot, uint32_t frame);
 void looper_rec_cancel(looper_t *l, int slot);
@@ -105,8 +113,8 @@ void looper_file(looper_t *l, int slot, int place, uint32_t id, int bpm10);
 /* (round 2) peaks of the slot's frames [from, from + count) in n columns (the markers' close-up): LOOPER_A_PEAKS */
 void looper_peaks(looper_t *l, int slot, uint32_t from, uint32_t count, int n);
 /* (round 2, item 9) overdub: on 1: the source (LOOPER_SRC_*; played the Played slot) layered onto the slot's loop as
- * it plays (from its next cycle; a cycle's first pass replaces the layer's silence, then sums; a preallocated spare,
- * no allocation); 0: ended: the file thread writes the loop + its layer as a new WAV and answers LOOPER_A_RECORDED
+ * it plays (hf_steplooper_2: from the press, at once, wrapping as the loop wraps; looper_ago's frames from the ring;
+ * summed onto a preallocated spare zeroed on the file thread, no allocation); 0: ended: the file thread writes the loop + its layer as a new WAV and answers LOOPER_A_RECORDED
  * (the loop plays on with its layer meanwhile; its sound swapped in seamlessly). One at a time (another commits it) */
 void looper_dub(looper_t *l, int slot, int on, int src, int played);
 /* (round 2, item 6) this block's monitored input (the gain applied; NULL none): heard through the Loops strip (its

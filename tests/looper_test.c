@@ -53,6 +53,7 @@ static looper_ans_t ANS[64];
 static int nans;
 
 static int src_const;                                   /* (t_mix: a steady source) */
+static int no_poll;                                     /* (t_proj: the answers left in the queue) */
 static const int16_t *mon_buf;                          /* (round 2: the monitored input, each block) */
 static int16_t pat(uint64_t f) { return (int16_t)((int)(f % 16000u) + 100); }   /* (the source: a frame's own value) */
 static double bpf(void) { return bpm / 60.0 / FS; }
@@ -75,7 +76,7 @@ static void blk(void)                                   /* one engine block */
         looper_render_bus(L, &c, acc, sends, own, N);
     }
     looper_record(L, &src, own, N);
-    while (looper_poll(L, &a))
+    while (!no_poll && looper_poll(L, &a))
         if (nans < 64)
             ANS[nans++] = a;
     if (playing)
@@ -663,6 +664,212 @@ static void t_round2(void)
     CHECK(!looper_input_armed(L));
 }
 
+
+/* ---- 7. (hf_looper_4) the grace window: a start 20 ms after a bar line records from it (the frames since from the
+ * pre-roll ring, frame for frame), an end pressed before a line and acted 200 ms later (the step looper's release:
+ * looper_ago) ends on it, an end 30 ms after a line ends on it and the loop plays from it in phase, a launch 30 ms
+ * late starts in phase from the line, a stop 30 ms late stops at once */
+static int own_is_loop(uint64_t line, uint64_t base, uint64_t len, int nblocks)
+{                                                       /* (the loop's own output: the source from base, round len,
+                                                         * cycle 0 at line; 1: frame for frame, past the fades) */
+    int diff = 0, n = 0, b;
+    for (b = 0; b < nblocks; b++) {
+        const uint64_t f0 = gf;
+        uint32_t i;
+        blk();
+        for (i = 0; i < N; i++) {
+            const uint64_t f = f0 + i;
+            const uint64_t src = base + (f - line) % len;
+            if (f >= line + 2500 && src % 16000u && src % 16000u != 15999u) {   /* (pat's own wrap: skipped) */
+                const int d = abs(own[2 * i] - pat(src));
+                diff = d > diff ? d : diff, n++;
+            }
+        }
+    }
+    if (n < 200 || diff > 2)
+        fprintf(stderr, "  own_is_loop: n %d diff %d\n", n, diff);
+    return n >= 200 && diff <= 2;
+}
+static void t_grace(void)
+{
+    const looper_ans_t *a;
+    looper_status_t st;
+    char p[1024];
+    uint32_t n = 0, i, bad = 0;
+    const char *why;
+    int16_t *w;
+    const uint64_t late = (uint64_t)(0.020 * FS), late30 = (uint64_t)(0.030 * FS);
+    const uint32_t ago = (uint32_t)(0.215 * FS);
+    int k;
+    ans_clear();
+    for (k = 0; k < LOOPER_LANES; k++)
+        looper_stop(L, k, LOOPER_Q_INSTANT, 0);
+    play_from_start();
+    run_blocks(4);
+    while (gf + N <= bar_frame(4) + late)
+        blk();
+    looper_rec(L, 24, 0, LOOPER_SRC_TRACK1, 0, (uint32_t)(bar_frame(4) + late - gf));   /* (beat 4's line + 20 ms) */
+    blk();
+    looper_status(L, &st);
+    CHECK(st.rec[0].slot == 24 && st.rec[0].state == LOOPER_RS_RECORDING);
+    {                                                   /* (pressed 15 ms before beat 12, acted 200 ms after it) */
+        const uint64_t at = bar_frame(12) - (uint64_t)(0.015 * FS) + ago;
+        while (gf + N <= at)
+            blk();
+        looper_ago(L, ago);
+        looper_rec_end(L, 24, (uint32_t)(at - gf));
+    }
+    a = wait_ans(LOOPER_A_RECORDED, 24);
+    CHECKF(a && a->status == LOOPER_OK && a->bars == 2 && a->frames == (uint32_t)(bar_frame(12) - bar_frame(4)),
+           "status %d bars %d frames %u", a ? a->status : -1, a ? a->bars : 0, a ? a->frames : 0);
+    if (a) {
+        looper_resolve(L, a->path, p, sizeof p);
+        w = wav_read(p, &n, &why);
+        for (i = 0; w && i < n; i++)                    /* (frame for frame the source from the line) */
+            bad += w[2 * i] != pat(bar_frame(4) + i);
+        CHECKF(w && n == (uint32_t)(bar_frame(12) - bar_frame(4)) && !bad, "%u frames differ", bad);
+        free(w);
+    }
+    /* a take in slot 25 (lane 4 too): its end 30 ms after beat 24's line: 1 bar, playing from that line */
+    ans_clear();
+    while (gf + N <= bar_frame(18))
+        blk();
+    looper_rec(L, 25, 0, LOOPER_SRC_TRACK1, 0, 0);    /* (the next line: beat 20) */
+    while (gf + N <= bar_frame(24) + late30)
+        blk();
+    looper_rec_end(L, 25, (uint32_t)(bar_frame(24) + late30 - gf));
+    blk();
+    looper_status(L, &st);
+    CHECK(st.rec[0].slot == -1 && st.lane[3].play == 1);
+    CHECK(own_is_loop(bar_frame(24), bar_frame(20), bar_frame(24) - bar_frame(20), 40));
+    a = wait_ans(LOOPER_A_RECORDED, 25);
+    CHECKF(a && a->status == LOOPER_OK && a->bars == 1 && a->frames == (uint32_t)(bar_frame(24) - bar_frame(20)),
+           "status %d bars %d frames %u", a ? a->status : -1, a ? a->bars : 0, a ? a->frames : 0);
+    /* a launch 30 ms after beat 32's line: slot 24 from that line, in phase */
+    while (gf + N <= bar_frame(32) + late30)
+        blk();
+    looper_launch(L, 24, LOOPER_Q_BAR, (uint32_t)(bar_frame(32) + late30 - gf));
+    blk();
+    looper_status(L, &st);
+    CHECK(st.lane[3].play == 0);
+    CHECK(own_is_loop(bar_frame(32), bar_frame(4), bar_frame(12) - bar_frame(4), 40));
+    /* a stop 30 ms after beat 36's line: at once (no bar to wait) */
+    while (gf + N <= bar_frame(36) + late30)
+        blk();
+    looper_stop(L, 3, LOOPER_Q_BAR, (uint32_t)(bar_frame(36) + late30 - gf));
+    run_blocks(2);
+    looper_status(L, &st);
+    CHECK(st.lane[3].play == -1 && st.lane[3].next == -1);
+    /* a start 200 ms after a line (past the window): the next line */
+    while (gf + N <= bar_frame(40) + (uint64_t)(0.2 * FS))
+        blk();
+    looper_rec(L, 26, 1, LOOPER_SRC_TRACK1, 0, (uint32_t)(bar_frame(40) + (uint64_t)(0.2 * FS) - gf));
+    blk();
+    looper_status(L, &st);
+    CHECK(st.rec[0].slot == 26 && st.rec[0].state == LOOPER_RS_ARMED);
+    looper_rec_cancel(L, 26);
+}
+
+/* ---- 8. (hf_steplooper_2) an overdub from the press, at once (not the next cycle), its frames from the loop's place
+ * then; acted later (looper_ago): from the press, the ring's frames onto the frames the loop read then */
+static void t_dub_now(void)
+{
+    const looper_ans_t *a;
+    char p[1024];
+    uint32_t n = 0, i, first = 0, lay = 0;
+    const char *why;
+    int16_t *w, *w0;
+    const uint32_t len = (uint32_t)(bar_frame(12) - bar_frame(4));   /* (slot 24: 2 bars of pat from bar_frame(4)) */
+    const uint32_t back = 1000;
+    uint64_t line, at;
+    ans_clear();
+    while (gf * bpf() - 4.0 * floor(gf * bpf() / 4.0) > 0.01)
+        blk();                                          /* (a bar line: the launch's) */
+    line = bar_frame((int)llround(4.0 * floor(gf * bpf() / 4.0 + 1e-9)));   /* (just passed: in the window) */
+    looper_launch(L, 24, LOOPER_Q_BAR, 0);
+    blk();
+    run_blocks((int)(len / 3 / N));                     /* (a third into its cycle) */
+    src_const = 1;
+    run_blocks(12);                                     /* (the ring: the steady source) */
+    at = gf;
+    looper_ago(L, back);
+    looper_dub(L, 24, 1, LOOPER_SRC_TRACK1, 0);
+    run_blocks((int)(len / 4 / N));                     /* (a quarter cycle) */
+    looper_dub(L, 24, 0, 0, 0);
+    src_const = 0;
+    a = wait_ans(LOOPER_A_RECORDED, 24);
+    CHECKF(a && a->status == LOOPER_OK && a->frames == len, "line %llu at %llu", (unsigned long long)line, (unsigned long long)at);
+    if (!a)
+        return;
+    looper_resolve(L, a->path, p, sizeof p);
+    w = wav_read(p, &n, &why);
+    w0 = malloc((size_t)len * 4u);
+    for (i = 0; w0 && i < len; i++)
+        w0[2 * i] = pat(bar_frame(4) + i);
+    for (i = 0; w && w0 && i < n; i++)
+        if (w[2 * i] - w0[2 * i] == 8000) {
+            if (!lay)
+                first = i;
+            lay++;
+        }
+    {
+        const uint32_t want = (uint32_t)((at - back - line) % len), span = (uint32_t)(len / 4 / N * N) + back;
+        CHECKF(w && abs((int)first - (int)want) <= 2 && lay + 4 >= span && lay <= span + 4,
+               "first %u want %u, %u layered of %u (line %llu at %llu)", first, want, lay, span, (unsigned long long)line,
+               (unsigned long long)at);
+    }
+    free(w), free(w0);
+    looper_stop(L, 3, LOOPER_Q_INSTANT, 0);
+    run_blocks(4);
+}
+
+/* ---- 9. (hf_looper_10) another project: a recording under way goes (nothing written there, no answer), an answer
+ * on its way for the old one never reaches the core, and the old one's loops' names load nothing from memory */
+static void t_proj(void)
+{
+    char p2[600], dir[700];
+    looper_status_t st;
+    const looper_ans_t *a;
+    struct stat sb;
+    ans_clear();
+    snprintf(p2, sizeof p2, "%s-2", PROJ);
+    mkdir(p2, 0755);
+    looper_rec(L, 27, 1, LOOPER_SRC_TRACK1, 0, 0);
+    while (1) {
+        blk();
+        looper_status(L, &st);
+        if (st.rec[0].state == LOOPER_RS_RECORDING)
+            break;
+    }
+    looper_project(L, p2);                              /* (mid-recording) */
+    looper_status(L, &st);
+    CHECK(st.rec[0].slot == -1);
+    run_blocks((int)(bar_frame(8) / N));                /* (its bar would have ended) */
+    CHECK(!wait_ans(LOOPER_A_RECORDED, 27));
+    snprintf(dir, sizeof dir, "%s/Loops", p2);
+    CHECK(stat(dir, &sb) != 0);                         /* (nothing written into the new one) */
+    /* a take ended, its file and answer on the way, then the switch: the answer dropped */
+    looper_project(L, PROJ);
+    ans_clear();
+    looper_rec(L, 28, 1, LOOPER_SRC_TRACK1, 0, 0);
+    no_poll = 1;
+    while (1) {
+        blk();
+        looper_status(L, &st);
+        if (st.rec[0].slot == -1)
+            break;
+    }
+    looper_project(L, p2);
+    no_poll = 0;
+    CHECK(!wait_ans(LOOPER_A_RECORDED, 28));
+    /* the old one's name: from the new one's folder (missing), not the old sound in memory */
+    ans_clear();
+    looper_load(L, 29, "@/Loops/4-1 120bpm 2b.wav", 2, 1200);
+    a = wait_ans(LOOPER_A_LOADED, 29);
+    CHECKF(a && a->status == LOOPER_MISSING, "status %d", a ? a->status : -1);
+    looper_project(L, PROJ);
+}
+
 int main(void)
 {
     looper_cfg_t c;
@@ -684,6 +891,9 @@ int main(void)
     t_mix();
     t_more();
     t_round2();
+    t_grace();
+    t_dub_now();
+    t_proj();
     CHECKF(la_engine_allocs == 0, "%ld allocations on the engine's thread", la_engine_allocs);
     t_cap_clean();
     CHECKF(la_engine_allocs == 0, "%ld allocations on the engine's thread", la_engine_allocs);

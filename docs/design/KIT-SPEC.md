@@ -108,6 +108,16 @@ mock's row): it closes the sampler on the Kit view with the pads blinking; a pad
 recording), the pad red, Sample red. **It uses the sampler's own Record settings** (source, mode, threshold, length)
 as left. The take is written as any take (Takes list, Samples/RemoteFM1/<day>/) and put on the pad.
 
+**Its source (2026-11-27, the musician's review hf_kit_3; the owner's call):** a pad recording has **its own
+Source**, saved with the project (default **Input**), never the sampler's hidden one: after a master resample the
+vocal pad still records the input. The armed and recording screen shows it **big at the top right** (Input's icon,
+else M, 1, 2, 3, K) and nothing else new; **while armed** (before the take starts) the jog or knob 1 steps it: Input,
+Master, Track 1-3, Kit. Its home is **a kit track's settings** (Shift + step 3): the sixth row, **Rec Source**, after
+Export Samples (the jog: select, click, turn): Manual and Capture takes start at once and never arm. A running take's
+source never changes, so the sign always shows what is recorded. The input itself (which input, In Level) stays the one shared sampler setting; the
+sampler's own Source is untouched (the host sets the kit's for the take, then the sampler's back). `KIT_REC` vel the
+source + 1, down 2 a change while armed.
+
 ## Stage 3b
 
 - **Stretch (settled + kit_stretch a):** Stretch = N steps: the pad's start..end is repitched so it lasts exactly N
