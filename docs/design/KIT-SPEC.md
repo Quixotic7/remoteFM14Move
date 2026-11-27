@@ -28,8 +28,8 @@ I_ENV, I_CHOKE, I_SEND, I_LVL, I_PAN, I_COPY, I_MIX, I_JOIN, I_SLICE, I_SAVE, I_
 
 - **Settled:** Track 4's clicks go round its views Mixer, Routing, Kit, Looper (the click gated 300 ms, a double click
   = the projects); Track 4 held: pad 1 Mixer, 2 Routing, 3 Kit, 4 Looper, 5 Projects. Coming back from another
-  Track, Track 4 is on the view it was left on. The Looper is not built yet: until stage 4 the round is Mixer,
-  Routing, Kit (pad 4 dark and dead).
+  Track, Track 4 is on the view it was left on. (Until the looper's stage 1, LOOPER-SPEC.md, the round was Mixer,
+  Routing, Kit, pad 4 dark and dead; a host with the looper goes on to it.)
 - **Pads:** the left 4 x 4 (columns 1..4) is the kit, **pad 1 bottom left**, then left to right, rows upward (MPC /
   Melodee order). A press plays the pad (velocity as the Velocity setting gives) and makes it the chosen pad; Shift +
   a pad only chooses it (silent). The right 4 x 4 (columns 5..8) is the chosen pad's pitches (below).

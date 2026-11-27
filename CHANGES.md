@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+**The looper, stage 1 (the owner's 2026-11-26 design round: every card approved as its option a; rfm1cs looper
+stage 1).** Track 4's fourth view (its round is Mixer, Routing, Kit, Looper; Track 4 held + pad 4): 4 lanes (the pad
+rows, lane 1 on top) x 8 scenes of audio loops. Tap an empty pad: it records from the next bar (stopped: armed, Play
+starts it); tap the red pad or Sample: it ends at the next bar and plays at once, seamlessly. Each lane's Source
+(Played, Track 1..3, Kit, Input, Mix, Loops) and Length (Open, 1..16 bars). Tap a loop: it plays at the Launch
+setting, a playing one stops; a double tap: now, on the bar. Scenes three ways (the owner's "A and b and c"): the left
+step under a column, Shift + any pad of the column, a slide down the column; step 16 stops all. Choosing a slot without
+playing it: Loop held + its pad, or the arrows. Five pages on the jog (Loops, Loop: Start, Length, Pitch, Reverse,
+Warp Repitch / Off; Record; Loop Mix; Looper Mix), a knob's name on touch and value on turn. Copy / Delete / Undo (one
+step), Mute + a loop, a held pad + the volume knob (its level), Track 4 held + the volume knob (the Loops strip, also
+the Mixer's knob 5). The sampler gains its Loops tab (the jog records, plays and stops; the pads stay the firmware's)
+and its Looper source. Every loop goes through one mix path: its level, pan, sends, its lane's level, the Loops strip,
+the volume knob. Loops are bar-exact (the recorder's maths, now `src/barcut.h`), recorded into preallocated buffers
+(the sampler records meanwhile; the engine's thread never allocates), their position the song's (a tempo change
+repitches them), written to the project's own `Loops/` folder (which moves with the project) and kept with the project
+(version 19; older ones load). docs/design/LOOPER-SPEC.md (the design round's files beside it), help.json "Looper";
+tests/looper_test.sh (natively, ASan + UBSan, TSan), tests/looper_e2e.sh, `make test-looper` (both in `make test`).
+
 **Levels: 100 is 0 dB (the owner's 2026-11-26).** A 0..127 level, a firmware slot's or the kit's, is now a gain of
 level / 100: the default 100 is unity (0 dB), 127 is +2.1 dB, 0 silent (engine_dsp.h `lvl_gain`, kit.c
 `kit_render_bus`; the core's popup, its 0.5 dB detents and the page's `levelText` show the same). A pad's Level was

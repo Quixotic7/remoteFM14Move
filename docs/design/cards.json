@@ -1,0 +1,230 @@
+[
+ {
+  "id": "lp_grid",
+  "title": "The grid",
+  "question": "Which way round is the 8 x 4 grid?",
+  "options": [
+   "a. Rows are 4 lanes (lane 1 the top row, beside Track 1), columns are 8 scenes: Move's own Session Mode",
+   "b. As RemoteFM1's session view: columns 1-7 lanes, column 8 the scene pads, rows scenes (28 slots)",
+   "c. Rows are lanes with lane 1 the bottom row (as the kit's pad 1 bottom left)"
+  ],
+  "my_pick": "a",
+  "why": "Move's manual: each row a track's slots, each column a scene. Four lanes match 'a pad row a track' in the kit and give 8 variations a lane."
+ },
+ {
+  "id": "lp_lane_choke",
+  "title": "One loop a lane",
+  "question": "Does a lane play one loop at a time?",
+  "options": [
+   "a. Yes: launching another in the row replaces it at the bar (the 'choke per row')",
+   "b. No: every slot is free; choke groups set by hand"
+  ],
+  "my_pick": "a",
+  "why": "The session-view habit; it also makes scenes and stop simple."
+ },
+ {
+  "id": "lp_rec_gesture",
+  "title": "Starting a recording",
+  "question": "How do you record into a slot?",
+  "options": [
+   "a. Tap an empty slot (records from the next bar); a slot held + Sample also replaces a full one",
+   "b. Only a slot held + Sample (the kit's gesture)",
+   "c. Record lit (armed) + tap an empty slot; without Record an empty slot only selects"
+  ],
+  "my_pick": "a",
+  "why": "A looper lives on speed. Undo removes a stray recording. Hold + Sample keeps the kit's gesture for replacing."
+ },
+ {
+  "id": "lp_rec_start",
+  "title": "When it starts",
+  "question": "When does a recording start?",
+  "options": [
+   "a. At the next bar; stopped: armed, starts with Play",
+   "b. At once (no quantize), the length rounded later",
+   "c. At the next beat"
+  ],
+  "my_pick": "a",
+  "why": "Bar-exact loops need no trimming; arm-then-Play is what you asked of the sampler."
+ },
+ {
+  "id": "lp_length",
+  "title": "Loop length",
+  "question": "What sets a recording's length?",
+  "options": [
+   "a. Per lane: Open (default: tap again, ends at the next bar), 1, 2, 4, 8, 16 bars",
+   "b. One length for the whole looper",
+   "c. The first loop sets the length for every later one (pedal style)"
+  ],
+  "my_pick": "a",
+  "why": "Per lane, like Live's tracks: drums 1 bar, a pad 8 bars. Open is the sampler's default too."
+ },
+ {
+  "id": "lp_source",
+  "title": "Source",
+  "question": "What does a lane record, and what is the default?",
+  "options": [
+   "a. Per lane: Played (the firmware you play, default), Track 1-3 dry, Kit, Input, Mix (no loops, before FX), Loops (resample)",
+   "b. Always the master (with loops and FX)",
+   "c. One source for the whole looper"
+  ],
+  "my_pick": "a",
+  "why": "Looping the firmware you are playing is the common case; dry sources get FX again through the loop's own sends without doubling."
+ },
+ {
+  "id": "lp_after_rec",
+  "title": "After recording",
+  "question": "What happens when a recording ends?",
+  "options": [
+   "a. It plays at once, seamlessly, from the bar it ended on",
+   "b. It waits, lit, until tapped"
+  ],
+  "my_pick": "a",
+  "why": "A looper's basic promise; matches Live and Push."
+ },
+ {
+  "id": "lp_launch",
+  "title": "Tapping a loop",
+  "question": "What does tapping a loop do?",
+  "options": [
+   "a. Stopped loop: plays at the bar (double: now). Playing loop: stops at the bar (double: now)",
+   "b. Tap always (re)starts it; stop only by Delete, an empty slot or step 16"
+  ],
+  "my_pick": "a",
+  "why": "Toggle per pad; R2's 'same thing sooner' exception keeps it instant."
+ },
+ {
+  "id": "lp_scene",
+  "title": "Launching scenes",
+  "question": "How do you play a whole column?",
+  "options": [
+   "a. The left step under each column plays that scene at the bar; step 16 stops all",
+   "b. Shift + any pad of the column",
+   "c. Slide a finger down the column (Move's own gesture)"
+  ],
+  "my_pick": "a",
+  "why": "Session view already uses the steps under each column; a slide clashes with the gated click rules."
+ },
+ {
+  "id": "lp_quant",
+  "title": "Quantize",
+  "question": "What quantizes launches and recordings?",
+  "options": [
+   "a. The global Launch setting session view already uses",
+   "b. The looper's own setting (bar, beat, none)"
+  ],
+  "my_pick": "a",
+  "why": "One setting to learn."
+ },
+ {
+  "id": "lp_pages",
+  "title": "Pages",
+  "question": "Are these the Looper's pages (the jog turns them, as the kit's)?",
+  "options": [
+   "a. Loops (lanes), Loop (wave, Start, Length, Pitch, Reverse, Warp), Record (Source, Length), Loop Mix, Looper Mix",
+   "b. Fewer: Loops and Loop, with mix settings on the Loop page's Shift knobs"
+  ],
+  "my_pick": "a",
+  "why": "Matches the kit's split of Pad Sample / Pad Mix / Kit Mix."
+ },
+ {
+  "id": "lp_tab",
+  "title": "The Loops tab",
+  "question": "How does the sampler's Loops tab work without the pads?",
+  "options": [
+   "a. The grid in small; jog chooses a slot, click records / plays / stops it; Sample records; knobs 1-4 the lane levels; the pads stay the firmware's",
+   "b. A list of lanes (three rows), Left / Right the scene"
+  ],
+  "my_pick": "a",
+  "why": "You keep playing the firmware on the pads while looping with the jog."
+ },
+ {
+  "id": "lp_tempo",
+  "title": "Tempo change",
+  "question": "Stage 1: repitch on tempo change (settled). Should Warp Off (no sync) exist too?",
+  "options": [
+   "a. Yes: Warp Repitch (default) or Off (plays at its own rate, not synced)",
+   "b. No: every loop is synced"
+  ],
+  "my_pick": "a",
+  "why": "Off is useful for one-shot textures; Grains / Beats come in stage 2."
+ },
+ {
+  "id": "lp_bus",
+  "title": "Mixing",
+  "question": "How does the looper mix?",
+  "options": [
+   "a. Its own bus beside the kit: loop level / pan / sends, then the Loops strip (Mixer column 5), the volume knob's master",
+   "b. Through the kit's bus"
+  ],
+  "my_pick": "a",
+  "why": "Your rule: every sound through the same path; one Loops strip, settled."
+ },
+ {
+  "id": "lp_files",
+  "title": "Where loops are kept",
+  "question": "Where are the loops' files?",
+  "options": [
+   "a. In the project's own folder, Kits/Projects/NN/Loops/, written when the recording ends",
+   "b. Only in RAM until the project is saved",
+   "c. In RemoteFM1's takes (dated folders)"
+  ],
+  "my_pick": "a",
+  "why": "Safe before the save, visible in Move's browser, moved with the project like the kit's copies."
+ },
+ {
+  "id": "lp_undo",
+  "title": "Undo",
+  "question": "What can Undo bring back?",
+  "options": [
+   "a. One step: the last recording, delete, copy or clear",
+   "b. Several steps"
+  ],
+  "my_pick": "a",
+  "why": "As the kit; RAM per step is large for audio."
+ },
+ {
+  "id": "lp_colour",
+  "title": "The looper's colour",
+  "question": "Which colour marks the looper (Track 4, knobs, loops)?",
+  "options": [
+   "a. Teal {0, 210, 190}",
+   "b. White",
+   "c. One colour a lane"
+  ],
+  "my_pick": "a",
+  "why": "Free of the slots' orange, blue, yellow, the kit's pink and green (playing) and red (recording)."
+ },
+ {
+  "id": "lp_capture",
+  "title": "Capture",
+  "question": "When does Capture (the last bars of a lane's source into an empty slot) come?",
+  "options": [
+   "a. Stage 2",
+   "b. Stage 1"
+  ],
+  "my_pick": "a",
+  "why": "It needs a read of the recorder's always-listening ring; stage 1 stays small."
+ },
+ {
+  "id": "lp_overdub",
+  "title": "Overdub (stage 2)",
+  "question": "How do you overdub?",
+  "options": [
+   "a. Record held + a playing loop: layers from its next start until tapped again; Undo removes the layer",
+   "b. Tap the playing loop while Record is latched"
+  ],
+  "my_pick": "a",
+  "why": "Record is Move's own overdub button; held keeps it a deliberate act."
+ },
+ {
+  "id": "lp_stages",
+  "title": "Stages",
+  "question": "Is this split right?",
+  "options": [
+   "a. Stage 1: grid, record, launch, scenes, pages, repitch, the strip, saving, the Loops tab, Copy / Delete / Undo. Stage 2: overdub, stretch, Capture, To Kit / To Takes / To Looper, launch modes, the page's web looper",
+   "b. Put the Loops tab in stage 2"
+  ],
+  "my_pick": "a",
+  "why": "The settled order puts overdub second; the tab is cheap once the engine exists."
+ }
+]
