@@ -10,6 +10,7 @@
  * lines: a take of N bars is N bars of beats, however long they took. */
 #define _GNU_SOURCE
 #include "recorder.h"
+#include "barcut.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -490,9 +491,9 @@ static void chunk(rec_t *r, const int16_t *const *st, uint32_t n, int playing, d
     }
     if (tempo) {
         const double bpf = bpm / 60.0 / r->fs;
-        double B = 4.0 * ceil((beat - bpf) / 4.0);
+        double B = bc_first_line(beat, bpf, 4.0);      /* (barcut.h: shared with the looper) */
         for (; nlf < 8; B += 4.0) {
-            const double o = ceil((B - beat) / bpf - 1e-6);
+            const double o = bc_offset(beat, bpf, B);
             if (o >= n)
                 break;
             if (o < 0 || (r->nl && B <= r->last_line + 1e-6))
@@ -543,7 +544,7 @@ static void chunk(rec_t *r, const int16_t *const *st, uint32_t n, int playing, d
             why = REC_END_TRANSPORT;
         } else {
             if (r->bar_take && r->end_set && tempo) {
-                const double o = ceil((r->end_beat - beat) / (bpm / 60.0 / r->fs) - 1e-6);
+                const double o = bc_offset(beat, bpm / 60.0 / r->fs, r->end_beat);
                 if (o < n) {
                     e = f0 + (uint64_t)(o > 0 ? o : 0);
                     bars = (uint32_t)llround((r->end_beat - r->start_beat) / 4.0);
