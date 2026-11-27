@@ -1108,9 +1108,10 @@ static void projmem(void)
          * settings there never read as a firmware's id */
         static const struct { int ver; uint32_t kb; } KV[] = { { 11, RFM_MOVE_KIT_BYTES_V11 }, { 12, RFM_MOVE_KIT_BYTES_V12 },
             { 13, RFM_MOVE_KIT_BYTES_V12 }, { 14, RFM_MOVE_KIT_BYTES_V14 }, { 15, RFM_MOVE_KIT_BYTES_V15 },
-            { 16, RFM_MOVE_KIT_BYTES_V15 }, { 17, RFM_MOVE_KIT_BYTES_V17 }, { 18, RFM_MOVE_KIT_BYTES } };   /* (17, 2026-11-26: Scan;
-                                                         * 18: the pads' original places) */
-        static uint8_t kb[200 + RFM_MOVE_PFW_BYTES + RFM_MOVE_KIT_BYTES + 4];
+            { 16, RFM_MOVE_KIT_BYTES_V15 }, { 17, RFM_MOVE_KIT_BYTES_V17 }, { 18, RFM_MOVE_KIT_BYTES },
+            { 19, RFM_MOVE_KIT_BYTES + RFM_MOVE_LOOP_BYTES } };   /* (17, 2026-11-26: Scan; 18: the pads' original
+                                                         * places; 19: the looper's part after the kit's) */
+        static uint8_t kb[200 + RFM_MOVE_PFW_BYTES + RFM_MOVE_KIT_BYTES + RFM_MOVE_LOOP_BYTES + 4];
         unsigned v;
         for (v = 0; v < sizeof KV / sizeof KV[0]; v++) {
             const uint32_t n = 200 + RFM_MOVE_PFW_BYTES + KV[v].kb + 4;

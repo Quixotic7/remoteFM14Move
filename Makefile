@@ -5,6 +5,7 @@
 #                     Move Remote's simulator, the compiled firmwares, the tools
 #   make test         every test (tests/test.sh): Move Remote's own, then the rest in the image
 #   make test-sampler the sampler's tests alone (tests/sampler_suite.sh, the kit's among them); make test-kit the kit's
+#   make test-looper  the looper's alone (tests/looper_test.sh natively, tests/looper_e2e.sh on the simulator)
 #   make test-listen  Listen here (the Move's output on the page, the Move silent meanwhile) on the simulator
 #   make test-update  the page's Update (src/update.c, tools/make_update.py): natively, then on the simulator
 #   make update       dist/updates/remotefm1-<version>-<commit>.rfm1u: this build as a signed update for the page's Update
@@ -93,6 +94,12 @@ test-sampler: all
 test-kit: all
 	tests/kit_test.sh && $(DOCKER_RUN) tests/kit_e2e.sh
 
+# the looper's tests alone (rfm1cs looper stage 1): src/looper.c natively (plain, ASan + UBSan, TSan; no allocation on
+# the engine's thread), then the looper on the simulator in the image (tests/looper_e2e.sh)
+.PHONY: test-looper
+test-looper: all
+	tests/looper_test.sh && $(DOCKER_RUN) tests/looper_e2e.sh
+
 # Listen here (src/listen.c, web.c /ws/audio): the Move's output streamed to a page, the Move silent meanwhile
 .PHONY: test-listen
 test-listen: all
@@ -170,13 +177,13 @@ FW_DEV_OUT := $(patsubst build/in-dev/%.rfm1,build/fw-dev/%.rfm1m,$(wildcard bui
 
 # rfm1cs-abletonmove (its core, session and store) and Move Remote's client half it uses (mr_decode, the 1-bit
 # graphics); the font is Move Remote's device copy (the same file)
-CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c projfw.c fw.c session.c store.c speech.c takeover.c engine.c sampler.c kit.c) \
+CS_SRC := $(addprefix $(CS)/src/,move.c screen.c v2.c seq.c seq_ui.c project.c projfw.c fw.c session.c store.c speech.c takeover.c engine.c sampler.c kit.c looper.c) \
           $(CS)/third_party/moveremote/host/mr_client.c $(CS)/third_party/moveremote/host/mr_gfx.c
 CS_INC := -I$(CS)/include -I$(CS)/third_party/moveremote/include
 MR_SRC := $(MR)/device/mr_core.c $(MR)/device/mr_ws.c $(MR)/common/font5x7.c
 HOST_SRC := src/main.c src/update.c src/gz.c src/engine.c src/fwrt.c src/memsnap.c src/wav.c src/fsvc.c src/storage.c src/projmem.c src/catalog.c src/sha256.c src/web.c src/files.c src/mdns.c src/minijson.c \
             src/fx.c src/https.c src/catsig.c src/ed25519.c src/fm1link.c src/announce.c src/midiout.c src/listen.c \
-            src/fmwords.c src/fmreader.c src/recorder.c src/takes.c src/kit.c
+            src/fmwords.c src/fmreader.c src/recorder.c src/takes.c src/kit.c src/looper.c
 # the FM-1 on USB-A (src/fm1link.c): libremotefm1's portable core (MPL-2.0) from RemoteFM1; the simulator's host also
 # gets its fake unit (src/fm1sim.c, --fake-fm1)
 RF := third_party/RemoteFM1

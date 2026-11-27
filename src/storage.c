@@ -750,7 +750,9 @@ static int kdir_ok(const char *d)   /* a project's folder (or the buffer's): nev
 {
     return g_kits[0] && d[0] && !strncmp(d, g_kits, strlen(g_kits)) && strstr(d + strlen(g_kits), "/Projects/");
 }
-static void kdir_drop(const char *d)   /* its files deleted one by one, then the folder */
+/* (rfm1cs looper stage 1) a project's folder holds its sounds and one level of sub-folders (Loops/: the looper's
+ * recordings); both go, are copied and moved with the project */
+static void kdir_drop_in(const char *d, int depth)      /* its files deleted one by one, its sub-folders, the folder */
 {
     DIR *x;
     struct dirent *e;
@@ -762,18 +764,22 @@ static void kdir_drop(const char *d)   /* its files deleted one by one, then the
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
             continue;
         snprintf(f, sizeof f, "%s/%s", d, e->d_name);
-        if (!lstat(f, &st) && S_ISREG(st.st_mode))
+        if (lstat(f, &st))
+            continue;
+        if (S_ISREG(st.st_mode))
             unlink(f);
+        else if (S_ISDIR(st.st_mode) && depth < 1)
+            kdir_drop_in(f, depth + 1);
     }
     closedir(x);
     rmdir(d);
 }
+static void kdir_drop(const char *d) { kdir_drop_in(d, 0); }
 static int copy_file(const char *from, const char *to);
-static void kdir_copy(const char *a, const char *b)   /* b made a's copy (its files; none: b gone) */
+static void kdir_copy_in(const char *a, const char *b, int depth)   /* b made a's copy (its files, its sub-folders) */
 {
     DIR *x;
     struct dirent *e;
-    kdir_drop(b);
     if (!kdir_ok(a) || !kdir_ok(b) || !(x = opendir(a)))
         return;
     st_mkdirs(b);
@@ -784,10 +790,19 @@ static void kdir_copy(const char *a, const char *b)   /* b made a's copy (its fi
             continue;
         snprintf(f, sizeof f, "%s/%s", a, e->d_name);
         snprintf(t, sizeof t, "%s/%s", b, e->d_name);
-        if (!lstat(f, &st) && S_ISREG(st.st_mode) && copy_file(f, t) != 0)
+        if (lstat(f, &st))
+            continue;
+        if (S_ISREG(st.st_mode) && copy_file(f, t) != 0)
             fprintf(stderr, "storage: %s not copied to %s\n", f, b);
+        else if (S_ISDIR(st.st_mode) && depth < 1)
+            kdir_copy_in(f, t, depth + 1);
     }
     closedir(x);
+}
+static void kdir_copy(const char *a, const char *b)     /* b made a's copy (none: b gone) */
+{
+    kdir_drop(b);
+    kdir_copy_in(a, b, 0);
 }
 static void kdir_move(const char *a, const char *b)
 {

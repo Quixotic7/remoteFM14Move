@@ -44,6 +44,7 @@
 #include "recorder.h"
 #include "takes.h"
 #include "kit.h"
+#include "looper.h"
 #include "listen.h"
 #include "rfm1cs/session.h"
 #include "storage.h"
@@ -1001,6 +1002,14 @@ static uint32_t g_kit_t_owned, g_kit_t_cleans;   /* (tests, round C) */
 static uint32_t g_kit_t_exports;               /* (tests, 2026-11-26) KIT_EXPORT asked; the last one's files */
 static int g_kit_t_exported = -2;
 static void kit_proj_sync(void);
+/* (rfm1cs looper stage 1) the looper: its loops, lanes, the Loops strip (src/looper.c; docs/design/LOOPER-SPEC.md) */
+static looper_t *g_looper;
+static int16_t g_loop_blk[FW_BLOCK * 2];   /* its output alone: the Loops source, the recorder's Looper stream */
+static int16_t g_mix_tap[FW_BLOCK * 2];    /* the mix before the FX returns and the loops (the Mix source) */
+static int g_loop_proj = -2;
+static uint32_t g_loop_t_recs, g_loop_t_launches, g_loop_t_loads, g_loop_t_done;   /* (tests) */
+static void loop_action(const rfm_move_act_t *a);
+static void loop_proj_sync(void);
 static uint32_t g_takes_ver;             /* .. the takes changed (saved, edited, renamed, deleted): the page lists again */
 static void tl_action(const rfm_move_act_t *a);
 static void on_action(const rfm1cs_event_t *ev)
@@ -1054,6 +1063,7 @@ static void on_action(const rfm1cs_event_t *ev)
             if (SL[s].on)
                 fw_in(&SL[s].fw, FWI_MASTER, 0, g_master, 0, 0);
         kit_master(g_kit, g_master);   /* (2026-11-26: the kit too, as the firmwares) */
+        looper_master(g_looper, g_master);   /* (looper stage 1: the loops too) */
         break;
     }
     case RFM_MOVE_ACT_MIDI:
@@ -1085,6 +1095,13 @@ static void on_action(const rfm1cs_event_t *ev)
     case RFM_MOVE_ACT_KIT_GHOST:   /* (2026-11-26) a ghost trigger's locks onto the pad's sounding voices */
     case RFM_MOVE_ACT_KIT_EXPORT:  /* (2026-11-26) a kit track's settings' Export Samples */
         kit_action(a);
+        break;
+    case RFM_MOVE_ACT_LOOP_REC:    /* (rfm1cs looper stage 1) the looper */
+    case RFM_MOVE_ACT_LOOP_LAUNCH:
+    case RFM_MOVE_ACT_LOOP_SET:
+    case RFM_MOVE_ACT_LOOP_LOAD:
+    case RFM_MOVE_ACT_LOOP_COPY:
+        loop_action(a);
         break;
     case RFM_MOVE_ACT_EXIT: {      /* (the owner's 2026-11-25) Global settings' Exit: Move Remote's QUIT, as the exit
                                     * gesture: the host stops as ever (the project saved), Move's own software comes back */
@@ -1158,6 +1175,12 @@ static void on_action(const rfm1cs_event_t *ev)
             kit_clean(g_kit, refs, rfm_move_kit_refs(&S->core, refs, 3 * RFM_MOVE_KIT_PADS));
             g_kit_t_cleans++;
         }
+        if (a->kind == RFM_MOVE_ACT_PROJECT_SAVE && g_looper && a->index == rfm_move_project_slot(&S->core)) {
+            const char *refs[RFM_MOVE_LOOP_SLOTS + 2 * RFM_MOVE_LOOP_LANES];   /* (looper stage 1: its Loops folder's
+                                                         * files nothing refers to go) */
+            loop_proj_sync();
+            looper_clean(g_looper, refs, rfm_move_loop_refs(&S->core, refs, RFM_MOVE_LOOP_SLOTS + 2 * RFM_MOVE_LOOP_LANES));
+        }
         if (a->kind == RFM_MOVE_ACT_PROJECT_DELETE || a->kind == RFM_MOVE_ACT_PROJECT_CUT) {
             char p[ST_PATH];
             st_fx_state_path(p, sizeof p, a->index);
@@ -1203,7 +1226,10 @@ static void on_action(const rfm1cs_event_t *ev)
         break;
     }
     case RFM_MOVE_ACT_MIX:
-        if (a->slot == RFM_MOVE_KIT_SLOT && g_kit) {   /* (rfm1cs stage 3b) the kit's own strip */
+        if (a->slot == RFM_MOVE_LOOP_SLOT && g_looper) {   /* (rfm1cs looper stage 1) the Loops strip */
+            const int sends[3] = { a->mix[2], a->mix[3], a->mix[4] };
+            looper_mix(g_looper, a->mix[0], a->mix[1], sends);
+        } else if (a->slot == RFM_MOVE_KIT_SLOT && g_kit) {   /* (rfm1cs stage 3b) the kit's own strip */
             const int sends[3] = { a->mix[2], a->mix[3], a->mix[4] };
             kit_mix(g_kit, a->mix[0], a->mix[1], sends);
             g_kit_t_mix++;
@@ -4614,6 +4640,8 @@ static void rec_feed(const int16_t *out, const int16_t *const slot[NSLOT], const
         b.st[REC_ST_SLOT1 + s] = slot[s];
     if (g_kit_blk_on)
         b.st[REC_ST_KIT] = g_kit_blk;   /* (stage 3b) the kit's output alone */
+    if (g_looper && looper_bytes(g_looper))
+        b.st[REC_ST_LOOPER] = g_loop_blk;   /* (looper stage 1) the looper's output alone (the sampler's Looper) */
     if (ain) {
         if (g_rec_in_gain == 1.0f)
             b.st[REC_ST_INPUT] = ain;
@@ -4690,6 +4718,98 @@ static void kit_proj_sync(void)
     g_kit_proj = slot;
     kit_proj_dir(g_kits_dir, slot, d, sizeof d);
     kit_project(g_kit, d);
+}
+/* ---- (rfm1cs looper stage 1) the looper: the core's LOOP_* actions; its answers and status (loop_tick) */
+static void loop_proj_sync(void)   /* (the open project's folder, Kits/Projects/NN: its Loops/) */
+{
+    const int slot = rfm_move_project_slot(&S->core);
+    char d[1100];
+    if (!g_looper || slot == g_loop_proj)
+        return;
+    g_loop_proj = slot;
+    kit_proj_dir(g_kits_dir, slot, d, sizeof d);
+    looper_project(g_looper, d);
+}
+typedef char loop_p_check[(int)LOOPER_P_N == (int)RFM_MOVE_LOOP_P_N && (int)LOOPER_L_N == (int)RFM_MOVE_LOOP_L_N &&
+                          (int)LOOPER_SRC_N == (int)RFM_MOVE_LOOP_SRC_N && (int)LOOPER_Q_CLIP == (int)RFM_MOVE_LQ_CLIP &&
+                          LOOPER_SLOTS == RFM_MOVE_LOOP_SLOTS && LOOPER_PEAKS == RFM_MOVE_LOOP_PEAKS &&
+                          LOOPER_RPEAKS == RFM_MOVE_LOOP_RPEAKS && (int)LOOPER_NOTHING == (int)RFM_MOVE_LOOP_NOTHING ? 1 : -1];
+static void loop_action(const rfm_move_act_t *a)
+{
+    const uint32_t fr = g_kit_adv && a->frame < FW_BLOCK ? a->frame : 0;
+    if (!g_looper)
+        return;
+    loop_proj_sync();
+    switch (a->kind) {
+    case RFM_MOVE_ACT_LOOP_REC:
+        if (a->param == RFM_MOVE_LOOP_R_START)
+            looper_rec(g_looper, a->index, a->value, a->vel, a->slot, fr), g_loop_t_recs++;
+        else if (a->param == RFM_MOVE_LOOP_R_END)
+            looper_rec_end(g_looper, a->index, fr);
+        else
+            looper_rec_cancel(g_looper, a->index);
+        break;
+    case RFM_MOVE_ACT_LOOP_LAUNCH:
+        if (a->down)
+            looper_launch(g_looper, a->index, a->value, fr);
+        else
+            looper_stop(g_looper, a->index / RFM_MOVE_LOOP_SCENES, a->value, fr);
+        g_loop_t_launches++;
+        break;
+    case RFM_MOVE_ACT_LOOP_SET:
+        if (a->index >= RFM_MOVE_LOOP_LANE0)
+            looper_lane(g_looper, a->index - RFM_MOVE_LOOP_LANE0, a->param, a->value);
+        else
+            looper_set(g_looper, a->index, a->param, a->value);
+        break;
+    case RFM_MOVE_ACT_LOOP_LOAD: {
+        char p[RFM_MOVE_LOOP_PATH];
+        snprintf(p, sizeof p, "%.*s", a->data ? (int)a->len : 0, a->data ? (const char *)a->data : "");
+        looper_load(g_looper, a->index, p, a->value, (int)a->take);
+        g_loop_t_loads++;
+        break;
+    }
+    case RFM_MOVE_ACT_LOOP_COPY: looper_copy(g_looper, a->index, (int)a->take); break;
+    default: break;
+    }
+}
+static void loop_tick(uint32_t now)
+{
+    static uint32_t last;
+    looper_ans_t a;
+    int redraw = 0;
+    if (!g_looper || !g_session_on)
+        return;
+    while (looper_poll(g_looper, &a)) {
+        if (a.kind == LOOPER_A_RECORDED) {
+            redraw |= rfm_move_loop_recorded(&S->core, a.slot, a.status, a.path, a.frames, a.rate, a.bars, a.bpm10, a.npk,
+                                             a.pk);
+            g_loop_t_done++;
+            if (a.status == LOOPER_OK)
+                fsvc_bump_changed(), fprintf(stderr, "engine: loop %d-%d recorded: %s (%d bars)\n",
+                                              a.slot / 8 + 1, a.slot % 8 + 1, a.path, a.bars);
+        } else
+            redraw |= rfm_move_loop_loaded(&S->core, a.slot, a.status, a.frames, a.rate, a.bars, a.bpm10, a.npk, a.pk);
+    }
+    if (now - last >= REC_STATUS_MS) {
+        looper_status_t ls;
+        rfm_move_loop_status_t st;
+        int k;
+        last = now;
+        looper_status(g_looper, &ls);
+        memset(&st, 0, sizeof st);
+        for (k = 0; k < RFM_MOVE_LOOP_LANES; k++)
+            st.lane[k].play = ls.lane[k].play, st.lane[k].next = ls.lane[k].next, st.lane[k].pos = ls.lane[k].pos,
+            st.lane[k].level = ls.lane[k].level;
+        for (k = 0; k < 2; k++)
+            st.rec[k].slot = ls.rec[k].slot, st.rec[k].state = ls.rec[k].state, st.rec[k].bar = ls.rec[k].bar,
+            st.rec[k].bars = ls.rec[k].bars;
+        st.level = ls.level, st.beat = ls.beat, st.npk = ls.npk, st.bytes = ls.bytes, st.cap = ls.cap;
+        memcpy(st.pk, ls.pk, sizeof st.pk);
+        redraw |= rfm_move_loop_status(&S->core, &st);
+    }
+    if (redraw)
+        rfm1cs_session_redraw(S, now);
 }
 typedef char kit_p_n_check[(int)KIT_P_N == (int)RFM_MOVE_KIT_P_N && (int)KIT_LK_N == (int)RFM_MOVE_KIT_LK_N && (int)KIT_M_N == (int)RFM_MOVE_KIT_M_N ? 1 : -1];
 static void kit_action(const rfm_move_act_t *a)
@@ -5227,6 +5347,27 @@ static void render_block_(uint32_t now)
         kit_render_bus(g_kit, g_mix.acc, ks, g_kit_blk, FW_BLOCK);
         g_kit_blk_on = kit_bytes(g_kit) > 0;   /* (a stream present only with a sound in the kit: no empty Kit stem) */
     }
+    if (g_looper) {   /* (rfm1cs looper stage 1) the Mix source (the slots and the kit, before the returns and the
+                       * loops), then the looper's bus beside the kit's: its own block, its sends; then the recording */
+        float *ls[RFM_MOVE_FX_SLOTS];
+        looper_clock_t lc;
+        looper_src_t src;
+        for (s = 0; s < FW_BLOCK * 2; s++) {
+            const long v = lrintf(g_mix.acc[s]);
+            g_mix_tap[s] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+        }
+        for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)
+            ls[k] = sends >> k & 1 ? g_bus[k].acc : NULL;
+        lc.playing = spos >= 0;   /* (the song's position at the block's first frame, as the recorder's) */
+        lc.bpf = sper / (RFM_MOVE_SEQ_BAR / 4.0);
+        lc.beat0 = lc.playing ? (spos - FW_BLOCK * sper) / (RFM_MOVE_SEQ_BAR / 4.0) : 0.0;
+        looper_render_bus(g_looper, &lc, g_mix.acc, ls, g_loop_blk, FW_BLOCK);
+        memset(&src, 0, sizeof src);
+        for (s = 0; s < NSLOT && s < 3; s++)
+            src.slot[s] = dry[s];
+        src.kit = g_kit_blk_on ? g_kit_blk : NULL, src.input = ain, src.mix = g_mix_tap;
+        looper_record(g_looper, &src, g_loop_blk, FW_BLOCK);
+    }
     for (k = 0; k < RFM_MOVE_FX_SLOTS; k++)   /* the returns: each bus through its FX, in place, into the mix */
         if (sends >> k & 1) {
             fxs_t *x = &FX[RFM_MOVE_FX_AUDIO][k];
@@ -5667,6 +5808,32 @@ static void housekeeping(uint32_t now)
                               t->pad[t->cur].orig[0] != 0);   /* (2026-11-26: Export Samples; the original place) */
             }
         }
+        if (g_looper && n + 600 < (int)sizeof tmp) {   /* (rfm1cs looper stage 1) the looper (tests) */
+            const rfm_move_loop_t *t = &S->core.loop;
+            looper_status_t ls;
+            unsigned slots = 0;
+            int p, pk = 0;
+            char lp[96];
+            const char *cp = t->slot[t->cur].path, *b = strrchr(cp, '/');
+            looper_status(g_looper, &ls);
+            for (p = 0; p < RFM_MOVE_LOOP_SLOTS; p++)
+                slots |= (t->slot[p].path[0] ? 1u : 0u) << p;
+            for (p = 0; p < RFM_MOVE_LOOP_LANES; p++)
+                pk = ls.lane[p].level > pk ? ls.lane[p].level : pk;
+            snprintf(lp, sizeof lp, "%s", b ? b + 1 : cp);
+            for (p = 0; lp[p]; p++)
+                if (lp[p] == '"' || lp[p] == '\\' || (unsigned char)lp[p] < 32)
+                    lp[p] = '_';
+            n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"loop_shown\":%d,\"loop_cur\":%d,\"loop_page\":%d,"
+                          "\"loop_play\":[%d,%d,%d,%d],\"loop_next\":[%d,%d,%d,%d],\"loop_rec\":%d,\"loop_rec_state\":%d,"
+                          "\"loop_rec_bar\":%d,\"loop_bytes\":%u,\"loop_sounding\":%d,\"loop_recs\":%u,\"loop_launches\":%u,"
+                          "\"loop_loads\":%u,\"loop_done\":%u,\"loop_slots\":%u,\"loop_file\":\"%s\",\"loop_peak\":%d,"
+                          "\"loop_mix\":%d,\"loop_tab\":%d", rfm_move_loop_shown(&S->core), t->cur, t->page,
+                          ls.lane[0].play, ls.lane[1].play, ls.lane[2].play, ls.lane[3].play, ls.lane[0].next,
+                          ls.lane[1].next, ls.lane[2].next, ls.lane[3].next, ls.rec[0].slot, ls.rec[0].state, ls.rec[0].bar,
+                          ls.bytes, looper_sounding(g_looper), g_loop_t_recs, g_loop_t_launches, g_loop_t_loads,
+                          g_loop_t_done, slots, lp, pk, t->mix[0], t->tab_slot);
+        }
         if (n < (int)sizeof tmp)   /* Out (midiout.h): the RTP-MIDI peers, what went, USB-A */
             n += midiout_json(tmp + n, (int)sizeof tmp - n);
         n += snprintf(tmp + n, sizeof tmp - (size_t)n, ",\"fm1\":");
@@ -5849,6 +6016,7 @@ static void *engine_main(void *arg)
         ann_tick(now);
         housekeeping(now);
         rec_tick(now);   /* (the sampler app: the recorder's status, its finished takes) */
+        loop_tick(now);  /* (looper stage 1: its status, its recordings and loads) */
         view_live(now);
         {   /* (the Move's FX setup opened, closed or on another page: no action says so) */
             static int sig = -1;
@@ -5985,18 +6153,28 @@ int engine_start(const engine_cfg_t *cfg)
             kit_proj_sync();
         }
     }
+    if (g_kit) {   /* (rfm1cs looper stage 1) the looper: its spare buffers made here, its file thread */
+        looper_cfg_t lc;
+        memset(&lc, 0, sizeof lc);
+        lc.fs = FW_FS;
+        if (!(g_looper = looper_new(&lc)))
+            fprintf(stderr, "engine: no looper (no memory)\n");
+        else
+            loop_proj_sync();
+    }
     rfm_move_fw_caps(&S->core, RFM_MOVE_CAPS_ALL | RFM_MOVE_CAP_PROJFW | (g_rec ? RFM_MOVE_CAP_SAMPLER : 0) |
-                                   (g_kit ? RFM_MOVE_CAP_KIT : 0) | RFM_MOVE_CAP_EXIT);
+                                   (g_kit ? RFM_MOVE_CAP_KIT : 0) | (g_looper ? RFM_MOVE_CAP_LOOPER : 0) | RFM_MOVE_CAP_EXIT);
     rfm_move_kit_core_lib(&S->core, kit_has_core(g_kit));   /* (2026-11-26: the browser's second place, when there) */
     /* the sampler app offers: Master, Slot 1..3, Input, Stems, (stage 3b, with the kit) Kit; Source, Mode, Length,
      * Threshold, Input level, (3b) To (not Monitor: later); the Record tab, (stage 2) Takes and Tools with the take
      * library; takes to Files, (3b) to the Kit (the next empty pad) */
     rfm_move_smp_offer(&S->core, 1u << RFM_MOVE_SMP_SRC_MASTER | 1u << RFM_MOVE_SMP_SRC_SLOT1 | 1u << RFM_MOVE_SMP_SRC_SLOT2 |
                        1u << RFM_MOVE_SMP_SRC_SLOT3 | 1u << RFM_MOVE_SMP_SRC_INPUT | 1u << RFM_MOVE_SMP_SRC_STEMS |
-                       (g_kit ? 1u << RFM_MOVE_SMP_SRC_KIT : 0),
+                       (g_kit ? 1u << RFM_MOVE_SMP_SRC_KIT : 0) | (g_looper ? 1u << RFM_MOVE_SMP_SRC_LOOPER : 0),
                        1u << RFM_MOVE_SMP_SOURCE | 1u << RFM_MOVE_SMP_MODE | 1u << RFM_MOVE_SMP_LENGTH |
                        1u << RFM_MOVE_SMP_THRESHOLD | 1u << RFM_MOVE_SMP_INPUT | (g_kit ? 1u << RFM_MOVE_SMP_TO : 0),
-                       1u << RFM_MOVE_SMP_TAB_RECORD | (g_tl ? 1u << RFM_MOVE_SMP_TAB_TAKES | 1u << RFM_MOVE_SMP_TAB_TOOLS : 0),
+                       1u << RFM_MOVE_SMP_TAB_RECORD | (g_tl ? 1u << RFM_MOVE_SMP_TAB_TAKES | 1u << RFM_MOVE_SMP_TAB_TOOLS : 0) |
+                           (g_looper ? 1u << RFM_MOVE_SMP_TAB_LOOPS : 0),
                        1u << RFM_MOVE_SMP_TO_FILES | (g_kit ? 1u << RFM_MOVE_SMP_TO_KIT : 0));
     rfm_move_fw_list(&S->core, g_cat->list, g_cat->n);
     rfm_move_fw_voices(&S->core, NSLOT);
@@ -6119,6 +6297,8 @@ void engine_stop(void)
     g_tl = NULL;
     kit_free(g_kit);   /* (after the worker that runs its file work) */
     g_kit = NULL;
+    looper_free(g_looper);   /* (its file thread: the last WAVs written first) */
+    g_looper = NULL;
     {   /* (the page's take answers no one read) */
         int i;
         pthread_mutex_lock(&g_vmu);
