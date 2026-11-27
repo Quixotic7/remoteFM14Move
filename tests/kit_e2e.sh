@@ -178,7 +178,8 @@ cmd "cc 75 68"; sleep 0.2; jog 5 127; sleep 1.1            # (Send 1 0; Pad Samp
 
 # ---------------------------------------------------------------- the Mixer's fourth strip
 m0=$(field kit_mix)
-cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # Track 4: Kit -> the Mixer
+cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # Track 4: Kit -> the Looper (looper stage 1)
+cmd "cc 40 127"; cmd "cc 40 0"; sleep 0.6                    # .. -> the Mixer
 wait_for 3 '[ "$(field kit_shown)" = 0 ]' || bad "the Mixer: kit shown '$(field kit_shown)'"
 cmd "cc 74 116"; sleep 0.4                                  # knob 4: the kit's level 12 detents down (rfm1cs
                                                             # 2026-11-26: 0.5 dB a detent, 0 -> -6 dB: 100 -> 50)
