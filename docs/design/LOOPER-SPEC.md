@@ -215,7 +215,7 @@ modes (Trigger, Gate, Toggle: the Loop page's knob 6), the page's web looper; th
 ## Round 2 (the owner's first try of stage 1, 2026-11-26)
 
 The owner's words are quoted; where the call was ours it says so. Code: rfm1cs `src/looper.c` (and `kit.c`'s Files,
-`seq.c`'s count-in, `seq_ui.c`'s Play and Shift + step 13, `screen.c`'s overlay), this repo's `src/looper.c`,
+`seq.c`'s count-in, `seq_ui.c`'s Play and Shift + step 4, `screen.c`'s overlay), this repo's `src/looper.c`,
 `src/stretch.h`, `src/kit.c`, `src/engine.c`. Tests: rfm1cs `tests/move_looper.c` (`t_round2`, `t_steploop`, the
 markers and Warp in `t_pages`, version 20 in `t_project`); `tests/looper_test.c` (`t_round2`); `looper_e2e` records
 from the Record page.
@@ -300,8 +300,8 @@ load. This repo's `projmem.c` knows 20.
 
 ### 9. The step looper ("a looper mode takeover feature you could enable that takes over the step keys")
 
-- **On / off:** **Shift + step 13** (step 13 had no shortcut; its icon lit while on), in the **FM-1 layout Track 4
-  held + step 13** (there Shift is GLO; Track 4 held + a step is the Shift layer in every layout), or the Record
+- **On / off:** **Shift + step 4**, the printed cylinder (the owner's pick, 2026-11-27; its icon lit while on), in
+  the **FM-1 layout Track 4 held + step 4** (there Shift is GLO; Track 4 held + a step is the Shift layer in every layout), or the Record
   page's knob 6. A full-screen card for 1.5 s: "Step Looper On", four boxes (lanes 1..4, keys 1 Rec, 2 Dub, 3 Rpl, 4
   Nxt); off: "Steps: sequencer". Saved with the project (byte 9).
 - **Where:** every mode and layout (the FM-1 layout, note layouts, Sequencer, the Kit view, session view) but the

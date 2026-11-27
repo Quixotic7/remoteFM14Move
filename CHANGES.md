@@ -8,7 +8,8 @@ bars at the tempo); the page decides a tap; the Count-in; one input setting (the
 Level) and Monitor (Off / On / Auto, through the Loops strip; the sampler offers it now); Warp Grains and Beats
 (the kit's engines, factored out into `src/stretch.h` and shared); Start / End markers and Steps (the region fills
 its steps at the tempo); overdub (the step looper's key 2: a preallocated layer, its file on the file thread, one
-Undo); the step looper over every layout, the FM-1 layout too. Core 0.17.0 (round 2, version 20 projects;
+Undo); the step looper over every layout, the FM-1 layout too, on Shift + step 4, the printed cylinder (Track 4
+held + step 4 in the FM-1 layout). Core 0.17.0 (round 2, version 20 projects;
 `projmem.c` knows 20).
 
 **The looper, stage 1 (the owner's 2026-11-26 design round: every card approved as its option a; rfm1cs looper
