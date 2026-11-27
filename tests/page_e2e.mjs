@@ -457,12 +457,18 @@ async function storeChecks() {
     "pad 1: the project's own sound, white, marked PROJECT");
   // save the sound into an empty state (pad 3), then pad 5: stored; nothing becomes active
   for (const k of [2, 4]) {
-    await choose(k);
-    await until(`document.querySelector('${act("save")}')`, 3000, "the empty state's row");
-    await tap(act("save"));
-    ok(await untilApi(async () => { const f = await ls(CRS), s = await store(), t = await status();
-      return f.has(sb("bin", k)) && f.has(sb("mem", k)) && f.has(sb("json", k)) && s.slots[cr].used >>> k & 1 && t[`cstcur${cr}`] === -1 && t[`stcur${cr}`] === -1; }, 10000),
-      `Save the sound into empty state ${k + 1}: state-0${k}.bin, .mem, .json on the Move; the Move's core has it stored, nothing active`);
+    // (the panel redraws as the Move answers the last save, so a tap can miss a row drawn again: the pad chosen and
+    // its Save tapped again until it is stored, up to three times)
+    const saved = async () => { const f = await ls(CRS), s = await store(), t = await status();
+      return f.has(sb("bin", k)) && f.has(sb("mem", k)) && f.has(sb("json", k)) && s.slots[cr].used >>> k & 1 && t[`cstcur${cr}`] === -1 && t[`stcur${cr}`] === -1; };
+    let done = false;
+    for (let n = 0; n < 3 && !done; n++) {
+      await choose(k);
+      await until(`document.querySelector('#mv-sv .mv-sv-sel[data-k="${k}"]') && document.querySelector('${act("save")}')`, 3000, "the empty state's row");
+      await tap(act("save"));
+      done = await untilApi(saved, n < 2 ? 5000 : 10000);
+    }
+    ok(done, `Save the sound into empty state ${k + 1}: state-0${k}.bin, .mem, .json on the Move; the Move's core has it stored, nothing active`);
   }
   ok(await until(`document.querySelector('${pad(4)}').classList.contains("full") && !document.querySelector('${pad(4)}').classList.contains("cur") && document.querySelector('${pad(2)}').classList.contains("full") && document.querySelector('${pad(0)}').classList.contains("cur")`, 5000, "the pads"),
     "the page: states 3 and 5 stored (the slot's colour), pad 1 still the only white one");

@@ -1,6 +1,6 @@
 # Changes
 
-## 0.6.0 (prepared 2026-11-26, not yet released)
+## 0.6.0 (2026-11-26)
 
 **Kit: Copy's modes on the jog, a held step's length and timing (the owner's 2026-11-26; rfm1cs d457792).** Copy held
 shows Copy / Mix / Join, the jog picks one (each press starts on Copy), the first pad is the source and each further
@@ -73,8 +73,9 @@ host's gain law is unchanged (a 0..127 level is a linear gain, 127 unity, for a 
 
 - Saving a project no longer deletes its firmwares' own copies (a project could come back with fresh firmwares).
 - The kit follows the volume knob.
+- Opening a folder in the kit's Files loads its top sound onto the pad (it waited for the jog before; rfm1cs 7099c6f).
 
-Projects are now version 15: 0.5.0 and older cannot read them back. Older projects load as they were.
+Projects are now version 18: 0.5.0 and older cannot read them back. Older projects load as they were.
 
 ### Development log (the kit's rounds, newest first)
 
