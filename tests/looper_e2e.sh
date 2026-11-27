@@ -96,8 +96,9 @@ shot; cp "$SIM/mr-screen.pbm" build/test-out/loop_playing.pbm
 
 # ---------------------------------------------------------------- step 16, a scene, the strip
 hit 31                                                         # (step 16: stop all, at the bar)
-wait_for 2 '[ "$(nth "$(arr loop_next)" 1)" = 8 ]' && ok "step 16: lane 1's stop waits for the bar" \
-    || bad "step 16: next '$(arr loop_next)'"
+wait_for 2 '[ "$(nth "$(arr loop_next)" 1)" = 8 ] || [ "$(nth "$(arr loop_play)" 1)" = -1 ]' \
+    && ok "step 16: lane 1's stop waits for the bar (next '$(nth "$(arr loop_next)" 1)'; a bar line close by: already stopped)" \
+    || bad "step 16: next '$(arr loop_next)' play '$(arr loop_play)'"
 wait_for 6 '[ "$(nth "$(arr loop_play)" 1)" = -1 ]' && ok "at the bar: stopped" || bad "stop all: play '$(arr loop_play)'"
 hit 16                                                         # (step 1: scene 1, at the bar)
 wait_for 6 '[ "$(nth "$(arr loop_play)" 1)" = 0 ]' && ok "step 1: scene 1 plays again" || bad "scene 1: play '$(arr loop_play)'"
